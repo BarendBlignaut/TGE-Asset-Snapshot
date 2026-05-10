@@ -1,226 +1,264 @@
-const APP_VERSION = "1.4";
-
-const CAMERA_RULES = [
-  { key: "UVC", label: "In-Cab Driver Facing Camera" },
-  { key: "ROAD", label: "Road Facing" },
-  { key: "DRIVER", label: "Driver Facing" },
-  { key: "TVI1", label: "Left External" },
-  { key: "TVI2", label: "Driver External" }
-];
-
-function parseJson(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
-async function fetchCameraEvents(env) {
-  const upstreamUrl =
-    "https://api-au.telematics.com/v1/events?types=camera&pruning=B2B&key=" +
-    encodeURIComponent(env.TELEMATICS_API_KEY);
-
-  const upstreamResponse = await fetch(upstreamUrl, {
-    method: "GET",
-    headers: {
-      Accept: "application/json"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TGE Asset Snapshot</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+      line-height: 1.4;
     }
-  });
 
-  if (!upstreamResponse.ok) {
-    const errorBody = await upstreamResponse.text();
-    throw new Error("Upstream API failed: " + errorBody);
-  }
-
-  const events = await upstreamResponse.json();
-
-  if (!Array.isArray(events)) {
-    throw new Error("Unexpected API response format.");
-  }
-
-  return events;
-}
-
-function getMatchingEvents(events, vehicleId) {
-  return events
-    .filter(function (event) {
-      return (
-        String(event.vehicleId) === String(vehicleId) &&
-        String(event.action || "").toUpperCase() === "SNAPSHOT"
-      );
-    })
-    .sort(function (a, b) {
-      return new Date(b.timeAt) - new Date(a.timeAt);
-    });
-}
-
-function escapeRegex(text) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function extractImagesFromParsedContext(contextText) {
-  const parsed = parseJson(contextText);
-  const mediaFiles = parsed?.response?.mediaFiles;
-
-  if (!Array.isArray(mediaFiles)) {
-    return [];
-  }
-
-  const extracted = [];
-
-  CAMERA_RULES.forEach(function (rule, index) {
-    const match = mediaFiles.find(function (item) {
-      const sources = item?.imageDetails?.sources;
-      return (
-        item &&
-        item.mediaType === "IMAGE" &&
-        typeof item.mediaFile === "string" &&
-        Array.isArray(sources) &&
-        sources.includes(rule.key)
-      );
-    });
-
-    if (match) {
-      extracted.push({
-        cameraNumber: index + 1,
-        cameraKey: rule.key,
-        label: rule.label,
-        rawUrl: match.mediaFile
-      });
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      gap: 12px;
+      flex-wrap: wrap;
     }
-  });
 
-  return extracted;
-}
-
-function extractImagesFromRawContext(contextText) {
-  const extracted = [];
-
-  CAMERA_RULES.forEach(function (rule, index) {
-    const pattern = new RegExp(
-      '"sources":\\["' +
-        escapeRegex(rule.key) +
-        '"\\][\\s\\S]*?"mediaType":"IMAGE"[\\s\\S]*?"mediaFile":"(https:\\\\/\\\\/[^"]+response-content-disposition=attachment)"',
-      "i"
-    );
-
-    const match = contextText.match(pattern);
-
-    if (match && match[1]) {
-      const rawUrl = match[1].replace(/\\\//g, "/");
-
-      extracted.push({
-        cameraNumber: index + 1,
-        cameraKey: rule.key,
-        label: rule.label,
-        rawUrl: rawUrl
-      });
+    .version-box {
+      border: 1px solid #ccc;
+      padding: 8px 12px;
+      background: #f7f7f7;
+      font-size: 14px;
     }
-  });
 
-  return extracted;
-}
+    form {
+      margin-bottom: 20px;
+    }
 
-function extractCameraImages(contextText) {
-  const fromParsed = extractImagesFromParsedContext(contextText);
+    input {
+      padding: 10px;
+      width: 240px;
+      margin-right: 8px;
+    }
 
-  if (fromParsed.length > 0) {
-    return {
-      method: "parsed-json",
-      images: fromParsed
-    };
-  }
+    button {
+      padding: 10px 14px;
+      cursor: pointer;
+    }
 
-  const fromRaw = extractImagesFromRawContext(contextText);
+    #status {
+      margin: 16px 0;
+      font-weight: bold;
+    }
 
-  return {
-    method: "raw-text",
-    images: fromRaw
-  };
-}
+    .summary {
+      border: 1px solid #ccc;
+      padding: 16px;
+      margin-bottom: 20px;
+      background: #f8f8f8;
+    }
 
-function buildEventSummary(event) {
-  const contextText = event?.attributes?.context || "";
-  const extraction = extractCameraImages(contextText);
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
 
-  return {
-    eventId: event?.id ?? null,
-    vehicleId: event?.vehicleId ?? null,
-    action: event?.action ?? null,
-    timeAt: event?.timeAt ?? null,
-    imageCount: extraction.images.length,
-    extractionMethod: extraction.method,
-    images: extraction.images,
-    rawEvent: event
-  };
-}
+    .image-card {
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 12px;
+      background: #fafafa;
+    }
 
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
+    .image-card img {
+      width: 100%;
+      height: auto;
+      display: block;
+      margin-top: 10px;
+      border-radius: 4px;
+      background: #eee;
+    }
 
-    if (url.pathname === "/api/events") {
-      const vehicleId = url.searchParams.get("vehicleId");
+    .url-box {
+      word-break: break-all;
+      font-size: 12px;
+      margin-top: 8px;
+      background: #fff;
+      border: 1px solid #ddd;
+      padding: 8px;
+    }
+
+    .result-note {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #444;
+    }
+
+    .raw-block {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+      background: #f4f4f4;
+      border: 1px solid #ccc;
+      padding: 12px;
+      margin-top: 8px;
+      overflow-x: auto;
+    }
+
+    .event-block {
+      border: 1px solid #ccc;
+      padding: 16px;
+      margin-bottom: 20px;
+      background: #fcfcfc;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>TGE Asset Snapshot</h1>
+    <div class="version-box">Frontend Version: 1.4</div>
+  </div>
+
+  <form id="vehicleForm">
+    <input id="vehicleId" type="text" placeholder="Enter vehicle ID" required />
+    <button type="submit">Check Vehicle Images</button>
+  </form>
+
+  <div id="status"></div>
+  <div id="result"></div>
+
+  <script>
+    const form = document.getElementById("vehicleForm");
+    const vehicleIdInput = document.getElementById("vehicleId");
+    const statusBox = document.getElementById("status");
+    const resultBox = document.getElementById("result");
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function renderImages(images) {
+      if (!images || !images.length) {
+        return "<div>No image links extracted.</div>";
+      }
+
+      return images.map(function (image) {
+        const safeLabel = escapeHtml(image.label);
+        const safeUrl = escapeHtml(image.rawUrl);
+
+        return `
+          <div class="image-card">
+            <div><strong>Camera ${escapeHtml(image.cameraNumber)}:</strong> ${safeLabel}</div>
+            <div class="url-box">${safeUrl}</div>
+            <div style="margin-top: 8px;">
+              <a href="${safeUrl}" target="_blank" rel="noopener noreferrer">Open image in new tab</a>
+            </div>
+            <img
+              src="${safeUrl}"
+              alt="${safeLabel}"
+              onload="this.nextElementSibling.textContent='Preview loaded in page.'"
+              onerror="this.nextElementSibling.textContent='Preview failed in page.'"
+            />
+            <div class="result-note">Checking preview...</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderMatchingEvents(events) {
+      if (!events || !events.length) {
+        return "<div>No matching events returned.</div>";
+      }
+
+      return events.map(function (event, index) {
+        const rawJson = escapeHtml(JSON.stringify(event.rawEvent, null, 2));
+
+        return `
+          <div class="event-block">
+            <div><strong>Match ${index + 1}</strong></div>
+            <div><strong>Event ID:</strong> ${escapeHtml(event.eventId)}</div>
+            <div><strong>Vehicle ID:</strong> ${escapeHtml(event.vehicleId)}</div>
+            <div><strong>Action:</strong> ${escapeHtml(event.action)}</div>
+            <div><strong>Time:</strong> ${escapeHtml(event.timeAt)}</div>
+            <div><strong>Extraction Method:</strong> ${escapeHtml(event.extractionMethod)}</div>
+            <div><strong>Images Found:</strong> ${escapeHtml(event.imageCount)}</div>
+            <h3>Extracted Links</h3>
+            <div class="gallery">${renderImages(event.images)}</div>
+            <h3>Raw Event Data</h3>
+            <div class="raw-block">${rawJson}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    form.addEventListener("submit", async function (event) {
+      event.preventDefault();
+
+      const vehicleId = vehicleIdInput.value.trim();
 
       if (!vehicleId) {
-        return Response.json(
-          {
-            version: APP_VERSION,
-            error: "vehicleId is required."
-          },
-          { status: 400 }
-        );
+        statusBox.textContent = "Please enter a vehicle ID.";
+        resultBox.innerHTML = "";
+        return;
       }
+
+      statusBox.textContent = "Loading...";
+      resultBox.innerHTML = "";
 
       try {
-        const events = await fetchCameraEvents(env);
-        const matchingEvents = getMatchingEvents(events, vehicleId);
+        const response = await fetch(
+          "/api/events?vehicleId=" + encodeURIComponent(vehicleId)
+        );
 
-        if (matchingEvents.length === 0) {
-          return Response.json(
-            {
-              version: APP_VERSION,
-              error: "No SNAPSHOT events found for that vehicle ID."
-            },
-            { status: 404 }
-          );
+        const data = await response.json();
+
+        if (!response.ok) {
+          statusBox.textContent = data.error || "Request failed.";
+          resultBox.innerHTML = `
+            <div class="summary">
+              <div><strong>Frontend Version:</strong> 1.4</div>
+              <div><strong>Backend Version:</strong> ${escapeHtml(data.version || "unknown")}</div>
+            </div>
+          `;
+          return;
         }
 
-        const eventSummaries = matchingEvents.map(buildEventSummary);
-        const firstEvent = eventSummaries[0];
+        statusBox.textContent = "Vehicle found and SNAPSHOT events returned.";
 
-        return Response.json(
-          {
-            version: APP_VERSION,
-            requestedVehicleId: vehicleId,
-            matchedVehicleId: firstEvent.vehicleId,
-            eventCount: eventSummaries.length,
-            latestEventId: firstEvent.eventId,
-            latestEventTime: firstEvent.timeAt,
-            latestAction: firstEvent.action,
-            latestImageCount: firstEvent.imageCount,
-            latestExtractionMethod: firstEvent.extractionMethod,
-            latestImages: firstEvent.images,
-            matchingEvents: eventSummaries
-          },
-          {
-            headers: {
-              "Cache-Control": "no-store"
-            }
-          }
-        );
+        const summaryHtml = `
+          <div class="summary">
+            <div><strong>Frontend Version:</strong> 1.4</div>
+            <div><strong>Backend Version:</strong> ${escapeHtml(data.version)}</div>
+            <div><strong>Requested Vehicle ID:</strong> ${escapeHtml(data.requestedVehicleId)}</div>
+            <div><strong>Matched Vehicle ID:</strong> ${escapeHtml(data.matchedVehicleId)}</div>
+            <div><strong>SNAPSHOT Event Count:</strong> ${escapeHtml(data.eventCount)}</div>
+            <div><strong>Latest Event ID:</strong> ${escapeHtml(data.latestEventId)}</div>
+            <div><strong>Latest Event Time:</strong> ${escapeHtml(data.latestEventTime)}</div>
+            <div><strong>Latest Action:</strong> ${escapeHtml(data.latestAction)}</div>
+            <div><strong>Latest Extraction Method:</strong> ${escapeHtml(data.latestExtractionMethod)}</div>
+            <div><strong>Latest Images Found:</strong> ${escapeHtml(data.latestImageCount)}</div>
+          </div>
+        `;
+
+        const latestImagesHtml = `
+          <h2>Latest Event Extracted Links and Previews</h2>
+          <div class="gallery">${renderImages(data.latestImages)}</div>
+        `;
+
+        const allEventsHtml = `
+          <h2>All Matching SNAPSHOT Events</h2>
+          ${renderMatchingEvents(data.matchingEvents)}
+        `;
+
+        resultBox.innerHTML = summaryHtml + latestImagesHtml + allEventsHtml;
       } catch (error) {
-        return Response.json(
-          {
-            version: APP_VERSION,
-            error: error.message || "Request failed."
-          },
-          { status: 500 }
-        );
+        statusBox.textContent = "Failed to load vehicle data.";
+        resultBox.innerHTML = "";
       }
-    }
-
-    return env.ASSETS.fetch(request);
-  }
-};
+    });
+  </script>
+</body>
+</html>
