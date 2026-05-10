@@ -83,6 +83,7 @@
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       gap: 16px;
+      margin-bottom: 28px;
     }
 
     .image-card {
@@ -106,12 +107,30 @@
       font-size: 13px;
       color: #444;
     }
+
+    .raw-block {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+      background: #f4f4f4;
+      border: 1px solid #ccc;
+      padding: 12px;
+      margin-top: 8px;
+      overflow-x: auto;
+    }
+
+    .event-block {
+      border: 1px solid #ccc;
+      padding: 16px;
+      margin-bottom: 20px;
+      background: #fcfcfc;
+    }
   </style>
 </head>
 <body>
   <div class="topbar">
     <h1>TGE Asset Snapshot</h1>
-    <div class="version-box">Frontend Version: 1.2</div>
+    <div class="version-box">Frontend Version: 1.4</div>
   </div>
 
   <form id="vehicleForm">
@@ -135,6 +154,60 @@
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
+    }
+
+    function renderImages(images) {
+      if (!images || !images.length) {
+        return "<div>No image links extracted.</div>";
+      }
+
+      return images.map(function (image) {
+        const safeLabel = escapeHtml(image.label);
+        const safeUrl = escapeHtml(image.rawUrl);
+
+        return `
+          <div class="image-card">
+            <div><strong>Camera ${escapeHtml(image.cameraNumber)}:</strong> ${safeLabel}</div>
+            <div class="url-box">${safeUrl}</div>
+            <div style="margin-top: 8px;">
+              <a href="${safeUrl}" target="_blank" rel="noopener noreferrer">Open image in new tab</a>
+            </div>
+            <img
+              src="${safeUrl}"
+              alt="${safeLabel}"
+              onload="this.nextElementSibling.textContent='Preview loaded in page.'"
+              onerror="this.nextElementSibling.textContent='Preview failed in page.'"
+            />
+            <div class="result-note">Checking preview...</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderMatchingEvents(events) {
+      if (!events || !events.length) {
+        return "<div>No matching events returned.</div>";
+      }
+
+      return events.map(function (event, index) {
+        const rawJson = escapeHtml(JSON.stringify(event.rawEvent, null, 2));
+
+        return `
+          <div class="event-block">
+            <div><strong>Match ${index + 1}</strong></div>
+            <div><strong>Event ID:</strong> ${escapeHtml(event.eventId)}</div>
+            <div><strong>Vehicle ID:</strong> ${escapeHtml(event.vehicleId)}</div>
+            <div><strong>Action:</strong> ${escapeHtml(event.action)}</div>
+            <div><strong>Time:</strong> ${escapeHtml(event.timeAt)}</div>
+            <div><strong>Extraction Method:</strong> ${escapeHtml(event.extractionMethod)}</div>
+            <div><strong>Images Found:</strong> ${escapeHtml(event.imageCount)}</div>
+            <h3>Extracted Links</h3>
+            <div class="gallery">${renderImages(event.images)}</div>
+            <h3>Raw Event Data</h3>
+            <div class="raw-block">${rawJson}</div>
+          </div>
+        `;
+      }).join("");
     }
 
     form.addEventListener("submit", async function (event) {
@@ -162,70 +235,41 @@
           statusBox.textContent = data.error || "Request failed.";
           resultBox.innerHTML = `
             <div class="summary">
-              <div><strong>Frontend Version:</strong> 1.2</div>
+              <div><strong>Frontend Version:</strong> 1.4</div>
               <div><strong>Backend Version:</strong> ${escapeHtml(data.version || "unknown")}</div>
             </div>
           `;
           return;
         }
 
-        statusBox.textContent = "Vehicle found and camera extraction completed.";
+        statusBox.textContent = "Vehicle found and SNAPSHOT events returned.";
 
         const summaryHtml = `
           <div class="summary">
-            <div><strong>Frontend Version:</strong> 1.2</div>
+            <div><strong>Frontend Version:</strong> 1.4</div>
             <div><strong>Backend Version:</strong> ${escapeHtml(data.version)}</div>
             <div><strong>Requested Vehicle ID:</strong> ${escapeHtml(data.requestedVehicleId)}</div>
             <div><strong>Matched Vehicle ID:</strong> ${escapeHtml(data.matchedVehicleId)}</div>
-            <div><strong>Event ID:</strong> ${escapeHtml(data.eventId)}</div>
-            <div><strong>Event Time:</strong> ${escapeHtml(data.eventTime)}</div>
-            <div><strong>Context Present:</strong> ${data.hasContext ? "Yes" : "No"}</div>
-            <div><strong>Extraction Method:</strong> ${escapeHtml(data.extractionMethod)}</div>
-            <div><strong>Images Found:</strong> ${escapeHtml(data.imageCount)}</div>
+            <div><strong>SNAPSHOT Event Count:</strong> ${escapeHtml(data.eventCount)}</div>
+            <div><strong>Latest Event ID:</strong> ${escapeHtml(data.latestEventId)}</div>
+            <div><strong>Latest Event Time:</strong> ${escapeHtml(data.latestEventTime)}</div>
+            <div><strong>Latest Action:</strong> ${escapeHtml(data.latestAction)}</div>
+            <div><strong>Latest Extraction Method:</strong> ${escapeHtml(data.latestExtractionMethod)}</div>
+            <div><strong>Latest Images Found:</strong> ${escapeHtml(data.latestImageCount)}</div>
           </div>
         `;
 
-        const linksHtml = data.images.map(function (image) {
-          const safeLabel = escapeHtml(image.label);
-          const safeUrl = escapeHtml(image.rawUrl);
+        const latestImagesHtml = `
+          <h2>Latest Event Extracted Links and Previews</h2>
+          <div class="gallery">${renderImages(data.latestImages)}</div>
+        `;
 
-          return `
-            <div class="link-card">
-              <div class="link-label">Camera ${escapeHtml(image.cameraNumber)}: ${safeLabel}</div>
-              <div><a href="${safeUrl}" target="_blank" rel="noopener noreferrer">Open image in new tab</a></div>
-              <div class="url-box">${safeUrl}</div>
-            </div>
-          `;
-        }).join("");
+        const allEventsHtml = `
+          <h2>All Matching SNAPSHOT Events</h2>
+          ${renderMatchingEvents(data.matchingEvents)}
+        `;
 
-        const galleryHtml = data.images.map(function (image) {
-          const safeLabel = escapeHtml(image.label);
-          const safeUrl = escapeHtml(image.rawUrl);
-
-          return `
-            <div class="image-card">
-              <div><strong>Camera ${escapeHtml(image.cameraNumber)}:</strong> ${safeLabel}</div>
-              <img
-                src="${safeUrl}"
-                alt="${safeLabel}"
-                onload="this.nextElementSibling.textContent='Preview loaded in page.'"
-                onerror="this.nextElementSibling.textContent='Preview failed in page.'"
-              />
-              <div class="result-note">Checking preview...</div>
-            </div>
-          `;
-        }).join("");
-
-        resultBox.innerHTML =
-          summaryHtml +
-          `<h2>Extracted Image Links</h2>` +
-          `<div class="link-list">${linksHtml}</div>` +
-          `<h2>Image Previews</h2>` +
-          `<div class="gallery">${galleryHtml}</div>`;
-
-        if (!data.images.length) {
-          statusBox.textContent = "Vehicle found, but zero image links were extracted.";
-        }
+        resultBox.innerHTML = summaryHtml + latestImagesHtml + allEventsHtml;
       } catch (error) {
         statusBox.textContent = "Failed to load vehicle data.";
         resultBox.innerHTML = "";
