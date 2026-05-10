@@ -1,4 +1,4 @@
-const APP_VERSION = "1.2";
+const APP_VERSION = "1.4";
 
 const CAMERA_RULES = [
   { key: "UVC", label: "In-Cab Driver Facing Camera" },
@@ -42,20 +42,17 @@ async function fetchCameraEvents(env) {
   return events;
 }
 
-function getLatestMatchingEvent(events, vehicleId) {
-  const matches = events
+function getMatchingEvents(events, vehicleId) {
+  return events
     .filter(function (event) {
-      return String(event.vehicleId) === String(vehicleId);
+      return (
+        String(event.vehicleId) === String(vehicleId) &&
+        String(event.action || "").toUpperCase() === "SNAPSHOT"
+      );
     })
     .sort(function (a, b) {
       return new Date(b.timeAt) - new Date(a.timeAt);
     });
-
-  if (matches.length === 0) {
-    return null;
-  }
-
-  return matches[0];
 }
 
 function escapeRegex(text) {
@@ -143,6 +140,22 @@ function extractCameraImages(contextText) {
   };
 }
 
+function buildEventSummary(event) {
+  const contextText = event?.attributes?.context || "";
+  const extraction = extractCameraImages(contextText);
+
+  return {
+    eventId: event?.id ?? null,
+    vehicleId: event?.vehicleId ?? null,
+    action: event?.action ?? null,
+    timeAt: event?.timeAt ?? null,
+    imageCount: extraction.images.length,
+    extractionMethod: extraction.method,
+    images: extraction.images,
+    rawEvent: event
+  };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -162,32 +175,34 @@ export default {
 
       try {
         const events = await fetchCameraEvents(env);
-        const matchedEvent = getLatestMatchingEvent(events, vehicleId);
+        const matchingEvents = getMatchingEvents(events, vehicleId);
 
-        if (!matchedEvent) {
+        if (matchingEvents.length === 0) {
           return Response.json(
             {
               version: APP_VERSION,
-              error: "No events found for that vehicle ID."
+              error: "No SNAPSHOT events found for that vehicle ID."
             },
             { status: 404 }
           );
         }
 
-        const contextText = matchedEvent?.attributes?.context || "";
-        const extraction = extractCameraImages(contextText);
+        const eventSummaries = matchingEvents.map(buildEventSummary);
+        const firstEvent = eventSummaries[0];
 
         return Response.json(
           {
             version: APP_VERSION,
             requestedVehicleId: vehicleId,
-            matchedVehicleId: matchedEvent.vehicleId,
-            eventId: matchedEvent.id,
-            eventTime: matchedEvent.timeAt,
-            extractionMethod: extraction.method,
-            hasContext: Boolean(contextText),
-            imageCount: extraction.images.length,
-            images: extraction.images
+            matchedVehicleId: firstEvent.vehicleId,
+            eventCount: eventSummaries.length,
+            latestEventId: firstEvent.eventId,
+            latestEventTime: firstEvent.timeAt,
+            latestAction: firstEvent.action,
+            latestImageCount: firstEvent.imageCount,
+            latestExtractionMethod: firstEvent.extractionMethod,
+            latestImages: firstEvent.images,
+            matchingEvents: eventSummaries
           },
           {
             headers: {
