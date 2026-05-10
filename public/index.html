@@ -6,311 +6,371 @@
   <title>TGE Asset Snapshot</title>
   <style>
     :root {
-      --tge-green: #00a651;
-      --tge-green-dark: #007a3b;
-      --tge-yellow: #ffd24a;
-      --ink: #1f2a24;
-      --muted: #64736c;
-      --line: #d7e2db;
+      --bg: #f4f8f4;
       --surface: #ffffff;
-      --surface-alt: #f5f8f6;
-      --shadow: 0 20px 48px rgba(17, 39, 29, 0.08);
-      --ok-bg: #e9f8f0;
-      --ok-text: #0a6a36;
-      --warn-bg: #fff3de;
-      --warn-text: #8a5a00;
+      --surface-soft: #edf6ee;
+      --border: #d4e3d6;
+      --text: #243128;
+      --muted: #617065;
+      --brand: #2f8a46;
+      --brand-dark: #226336;
+      --shadow: 0 10px 24px rgba(36, 49, 40, 0.08);
+      --radius: 18px;
+      --radius-sm: 12px;
+      --max-width: 1280px;
     }
 
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
 
     body {
       margin: 0;
-      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-      color: var(--ink);
-      background: linear-gradient(180deg, #eff6f1 0%, #f7faf8 180px, #f4f7f5 100%);
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(47, 138, 70, 0.08), transparent 28%),
+        linear-gradient(180deg, #f8fbf8 0%, var(--bg) 100%);
     }
 
-    .topbar {
-      background: linear-gradient(90deg, #0d5f3a 0%, var(--tge-green-dark) 45%, var(--tge-green) 100%);
-      color: #fff;
-      padding: 16px 24px;
-      border-bottom: 4px solid rgba(255, 255, 255, 0.18);
-      box-shadow: 0 10px 30px rgba(0, 90, 45, 0.18);
+    .page-shell {
+      min-height: 100vh;
+      padding: 32px 20px 48px;
     }
 
-    .topbar-inner,
-    .page {
-      max-width: 1280px;
+    .app {
+      max-width: var(--max-width);
       margin: 0 auto;
     }
 
-    .topbar-inner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 20px;
-      flex-wrap: wrap;
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-
-    .brand-mark {
-      width: 126px;
-      height: 50px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 6px 10px;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.14);
-      border: 1px solid rgba(255, 255, 255, 0.18);
-    }
-
-    .brand-mark img {
-      max-width: 100%;
-      max-height: 100%;
-      display: block;
-    }
-
-    .brand-copy h1 {
-      margin: 0;
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: var(--tge-yellow);
-    }
-
-    .brand-copy p {
-      margin: 2px 0 0;
-      font-size: 0.92rem;
-      color: rgba(255, 255, 255, 0.8);
-    }
-
-    .status-pill {
-      padding: 8px 12px;
-      border-radius: 999px;
-      font-size: 0.84rem;
-      background: rgba(255, 255, 255, 0.14);
-      border: 1px solid rgba(255, 255, 255, 0.18);
-    }
-
-    .page {
-      padding: 28px 24px 56px;
-    }
-
-    .hero,
-    .section {
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      box-shadow: var(--shadow);
-    }
-
     .hero {
-      padding: 28px;
-      display: grid;
-      grid-template-columns: 1.2fr 0.8fr;
-      gap: 24px;
+      background: linear-gradient(135deg, var(--brand) 0%, #2d7f42 55%, #3d9d58 100%);
+      color: #fff;
+      border-radius: 24px;
+      padding: 28px 28px 22px;
+      box-shadow: var(--shadow);
+      margin-bottom: 24px;
     }
 
-    .section {
-      margin-top: 24px;
-      padding: 22px;
-    }
-
-    .hero-copy h2 {
-      margin: 0 0 10px;
-      font-size: 1.85rem;
-      line-height: 1.1;
-    }
-
-    .hero-copy p,
-    .helper,
-    .empty-state {
-      color: var(--muted);
-    }
-
-    .lookup {
-      margin-top: 22px;
+    .hero-top {
       display: flex;
-      gap: 12px;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
       flex-wrap: wrap;
+    }
+
+    .brand-row {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .brand-badge {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 42px);
+      line-height: 1.05;
+    }
+
+    .hero p {
+      margin: 8px 0 0;
+      color: rgba(255, 255, 255, 0.9);
+      max-width: 760px;
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    .hero-status {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 38px;
+      padding: 0 14px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #fff;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    .layout {
+      display: grid;
+      gap: 20px;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel-inner {
+      padding: 24px;
+    }
+
+    .top-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 20px;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--brand);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: clamp(28px, 3.4vw, 52px);
+      line-height: 1.06;
+    }
+
+    .panel p.lead {
+      margin: 0 0 24px;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.55;
+      max-width: 680px;
+    }
+
+    .search-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 12px;
       align-items: end;
     }
 
     .field {
-      flex: 1 1 320px;
+      display: grid;
+      gap: 8px;
     }
 
     .field label {
-      display: block;
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
       color: var(--muted);
-      margin-bottom: 8px;
-      font-weight: 700;
+      text-transform: uppercase;
     }
 
-    .field input {
+    .field input,
+    .field select {
       width: 100%;
-      height: 48px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 0 14px;
-      font: inherit;
-      color: var(--ink);
+      height: 52px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
       background: #fff;
+      padding: 0 16px;
+      font-size: 16px;
+      color: var(--text);
+      outline: none;
     }
 
-    .action-btn {
-      height: 48px;
+    .field input:focus,
+    .field select:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 4px rgba(47, 138, 70, 0.12);
+    }
+
+    .button {
+      height: 52px;
       border: 0;
-      border-radius: 8px;
-      padding: 0 18px;
-      background: var(--tge-green);
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--brand) 0%, #37a14f 100%);
       color: #fff;
-      font: inherit;
+      font-size: 16px;
       font-weight: 700;
+      padding: 0 22px;
       cursor: pointer;
-      box-shadow: 0 12px 28px rgba(0, 166, 81, 0.22);
+      box-shadow: 0 10px 20px rgba(47, 138, 70, 0.22);
     }
 
-    .action-btn:disabled {
-      opacity: 0.65;
-      cursor: wait;
+    .button:hover {
+      background: linear-gradient(135deg, var(--brand-dark) 0%, #2d8b43 100%);
     }
 
-    .hero-panel {
-      background: linear-gradient(160deg, rgba(0, 166, 81, 0.12), rgba(0, 122, 59, 0.04)), var(--surface-alt);
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 18px;
-      display: grid;
-      gap: 18px;
+    .snapshot-card {
+      background: linear-gradient(180deg, #eff8f0 0%, #e7f2e8 100%);
+      height: 100%;
     }
 
-    .section-kicker {
-      font-size: 0.82rem;
+    .snapshot-card h3 {
+      margin: 0 0 4px;
+      font-size: 15px;
+      color: var(--brand);
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      color: var(--tge-green-dark);
-      font-weight: 700;
-      margin-bottom: 4px;
     }
 
-    .hero-panel h3,
-    .section h3 {
+    .snapshot-card .asset-heading {
+      margin: 0 0 18px;
+      font-size: 30px;
+      line-height: 1.08;
+    }
+
+    .snapshot-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .mini-card {
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      min-height: 92px;
+      display: grid;
+      gap: 6px;
+      align-content: center;
+    }
+
+    .mini-card span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .mini-card strong {
+      font-size: 17px;
+      line-height: 1.3;
+    }
+
+    .message {
+      min-height: 24px;
+      margin-top: 14px;
+      color: var(--brand-dark);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .section-header {
+      padding: 22px 24px 0;
+    }
+
+    .section-header h3 {
       margin: 0;
-      font-size: 1rem;
+      font-size: 14px;
+      color: var(--brand);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
     }
 
-    .hero-grid,
-    .meta-grid,
-    .metrics-grid,
-    .gpio-grid,
-    .sd-grid,
-    .device-list,
-    .camera-grid {
+    .section-header p {
+      margin: 4px 0 0;
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .metric-grid,
+    .info-grid,
+    .storage-grid,
+    .live-grid {
       display: grid;
       gap: 14px;
+      padding: 18px 24px 24px;
     }
 
-    .hero-grid,
-    .meta-grid,
-    .sd-grid {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-
-    .metrics-grid {
+    .metric-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
-    .gpio-grid,
-    .device-list {
+    .info-grid,
+    .storage-grid,
+    .live-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
-    .camera-grid {
-      grid-template-columns: repeat(5, minmax(0, 1fr));
+    .metric-card,
+    .info-card {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: #fff;
+      min-height: 110px;
+      padding: 16px;
     }
 
-    .mini-metric,
-    .meta-item,
-    .metric-item,
-    .gpio-card,
-    .sd-item,
-    .device-card,
-    .driver-card {
-      padding: 14px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: linear-gradient(180deg, #fff 0%, #fbfdfc 100%);
+    .metric-card span {
+      display: block;
+      font-size: 14px;
+      color: var(--muted);
+      margin-bottom: 10px;
     }
 
-    .mini-metric span,
-    .meta-item span,
-    .metric-item span,
-    .gpio-card span,
-    .sd-item span,
-    .device-card span,
-    .driver-card span {
+    .metric-card strong {
+      display: block;
+      font-size: 22px;
+      line-height: 1.2;
+      color: var(--brand);
+    }
+
+    .info-card strong {
+      display: block;
+      font-size: 16px;
+      margin-bottom: 10px;
+    }
+
+    .info-card div {
+      font-size: 18px;
+      line-height: 1.35;
+      margin-bottom: 8px;
+    }
+
+    .info-card small {
       display: block;
       color: var(--muted);
-      font-size: 0.78rem;
-      margin-bottom: 6px;
+      font-size: 13px;
+      line-height: 1.4;
     }
 
-    .mini-metric strong,
-    .meta-item strong,
-    .metric-item strong,
-    .gpio-card strong,
-    .sd-item strong,
-    .device-card strong,
-    .driver-card strong {
-      display: block;
-      font-size: 1rem;
+    .camera-wrap {
+      padding: 18px 24px 24px;
     }
 
-    .metric-item strong {
-      font-size: 1.35rem;
-      color: var(--tge-green-dark);
-    }
-
-    .notice {
-      margin-top: 16px;
-      padding: 12px 14px;
-      border-radius: 8px;
-      font-size: 0.92rem;
-      display: none;
-    }
-
-    .notice.show { display: block; }
-    .notice.ok { background: var(--ok-bg); color: var(--ok-text); border: 1px solid rgba(10, 106, 54, 0.14); }
-    .notice.warn { background: var(--warn-bg); color: var(--warn-text); border: 1px solid rgba(138, 90, 0, 0.14); }
-
-    .driver-grid {
+    .camera-grid {
       display: grid;
-      gap: 14px;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 16px;
     }
 
-    .camera-card {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      overflow: hidden;
+    .camera-card,
+    .empty-card {
+      border: 1px solid var(--border);
+      border-radius: 16px;
       background: #fff;
+      overflow: hidden;
     }
 
     .camera-frame {
+      background: linear-gradient(180deg, #eef6ef 0%, #e3efe4 100%);
       aspect-ratio: 4 / 3;
-      background: linear-gradient(135deg, #d8e6de 0%, #bccfc5 45%, #edf5f0 100%);
       display: grid;
       place-items: center;
-      position: relative;
+      overflow: hidden;
     }
 
     .camera-frame img {
@@ -321,530 +381,255 @@
     }
 
     .camera-placeholder {
-      padding: 16px;
-      text-align: center;
       color: var(--muted);
-      font-size: 0.92rem;
+      font-size: 14px;
     }
 
-    .camera-meta {
-      padding: 12px;
-    }
-
-    .camera-meta strong {
-      display: block;
-      margin-bottom: 4px;
-      font-size: 0.95rem;
-    }
-
-    .camera-meta span {
-      color: var(--muted);
-      font-size: 0.82rem;
-    }
-
-    .location-layout {
+    .camera-body {
+      padding: 14px;
       display: grid;
-      grid-template-columns: 1.2fr 0.8fr;
-      gap: 18px;
-      align-items: stretch;
+      gap: 6px;
     }
 
-    .map-panel {
-      min-height: 320px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      overflow: hidden;
-      position: relative;
-      background: linear-gradient(135deg, #d6efe1 0%, #bfe0cc 46%, #eaf7f0 100%);
+    .camera-body strong {
+      font-size: 16px;
     }
 
-    .map-panel iframe {
-      width: 100%;
-      height: 100%;
-      min-height: 320px;
-      border: 0;
-      display: block;
-      filter: saturate(0.85) hue-rotate(-8deg);
+    .camera-body div {
+      color: var(--text);
+      font-size: 14px;
     }
 
-    .map-badge {
-      position: absolute;
-      top: 14px;
-      left: 14px;
-      z-index: 1;
-      padding: 8px 10px;
-      border-radius: 999px;
-      font-size: 0.75rem;
-      font-weight: 700;
-      color: #fff;
-      background: rgba(0, 122, 59, 0.86);
-    }
-
-    .location-meta {
-      display: grid;
-      gap: 14px;
-    }
-
-    .location-card {
-      padding: 16px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: linear-gradient(180deg, #fff 0%, #fbfdfc 100%);
-    }
-
-    .location-card span {
-      display: block;
+    .camera-body small {
       color: var(--muted);
-      font-size: 0.78rem;
-      margin-bottom: 6px;
+      font-size: 13px;
     }
 
-    .location-card strong {
-      display: block;
-      font-size: 1rem;
-    }
-
-    .footer-note {
-      margin-top: 18px;
+    .empty-card {
+      padding: 24px;
       color: var(--muted);
-      font-size: 0.88rem;
+      font-size: 15px;
     }
 
     @media (max-width: 1120px) {
-      .hero,
-      .meta-grid,
-      .hero-grid,
-      .camera-grid,
-      .location-layout,
-      .gpio-grid,
-      .device-list,
-      .driver-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+      .top-grid {
+        grid-template-columns: 1fr;
       }
 
-      .metrics-grid,
-      .sd-grid {
+      .camera-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 900px) {
+      .search-grid,
+      .metric-grid,
+      .info-grid,
+      .storage-grid,
+      .live-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .camera-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
 
-    @media (max-width: 760px) {
-      .page { padding: 18px 14px 40px; }
-      .topbar { padding: 14px; }
-      .hero,
-      .hero-grid,
-      .meta-grid,
-      .metrics-grid,
-      .gpio-grid,
-      .sd-grid,
-      .device-list,
-      .camera-grid,
-      .location-layout,
-      .driver-grid {
+    @media (max-width: 640px) {
+      .page-shell {
+        padding: 18px 14px 28px;
+      }
+
+      .hero {
+        padding: 20px 18px;
+      }
+
+      .panel-inner,
+      .section-header,
+      .metric-grid,
+      .info-grid,
+      .storage-grid,
+      .live-grid,
+      .camera-wrap {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+
+      .search-grid,
+      .metric-grid,
+      .info-grid,
+      .storage-grid,
+      .live-grid,
+      .snapshot-grid,
+      .camera-grid {
         grid-template-columns: 1fr;
       }
-      .action-btn { width: 100%; }
+
+      .panel h2 {
+        font-size: 36px;
+      }
+
+      .snapshot-card .asset-heading {
+        font-size: 24px;
+      }
     }
   </style>
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar-inner">
-      <div class="brand">
-        <div class="brand-mark">
-          <img src="data:image/png;base64,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" alt="Team Global Express logo" />
-        </div>
-        <div class="brand-copy">
-          <h1>TGE Asset Snapshot</h1>
-          <p>Live fleet lookup, asset profile, devices, telemetry, camera status and location</p>
-        </div>
-      </div>
-      <div class="status-pill">Live Version 1.0</div>
-    </div>
-  </header>
-
-  <main class="page">
-    <section class="hero">
-      <div class="hero-copy">
-        <div class="section-kicker">Asset Search</div>
-        <h2>Enter the fleet number and let the system resolve the internal asset before loading the snapshot.</h2>
-        <p>The layout stays empty until the fleet number is confirmed. Once matched, the page pulls the agreed device, telemetry, GPIO, SD-card, location and camera data for that asset.</p>
-
-        <form class="lookup" id="lookupForm">
-          <div class="field">
-            <label for="fleetNumber">Fleet Number</label>
-            <input id="fleetNumber" name="fleetNumber" type="text" placeholder="Enter fleet number" />
+  <div class="page-shell">
+    <div class="app">
+      <header class="hero">
+        <div class="hero-top">
+          <div class="brand-row">
+            <div class="brand-badge">TGE</div>
+            <div>
+              <h1>TGE Asset Snapshot</h1>
+              <p>Latest asset status, live telemetry, GPS position and camera imagery for fast operational review.</p>
+            </div>
           </div>
-          <button class="action-btn" id="lookupBtn" type="submit">Load Asset Snapshot</button>
-        </form>
-
-        <div class="notice" id="lookupNotice"></div>
-      </div>
-
-      <aside class="hero-panel">
-        <div>
-          <div class="section-kicker">Current Snapshot</div>
-          <h3 id="snapshotHeading">No asset selected yet</h3>
-        </div>
-        <div class="hero-grid">
-          <div class="mini-metric">
-            <span>Request Time</span>
-            <strong id="requestTime">Waiting for search</strong>
-          </div>
-          <div class="mini-metric">
-            <span>Lookup Status</span>
-            <strong id="lookupStatus">Idle</strong>
-          </div>
-          <div class="mini-metric">
-            <span>Fleet Number</span>
-            <strong id="currentFleet">Not set</strong>
-          </div>
-          <div class="mini-metric">
-            <span>Vehicle ID</span>
-            <strong id="currentVehicleId">Not resolved</strong>
+          <div class="hero-status">
+            <div class="pill">Live Lookup</div>
+            <div class="pill">Snapshot Review</div>
+            <div class="pill">Camera Evidence</div>
           </div>
         </div>
-      </aside>
-    </section>
+      </header>
 
-    <section class="section" id="vehicleSection">
-      <div class="section-kicker">Vehicle Information</div>
-      <h3>Asset Details</h3>
-      <p class="helper">Vehicle information populates from the vehicles lookup once the fleet number is confirmed.</p>
-      <div class="meta-grid" id="vehicleGrid"></div>
-    </section>
+      <main class="layout">
+        <section class="top-grid">
+          <article class="panel">
+            <div class="panel-inner">
+              <p class="eyebrow">Asset Search</p>
+              <h2>Track one vehicle, inspect one snapshot, move straight to the evidence.</h2>
+              <p class="lead">
+                Search by vehicle ID, load the latest snapshot, and review grouped operational data without digging through separate feeds.
+              </p>
 
-    <section class="section" id="devicesSection">
-      <div class="section-kicker">Hardware</div>
-      <h3>Assigned Devices</h3>
-      <p class="helper">Tracking, camera and tablet devices are shown when present on the asset.</p>
-      <div class="device-list" id="deviceList"></div>
-    </section>
+              <form data-asset-form class="search-grid">
+                <div class="field">
+                  <label for="vehicle-id">Vehicle ID</label>
+                  <input id="vehicle-id" data-vehicle-id type="text" value="349521" placeholder="Enter vehicle ID" />
+                </div>
 
-    <section class="section" id="metricsSection">
-      <div class="section-kicker">Performance</div>
-      <h3>Vehicle Tracking Metrics</h3>
-      <div class="metrics-grid" id="metricsGrid"></div>
-    </section>
+                <div class="field">
+                  <label for="snapshot-set">Snapshot Set</label>
+                  <select id="snapshot-set">
+                    <option selected>Latest SNAPSHOT</option>
+                  </select>
+                </div>
 
-    <section class="section" id="driverSection">
-      <div class="section-kicker">Driver</div>
-      <h3>Current Driver Details</h3>
-      <div class="driver-grid" id="driverGrid"></div>
-    </section>
+                <button class="button" type="submit">Load Asset Snapshot</button>
+              </form>
 
-    <section class="section" id="gpioSection">
-      <div class="section-kicker">GPIO Data State</div>
-      <h3>Digital Inputs And Outputs</h3>
-      <div class="gpio-grid" id="gpioGrid"></div>
-    </section>
-
-    <section class="section" id="sdSection">
-      <div class="section-kicker">Storage</div>
-      <h3>SD Card Information</h3>
-      <div class="sd-grid" id="sdGrid"></div>
-    </section>
-
-    <section class="section" id="cameraSection">
-      <div class="section-kicker">Camera Snapshots</div>
-      <h3>Latest Image Set</h3>
-      <div class="camera-grid" id="cameraGrid"></div>
-      <div class="footer-note">If a camera position has no returned image, the tile stays visible and reports that no image is available to preview.</div>
-    </section>
-
-    <section class="section" id="locationSection">
-      <div class="section-kicker">Last Known Location</div>
-      <h3>Map View And Coordinates</h3>
-      <div class="location-layout">
-        <div class="map-panel">
-          <div class="map-badge">Last Location</div>
-          <iframe id="mapFrame" title="Last known location map" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
-        </div>
-        <div class="location-meta" id="locationMeta"></div>
-      </div>
-    </section>
-  </main>
-
-  <script>
-    const form = document.getElementById("lookupForm");
-    const fleetNumberInput = document.getElementById("fleetNumber");
-    const lookupBtn = document.getElementById("lookupBtn");
-    const lookupNotice = document.getElementById("lookupNotice");
-    const requestTime = document.getElementById("requestTime");
-    const lookupStatus = document.getElementById("lookupStatus");
-    const currentFleet = document.getElementById("currentFleet");
-    const currentVehicleId = document.getElementById("currentVehicleId");
-    const snapshotHeading = document.getElementById("snapshotHeading");
-
-    function escapeHtml(value) {
-      return String(value ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-    }
-
-    function formatLocalNow() {
-      return new Date().toLocaleString("en-AU", {
-        year: "numeric",
-        month: "short",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit"
-      });
-    }
-
-    function setNotice(kind, message) {
-      lookupNotice.className = "notice show " + kind;
-      lookupNotice.textContent = message;
-    }
-
-    function clearNotice() {
-      lookupNotice.className = "notice";
-      lookupNotice.textContent = "";
-    }
-
-    function setLookupState(state) {
-      lookupStatus.textContent = state;
-      requestTime.textContent = formatLocalNow();
-    }
-
-    function renderKeyValueGrid(containerId, items) {
-      const container = document.getElementById(containerId);
-      container.innerHTML = items.map(function (item) {
-        return '<div class="' + item.className + '"><span>' + escapeHtml(item.label) + '</span><strong>' + escapeHtml(item.value) + '</strong></div>';
-      }).join("");
-    }
-
-    function renderVehicle(vehicle) {
-      renderKeyValueGrid("vehicleGrid", [
-        { className: "meta-item", label: "Vehicle ID", value: vehicle.vehicleId },
-        { className: "meta-item", label: "Fleet Number", value: vehicle.fleetNumber },
-        { className: "meta-item", label: "Asset Type", value: vehicle.assetType || "No data" },
-        { className: "meta-item", label: "Registration", value: vehicle.registration || "No data" },
-        { className: "meta-item", label: "Registration State", value: vehicle.registrationState || "No data" },
-        { className: "meta-item", label: "Make", value: vehicle.make || "No data" },
-        { className: "meta-item", label: "Model", value: vehicle.model || "No data" },
-        { className: "meta-item", label: "Manufactured Date of Asset", value: vehicle.manufacturedDateOfAsset || "No data" }
-      ]);
-    }
-
-    function renderDevices(devices) {
-      const container = document.getElementById("deviceList");
-
-      if (!devices.length) {
-        container.innerHTML = '<div class="device-card"><span>Devices</span><strong>No devices returned for this asset.</strong></div>';
-        return;
-      }
-
-      container.innerHTML = devices.map(function (device) {
-        return `
-          <div class="device-card">
-            <span>${escapeHtml(device.role)}</span>
-            <strong>${escapeHtml(device.model || "No model")}</strong>
-            <span>Serial: ${escapeHtml(device.serialNumber || "No data")}</span>
-            <span>IMEI: ${escapeHtml(device.imei || "No data")}</span>
-            <span>Status: ${escapeHtml(device.status || "No data")}</span>
-          </div>
-        `;
-      }).join("");
-    }
-
-    function renderMetrics(metrics, available) {
-      const container = document.getElementById("metricsGrid");
-
-      if (!available) {
-        container.innerHTML = '<div class="metric-item"><span>Tracking Data</span><strong>No HERMES device assigned</strong></div>';
-        return;
-      }
-
-      container.innerHTML = metrics.map(function (metric) {
-        return '<div class="metric-item"><span>' + escapeHtml(metric.label) + '</span><strong>' + escapeHtml(metric.value) + '</strong></div>';
-      }).join("");
-    }
-
-    function renderDriver(driver, available) {
-      const container = document.getElementById("driverGrid");
-
-      if (!available) {
-        container.innerHTML = '<div class="driver-card"><span>Driver Details</span><strong>No HERMES device assigned</strong></div>';
-        return;
-      }
-
-      if (!driver) {
-        container.innerHTML = '<div class="driver-card"><span>Driver Details</span><strong>No current driver assigned</strong></div>';
-        return;
-      }
-
-      container.innerHTML = `
-        <div class="driver-card"><span>Driver Name</span><strong>${escapeHtml(driver.name || "No data")}</strong></div>
-        <div class="driver-card"><span>Username</span><strong>${escapeHtml(driver.username || "No data")}</strong></div>
-        <div class="driver-card"><span>Driver PIN</span><strong>${escapeHtml(driver.externalPin || "No data")}</strong></div>
-        <div class="driver-card"><span>Status</span><strong>${escapeHtml(driver.status || "No data")}</strong></div>
-      `;
-    }
-
-    function renderGpio(gpio, available) {
-      const container = document.getElementById("gpioGrid");
-
-      if (!available) {
-        container.innerHTML = '<div class="gpio-card"><span>GPIO Data</span><strong>No HERMES device assigned</strong></div>';
-        return;
-      }
-
-      container.innerHTML = gpio.map(function (item) {
-        return `
-          <div class="gpio-card">
-            <span>${escapeHtml(item.label)}</span>
-            <strong>${escapeHtml(item.state)}</strong>
-            <span>${escapeHtml(item.eventAt || "No event time")}</span>
-          </div>
-        `;
-      }).join("");
-    }
-
-    function renderSdCards(sdCards, available) {
-      const container = document.getElementById("sdGrid");
-
-      if (!available) {
-        container.innerHTML = '<div class="sd-item"><span>SD Card Information</span><strong>No camera device assigned</strong></div>';
-        return;
-      }
-
-      container.innerHTML = sdCards.map(function (card) {
-        return `
-          <div class="sd-item">
-            <span>${escapeHtml(card.label)} Present</span>
-            <strong>${escapeHtml(card.present)}</strong>
-            <span>${escapeHtml(card.label)} Space</span>
-            <strong>${escapeHtml(card.space)}</strong>
-          </div>
-        `;
-      }).join("");
-    }
-
-    function renderCameras(cameras) {
-      const container = document.getElementById("cameraGrid");
-
-      container.innerHTML = cameras.map(function (camera) {
-        const frame = camera.hasImage
-          ? '<div class="camera-frame"><img src="' + escapeHtml(camera.imageUrl) + '" alt="' + escapeHtml(camera.label) + '"></div>'
-          : '<div class="camera-frame"><div class="camera-placeholder">No image to preview</div></div>';
-
-        return `
-          <article class="camera-card">
-            ${frame}
-            <div class="camera-meta">
-              <strong>${escapeHtml(camera.label)}</strong>
-              <span>${camera.hasImage ? "Image loaded from latest snapshot event" : "No image to preview"}</span>
+              <div class="message" data-message></div>
             </div>
           </article>
-        `;
-      }).join("");
-    }
 
-    function renderLocation(location, available) {
-      const meta = document.getElementById("locationMeta");
-      const map = document.getElementById("mapFrame");
+          <article class="panel snapshot-card">
+            <div class="panel-inner">
+              <h3>Current Snapshot</h3>
+              <div class="asset-heading" data-asset-title>Asset</div>
+              <div style="margin-bottom: 18px; color: var(--muted); font-size: 14px;" data-asset-meta></div>
 
-      if (!available || !location) {
-        meta.innerHTML = '<div class="location-card"><span>Last Known Location</span><strong>No HERMES map data available</strong></div>';
-        map.removeAttribute("src");
-        return;
-      }
+              <div class="snapshot-grid">
+                <div class="mini-card">
+                  <span>Snapshot Time</span>
+                  <strong data-snapshot-time>Unavailable</strong>
+                </div>
+                <div class="mini-card">
+                  <span>Image Set</span>
+                  <strong data-image-count>0 Cameras</strong>
+                </div>
+                <div class="mini-card">
+                  <span>Status</span>
+                  <strong data-status>Unavailable</strong>
+                </div>
+                <div class="mini-card">
+                  <span>Sync</span>
+                  <strong data-sync>Unavailable</strong>
+                </div>
+              </div>
+            </div>
+          </article>
+        </section>
 
-      const bbox = [
-        location.lng - 0.03,
-        location.lat - 0.02,
-        location.lng + 0.03,
-        location.lat + 0.02
-      ];
+        <section class="panel">
+          <div class="section-header">
+            <h3>Performance</h3>
+            <p>Vehicle Tracking Metrics</p>
+          </div>
+          <div class="metric-grid" data-performance>
+            <article class="metric-card">
+              <span>Total Distance</span>
+              <strong>Unavailable</strong>
+            </article>
+            <article class="metric-card">
+              <span>Current Speed</span>
+              <strong>Unavailable</strong>
+            </article>
+            <article class="metric-card">
+              <span>Odometer</span>
+              <strong>Unavailable</strong>
+            </article>
+          </div>
+        </section>
 
-      map.src =
-        "https://www.openstreetmap.org/export/embed.html?bbox=" +
-        encodeURIComponent(bbox[0]) + "%2C" +
-        encodeURIComponent(bbox[1]) + "%2C" +
-        encodeURIComponent(bbox[2]) + "%2C" +
-        encodeURIComponent(bbox[3]) +
-        "&layer=mapnik&marker=" +
-        encodeURIComponent(location.lat) + "%2C" + encodeURIComponent(location.lng);
+        <section class="panel">
+          <div class="section-header">
+            <h3>GPS Data</h3>
+            <p>Ordered For Fast Review</p>
+          </div>
+          <div class="info-grid" data-gps-cards>
+            <article class="info-card">
+              <strong>Snapshot Latitude / Longitude</strong>
+              <div>Unavailable</div>
+              <small></small>
+            </article>
+          </div>
+        </section>
 
-      meta.innerHTML = `
-        <div class="location-card"><span>Latitude</span><strong>${escapeHtml(location.lat)}</strong></div>
-        <div class="location-card"><span>Longitude</span><strong>${escapeHtml(location.lng)}</strong></div>
-        <div class="location-card"><span>Direction</span><strong>${escapeHtml(location.direction || "No data")}</strong></div>
-        <div class="location-card"><span>Satellites</span><strong>${escapeHtml(location.satellites || "No data")}</strong></div>
-        <div class="location-card"><span>HDOP</span><strong>${escapeHtml(location.hdop || "No data")}</strong></div>
-        <div class="location-card"><span>Speed</span><strong>${escapeHtml(location.speed || "No data")}</strong></div>
-      `;
-    }
+        <section class="panel">
+          <div class="section-header">
+            <h3>Storage</h3>
+            <p>Snapshot And Upload Information</p>
+          </div>
+          <div class="storage-grid" data-storage-cards>
+            <article class="metric-card">
+              <span>Image Set</span>
+              <strong>Unavailable</strong>
+            </article>
+          </div>
+        </section>
 
-    function applySnapshot(data) {
-      const vehicle = data.vehicle;
+        <section class="panel">
+          <div class="section-header">
+            <h3>Live Device</h3>
+            <p>Tracker, Driver And VPM Feed</p>
+          </div>
+          <div class="live-grid" data-live-cards>
+            <article class="info-card">
+              <strong>Tracker Device</strong>
+              <div>Unavailable</div>
+              <small></small>
+            </article>
+          </div>
+        </section>
 
-      currentFleet.textContent = vehicle.fleetNumber;
-      currentVehicleId.textContent = vehicle.vehicleId;
-      snapshotHeading.textContent = "Fleet " + vehicle.fleetNumber + " confirmed";
+        <section class="panel">
+          <div class="section-header">
+            <h3>Camera Snapshots</h3>
+            <p>Latest Image Set</p>
+          </div>
+          <div class="camera-wrap">
+            <div class="camera-grid" data-camera-grid>
+              <div class="empty-card">No camera images available.</div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
 
-      renderVehicle(vehicle);
-      renderDevices(data.devices || []);
-      renderMetrics(data.metrics || [], data.trackerDataAvailable);
-      renderDriver(data.driver, data.trackerDataAvailable);
-      renderGpio(data.gpio || [], data.trackerDataAvailable);
-      renderSdCards(data.sdCards || [], data.cameraDeviceAvailable);
-      renderCameras(data.cameras || []);
-      renderLocation(data.location, data.trackerDataAvailable);
-    }
-
-    form.addEventListener("submit", async function (event) {
-      event.preventDefault();
-
-      const fleetNumber = fleetNumberInput.value.trim();
-
-      if (!fleetNumber) {
-        setLookupState("Waiting");
-        setNotice("warn", "Enter a fleet number before searching.");
-        return;
-      }
-
-      lookupBtn.disabled = true;
-      clearNotice();
-      setLookupState("Searching");
-      requestTime.textContent = formatLocalNow();
-      currentFleet.textContent = fleetNumber;
-      currentVehicleId.textContent = "Resolving";
-      snapshotHeading.textContent = "Checking fleet " + fleetNumber;
-
-      try {
-        const response = await fetch("/api/asset-snapshot?fleetNumber=" + encodeURIComponent(fleetNumber), {
-          headers: { Accept: "application/json" }
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          setLookupState("Not Found");
-          currentVehicleId.textContent = "Not resolved";
-          snapshotHeading.textContent = "No asset selected yet";
-          setNotice("warn", data.error || "No asset found. Check fleet number is correct.");
-          return;
-        }
-
-        setLookupState("Confirmed");
-        requestTime.textContent = formatLocalNow();
-        applySnapshot(data);
-        setNotice("ok", "Asset confirmed. Snapshot data loaded.");
-      } catch (error) {
-        setLookupState("Failed");
-        currentVehicleId.textContent = "Not resolved";
-        snapshotHeading.textContent = "No asset selected yet";
-        setNotice("warn", "Snapshot load failed. Check the worker deployment and API key.");
-      } finally {
-        lookupBtn.disabled = false;
-      }
-    });
-  </script>
+  <script src="./index.js"></script>
 </body>
 </html>
