@@ -1,11 +1,11 @@
-const APP_VERSION = "2.0";
+const APP_VERSION = "2.1";
 
 const CAMERA_RULES = [
-  { key: "UVC", label: "In-Cab Driver Facing Camera" },
   { key: "ROAD", label: "Road Facing" },
   { key: "DRIVER", label: "Driver Facing" },
-  { key: "TVI1", label: "Left External" },
-  { key: "TVI2", label: "Driver External" }
+  { key: "UVC", label: "In-Cab Driver Facing Camera" },
+  { key: "TVI2", label: "Driver External" },
+  { key: "TVI1", label: "Left External" }
 ];
 
 function parseJson(text) {
