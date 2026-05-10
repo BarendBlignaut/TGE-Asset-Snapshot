@@ -1,4 +1,4 @@
-const APP_VERSION = "live-1.1-debug";
+const APP_VERSION = "live-1.3";
 
 const CAMERA_SLOTS = [
   { id: "road", label: "Road Facing" },
@@ -29,13 +29,7 @@ async function fetchJson(url, label) {
   const bodyText = await response.text();
 
   if (!response.ok) {
-    throw new Error(
-      label +
-        " failed with status " +
-        response.status +
-        ": " +
-        bodyText
-    );
+    throw new Error(label + " failed with status " + response.status + ": " + bodyText);
   }
 
   if (!bodyText || !bodyText.trim()) {
@@ -45,17 +39,12 @@ async function fetchJson(url, label) {
   try {
     return JSON.parse(bodyText);
   } catch (error) {
-    throw new Error(
-      label +
-        " returned invalid JSON: " +
-        bodyText.slice(0, 500)
-    );
+    throw new Error(label + " returned invalid JSON: " + bodyText.slice(0, 500));
   }
 }
 
 function apiUrl(env, path, params = {}) {
   const url = new URL("https://api-au.telematics.com/v1" + path);
-
   url.searchParams.set("key", env.TELEMATICS_API_KEY);
   url.searchParams.set("pruning", "B2B");
 
@@ -80,29 +69,13 @@ function parseJsonString(text, fallback = null) {
   }
 }
 
-function bytesToReadable(value) {
-  const bytes = Number(value || 0);
-
-  if (!Number.isFinite(bytes) || bytes <= 0) {
-    return "No data";
-  }
-
-  const gb = bytes / (1024 * 1024 * 1024);
-
-  return gb.toFixed(0) + " GB";
-}
-
 function mapVehicle(vehicle) {
   return {
     vehicleId: vehicle.id,
     fleetNumber: vehicle.name || "",
-    assetType:
-      vehicle.type && vehicle.type.name
-        ? vehicle.type.name
-        : "",
+    assetType: vehicle.type && vehicle.type.name ? vehicle.type.name : "",
     registration: vehicle.registration || "",
-    registrationState:
-      vehicle.registrationStateName || "",
+    registrationState: vehicle.registrationStateName || "",
     make: vehicle.make || "",
     model: vehicle.model || "",
     vin: vehicle.vin || "",
@@ -114,252 +87,21 @@ function mapVehicle(vehicle) {
   };
 }
 
-function mapDeviceRole(typeCode) {
-  if (typeCode === "HERMES") {
-    return "Tracking System";
-  }
-
-  if (typeCode === "CAMERA") {
-    return "Camera System";
-  }
-
-  if (typeCode === "IFACE") {
-    return "Tablet";
-  }
-
-  return typeCode || "Unknown Device";
-}
-
-function mapDevice(device) {
-  return {
-    role: mapDeviceRole(
-      device.type && device.type.code
-        ? device.type.code
-        : ""
-    ),
-    typeCode:
-      device.type && device.type.code
-        ? device.type.code
-        : "",
-    model:
-      device.model && device.model.name
-        ? device.model.name
-        : "",
-    serialNumber: device.serialNumber || "",
-    imei: device.imei || "",
-    status: device.status || ""
-  };
-}
-
-function buildMetrics(hermesDetails) {
-  const stats =
-    hermesDetails &&
-    hermesDetails.deviceStats
-      ? hermesDetails.deviceStats
-      : null;
-
-  const lastVpm =
-    stats && stats.lastVpm
-      ? parseJsonString(stats.lastVpm, {})
-      : {};
-
-  return [
-    {
-      label: "Odometer",
-      value:
-        lastVpm.odometer ??
-        (stats ? stats.odometer : "No data")
-    },
-    {
-      label: "Speed",
-      value: lastVpm.speed ?? "No data"
-    },
-    {
-      label: "RPM",
-      value: lastVpm.rpm ?? "No data"
-    },
-    {
-      label: "Hours",
-      value: lastVpm.hours ?? "No data"
-    },
-    {
-      label: "Oil Temperature",
-      value: lastVpm.oiltemp ?? "No data"
-    },
-    {
-      label: "Oil Pressure",
-      value: lastVpm.oilpressure ?? "No data"
-    },
-    {
-      label: "Engine Load",
-      value: lastVpm.engineload ?? "No data"
-    },
-    {
-      label: "Gear",
-      value: lastVpm.gear ?? "No data"
-    },
-    {
-      label: "Fuel Consumption",
-      value:
-        lastVpm.fuelconsumption ?? "No data"
-    }
-  ];
-}
-
-function buildDriver(hermesDetails) {
-  const currentUser =
-    hermesDetails &&
-    hermesDetails.deviceStats &&
-    hermesDetails.deviceStats.currentUser
-      ? hermesDetails.deviceStats.currentUser
-      : null;
-
-  if (!currentUser) {
-    return null;
-  }
-
-  return {
-    name:
-      currentUser.name ||
-      "No Driver"
-  };
-}
-
-function titleCase(value) {
-  return String(value || "")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, function (char) {
-      return char.toUpperCase();
-    });
-}
-
-function buildGpio(hermesDetails) {
-  const gpioText =
-    hermesDetails &&
-    hermesDetails.deviceStats &&
-    hermesDetails.deviceStats.lastGpio
-      ? hermesDetails.deviceStats.lastGpio
-      : "";
-
-  const gpio =
-    parseJsonString(gpioText, {}) || {};
-
-  const keys = [
-    "digin.1",
-    "digin.2",
-    "digin.3",
-    "digin.4",
-    "digout.2",
-    "digout.3"
-  ];
-
-  return keys.map(function (key) {
-    const item = gpio[key];
-
-    if (!item) {
-      return {
-        label: titleCase(key),
-        state: "No data",
-        eventAt: ""
-      };
-    }
-
-    return {
-      label: titleCase(
-        item.custom_noun ||
-          item.noun ||
-          key
-      ),
-      state:
-        item.custom_verb ||
-        item.verb ||
-        "No state",
-      eventAt: item.eventat || ""
-    };
-  });
-}
-
-function buildLocation(hermesDetails) {
-  const attrs =
-    hermesDetails &&
-    hermesDetails.deviceStats &&
-    hermesDetails.deviceStats.attrs
-      ? hermesDetails.deviceStats.attrs
-      : {};
-
-  const lastPr =
-    attrs.last_pr
-      ? parseJsonString(attrs.last_pr, null)
-      : null;
-
-  if (
-    !lastPr ||
-    lastPr.Lat === undefined ||
-    lastPr.Lng === undefined
-  ) {
-    return null;
-  }
-
-  return {
-    lat: lastPr.Lat,
-    lng: lastPr.Lng,
-    speed: lastPr.Spd ?? "",
-    direction: lastPr.Dir ?? "",
-    satellites: lastPr.NSat ?? "",
-    hdop: lastPr.HDOP ?? ""
-  };
-}
-
-function buildSdCards(cameraDetails) {
-  const attrs =
-    cameraDetails &&
-    cameraDetails.deviceStats &&
-    cameraDetails.deviceStats.attrs
-      ? cameraDetails.deviceStats.attrs
-      : {};
-
-  return [
-    {
-      label: "SD Card 1",
-      present:
-        attrs["lm.sd_card.1"] ===
-        "sdCardPresent"
-          ? "Yes"
-          : "No",
-      space: bytesToReadable(
-        attrs["lm.sd_card.1_total_size_bytes"]
-      )
-    },
-    {
-      label: "SD Card 2",
-      present:
-        attrs["lm.sd_card.2"] ===
-        "sdCardPresent"
-          ? "Yes"
-          : "No",
-      space: bytesToReadable(
-        attrs["lm.sd_card.2_total_size_bytes"]
-      )
-    }
-  ];
-}
-
 function cameraSlotMatch(slotId, mediaFile) {
+  const sourceName = mediaFile && mediaFile.source ? mediaFile.source : "";
   const sources =
     mediaFile &&
     mediaFile.imageDetails &&
-    Array.isArray(
-      mediaFile.imageDetails.sources
-    )
+    Array.isArray(mediaFile.imageDetails.sources)
       ? mediaFile.imageDetails.sources
       : [];
 
   if (slotId === "road") {
-    return sources.includes("ROAD");
+    return sourceName === "ROAD_FACING" || sources.includes("ROAD");
   }
 
   if (slotId === "driver") {
-    return sources.includes("DRIVER");
+    return sourceName === "DRIVER_FACING" || sources.includes("DRIVER");
   }
 
   if (slotId === "uvc") {
@@ -377,6 +119,21 @@ function cameraSlotMatch(slotId, mediaFile) {
   return false;
 }
 
+function pickLatestSnapshotEvent(events, vehicleId) {
+  const matches = events
+    .filter(function (event) {
+      return (
+        String(event.vehicleId) === String(vehicleId) &&
+        String(event.action || "").toUpperCase() === "SNAPSHOT"
+      );
+    })
+    .sort(function (a, b) {
+      return new Date(b.createdAt || b.timeAt || 0) - new Date(a.createdAt || a.timeAt || 0);
+    });
+
+  return matches[0] || null;
+}
+
 function buildCameraImages(eventRecord) {
   const contextText =
     eventRecord &&
@@ -384,289 +141,109 @@ function buildCameraImages(eventRecord) {
     eventRecord.attributes.context
       ? eventRecord.attributes.context
       : "";
-
-  const context =
-    parseJsonString(contextText, {}) || {};
-
+  const context = parseJsonString(contextText, {});
   const mediaFiles =
     context &&
     context.response &&
-    Array.isArray(
-      context.response.mediaFiles
-    )
+    Array.isArray(context.response.mediaFiles)
       ? context.response.mediaFiles
       : [];
 
   return CAMERA_SLOTS.map(function (slot) {
-    const match = mediaFiles.find(function (
-      mediaFile
-    ) {
+    const match = mediaFiles.find(function (mediaFile) {
       return (
         mediaFile &&
         mediaFile.mediaType === "IMAGE" &&
-        typeof mediaFile.mediaFile ===
-          "string" &&
-        cameraSlotMatch(
-          slot.id,
-          mediaFile
-        )
+        typeof mediaFile.mediaFile === "string" &&
+        cameraSlotMatch(slot.id, mediaFile)
       );
     });
 
     return {
+      id: slot.id,
       label: slot.label,
-      imageUrl: match
-        ? match.mediaFile
-        : "",
+      imageUrl: match ? match.mediaFile : "",
       hasImage: Boolean(match)
     };
   });
-}
-
-function pickLatestSnapshotEvent(
-  events,
-  vehicleId
-) {
-  const matches = events
-    .filter(function (event) {
-      return (
-        String(event.vehicleId) ===
-          String(vehicleId) &&
-        String(
-          event.action || ""
-        ).toUpperCase() === "SNAPSHOT"
-      );
-    })
-    .sort(function (a, b) {
-      return (
-        new Date(
-          b.createdAt ||
-            b.timeAt ||
-            0
-        ) -
-        new Date(
-          a.createdAt ||
-            a.timeAt ||
-            0
-        )
-      );
-    });
-
-  return matches[0] || null;
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (
-      url.pathname ===
-      "/api/asset-snapshot"
-    ) {
-      const fleetNumber = normalize(
-        url.searchParams.get(
-          "fleetNumber"
-        )
-      );
+    if (url.pathname === "/api/asset-snapshot") {
+      const fleetNumber = normalize(url.searchParams.get("fleetNumber"));
 
       if (!fleetNumber) {
         return jsonResponse(
           {
             version: APP_VERSION,
-            error:
-              "Fleet number is required."
+            error: "Fleet number is required."
           },
           400
         );
       }
 
       try {
-        const vehicles = await fetchJson(
-          apiUrl(env, "/vehicles"),
-          "Vehicles API"
-        );
+        const vehicles = await fetchJson(apiUrl(env, "/vehicles"), "Vehicles API");
 
-        const matchedVehicle =
-          vehicles.find(function (
-            vehicle
-          ) {
-            return (
-              normalize(vehicle.name) ===
-              fleetNumber
-            );
-          });
+        const matchedVehicle = vehicles.find(function (vehicle) {
+          return normalize(vehicle.name) === fleetNumber;
+        });
 
         if (!matchedVehicle) {
           return jsonResponse(
             {
               version: APP_VERSION,
-              error:
-                "No asset found. Check fleet number is correct."
+              error: "No asset found. Check fleet number is correct."
             },
             404
           );
         }
 
-        const vehicleDetails =
-          mapVehicle(matchedVehicle);
+        const vehicleDetails = mapVehicle(matchedVehicle);
 
-        const devices =
-          await fetchJson(
-            apiUrl(
-              env,
-              "/vehicles/" +
-                matchedVehicle.id +
-                "/devices"
-            ),
-            "Vehicle devices API"
-          );
+        const cameraEvents = await fetchJson(
+          apiUrl(env, "/events", { types: "camera" }),
+          "Camera events API"
+        );
 
-        const normalizedDevices =
-          Array.isArray(devices)
-            ? devices.map(mapDevice)
-            : [];
+        const latestSnapshotEvent = Array.isArray(cameraEvents)
+          ? pickLatestSnapshotEvent(cameraEvents, matchedVehicle.id)
+          : null;
 
-        const hermesDevice =
-          Array.isArray(devices)
-            ? devices.find(function (
-                device
-              ) {
-                return (
-                  device.type &&
-                  device.type.code ===
-                    "HERMES"
-                );
-              })
-            : null;
-
-        const cameraDevice =
-          Array.isArray(devices)
-            ? devices.find(function (
-                device
-              ) {
-                return (
-                  device.type &&
-                  device.type.code ===
-                    "CAMERA"
-                );
-              })
-            : null;
-
-        const hermesKey =
-          hermesDevice
-            ? hermesDevice.serialNumber ||
-              hermesDevice.imei
-            : "";
-
-        const cameraKey =
-          cameraDevice
-            ? cameraDevice.serialNumber ||
-              cameraDevice.imei
-            : "";
-
-        const hermesDetails =
-          hermesKey
-            ? await fetchJson(
-                apiUrl(
-                  env,
-                  "/devices/" +
-                    encodeURIComponent(
-                      hermesKey
-                    ),
-                  {
-                    embed:
-                      "devicestats"
-                  }
-                ),
-                "HERMES device details API"
-              )
-            : null;
-
-        const cameraDetails =
-          cameraKey
-            ? await fetchJson(
-                apiUrl(
-                  env,
-                  "/devices/" +
-                    encodeURIComponent(
-                      cameraKey
-                    ),
-                  {
-                    embed:
-                      "devicestats"
-                  }
-                ),
-                "Camera device details API"
-              )
-            : null;
-
-        const cameraEvents =
-          await fetchJson(
-            apiUrl(env, "/events", {
-              types: "camera"
-            }),
-            "Camera events API"
-          );
-
-        const latestSnapshotEvent =
-          Array.isArray(cameraEvents)
-            ? pickLatestSnapshotEvent(
-                cameraEvents,
-                matchedVehicle.id
-              )
-            : null;
+        const cameras = buildCameraImages(latestSnapshotEvent);
 
         return jsonResponse({
           version: APP_VERSION,
+          requestTime: new Date().toISOString(),
           vehicle: vehicleDetails,
-          devices: normalizedDevices,
-          trackerDataAvailable:
-            Boolean(hermesDetails),
-          cameraDeviceAvailable:
-            Boolean(cameraDetails),
-          driver:
-            buildDriver(
-              hermesDetails
-            ),
-          metrics:
-            buildMetrics(
-              hermesDetails
-            ),
-          gpio:
-            buildGpio(
-              hermesDetails
-            ),
-          location:
-            buildLocation(
-              hermesDetails
-            ),
-          sdCards:
-            buildSdCards(
-              cameraDetails
-            ),
-          cameras:
-            buildCameraImages(
-              latestSnapshotEvent
-            )
+          devices: [],
+          trackerDataAvailable: false,
+          cameraDeviceAvailable: false,
+          driver: null,
+          metrics: [],
+          gpio: [],
+          location: null,
+          sdCards: [],
+          cameras: cameras,
+          latestSnapshotEventId: latestSnapshotEvent ? latestSnapshotEvent.id : "",
+          latestSnapshotTime: latestSnapshotEvent
+            ? latestSnapshotEvent.timeAt || latestSnapshotEvent.createdAt || ""
+            : ""
         });
       } catch (error) {
         return jsonResponse(
           {
             version: APP_VERSION,
-            error:
-              error.message ||
-              "Snapshot request failed."
+            error: error.message || "Snapshot request failed."
           },
           500
         );
       }
     }
 
-    return new Response(
-      "Not found",
-      {
-        status: 404
-      }
-    );
+    return new Response("Not found", { status: 404 });
   }
 };
