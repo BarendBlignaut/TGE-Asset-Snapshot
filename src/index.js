@@ -100,31 +100,22 @@ export default {
 
         const mediaFiles = getMediaFilesFromEvent(latestEvent);
 
-        if (mediaFiles.length === 0) {
-          return Response.json(
-            { error: "Vehicle found, but no camera images were available." },
-            { status: 404 }
-          );
-        }
-
         const images = mediaFiles.map(function (mediaFile, index) {
           return {
             index: index,
             label: buildLabel(mediaFile, index),
-            imageUrl:
-              "/api/image?vehicleId=" +
-              encodeURIComponent(vehicleId) +
-              "&index=" +
-              index
+            rawUrl: mediaFile.mediaFile
           };
         });
 
         return Response.json(
           {
-            vehicleId: latestEvent.vehicleId,
+            requestedVehicleId: vehicleId,
+            matchedVehicleId: latestEvent.vehicleId,
             eventId: latestEvent.id,
-            timeAt: latestEvent.timeAt,
+            eventTime: latestEvent.timeAt,
             imageCount: images.length,
+            hasContext: Boolean(latestEvent?.attributes?.context),
             images: images
           },
           {
@@ -138,54 +129,6 @@ export default {
           { error: error.message || "Request failed." },
           { status: 500 }
         );
-      }
-    }
-
-    if (url.pathname === "/api/image") {
-      const vehicleId = url.searchParams.get("vehicleId");
-      const indexParam = url.searchParams.get("index");
-
-      if (!vehicleId || indexParam === null) {
-        return new Response("Missing vehicleId or index.", { status: 400 });
-      }
-
-      const imageIndex = Number(indexParam);
-
-      if (!Number.isInteger(imageIndex) || imageIndex < 0) {
-        return new Response("Invalid image index.", { status: 400 });
-      }
-
-      try {
-        const events = await fetchCameraEvents(env);
-        const latestEvent = getLatestMatchingEvent(events, vehicleId);
-
-        if (!latestEvent) {
-          return new Response("No matching vehicle found.", { status: 404 });
-        }
-
-        const mediaFiles = getMediaFilesFromEvent(latestEvent);
-
-        if (!mediaFiles[imageIndex]) {
-          return new Response("Image not found.", { status: 404 });
-        }
-
-        const upstreamImageUrl = mediaFiles[imageIndex].mediaFile;
-        const imageResponse = await fetch(upstreamImageUrl);
-
-        if (!imageResponse.ok) {
-          return new Response("Failed to fetch image.", { status: 502 });
-        }
-
-        return new Response(imageResponse.body, {
-          status: 200,
-          headers: {
-            "Content-Type":
-              imageResponse.headers.get("Content-Type") || "image/jpeg",
-            "Cache-Control": "no-store"
-          }
-        });
-      } catch (error) {
-        return new Response("Image request failed.", { status: 500 });
       }
     }
 
