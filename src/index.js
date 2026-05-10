@@ -1,4 +1,4 @@
-const APP_VERSION = "live-1.0";
+const APP_VERSION = "live-1.1-debug";
 
 const CAMERA_SLOTS = [
   { id: "road", label: "Road Facing" },
@@ -18,7 +18,7 @@ function jsonResponse(payload, status = 200) {
   });
 }
 
-async function fetchJson(url) {
+async function fetchJson(url, label) {
   const response = await fetch(url, {
     method: "GET",
     headers: {
@@ -26,16 +26,36 @@ async function fetchJson(url) {
     }
   });
 
+  const bodyText = await response.text();
+
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error("API request failed: " + body);
+    throw new Error(
+      label +
+        " failed with status " +
+        response.status +
+        ": " +
+        bodyText
+    );
   }
 
-  return response.json();
+  if (!bodyText || !bodyText.trim()) {
+    throw new Error(label + " returned an empty response body.");
+  }
+
+  try {
+    return JSON.parse(bodyText);
+  } catch (error) {
+    throw new Error(
+      label +
+        " returned invalid JSON: " +
+        bodyText.slice(0, 500)
+    );
+  }
 }
 
 function apiUrl(env, path, params = {}) {
   const url = new URL("https://api-au.telematics.com/v1" + path);
+
   url.searchParams.set("key", env.TELEMATICS_API_KEY);
   url.searchParams.set("pruning", "B2B");
 
@@ -64,10 +84,11 @@ function bytesToReadable(value) {
   const bytes = Number(value || 0);
 
   if (!Number.isFinite(bytes) || bytes <= 0) {
-    return "";
+    return "No data";
   }
 
   const gb = bytes / (1024 * 1024 * 1024);
+
   return gb.toFixed(0) + " GB";
 }
 
@@ -75,9 +96,13 @@ function mapVehicle(vehicle) {
   return {
     vehicleId: vehicle.id,
     fleetNumber: vehicle.name || "",
-    assetType: vehicle.type && vehicle.type.name ? vehicle.type.name : "",
+    assetType:
+      vehicle.type && vehicle.type.name
+        ? vehicle.type.name
+        : "",
     registration: vehicle.registration || "",
-    registrationState: vehicle.registrationStateName || "",
+    registrationState:
+      vehicle.registrationStateName || "",
     make: vehicle.make || "",
     model: vehicle.model || "",
     vin: vehicle.vin || "",
@@ -107,9 +132,19 @@ function mapDeviceRole(typeCode) {
 
 function mapDevice(device) {
   return {
-    role: mapDeviceRole(device.type && device.type.code ? device.type.code : ""),
-    typeCode: device.type && device.type.code ? device.type.code : "",
-    model: device.model && device.model.name ? device.model.name : "",
+    role: mapDeviceRole(
+      device.type && device.type.code
+        ? device.type.code
+        : ""
+    ),
+    typeCode:
+      device.type && device.type.code
+        ? device.type.code
+        : "",
+    model:
+      device.model && device.model.name
+        ? device.model.name
+        : "",
     serialNumber: device.serialNumber || "",
     imei: device.imei || "",
     status: device.status || ""
@@ -117,26 +152,58 @@ function mapDevice(device) {
 }
 
 function buildMetrics(hermesDetails) {
-  const stats = hermesDetails && hermesDetails.deviceStats ? hermesDetails.deviceStats : null;
-  const lastVpm = stats && stats.lastVpm ? parseJsonString(stats.lastVpm, {}) : {};
+  const stats =
+    hermesDetails &&
+    hermesDetails.deviceStats
+      ? hermesDetails.deviceStats
+      : null;
+
+  const lastVpm =
+    stats && stats.lastVpm
+      ? parseJsonString(stats.lastVpm, {})
+      : {};
 
   return [
-    { label: "Odometer", value: lastVpm.odometer ?? (stats ? stats.odometer : ""), suffix: " km" },
-    { label: "Speed", value: lastVpm.speed ?? "", suffix: " km/h" },
-    { label: "RPM", value: lastVpm.rpm ?? "", suffix: "" },
-    { label: "Hours", value: lastVpm.hours ?? "", suffix: "" },
-    { label: "Oil Temperature", value: lastVpm.oiltemp ?? "", suffix: "°C" },
-    { label: "Oil Pressure", value: lastVpm.oilpressure ?? "", suffix: "" },
-    { label: "Engine Load", value: lastVpm.engineload ?? "", suffix: "%" },
-    { label: "Gear", value: lastVpm.gear ?? "", suffix: "" },
-    { label: "Fuel Consumption", value: lastVpm.fuelconsumption ?? "", suffix: "" }
-  ].map(function (item) {
-    const hasValue = item.value !== "" && item.value !== null && item.value !== undefined;
-    return {
-      label: item.label,
-      value: hasValue ? String(item.value) + item.suffix : "No data"
-    };
-  });
+    {
+      label: "Odometer",
+      value:
+        lastVpm.odometer ??
+        (stats ? stats.odometer : "No data")
+    },
+    {
+      label: "Speed",
+      value: lastVpm.speed ?? "No data"
+    },
+    {
+      label: "RPM",
+      value: lastVpm.rpm ?? "No data"
+    },
+    {
+      label: "Hours",
+      value: lastVpm.hours ?? "No data"
+    },
+    {
+      label: "Oil Temperature",
+      value: lastVpm.oiltemp ?? "No data"
+    },
+    {
+      label: "Oil Pressure",
+      value: lastVpm.oilpressure ?? "No data"
+    },
+    {
+      label: "Engine Load",
+      value: lastVpm.engineload ?? "No data"
+    },
+    {
+      label: "Gear",
+      value: lastVpm.gear ?? "No data"
+    },
+    {
+      label: "Fuel Consumption",
+      value:
+        lastVpm.fuelconsumption ?? "No data"
+    }
+  ];
 }
 
 function buildDriver(hermesDetails) {
@@ -152,10 +219,9 @@ function buildDriver(hermesDetails) {
   }
 
   return {
-    name: currentUser.name || [currentUser.firstName, currentUser.lastName].filter(Boolean).join(" "),
-    username: currentUser.username || "",
-    externalPin: currentUser.externalPin || "",
-    status: currentUser.status || ""
+    name:
+      currentUser.name ||
+      "No Driver"
   };
 }
 
@@ -174,28 +240,40 @@ function buildGpio(hermesDetails) {
     hermesDetails.deviceStats.lastGpio
       ? hermesDetails.deviceStats.lastGpio
       : "";
-  const gpio = parseJsonString(gpioText, {});
-  const keys = ["digin.1", "digin.2", "digin.3", "digin.4", "digout.2", "digout.3"];
+
+  const gpio =
+    parseJsonString(gpioText, {}) || {};
+
+  const keys = [
+    "digin.1",
+    "digin.2",
+    "digin.3",
+    "digin.4",
+    "digout.2",
+    "digout.3"
+  ];
 
   return keys.map(function (key) {
     const item = gpio[key];
 
     if (!item) {
       return {
-        key: key,
         label: titleCase(key),
         state: "No data",
         eventAt: ""
       };
     }
 
-    const label = item.custom_noun || item.noun || titleCase(key);
-    const state = item.custom_verb || item.verb || "";
-
     return {
-      key: key,
-      label: titleCase(label),
-      state: state || "No state",
+      label: titleCase(
+        item.custom_noun ||
+          item.noun ||
+          key
+      ),
+      state:
+        item.custom_verb ||
+        item.verb ||
+        "No state",
       eventAt: item.eventat || ""
     };
   });
@@ -209,18 +287,23 @@ function buildLocation(hermesDetails) {
       ? hermesDetails.deviceStats.attrs
       : {};
 
-  const lastPr = attrs.last_pr ? parseJsonString(attrs.last_pr, null) : null;
+  const lastPr =
+    attrs.last_pr
+      ? parseJsonString(attrs.last_pr, null)
+      : null;
 
-  if (!lastPr || lastPr.Lat === undefined || lastPr.Lng === undefined) {
+  if (
+    !lastPr ||
+    lastPr.Lat === undefined ||
+    lastPr.Lng === undefined
+  ) {
     return null;
   }
 
   return {
     lat: lastPr.Lat,
     lng: lastPr.Lng,
-    at: lastPr.At || "",
     speed: lastPr.Spd ?? "",
-    altitude: lastPr.Alt ?? "",
     direction: lastPr.Dir ?? "",
     satellites: lastPr.NSat ?? "",
     hdop: lastPr.HDOP ?? ""
@@ -238,32 +321,45 @@ function buildSdCards(cameraDetails) {
   return [
     {
       label: "SD Card 1",
-      present: attrs["lm.sd_card.1"] === "sdCardPresent" ? "Yes" : "No",
-      space: bytesToReadable(attrs["lm.sd_card.1_total_size_bytes"]) || "No data"
+      present:
+        attrs["lm.sd_card.1"] ===
+        "sdCardPresent"
+          ? "Yes"
+          : "No",
+      space: bytesToReadable(
+        attrs["lm.sd_card.1_total_size_bytes"]
+      )
     },
     {
       label: "SD Card 2",
-      present: attrs["lm.sd_card.2"] === "sdCardPresent" ? "Yes" : "No",
-      space: bytesToReadable(attrs["lm.sd_card.2_total_size_bytes"]) || "No data"
+      present:
+        attrs["lm.sd_card.2"] ===
+        "sdCardPresent"
+          ? "Yes"
+          : "No",
+      space: bytesToReadable(
+        attrs["lm.sd_card.2_total_size_bytes"]
+      )
     }
   ];
 }
 
 function cameraSlotMatch(slotId, mediaFile) {
-  const sourceName = mediaFile && mediaFile.source ? mediaFile.source : "";
   const sources =
     mediaFile &&
     mediaFile.imageDetails &&
-    Array.isArray(mediaFile.imageDetails.sources)
+    Array.isArray(
+      mediaFile.imageDetails.sources
+    )
       ? mediaFile.imageDetails.sources
       : [];
 
   if (slotId === "road") {
-    return sourceName === "ROAD_FACING" || sources.includes("ROAD");
+    return sources.includes("ROAD");
   }
 
   if (slotId === "driver") {
-    return sourceName === "DRIVER_FACING" || sources.includes("DRIVER");
+    return sources.includes("DRIVER");
   }
 
   if (slotId === "uvc") {
@@ -288,43 +384,72 @@ function buildCameraImages(eventRecord) {
     eventRecord.attributes.context
       ? eventRecord.attributes.context
       : "";
-  const context = parseJsonString(contextText, {});
+
+  const context =
+    parseJsonString(contextText, {}) || {};
+
   const mediaFiles =
     context &&
     context.response &&
-    Array.isArray(context.response.mediaFiles)
+    Array.isArray(
+      context.response.mediaFiles
+    )
       ? context.response.mediaFiles
       : [];
 
   return CAMERA_SLOTS.map(function (slot) {
-    const match = mediaFiles.find(function (mediaFile) {
+    const match = mediaFiles.find(function (
+      mediaFile
+    ) {
       return (
         mediaFile &&
         mediaFile.mediaType === "IMAGE" &&
-        typeof mediaFile.mediaFile === "string" &&
-        cameraSlotMatch(slot.id, mediaFile)
+        typeof mediaFile.mediaFile ===
+          "string" &&
+        cameraSlotMatch(
+          slot.id,
+          mediaFile
+        )
       );
     });
 
     return {
-      id: slot.id,
       label: slot.label,
-      imageUrl: match ? match.mediaFile : "",
+      imageUrl: match
+        ? match.mediaFile
+        : "",
       hasImage: Boolean(match)
     };
   });
 }
 
-function pickLatestSnapshotEvent(events, vehicleId) {
+function pickLatestSnapshotEvent(
+  events,
+  vehicleId
+) {
   const matches = events
     .filter(function (event) {
       return (
-        String(event.vehicleId) === String(vehicleId) &&
-        String(event.action || "").toUpperCase() === "SNAPSHOT"
+        String(event.vehicleId) ===
+          String(vehicleId) &&
+        String(
+          event.action || ""
+        ).toUpperCase() === "SNAPSHOT"
       );
     })
     .sort(function (a, b) {
-      return new Date(b.createdAt || b.timeAt || 0) - new Date(a.createdAt || a.timeAt || 0);
+      return (
+        new Date(
+          b.createdAt ||
+            b.timeAt ||
+            0
+        ) -
+        new Date(
+          a.createdAt ||
+            a.timeAt ||
+            0
+        )
+      );
     });
 
   return matches[0] || null;
@@ -334,99 +459,214 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/api/asset-snapshot") {
-      const fleetNumber = normalize(url.searchParams.get("fleetNumber"));
+    if (
+      url.pathname ===
+      "/api/asset-snapshot"
+    ) {
+      const fleetNumber = normalize(
+        url.searchParams.get(
+          "fleetNumber"
+        )
+      );
 
       if (!fleetNumber) {
         return jsonResponse(
           {
             version: APP_VERSION,
-            error: "Fleet number is required."
+            error:
+              "Fleet number is required."
           },
           400
         );
       }
 
       try {
-        const vehicles = await fetchJson(apiUrl(env, "/vehicles"));
-        const matchedVehicle = vehicles.find(function (vehicle) {
-          return normalize(vehicle.name) === fleetNumber;
-        });
+        const vehicles = await fetchJson(
+          apiUrl(env, "/vehicles"),
+          "Vehicles API"
+        );
+
+        const matchedVehicle =
+          vehicles.find(function (
+            vehicle
+          ) {
+            return (
+              normalize(vehicle.name) ===
+              fleetNumber
+            );
+          });
 
         if (!matchedVehicle) {
           return jsonResponse(
             {
               version: APP_VERSION,
-              error: "No asset found. Check fleet number is correct."
+              error:
+                "No asset found. Check fleet number is correct."
             },
             404
           );
         }
 
-        const vehicleDetails = mapVehicle(matchedVehicle);
-        const devices = await fetchJson(apiUrl(env, "/vehicles/" + matchedVehicle.id + "/devices"));
-        const normalizedDevices = Array.isArray(devices) ? devices.map(mapDevice) : [];
+        const vehicleDetails =
+          mapVehicle(matchedVehicle);
 
-        const hermesDevice = Array.isArray(devices)
-          ? devices.find(function (device) {
-              return device.type && device.type.code === "HERMES";
-            })
-          : null;
+        const devices =
+          await fetchJson(
+            apiUrl(
+              env,
+              "/vehicles/" +
+                matchedVehicle.id +
+                "/devices"
+            ),
+            "Vehicle devices API"
+          );
 
-        const cameraDevice = Array.isArray(devices)
-          ? devices.find(function (device) {
-              return device.type && device.type.code === "CAMERA";
-            })
-          : null;
+        const normalizedDevices =
+          Array.isArray(devices)
+            ? devices.map(mapDevice)
+            : [];
 
-        const hermesKey = hermesDevice ? (hermesDevice.serialNumber || hermesDevice.imei || hermesDevice.name) : "";
-        const cameraKey = cameraDevice ? (cameraDevice.serialNumber || cameraDevice.imei || cameraDevice.name) : "";
+        const hermesDevice =
+          Array.isArray(devices)
+            ? devices.find(function (
+                device
+              ) {
+                return (
+                  device.type &&
+                  device.type.code ===
+                    "HERMES"
+                );
+              })
+            : null;
 
-        const results = await Promise.all([
+        const cameraDevice =
+          Array.isArray(devices)
+            ? devices.find(function (
+                device
+              ) {
+                return (
+                  device.type &&
+                  device.type.code ===
+                    "CAMERA"
+                );
+              })
+            : null;
+
+        const hermesKey =
+          hermesDevice
+            ? hermesDevice.serialNumber ||
+              hermesDevice.imei
+            : "";
+
+        const cameraKey =
+          cameraDevice
+            ? cameraDevice.serialNumber ||
+              cameraDevice.imei
+            : "";
+
+        const hermesDetails =
           hermesKey
-            ? fetchJson(apiUrl(env, "/devices/" + encodeURIComponent(hermesKey), { embed: "devicestats" }))
-            : Promise.resolve(null),
+            ? await fetchJson(
+                apiUrl(
+                  env,
+                  "/devices/" +
+                    encodeURIComponent(
+                      hermesKey
+                    ),
+                  {
+                    embed:
+                      "devicestats"
+                  }
+                ),
+                "HERMES device details API"
+              )
+            : null;
+
+        const cameraDetails =
           cameraKey
-            ? fetchJson(apiUrl(env, "/devices/" + encodeURIComponent(cameraKey), { embed: "devicestats" }))
-            : Promise.resolve(null),
-          fetchJson(apiUrl(env, "/events", { types: "camera" }))
-        ]);
+            ? await fetchJson(
+                apiUrl(
+                  env,
+                  "/devices/" +
+                    encodeURIComponent(
+                      cameraKey
+                    ),
+                  {
+                    embed:
+                      "devicestats"
+                  }
+                ),
+                "Camera device details API"
+              )
+            : null;
 
-        const hermesDetails = results[0];
-        const cameraDetails = results[1];
-        const cameraEvents = results[2];
+        const cameraEvents =
+          await fetchJson(
+            apiUrl(env, "/events", {
+              types: "camera"
+            }),
+            "Camera events API"
+          );
 
-        const latestSnapshotEvent = Array.isArray(cameraEvents)
-          ? pickLatestSnapshotEvent(cameraEvents, matchedVehicle.id)
-          : null;
+        const latestSnapshotEvent =
+          Array.isArray(cameraEvents)
+            ? pickLatestSnapshotEvent(
+                cameraEvents,
+                matchedVehicle.id
+              )
+            : null;
 
         return jsonResponse({
           version: APP_VERSION,
-          requestTime: new Date().toISOString(),
           vehicle: vehicleDetails,
           devices: normalizedDevices,
-          trackerDataAvailable: Boolean(hermesDetails),
-          cameraDeviceAvailable: Boolean(cameraDetails),
-          driver: buildDriver(hermesDetails),
-          metrics: buildMetrics(hermesDetails),
-          gpio: buildGpio(hermesDetails),
-          location: buildLocation(hermesDetails),
-          sdCards: buildSdCards(cameraDetails),
-          cameras: buildCameraImages(latestSnapshotEvent),
-          latestSnapshotEventId: latestSnapshotEvent ? latestSnapshotEvent.id : "",
-          latestSnapshotTime: latestSnapshotEvent ? (latestSnapshotEvent.timeAt || latestSnapshotEvent.createdAt || "") : ""
+          trackerDataAvailable:
+            Boolean(hermesDetails),
+          cameraDeviceAvailable:
+            Boolean(cameraDetails),
+          driver:
+            buildDriver(
+              hermesDetails
+            ),
+          metrics:
+            buildMetrics(
+              hermesDetails
+            ),
+          gpio:
+            buildGpio(
+              hermesDetails
+            ),
+          location:
+            buildLocation(
+              hermesDetails
+            ),
+          sdCards:
+            buildSdCards(
+              cameraDetails
+            ),
+          cameras:
+            buildCameraImages(
+              latestSnapshotEvent
+            )
         });
       } catch (error) {
         return jsonResponse(
           {
             version: APP_VERSION,
-            error: error.message || "Snapshot request failed."
+            error:
+              error.message ||
+              "Snapshot request failed."
           },
           500
         );
       }
     }
 
-    return new Response("Not found", { status: 404 });
+    return new Response(
+      "Not found",
+      {
+        status: 404
+      }
+    );
   }
 };
