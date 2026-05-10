@@ -1,4 +1,12 @@
-const APP_VERSION = "1.1";
+const APP_VERSION = "1.2";
+
+const CAMERA_RULES = [
+  { key: "UVC", label: "In-Cab Driver Facing Camera" },
+  { key: "ROAD", label: "Road Facing" },
+  { key: "DRIVER", label: "Driver Facing" },
+  { key: "TVI1", label: "Left External" },
+  { key: "TVI2", label: "Driver External" }
+];
 
 function parseJson(text) {
   try {
@@ -6,34 +14,6 @@ function parseJson(text) {
   } catch {
     return null;
   }
-}
-
-function getMediaFilesFromEvent(event) {
-  const contextText = event?.attributes?.context || "";
-  const context = parseJson(contextText);
-  const mediaFiles = context?.response?.mediaFiles;
-
-  if (!Array.isArray(mediaFiles)) {
-    return [];
-  }
-
-  return mediaFiles.filter(function (item) {
-    return item && item.mediaType === "IMAGE" && item.mediaFile;
-  });
-}
-
-function buildLabel(mediaFile, index) {
-  const detailedSources = mediaFile?.imageDetails?.sources;
-  const firstSource =
-    Array.isArray(detailedSources) && detailedSources.length > 0
-      ? detailedSources[0]
-      : null;
-
-  if (firstSource) {
-    return firstSource;
-  }
-
-  return "CAM " + (index + 1);
 }
 
 async function fetchCameraEvents(env) {
@@ -78,6 +58,91 @@ function getLatestMatchingEvent(events, vehicleId) {
   return matches[0];
 }
 
+function escapeRegex(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractImagesFromParsedContext(contextText) {
+  const parsed = parseJson(contextText);
+  const mediaFiles = parsed?.response?.mediaFiles;
+
+  if (!Array.isArray(mediaFiles)) {
+    return [];
+  }
+
+  const extracted = [];
+
+  CAMERA_RULES.forEach(function (rule, index) {
+    const match = mediaFiles.find(function (item) {
+      const sources = item?.imageDetails?.sources;
+      return (
+        item &&
+        item.mediaType === "IMAGE" &&
+        typeof item.mediaFile === "string" &&
+        Array.isArray(sources) &&
+        sources.includes(rule.key)
+      );
+    });
+
+    if (match) {
+      extracted.push({
+        cameraNumber: index + 1,
+        cameraKey: rule.key,
+        label: rule.label,
+        rawUrl: match.mediaFile
+      });
+    }
+  });
+
+  return extracted;
+}
+
+function extractImagesFromRawContext(contextText) {
+  const extracted = [];
+
+  CAMERA_RULES.forEach(function (rule, index) {
+    const pattern = new RegExp(
+      '"sources":\\["' +
+        escapeRegex(rule.key) +
+        '"\\][\\s\\S]*?"mediaType":"IMAGE"[\\s\\S]*?"mediaFile":"(https:\\\\/\\\\/[^"]+response-content-disposition=attachment)"',
+      "i"
+    );
+
+    const match = contextText.match(pattern);
+
+    if (match && match[1]) {
+      const rawUrl = match[1].replace(/\\\//g, "/");
+
+      extracted.push({
+        cameraNumber: index + 1,
+        cameraKey: rule.key,
+        label: rule.label,
+        rawUrl: rawUrl
+      });
+    }
+  });
+
+  return extracted;
+}
+
+function extractCameraImages(contextText) {
+  const fromParsed = extractImagesFromParsedContext(contextText);
+
+  if (fromParsed.length > 0) {
+    return {
+      method: "parsed-json",
+      images: fromParsed
+    };
+  }
+
+  const fromRaw = extractImagesFromRawContext(contextText);
+
+  return {
+    method: "raw-text",
+    images: fromRaw
+  };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -109,15 +174,8 @@ export default {
           );
         }
 
-        const mediaFiles = getMediaFilesFromEvent(matchedEvent);
-
-        const images = mediaFiles.map(function (mediaFile, index) {
-          return {
-            cameraNumber: index + 1,
-            label: buildLabel(mediaFile, index),
-            rawUrl: mediaFile.mediaFile
-          };
-        });
+        const contextText = matchedEvent?.attributes?.context || "";
+        const extraction = extractCameraImages(contextText);
 
         return Response.json(
           {
@@ -126,8 +184,10 @@ export default {
             matchedVehicleId: matchedEvent.vehicleId,
             eventId: matchedEvent.id,
             eventTime: matchedEvent.timeAt,
-            imageCount: images.length,
-            images: images
+            extractionMethod: extraction.method,
+            hasContext: Boolean(contextText),
+            imageCount: extraction.images.length,
+            images: extraction.images
           },
           {
             headers: {
