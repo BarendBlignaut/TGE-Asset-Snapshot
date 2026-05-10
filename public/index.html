@@ -1,161 +1,161 @@
-const APP_VERSION = "2.0";
-
-const CAMERA_RULES = [
-  { key: "UVC", label: "In-Cab Driver Facing Camera" },
-  { key: "ROAD", label: "Road Facing" },
-  { key: "DRIVER", label: "Driver Facing" },
-  { key: "TVI1", label: "Left External" },
-  { key: "TVI2", label: "Driver External" }
-];
-
-function parseJson(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
-async function fetchCameraEvents(env) {
-  const upstreamUrl =
-    "https://api-au.telematics.com/v1/events?types=camera&pruning=B2B&key=" +
-    encodeURIComponent(env.TELEMATICS_API_KEY);
-
-  const upstreamResponse = await fetch(upstreamUrl, {
-    method: "GET",
-    headers: {
-      Accept: "application/json"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TGE Asset Snapshot</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+      line-height: 1.4;
     }
-  });
 
-  if (!upstreamResponse.ok) {
-    const errorBody = await upstreamResponse.text();
-    throw new Error("Upstream API failed: " + errorBody);
-  }
-
-  const events = await upstreamResponse.json();
-
-  if (!Array.isArray(events)) {
-    throw new Error("Unexpected API response format.");
-  }
-
-  return events;
-}
-
-function getLatestSnapshotEvent(events, vehicleId) {
-  const matches = events
-    .filter(function (event) {
-      return (
-        String(event.vehicleId) === String(vehicleId) &&
-        String(event.action || "").toUpperCase() === "SNAPSHOT"
-      );
-    })
-    .sort(function (a, b) {
-      return new Date(b.createdAt || b.timeAt || 0) - new Date(a.createdAt || a.timeAt || 0);
-    });
-
-  return matches[0] || null;
-}
-
-function extractImagesFromContext(contextText) {
-  const parsed = parseJson(contextText);
-  const mediaFiles = parsed?.response?.mediaFiles;
-
-  if (!Array.isArray(mediaFiles)) {
-    return [];
-  }
-
-  const images = [];
-
-  CAMERA_RULES.forEach(function (rule, index) {
-    const match = mediaFiles.find(function (item) {
-      const sources = item?.imageDetails?.sources;
-      const sourceName = item?.source;
-
-      return (
-        item &&
-        item.mediaType === "IMAGE" &&
-        typeof item.mediaFile === "string" &&
-        (
-          (Array.isArray(sources) && sources.includes(rule.key)) ||
-          sourceName === rule.key ||
-          (rule.key === "ROAD" && sourceName === "ROAD_FACING") ||
-          (rule.key === "DRIVER" && sourceName === "DRIVER_FACING")
-        )
-      );
-    });
-
-    if (match) {
-      images.push({
-        cameraNumber: index + 1,
-        label: rule.label,
-        url: match.mediaFile
-      });
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      gap: 12px;
+      flex-wrap: wrap;
     }
-  });
 
-  return images;
-}
+    .version-box {
+      border: 1px solid #ccc;
+      padding: 8px 12px;
+      background: #f7f7f7;
+      font-size: 14px;
+    }
 
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
+    form {
+      margin-bottom: 20px;
+    }
 
-    if (url.pathname === "/api/events") {
-      const vehicleId = url.searchParams.get("vehicleId");
+    input {
+      padding: 10px;
+      width: 240px;
+      margin-right: 8px;
+    }
+
+    button {
+      padding: 10px 14px;
+      cursor: pointer;
+    }
+
+    #status {
+      margin: 16px 0;
+      font-weight: bold;
+    }
+
+    .summary {
+      border: 1px solid #ccc;
+      padding: 16px;
+      margin-bottom: 20px;
+      background: #f8f8f8;
+    }
+
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .image-card {
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 12px;
+      background: #fafafa;
+    }
+
+    .image-card img {
+      width: 100%;
+      height: auto;
+      display: block;
+      margin-top: 10px;
+      border-radius: 4px;
+      background: #eee;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>TGE Asset Snapshot</h1>
+    <div class="version-box">Frontend Version: 2.0</div>
+  </div>
+
+  <form id="vehicleForm">
+    <input id="vehicleId" type="text" placeholder="Enter vehicle ID" required />
+    <button type="submit">Load Latest Snapshot</button>
+  </form>
+
+  <div id="status"></div>
+  <div id="result"></div>
+
+  <script>
+    const form = document.getElementById("vehicleForm");
+    const vehicleIdInput = document.getElementById("vehicleId");
+    const statusBox = document.getElementById("status");
+    const resultBox = document.getElementById("result");
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    form.addEventListener("submit", async function (event) {
+      event.preventDefault();
+
+      const vehicleId = vehicleIdInput.value.trim();
+      resultBox.innerHTML = "";
 
       if (!vehicleId) {
-        return Response.json(
-          { version: APP_VERSION, error: "vehicleId is required." },
-          { status: 400 }
-        );
+        statusBox.textContent = "Please enter a vehicle ID.";
+        return;
       }
+
+      statusBox.textContent = "Loading latest snapshot...";
 
       try {
-        const events = await fetchCameraEvents(env);
-        const latestEvent = getLatestSnapshotEvent(events, vehicleId);
+        const response = await fetch("/api/events?vehicleId=" + encodeURIComponent(vehicleId));
+        const data = await response.json();
 
-        if (!latestEvent) {
-          return Response.json(
-            { version: APP_VERSION, error: "No SNAPSHOT event found for that vehicle ID." },
-            { status: 404 }
-          );
+        if (!response.ok) {
+          statusBox.textContent = data.error || "Request failed.";
+          return;
         }
 
-        const contextText = latestEvent?.attributes?.context || "";
-        const images = extractImagesFromContext(contextText);
+        statusBox.textContent = "Latest snapshot loaded.";
 
-        if (!images.length) {
-          return Response.json(
-            { version: APP_VERSION, error: "Snapshot found, but no camera images were available." },
-            { status: 404 }
-          );
-        }
+        const summaryHtml = `
+          <div class="summary">
+            <div><strong>Frontend Version:</strong> 2.0</div>
+            <div><strong>Backend Version:</strong> ${escapeHtml(data.version)}</div>
+            <div><strong>Vehicle ID:</strong> ${escapeHtml(data.vehicleId)}</div>
+            <div><strong>Event ID:</strong> ${escapeHtml(data.eventId)}</div>
+            <div><strong>Created At:</strong> ${escapeHtml(data.createdAt)}</div>
+            <div><strong>Snapshot Time:</strong> ${escapeHtml(data.timeAt)}</div>
+            <div><strong>Images Found:</strong> ${escapeHtml(data.imageCount)}</div>
+          </div>
+        `;
 
-        return Response.json(
-          {
-            version: APP_VERSION,
-            vehicleId: latestEvent.vehicleId,
-            eventId: latestEvent.id,
-            createdAt: latestEvent.createdAt,
-            timeAt: latestEvent.timeAt,
-            imageCount: images.length,
-            images: images
-          },
-          {
-            headers: {
-              "Cache-Control": "no-store"
-            }
-          }
-        );
+        const galleryHtml = data.images.map(function (image) {
+          return `
+            <div class="image-card">
+              <div><strong>Camera ${escapeHtml(image.cameraNumber)}:</strong> ${escapeHtml(image.label)}</div>
+              <img src="${escapeHtml(image.url)}" alt="${escapeHtml(image.label)}" />
+            </div>
+          `;
+        }).join("");
+
+        resultBox.innerHTML = summaryHtml + `<div class="gallery">${galleryHtml}</div>`;
       } catch (error) {
-        return Response.json(
-          { version: APP_VERSION, error: error.message || "Request failed." },
-          { status: 500 }
-        );
+        statusBox.textContent = "Failed to load snapshot.";
       }
-    }
-
-    return env.ASSETS.fetch(request);
-  }
-};
+    });
+  </script>
+</body>
+</html>
