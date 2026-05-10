@@ -16,6 +16,8 @@
       justify-content: space-between;
       align-items: center;
       margin-bottom: 20px;
+      gap: 12px;
+      flex-wrap: wrap;
     }
 
     .version-box {
@@ -109,7 +111,7 @@
 <body>
   <div class="topbar">
     <h1>TGE Asset Snapshot</h1>
-    <div class="version-box">Frontend Version: 1.1</div>
+    <div class="version-box">Frontend Version: 1.2</div>
   </div>
 
   <form id="vehicleForm">
@@ -160,22 +162,25 @@
           statusBox.textContent = data.error || "Request failed.";
           resultBox.innerHTML = `
             <div class="summary">
+              <div><strong>Frontend Version:</strong> 1.2</div>
               <div><strong>Backend Version:</strong> ${escapeHtml(data.version || "unknown")}</div>
             </div>
           `;
           return;
         }
 
-        statusBox.textContent = "Vehicle found and data extracted.";
+        statusBox.textContent = "Vehicle found and camera extraction completed.";
 
         const summaryHtml = `
           <div class="summary">
-            <div><strong>Frontend Version:</strong> 1.1</div>
+            <div><strong>Frontend Version:</strong> 1.2</div>
             <div><strong>Backend Version:</strong> ${escapeHtml(data.version)}</div>
             <div><strong>Requested Vehicle ID:</strong> ${escapeHtml(data.requestedVehicleId)}</div>
             <div><strong>Matched Vehicle ID:</strong> ${escapeHtml(data.matchedVehicleId)}</div>
             <div><strong>Event ID:</strong> ${escapeHtml(data.eventId)}</div>
             <div><strong>Event Time:</strong> ${escapeHtml(data.eventTime)}</div>
+            <div><strong>Context Present:</strong> ${data.hasContext ? "Yes" : "No"}</div>
+            <div><strong>Extraction Method:</strong> ${escapeHtml(data.extractionMethod)}</div>
             <div><strong>Images Found:</strong> ${escapeHtml(data.imageCount)}</div>
           </div>
         `;
