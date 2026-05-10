@@ -4,28 +4,130 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>TGE Asset Snapshot</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+    }
+
+    form {
+      margin-bottom: 20px;
+    }
+
+    input {
+      padding: 8px;
+      width: 220px;
+      margin-right: 8px;
+    }
+
+    button {
+      padding: 8px 14px;
+      cursor: pointer;
+    }
+
+    #status {
+      margin: 16px 0;
+      font-weight: bold;
+    }
+
+    .meta {
+      margin-bottom: 16px;
+    }
+
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+
+    .image-card {
+      border: 1px solid #ccc;
+      padding: 12px;
+      border-radius: 6px;
+      background: #fafafa;
+    }
+
+    .image-card img {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 4px;
+      margin-top: 8px;
+    }
+
+    .label {
+      font-size: 14px;
+      font-weight: bold;
+    }
+  </style>
 </head>
 <body>
-  <button id="testBtn">Test API</button>
-  <pre id="output"></pre>
+  <h1>TGE Asset Snapshot</h1>
+
+  <form id="vehicleForm">
+    <input
+      id="vehicleId"
+      type="text"
+      placeholder="Enter vehicle ID"
+      required
+    />
+    <button type="submit">Load Images</button>
+  </form>
+
+  <div id="status"></div>
+  <div id="result"></div>
 
   <script>
-    document.getElementById("testBtn").addEventListener("click", async function () {
-      const output = document.getElementById("output");
-      output.textContent = "Loading...";
+    const form = document.getElementById("vehicleForm");
+    const vehicleIdInput = document.getElementById("vehicleId");
+    const statusBox = document.getElementById("status");
+    const resultBox = document.getElementById("result");
+
+    form.addEventListener("submit", async function (event) {
+      event.preventDefault();
+
+      const vehicleId = vehicleIdInput.value.trim();
+      resultBox.innerHTML = "";
+
+      if (!vehicleId) {
+        statusBox.textContent = "Please enter a vehicle ID.";
+        return;
+      }
+
+      statusBox.textContent = "Loading...";
 
       try {
-        const response = await fetch("/api/events");
-        const text = await response.text();
+        const response = await fetch("/api/events?vehicleId=" + encodeURIComponent(vehicleId));
+        const data = await response.json();
 
         if (!response.ok) {
-          output.textContent = "FAILED\n\n" + text;
+          statusBox.textContent = data.error || "Request failed.";
           return;
         }
 
-        output.textContent = text;
+        statusBox.textContent = "Images loaded.";
+
+        const metaHtml = `
+          <div class="meta">
+            <div><strong>Vehicle ID:</strong> ${data.vehicleId}</div>
+            <div><strong>Event Time:</strong> ${data.timeAt}</div>
+            <div><strong>Images Found:</strong> ${data.images.length}</div>
+          </div>
+        `;
+
+        const galleryHtml = data.images.map(function (image, index) {
+          return `
+            <div class="image-card">
+              <div class="label">Camera ${index + 1}</div>
+              <div>${image.label}</div>
+              <img src="${image.url}" alt="${image.label}" />
+            </div>
+          `;
+        }).join("");
+
+        resultBox.innerHTML = metaHtml + `<div class="gallery">${galleryHtml}</div>`;
       } catch (error) {
-        output.textContent = "FAILED\n\n" + error.message;
+        statusBox.textContent = "Failed to load images.";
       }
     });
   </script>
