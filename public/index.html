@@ -8,6 +8,7 @@
     body {
       font-family: Arial, sans-serif;
       margin: 24px;
+      line-height: 1.4;
     }
 
     h1 {
@@ -34,13 +35,16 @@
       font-weight: bold;
     }
 
-    .meta {
+    .summary {
+      border: 1px solid #ccc;
+      padding: 16px;
       margin-bottom: 20px;
+      background: #f8f8f8;
     }
 
     .gallery {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       gap: 16px;
     }
 
@@ -55,14 +59,33 @@
       width: 100%;
       height: auto;
       display: block;
-      margin-top: 8px;
+      margin-top: 10px;
       border-radius: 4px;
       background: #eee;
     }
 
     .label {
       font-weight: bold;
-      margin-bottom: 4px;
+      margin-bottom: 6px;
+    }
+
+    .url-box {
+      word-break: break-all;
+      font-size: 12px;
+      margin-top: 8px;
+      background: #fff;
+      border: 1px solid #ddd;
+      padding: 8px;
+    }
+
+    .link-row {
+      margin-top: 8px;
+    }
+
+    .result-note {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #444;
     }
   </style>
 </head>
@@ -71,7 +94,7 @@
 
   <form id="vehicleForm">
     <input id="vehicleId" type="text" placeholder="Enter vehicle ID" required />
-    <button type="submit">Load Images</button>
+    <button type="submit">Check Vehicle Images</button>
   </form>
 
   <div id="status"></div>
@@ -83,19 +106,27 @@
     const statusBox = document.getElementById("status");
     const resultBox = document.getElementById("result");
 
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
     form.addEventListener("submit", async function (event) {
       event.preventDefault();
 
       const vehicleId = vehicleIdInput.value.trim();
+
+      statusBox.textContent = "Loading...";
       resultBox.innerHTML = "";
 
       if (!vehicleId) {
         statusBox.textContent = "Please enter a vehicle ID.";
         return;
       }
-
-      statusBox.textContent = "Loading...";
-      resultBox.innerHTML = "";
 
       try {
         const response = await fetch(
@@ -109,31 +140,48 @@
           return;
         }
 
-        statusBox.textContent = "Images loaded.";
+        statusBox.textContent = "Vehicle found.";
 
-        const metaHtml = `
-          <div class="meta">
-            <div><strong>Vehicle ID:</strong> ${data.vehicleId}</div>
-            <div><strong>Event ID:</strong> ${data.eventId}</div>
-            <div><strong>Event Time:</strong> ${data.timeAt}</div>
-            <div><strong>Images Found:</strong> ${data.imageCount}</div>
+        const summaryHtml = `
+          <div class="summary">
+            <div><strong>Requested Vehicle ID:</strong> ${escapeHtml(data.requestedVehicleId)}</div>
+            <div><strong>Matched Vehicle ID:</strong> ${escapeHtml(data.matchedVehicleId)}</div>
+            <div><strong>Event ID:</strong> ${escapeHtml(data.eventId)}</div>
+            <div><strong>Event Time:</strong> ${escapeHtml(data.eventTime)}</div>
+            <div><strong>Context Present:</strong> ${data.hasContext ? "Yes" : "No"}</div>
+            <div><strong>Images Found:</strong> ${escapeHtml(data.imageCount)}</div>
           </div>
         `;
 
-        const galleryHtml = data.images
-          .map(function (image) {
-            return `
-              <div class="image-card">
-                <div class="label">${image.label}</div>
-                <img src="${image.imageUrl}" alt="${image.label}" />
-              </div>
-            `;
-          })
-          .join("");
+        const galleryHtml = data.images.map(function (image, index) {
+          const safeLabel = escapeHtml(image.label);
+          const safeUrl = escapeHtml(image.rawUrl);
 
-        resultBox.innerHTML = metaHtml + `<div class="gallery">${galleryHtml}</div>`;
+          return `
+            <div class="image-card">
+              <div class="label">Camera ${index + 1}: ${safeLabel}</div>
+              <div class="link-row">
+                <a href="${safeUrl}" target="_blank" rel="noopener noreferrer">Open image in new tab</a>
+              </div>
+              <div class="url-box">${safeUrl}</div>
+              <img
+                src="${safeUrl}"
+                alt="${safeLabel}"
+                onload="this.nextElementSibling.textContent='Preview loaded in page.'"
+                onerror="this.nextElementSibling.textContent='Preview failed in page.'"
+              />
+              <div class="result-note">Checking preview...</div>
+            </div>
+          `;
+        }).join("");
+
+        resultBox.innerHTML = summaryHtml + `<div class="gallery">${galleryHtml}</div>`;
+
+        if (!data.images.length) {
+          statusBox.textContent = "Vehicle found, but no image links were extracted.";
+        }
       } catch (error) {
-        statusBox.textContent = "Failed to load images.";
+        statusBox.textContent = "Failed to load vehicle data.";
       }
     });
   </script>
