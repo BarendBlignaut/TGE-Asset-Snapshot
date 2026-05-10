@@ -1,3 +1,5 @@
+const APP_VERSION = "1.1";
+
 function parseJson(text) {
   try {
     return JSON.parse(text);
@@ -21,14 +23,17 @@ function getMediaFilesFromEvent(event) {
 }
 
 function buildLabel(mediaFile, index) {
-  const source = mediaFile?.source || "Camera";
-  const details = mediaFile?.imageDetails?.sources;
+  const detailedSources = mediaFile?.imageDetails?.sources;
+  const firstSource =
+    Array.isArray(detailedSources) && detailedSources.length > 0
+      ? detailedSources[0]
+      : null;
 
-  if (Array.isArray(details) && details.length > 0) {
-    return source + " (" + details.join(", ") + ")";
+  if (firstSource) {
+    return firstSource;
   }
 
-  return source + " " + (index + 1);
+  return "CAM " + (index + 1);
 }
 
 async function fetchCameraEvents(env) {
@@ -82,27 +87,33 @@ export default {
 
       if (!vehicleId) {
         return Response.json(
-          { error: "vehicleId is required." },
+          {
+            version: APP_VERSION,
+            error: "vehicleId is required."
+          },
           { status: 400 }
         );
       }
 
       try {
         const events = await fetchCameraEvents(env);
-        const latestEvent = getLatestMatchingEvent(events, vehicleId);
+        const matchedEvent = getLatestMatchingEvent(events, vehicleId);
 
-        if (!latestEvent) {
+        if (!matchedEvent) {
           return Response.json(
-            { error: "No events found for that vehicle ID." },
+            {
+              version: APP_VERSION,
+              error: "No events found for that vehicle ID."
+            },
             { status: 404 }
           );
         }
 
-        const mediaFiles = getMediaFilesFromEvent(latestEvent);
+        const mediaFiles = getMediaFilesFromEvent(matchedEvent);
 
         const images = mediaFiles.map(function (mediaFile, index) {
           return {
-            index: index,
+            cameraNumber: index + 1,
             label: buildLabel(mediaFile, index),
             rawUrl: mediaFile.mediaFile
           };
@@ -110,12 +121,12 @@ export default {
 
         return Response.json(
           {
+            version: APP_VERSION,
             requestedVehicleId: vehicleId,
-            matchedVehicleId: latestEvent.vehicleId,
-            eventId: latestEvent.id,
-            eventTime: latestEvent.timeAt,
+            matchedVehicleId: matchedEvent.vehicleId,
+            eventId: matchedEvent.id,
+            eventTime: matchedEvent.timeAt,
             imageCount: images.length,
-            hasContext: Boolean(latestEvent?.attributes?.context),
             images: images
           },
           {
@@ -126,7 +137,10 @@ export default {
         );
       } catch (error) {
         return Response.json(
-          { error: error.message || "Request failed." },
+          {
+            version: APP_VERSION,
+            error: error.message || "Request failed."
+          },
           { status: 500 }
         );
       }
