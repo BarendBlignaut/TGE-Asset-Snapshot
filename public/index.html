@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TGE Asset Snapshot</title>
+</head>
+<body>
+  <button id="testBtn">Test API</button>
+  <pre id="output"></pre>
+
+  <script>
+    document.getElementById("testBtn").addEventListener("click", async function () {
+      const output = document.getElementById("output");
+      output.textContent = "Loading...";
+
+      try {
+        const response = await fetch("/api/events");
+        const text = await response.text();
+
+        if (!response.ok) {
+          output.textContent = "FAILED\n\n" + text;
+          return;
+        }
+
+        output.textContent = text;
+      } catch (error) {
+        output.textContent = "FAILED\n\n" + error.message;
+      }
+    });
+  </script>
+</body>
+</html>
