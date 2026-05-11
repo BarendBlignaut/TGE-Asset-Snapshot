@@ -1,409 +1,879 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TGE Asset Snapshot</title>
-    <style>
-      :root {
-        color-scheme: light;
-        --bg: #eef3f0;
-        --surface: rgba(255, 255, 255, 0.88);
-        --surface-strong: #ffffff;
-        --text: #10221d;
-        --muted: #51625c;
-        --line: rgba(16, 34, 29, 0.1);
-        --brand: #0d7f5c;
-        --brand-deep: #074f39;
-        --accent: #dff5eb;
-        --shadow: 0 20px 50px rgba(25, 55, 46, 0.08);
-      }
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TGE Asset Snapshot</title>
+  <style>
+    :root {
+      --tge-green: #00a651;
+      --tge-green-dark: #007a3b;
+      --tge-green-soft: #e9f8f0;
+      --tge-yellow: #ffd24a;
+      --ink: #1f2a24;
+      --muted: #64736c;
+      --line: #d7e2db;
+      --surface: #ffffff;
+      --surface-alt: #f5f8f6;
+      --shadow: 0 20px 48px rgba(17, 39, 29, 0.08);
+      --radius: 8px;
+    }
 
-      * {
-        box-sizing: border-box;
-      }
+    * {
+      box-sizing: border-box;
+    }
 
-      body {
-        margin: 0;
-        min-height: 100vh;
-        font-family: "Segoe UI", Arial, sans-serif;
-        color: var(--text);
-        background:
-          radial-gradient(circle at top left, rgba(13, 127, 92, 0.12), transparent 24rem),
-          linear-gradient(180deg, #f8fbfa 0%, var(--bg) 100%);
-      }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      color: var(--ink);
+      background:
+        linear-gradient(180deg, #eff6f1 0%, #f7faf8 180px, #f4f7f5 100%);
+    }
 
-      .page {
-        width: min(1180px, calc(100% - 32px));
-        margin: 0 auto;
-        padding: 32px 0 48px;
-      }
+    .shell {
+      min-height: 100vh;
+    }
 
-      .masthead {
-        padding: 8px 0 28px;
-      }
+    .topbar {
+      background: linear-gradient(90deg, #0d5f3a 0%, var(--tge-green-dark) 45%, var(--tge-green) 100%);
+      color: #fff;
+      padding: 16px 24px;
+      border-bottom: 4px solid rgba(255, 255, 255, 0.18);
+      box-shadow: 0 10px 30px rgba(0, 90, 45, 0.18);
+    }
 
-      .logo-text {
-        display: inline-block;
-        font-size: 0.95rem;
-        font-weight: 800;
-        line-height: 1.05;
-        letter-spacing: 0.04em;
-        color: var(--brand-deep);
-      }
+    .topbar-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
 
-      .badge-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin: 18px 0 20px;
-      }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
 
-      .badge {
-        padding: 8px 12px;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.9);
-        border: 1px solid var(--line);
-        color: var(--muted);
-        font-size: 14px;
-      }
+    .brand-mark {
+      width: 126px;
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 10px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+    }
 
-      .badge.accent {
-        background: var(--accent);
-        color: var(--brand-deep);
-      }
+    .brand-mark img {
+      max-width: 100%;
+      max-height: 100%;
+      display: block;
+    }
 
-      h1,
-      h2,
-      p {
-        margin: 0;
-      }
+    .brand-copy h1 {
+      margin: 0;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--tge-yellow);
+    }
 
-      h1 {
-        font-size: clamp(2.2rem, 4vw, 4rem);
-        line-height: 1.02;
-        margin-bottom: 10px;
-      }
+    .brand-copy p {
+      margin: 2px 0 0;
+      font-size: 0.92rem;
+      color: rgba(255, 255, 255, 0.8);
+    }
 
-      h2 {
-        font-size: clamp(1.5rem, 2vw, 2.2rem);
-        line-height: 1.15;
-      }
+    .status-strip {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
 
-      .lede,
-      .copy {
-        color: var(--muted);
-        line-height: 1.6;
-        max-width: 70ch;
-      }
+    .status-pill {
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 0.84rem;
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      backdrop-filter: blur(10px);
+    }
 
-      .hero-grid,
-      .triple-grid {
-        display: grid;
-        gap: 18px;
-        margin-bottom: 18px;
-      }
+    .page {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 28px 24px 56px;
+    }
 
-      .hero-grid {
-        grid-template-columns: 1.3fr 1fr;
-      }
+    .hero {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 24px;
+      animation: rise 0.55s ease both;
+    }
 
-      .triple-grid {
-        grid-template-columns: repeat(3, 1fr);
-      }
+    .hero-copy h2 {
+      margin: 0 0 10px;
+      font-size: 1.85rem;
+      line-height: 1.1;
+    }
 
-      .panel {
-        background: var(--surface);
-        backdrop-filter: blur(8px);
-        border: 1px solid rgba(255, 255, 255, 0.6);
-        border-radius: 8px;
-        box-shadow: var(--shadow);
-        padding: 24px;
-      }
+    .hero-copy p {
+      margin: 0;
+      max-width: 58ch;
+      color: var(--muted);
+    }
 
-      .eyebrow {
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        font-size: 12px;
-        font-weight: 700;
-        color: var(--brand);
-        margin-bottom: 14px;
-      }
+    .lookup {
+      margin-top: 22px;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: end;
+    }
 
-      .search-form {
-        margin-top: 22px;
-      }
+    .field {
+      flex: 1 1 260px;
+    }
 
-      .search-form label {
-        display: block;
-        margin-bottom: 8px;
-        font-size: 14px;
-        color: var(--muted);
-      }
+    .field label {
+      display: block;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
 
-      .search-row {
-        display: flex;
-        gap: 10px;
-      }
+    .field input,
+    .field select {
+      width: 100%;
+      height: 48px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0 14px;
+      font: inherit;
+      color: var(--ink);
+      background: #fff;
+    }
 
-      input,
-      button {
-        font: inherit;
-      }
+    .action-btn {
+      height: 48px;
+      border: 0;
+      border-radius: 8px;
+      padding: 0 18px;
+      background: var(--tge-green);
+      color: #fff;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 12px 28px rgba(0, 166, 81, 0.22);
+      transition: transform 160ms ease, background 160ms ease;
+    }
 
-      input {
-        flex: 1;
-        min-width: 0;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 14px 16px;
-        background: var(--surface-strong);
-      }
+    .action-btn:hover {
+      transform: translateY(-1px);
+      background: var(--tge-green-dark);
+    }
 
-      button {
-        border: 0;
-        border-radius: 8px;
-        padding: 14px 18px;
-        background: linear-gradient(135deg, var(--brand) 0%, var(--brand-deep) 100%);
-        color: #fff;
-        font-weight: 700;
-        cursor: pointer;
-      }
+    .hero-panel {
+      background:
+        linear-gradient(160deg, rgba(0, 166, 81, 0.12), rgba(0, 122, 59, 0.04)),
+        var(--surface-alt);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 18px;
+      display: grid;
+      align-content: space-between;
+      gap: 18px;
+    }
 
-      .stat-grid,
-      .metric-grid,
-      .detail-list {
-        display: grid;
-        gap: 14px;
-      }
+    .hero-panel h3,
+    .section-title {
+      margin: 0;
+      font-size: 1rem;
+    }
 
-      .stat-grid {
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .mini-metric {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .mini-metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.75rem;
+      margin-bottom: 4px;
+    }
+
+    .mini-metric strong {
+      font-size: 1.05rem;
+    }
+
+    .stack {
+      display: grid;
+      gap: 18px;
+      margin-top: 24px;
+    }
+
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 22px;
+      animation: rise 0.6s ease both;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+
+    .section-kicker {
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--tge-green-dark);
+      font-weight: 700;
+    }
+
+    .meta-grid,
+    .metrics-grid,
+    .sd-grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .metrics-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .meta-item,
+    .metric-item,
+    .sd-item {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, #fff 0%, #fbfdfc 100%);
+    }
+
+    .meta-item span,
+    .metric-item span,
+    .sd-item span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-bottom: 6px;
+    }
+
+    .meta-item strong,
+    .metric-item strong,
+    .sd-item strong {
+      display: block;
+      font-size: 1rem;
+    }
+
+    .metric-item strong {
+      font-size: 1.5rem;
+      color: var(--tge-green-dark);
+    }
+
+    .gps-grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .device-list {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 14px;
+    }
+
+    .device-card {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, #fff 0%, #fbfdfc 100%);
+    }
+
+    .device-card h4 {
+      margin: 0 0 10px;
+      font-size: 0.95rem;
+    }
+
+    .device-card p {
+      margin: 0 0 6px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .gps-card {
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 122, 59, 0.22);
+      background: linear-gradient(180deg, #eefaf2 0%, #e4f6eb 100%);
+    }
+
+    .gps-card h4 {
+      margin: 0 0 8px;
+      font-size: 0.95rem;
+    }
+
+    .gps-card p {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .gps-tag {
+      display: inline-block;
+      margin-top: 4px;
+      padding: 5px 8px;
+      font-size: 0.74rem;
+      border-radius: 999px;
+      background: rgba(0, 122, 59, 0.1);
+      color: var(--tge-green-dark);
+      font-weight: 700;
+    }
+
+    .camera-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .camera-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .camera-frame {
+      aspect-ratio: 4 / 3;
+      background:
+        linear-gradient(155deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.02)),
+        linear-gradient(135deg, #d8e6de 0%, #bccfc5 45%, #edf5f0 100%);
+      position: relative;
+      display: grid;
+      place-items: center;
+    }
+
+    .camera-frame::before {
+      content: "";
+      position: absolute;
+      inset: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.38);
+      border-radius: 6px;
+    }
+
+    .camera-frame svg {
+      width: 38%;
+      height: auto;
+      opacity: 0.38;
+    }
+
+    .camera-meta {
+      padding: 12px;
+    }
+
+    .camera-meta strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 0.95rem;
+    }
+
+    .camera-meta span {
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .location-layout {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .map-panel {
+      min-height: 320px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0)),
+        linear-gradient(135deg, #d6efe1 0%, #bfe0cc 46%, #eaf7f0 100%);
+      position: relative;
+    }
+
+    .map-panel iframe {
+      width: 100%;
+      height: 100%;
+      min-height: 320px;
+      border: 0;
+      display: block;
+      filter: saturate(0.85) hue-rotate(-8deg);
+    }
+
+    .map-badge {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      z-index: 1;
+      padding: 8px 10px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #fff;
+      background: rgba(0, 122, 59, 0.86);
+      box-shadow: 0 8px 16px rgba(0, 90, 45, 0.2);
+    }
+
+    .location-meta {
+      display: grid;
+      gap: 14px;
+    }
+
+    .location-card {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, #fff 0%, #fbfdfc 100%);
+    }
+
+    .location-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-bottom: 6px;
+    }
+
+    .location-card strong {
+      display: block;
+      font-size: 1rem;
+    }
+
+    @keyframes rise {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 1120px) {
+      .hero,
+      .meta-grid,
+      .gps-grid,
+      .camera-grid,
+      .device-list,
+      .location-layout {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
-      .kv {
+      .metrics-grid,
+      .sd-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 760px) {
+      .page {
+        padding: 18px 14px 40px;
+      }
+
+      .topbar {
         padding: 14px;
-        border-radius: 8px;
-        border: 1px solid var(--line);
-        background: rgba(255, 255, 255, 0.82);
       }
 
-      .kv-label,
-      .camera-id,
-      .camera-state {
-        display: block;
-        font-size: 13px;
-        color: var(--muted);
+      .hero,
+      .meta-grid,
+      .metrics-grid,
+      .gps-grid,
+      .sd-grid,
+      .camera-grid,
+      .hero-grid,
+      .device-list,
+      .location-layout {
+        grid-template-columns: 1fr;
       }
 
-      .kv-value {
-        display: block;
-        margin-top: 6px;
-        font-size: 1.05rem;
-        line-height: 1.35;
+      .hero {
+        padding: 20px;
       }
 
-      .camera-grid {
-        display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
-        gap: 14px;
-      }
-
-      .camera-card {
-        min-height: 132px;
+      .section {
         padding: 18px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background:
-          linear-gradient(180deg, rgba(13, 127, 92, 0.08), rgba(255, 255, 255, 0.92)),
-          var(--surface-strong);
       }
 
-      .camera-card strong {
-        display: block;
-        margin: 8px 0 18px;
-        line-height: 1.35;
+      .field,
+      .lookup {
+        width: 100%;
       }
 
-      @media (max-width: 980px) {
-        .hero-grid,
-        .triple-grid,
-        .camera-grid {
-          grid-template-columns: 1fr;
-        }
-
-        .stat-grid {
-          grid-template-columns: 1fr;
-        }
+      .action-btn {
+        width: 100%;
       }
 
-      @media (max-width: 640px) {
-        .page {
-          width: min(100% - 20px, 1180px);
-          padding-top: 20px;
-        }
-
-        .panel {
-          padding: 18px;
-        }
-
-        .search-row {
-          flex-direction: column;
-        }
+      .field input,
+      .field select {
+        width: 100%;
       }
-    </style>
-  </head>
-  <body>
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <div class="brand-mark">
+            <img src="data:image/png;base64,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" alt="Team Global Express logo" />
+          </div>
+          <div class="brand-copy">
+            <h1>TGE Asset Snapshot</h1>
+            <p>Latest asset status, location, system health and camera imagery</p>
+          </div>
+        </div>
+        <div class="status-strip">
+          <div class="status-pill">Mock View 2.0</div>
+          <div class="status-pill">Snapshot Ready</div>
+          <div class="status-pill">API Hook Pending</div>
+        </div>
+      </div>
+    </header>
+
     <main class="page">
-      <header class="masthead">
-        <div class="logo-text" aria-label="Team Global Express">TEAM<br />GLOBAL<br />EXPRESS</div>
-        <div class="badge-row">
-          <span class="badge">Mock View 1.0</span>
-          <span class="badge accent">Snapshot Ready</span>
-          <span class="badge">API Hook Pending</span>
-        </div>
-        <h1>TGE Asset Snapshot</h1>
-        <p class="lede">Latest asset status, location, system health and camera imagery.</p>
-      </header>
-
-      <section class="hero-grid">
-        <article class="panel search-panel">
-          <p class="eyebrow">Asset Search</p>
+      <section class="hero">
+        <div class="hero-copy">
+          <div class="section-kicker">Asset Search</div>
           <h2>Track one vehicle, inspect one snapshot, move straight to the evidence.</h2>
-          <p class="copy">
-            Enter a fleet number, confirm the latest snapshot, and review the operational picture in one
-            place.
-          </p>
-          <form id="asset-form" class="search-form">
-            <label for="asset-id">Vehicle ID</label>
-            <div class="search-row">
-              <input id="asset-id" name="assetId" type="text" value="349521" />
-              <button type="submit">Load Snapshot</button>
+          <p>This mock layout is shaped around the final lookup flow: enter the fleet number, confirm the asset exists, then populate the grouped operational sections from the linked APIs without exposing the internal system ID to the user.</p>
+
+          <form class="lookup">
+            <div class="field">
+              <label for="asset-id">Fleet Number</label>
+              <input id="asset-id" type="text" placeholder="Enter fleet number" value="90134" />
             </div>
+            <button class="action-btn" type="button">Load Asset Snapshot</button>
           </form>
-        </article>
-
-        <article class="panel summary-panel">
-          <p class="eyebrow">Current Snapshot</p>
-          <div id="summary" class="stat-grid">
-            <div class="kv">
-              <span class="kv-label">Asset</span>
-              <strong class="kv-value">349521</strong>
-            </div>
-            <div class="kv">
-              <span class="kv-label">Snapshot Time</span>
-              <strong class="kv-value">09 May 2026 22:09</strong>
-            </div>
-            <div class="kv">
-              <span class="kv-label">Status</span>
-              <strong class="kv-value">Ignition Active</strong>
-            </div>
-            <div class="kv">
-              <span class="kv-label">Sync</span>
-              <strong class="kv-value">Ready</strong>
-            </div>
-          </div>
-        </article>
-      </section>
-
-      <section class="triple-grid">
-        <article class="panel">
-          <p class="eyebrow">Performance</p>
-          <div id="metrics" class="metric-grid">
-            <div class="kv">
-              <span class="kv-label">Total Distance</span>
-              <strong class="kv-value">317,418 km</strong>
-            </div>
-            <div class="kv">
-              <span class="kv-label">Current Speed</span>
-              <strong class="kv-value">27.9 km/h</strong>
-            </div>
-            <div class="kv">
-              <span class="kv-label">Fuel</span>
-              <strong class="kv-value">161,718 L</strong>
-            </div>
-            <div class="kv">
-              <span class="kv-label">Battery</span>
-              <strong class="kv-value">28.6 V</strong>
-            </div>
-          </div>
-        </article>
-
-        <article class="panel">
-          <p class="eyebrow">GPS Data</p>
-          <div id="gps" class="detail-list">
-            <div class="kv">
-              <span class="kv-label">Latitude / Longitude</span>
-              <strong class="kv-value">-28.22533, 153.55599</strong>
-            </div>
-            <div class="kv">
-              <span class="kv-label">Accuracy</span>
-              <strong class="kv-value">High</strong>
-            </div>
-            <div class="kv">
-              <span class="kv-label">Bearing / Altitude</span>
-              <strong class="kv-value">315.9°, 6m</strong>
-            </div>
-            <div class="kv">
-              <span class="kv-label">Mapped Area</span>
-              <strong class="kv-value">Gold Coast corridor, outbound route</strong>
-            </div>
-          </div>
-        </article>
-
-        <article class="panel">
-          <p class="eyebrow">Storage</p>
-          <div id="storage" class="detail-list">
-            <div class="kv">
-              <span class="kv-label">SD Card 1</span>
-              <strong class="kv-value">Operational</strong>
-            </div>
-            <div class="kv">
-              <span class="kv-label">SD Card 2</span>
-              <strong class="kv-value">Operational</strong>
-            </div>
-            <div class="kv">
-              <span class="kv-label">Video Status</span>
-              <strong class="kv-value">Available</strong>
-            </div>
-            <div class="kv">
-              <span class="kv-label">Upload Request</span>
-              <strong class="kv-value">Queued Successfully</strong>
-            </div>
-          </div>
-        </article>
-      </section>
-
-      <section class="panel">
-        <p class="eyebrow">Camera Snapshots</p>
-        <div id="cameras" class="camera-grid">
-          <article class="camera-card">
-            <span class="camera-id">Camera 1</span>
-            <strong>Road Facing</strong>
-            <span class="camera-state">Latest image set available</span>
-          </article>
-          <article class="camera-card">
-            <span class="camera-id">Camera 2</span>
-            <strong>Driver Facing</strong>
-            <span class="camera-state">Latest image set available</span>
-          </article>
-          <article class="camera-card">
-            <span class="camera-id">Camera 3</span>
-            <strong>In-Cab Driver Facing</strong>
-            <span class="camera-state">Latest image set available</span>
-          </article>
-          <article class="camera-card">
-            <span class="camera-id">Camera 4</span>
-            <strong>Driver External</strong>
-            <span class="camera-state">Latest image set available</span>
-          </article>
-          <article class="camera-card">
-            <span class="camera-id">Camera 5</span>
-            <strong>Additional Camera</strong>
-            <span class="camera-state">Latest image set available</span>
-          </article>
         </div>
+
+        <aside class="hero-panel">
+          <div>
+            <div class="section-kicker">Current Snapshot</div>
+            <h3>Fleet 90134</h3>
+          </div>
+          <div class="hero-grid">
+            <div class="mini-metric">
+              <span>Request Time</span>
+              <strong>10 May 2026 13:52</strong>
+            </div>
+            <div class="mini-metric">
+              <span>Lookup Status</span>
+              <strong>Asset Confirmed</strong>
+            </div>
+            <div class="mini-metric">
+              <span>Fleet Number</span>
+              <strong>90134</strong>
+            </div>
+            <div class="mini-metric">
+              <span>Vehicle ID</span>
+              <strong>349521</strong>
+            </div>
+          </div>
+        </aside>
       </section>
+
+      <div class="stack">
+        <section class="section">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">Vehicle Information</div>
+              <h3 class="section-title">Asset Details</h3>
+            </div>
+          </div>
+          <div class="meta-grid">
+            <div class="meta-item"><span>Vehicle ID</span><strong>349521</strong></div>
+            <div class="meta-item"><span>Fleet Number</span><strong>90134</strong></div>
+            <div class="meta-item"><span>Registration</span><strong>XWY9S1</strong></div>
+            <div class="meta-item"><span>VIN</span><strong>YV5P0N0D3PD219962</strong></div>
+            <div class="meta-item"><span>Make</span><strong>Volvo</strong></div>
+            <div class="meta-item"><span>Model</span><strong>FH</strong></div>
+            <div class="meta-item"><span>Year of Manufacture</span><strong>2024</strong></div>
+            <div class="meta-item"><span>Driver Login</span><strong>Damien Adams</strong></div>
+          </div>
+          <div class="device-list">
+            <div class="device-card">
+              <h4>Tracking System</h4>
+              <p>Serial: Pending API mapping</p>
+              <p>IMEI: Pending API mapping</p>
+            </div>
+            <div class="device-card">
+              <h4>Camera System</h4>
+              <p>Serial: Pending API mapping</p>
+              <p>IMEI: Pending API mapping</p>
+            </div>
+            <div class="device-card">
+              <h4>Tablet</h4>
+              <p>Serial: Display if fitted</p>
+              <p>IMEI: Display if fitted</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">Performance</div>
+              <h3 class="section-title">Vehicle Tracking Metrics</h3>
+            </div>
+          </div>
+          <div class="metrics-grid">
+            <div class="metric-item">
+              <span>Odometer</span>
+              <strong>316,471.8 km</strong>
+            </div>
+            <div class="metric-item">
+              <span>Speed</span>
+              <strong>18.0 km/h</strong>
+            </div>
+            <div class="metric-item">
+              <span>RPM</span>
+              <strong>1,401</strong>
+            </div>
+            <div class="metric-item">
+              <span>Engine Hours</span>
+              <strong>4,625.4</strong>
+            </div>
+            <div class="metric-item">
+              <span>Oil Temperature</span>
+              <strong>91.0°C</strong>
+            </div>
+            <div class="metric-item">
+              <span>Oil Pressure</span>
+              <strong>392.0</strong>
+            </div>
+            <div class="metric-item">
+              <span>Engine Load</span>
+              <strong>14%</strong>
+            </div>
+            <div class="metric-item">
+              <span>Gear</span>
+              <strong>-1</strong>
+            </div>
+            <div class="metric-item">
+              <span>Fuel Consumption</span>
+              <strong>161,559.3</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">GPIO Data State</div>
+              <h3 class="section-title">Digital Inputs And Outputs</h3>
+            </div>
+          </div>
+          <div class="gps-grid">
+            <div class="gps-card">
+              <h4>Seatbelt</h4>
+              <p>Driver fastened</p>
+              <span class="gps-tag">DIGIN 1</span>
+            </div>
+            <div class="gps-card">
+              <h4>Door</h4>
+              <p>Driver door closed</p>
+              <span class="gps-tag">DIGIN 2</span>
+            </div>
+            <div class="gps-card">
+              <h4>Park Brake</h4>
+              <p>Current state off</p>
+              <span class="gps-tag">DIGIN 3</span>
+            </div>
+            <div class="gps-card">
+              <h4>Duress</h4>
+              <p>Current state on</p>
+              <span class="gps-tag">DIGIN 4</span>
+            </div>
+            <div class="gps-card">
+              <h4>Siren</h4>
+              <p>Current state off</p>
+              <span class="gps-tag">DIGOUT 2</span>
+            </div>
+            <div class="gps-card">
+              <h4>LED</h4>
+              <p>Current state off</p>
+              <span class="gps-tag">DIGOUT 3</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">Storage</div>
+              <h3 class="section-title">SD Card Information</h3>
+            </div>
+          </div>
+          <div class="sd-grid">
+            <div class="sd-item"><span>SD Card 1 Present</span><strong>Yes</strong></div>
+            <div class="sd-item"><span>SD Card 1 Space</span><strong>128 GB</strong></div>
+            <div class="sd-item"><span>SD Card 2 Present</span><strong>Yes</strong></div>
+            <div class="sd-item"><span>SD Card 2 Space</span><strong>128 GB</strong></div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">Camera Snapshots</div>
+              <h3 class="section-title">Latest Image Set</h3>
+            </div>
+          </div>
+          <div class="camera-grid">
+            <article class="camera-card">
+              <div class="camera-frame">
+                <svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                  <path d="M16 22h10l4-5h8l4 5h6a6 6 0 0 1 6 6v16a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V28a6 6 0 0 1 6-6Z" stroke="#1f2a24" stroke-width="2.5"/>
+                  <circle cx="32" cy="36" r="9" stroke="#1f2a24" stroke-width="2.5"/>
+                </svg>
+              </div>
+              <div class="camera-meta">
+                <strong>Road Facing</strong>
+                <span>Preview image area</span>
+              </div>
+            </article>
+            <article class="camera-card">
+              <div class="camera-frame">
+                <svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                  <path d="M16 22h10l4-5h8l4 5h6a6 6 0 0 1 6 6v16a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V28a6 6 0 0 1 6-6Z" stroke="#1f2a24" stroke-width="2.5"/>
+                  <circle cx="32" cy="36" r="9" stroke="#1f2a24" stroke-width="2.5"/>
+                </svg>
+              </div>
+              <div class="camera-meta">
+                <strong>Driver Facing</strong>
+                <span>Preview image area</span>
+              </div>
+            </article>
+            <article class="camera-card">
+              <div class="camera-frame">
+                <svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                  <path d="M16 22h10l4-5h8l4 5h6a6 6 0 0 1 6 6v16a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V28a6 6 0 0 1 6-6Z" stroke="#1f2a24" stroke-width="2.5"/>
+                  <circle cx="32" cy="36" r="9" stroke="#1f2a24" stroke-width="2.5"/>
+                </svg>
+              </div>
+              <div class="camera-meta">
+                <strong>In-Cab Driver Facing Camera</strong>
+                <span>Preview image area</span>
+              </div>
+            </article>
+            <article class="camera-card">
+              <div class="camera-frame">
+                <svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                  <path d="M16 22h10l4-5h8l4 5h6a6 6 0 0 1 6 6v16a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V28a6 6 0 0 1 6-6Z" stroke="#1f2a24" stroke-width="2.5"/>
+                  <circle cx="32" cy="36" r="9" stroke="#1f2a24" stroke-width="2.5"/>
+                </svg>
+              </div>
+              <div class="camera-meta">
+                <strong>Driver External</strong>
+                <span>No image to preview</span>
+              </div>
+            </article>
+            <article class="camera-card">
+              <div class="camera-frame">
+                <svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                  <path d="M16 22h10l4-5h8l4 5h6a6 6 0 0 1 6 6v16a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V28a6 6 0 0 1 6-6Z" stroke="#1f2a24" stroke-width="2.5"/>
+                  <circle cx="32" cy="36" r="9" stroke="#1f2a24" stroke-width="2.5"/>
+                </svg>
+              </div>
+              <div class="camera-meta">
+                <strong>Left External</strong>
+                <span>No image to preview</span>
+              </div>
+            </article>
+          </div>
+          <div class="footer-note">This mock is intentionally frontend-only. Once the layout is signed off, each section can be wired back to its own API dataset without changing the visual structure.</div>
+        </section>
+
+        <section class="section">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">Last Known Location</div>
+              <h3 class="section-title">Map View And Coordinates</h3>
+            </div>
+          </div>
+          <div class="location-layout">
+            <div class="map-panel">
+              <div class="map-badge">Last Location</div>
+              <iframe
+                title="Last known location map"
+                loading="lazy"
+                referrerpolicy="no-referrer-when-downgrade"
+                src="https://www.openstreetmap.org/export/embed.html?bbox=151.44739%2C-33.09536%2C151.50739%2C-33.05536&layer=mapnik&marker=-33.07536%2C151.47739">
+              </iframe>
+            </div>
+            <div class="location-meta">
+              <div class="location-card">
+                <span>Latitude</span>
+                <strong>-33.07536</strong>
+              </div>
+              <div class="location-card">
+                <span>Longitude</span>
+                <strong>151.47739</strong>
+              </div>
+              <div class="location-card">
+                <span>Map Source</span>
+                <strong>Placeholder preview for final live map feed</strong>
+              </div>
+              <div class="location-card">
+                <span>Future Data Hook</span>
+                <strong>Bind from last GPS latitude and longitude in returned asset data</strong>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </main>
-  </body>
+  </div>
+</body>
 </html>
