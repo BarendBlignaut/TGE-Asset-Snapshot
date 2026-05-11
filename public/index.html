@@ -24,8 +24,8 @@
           <p class="eyebrow">Asset Search</p>
           <h2>Track one vehicle, inspect one snapshot, move straight to the evidence.</h2>
           <p class="copy">
-            This frontend is now laid out for Cloudflare Workers with a root worker entrypoint and static
-            assets under <code>public</code>, so it can deploy cleanly without a separate build step.
+            Enter a fleet number, confirm the latest snapshot, and review the operational picture in one
+            place.
           </p>
           <form id="asset-form" class="search-form">
             <label for="asset-id">Vehicle ID</label>
@@ -38,31 +38,123 @@
 
         <article class="panel summary-panel">
           <p class="eyebrow">Current Snapshot</p>
-          <div id="summary" class="stat-grid"></div>
+          <div id="summary" class="stat-grid">
+            <div class="kv">
+              <span class="kv-label">Asset</span>
+              <strong class="kv-value">349521</strong>
+            </div>
+            <div class="kv">
+              <span class="kv-label">Snapshot Time</span>
+              <strong class="kv-value">09 May 2026 22:09</strong>
+            </div>
+            <div class="kv">
+              <span class="kv-label">Status</span>
+              <strong class="kv-value">Ignition Active</strong>
+            </div>
+            <div class="kv">
+              <span class="kv-label">Sync</span>
+              <strong class="kv-value">Ready</strong>
+            </div>
+          </div>
         </article>
       </section>
 
       <section class="triple-grid">
         <article class="panel">
           <p class="eyebrow">Performance</p>
-          <div id="metrics" class="metric-grid"></div>
+          <div id="metrics" class="metric-grid">
+            <div class="kv">
+              <span class="kv-label">Total Distance</span>
+              <strong class="kv-value">317,418 km</strong>
+            </div>
+            <div class="kv">
+              <span class="kv-label">Current Speed</span>
+              <strong class="kv-value">27.9 km/h</strong>
+            </div>
+            <div class="kv">
+              <span class="kv-label">Fuel</span>
+              <strong class="kv-value">161,718 L</strong>
+            </div>
+            <div class="kv">
+              <span class="kv-label">Battery</span>
+              <strong class="kv-value">28.6 V</strong>
+            </div>
+          </div>
         </article>
         <article class="panel">
           <p class="eyebrow">GPS Data</p>
-          <div id="gps" class="detail-list"></div>
+          <div id="gps" class="detail-list">
+            <div class="kv">
+              <span class="kv-label">Latitude / Longitude</span>
+              <strong class="kv-value">-28.22533, 153.55599</strong>
+            </div>
+            <div class="kv">
+              <span class="kv-label">Accuracy</span>
+              <strong class="kv-value">High</strong>
+            </div>
+            <div class="kv">
+              <span class="kv-label">Bearing / Altitude</span>
+              <strong class="kv-value">315.9°, 6m</strong>
+            </div>
+            <div class="kv">
+              <span class="kv-label">Mapped Area</span>
+              <strong class="kv-value">Gold Coast corridor, outbound route</strong>
+            </div>
+          </div>
         </article>
         <article class="panel">
           <p class="eyebrow">Storage</p>
-          <div id="storage" class="detail-list"></div>
+          <div id="storage" class="detail-list">
+            <div class="kv">
+              <span class="kv-label">SD Card 1</span>
+              <strong class="kv-value">Operational</strong>
+            </div>
+            <div class="kv">
+              <span class="kv-label">SD Card 2</span>
+              <strong class="kv-value">Operational</strong>
+            </div>
+            <div class="kv">
+              <span class="kv-label">Video Status</span>
+              <strong class="kv-value">Available</strong>
+            </div>
+            <div class="kv">
+              <span class="kv-label">Upload Request</span>
+              <strong class="kv-value">Queued Successfully</strong>
+            </div>
+          </div>
         </article>
       </section>
 
       <section class="panel">
         <p class="eyebrow">Camera Snapshots</p>
-        <div id="cameras" class="camera-grid"></div>
+        <div id="cameras" class="camera-grid">
+          <article class="camera-card">
+            <span class="camera-id">Camera 1</span>
+            <strong>Road Facing</strong>
+            <span class="camera-state">Latest image set available</span>
+          </article>
+          <article class="camera-card">
+            <span class="camera-id">Camera 2</span>
+            <strong>Driver Facing</strong>
+            <span class="camera-state">Latest image set available</span>
+          </article>
+          <article class="camera-card">
+            <span class="camera-id">Camera 3</span>
+            <strong>In-Cab Driver Facing</strong>
+            <span class="camera-state">Latest image set available</span>
+          </article>
+          <article class="camera-card">
+            <span class="camera-id">Camera 4</span>
+            <strong>Driver External</strong>
+            <span class="camera-state">Latest image set available</span>
+          </article>
+          <article class="camera-card">
+            <span class="camera-id">Camera 5</span>
+            <strong>Additional Camera</strong>
+            <span class="camera-state">Latest image set available</span>
+          </article>
+        </div>
       </section>
     </main>
-
-    <script src="/app.js" defer></script>
   </body>
 </html>
