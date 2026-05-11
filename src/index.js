@@ -37,8 +37,8 @@ const snapshotPayload = {
     { id: 1, label: "Road Facing" },
     { id: 2, label: "Driver Facing" },
     { id: 3, label: "In-Cab Driver Facing" },
-    { id: 4, label: "Camera 4" },
-    { id: 5, label: "Driver External" }
+    { id: 4, label: "Driver External" },
+    { id: 5, label: "Additional Camera" }
   ]
 };
 
