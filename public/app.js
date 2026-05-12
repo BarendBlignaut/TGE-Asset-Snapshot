@@ -41,8 +41,8 @@ function findApprovedUser(username) {
   );
 }
 
-function showLoginError(message = "Access denied. Please contact Telematics.") {
-  loginMessage.textContent = message;
+function showLoginError() {
+  loginMessage.textContent = "Access denied. Please contact Telematics.";
 }
 
 function showLoginSuccess(user) {
@@ -87,14 +87,11 @@ function isDriverUser(tnUser) {
   });
 }
 
-async function fetchTn360UserByUsername(username) {
-  const response = await fetch(`/api/tn360-users?username=${encodeURIComponent(username)}`);
-
+async function fetchTn360Users() {
+  const response = await fetch("/api/tn360-users");
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({ error: "Unable to validate user." }));
-    throw new Error(payload.error || "Unable to validate user.");
+    throw new Error("Unable to validate user.");
   }
-
   return response.json();
 }
 
@@ -105,7 +102,10 @@ async function validateLogin(username, password) {
     return { success: false };
   }
 
-  const tnUser = await fetchTn360UserByUsername(username);
+  const tnUsers = await fetchTn360Users();
+  const tnUser = tnUsers.find(
+    (user) => String(user.username || "").toLowerCase() === String(username).trim().toLowerCase(),
+  );
 
   if (!tnUser) return { success: false };
   if (tnUser.status !== "ENABLED") return { success: false };
@@ -249,8 +249,7 @@ async function fetchVehicleByAssetNumber(assetNumber) {
   });
 
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({ error: "Asset not found." }));
-    throw new Error(payload.error || "Asset not found.");
+    throw new Error("Asset not found.");
   }
 
   return response.json();
@@ -278,7 +277,8 @@ async function fetchVehicleMeters(vehicleId) {
   });
 
   if (!response.ok) {
-    throw new Error("Meters lookup failed.");
+    console.warn("Meters lookup failed.", { vehicleId, status: response.status });
+    return [];
   }
 
   return response.json();
@@ -374,16 +374,19 @@ function formatMaxTwoDecimals(value) {
 }
 
 function extractVehicleMeters(meters) {
-  const engineHoursRecord = meters.find(
+  const meterList = Array.isArray(meters) ? meters : [];
+
+  const engineHoursRecord = meterList.find(
     (meter) =>
       String(meter.type || "").toLowerCase() === "hours" &&
-      String(meter.maintenanceType || "").toUpperCase() === "TIME",
+      (!meter.maintenanceType || String(meter.maintenanceType || "").toUpperCase() === "TIME"),
   );
 
-  const odometerRecord = meters.find(
+  const odometerRecord = meterList.find(
     (meter) =>
-      String(meter.type || "").toLowerCase() === "odometer" &&
-      String(meter.maintenanceType || "").toUpperCase() === "DISTANCE",
+      ["odometer", "distance"].includes(String(meter.type || "").toLowerCase()) &&
+      (!meter.maintenanceType ||
+        String(meter.maintenanceType || "").toUpperCase() === "DISTANCE"),
   );
 
   return {
@@ -632,9 +635,7 @@ async function handleAssetSearch(assetNumber) {
   clearAssetSearchMessage();
   resetActiveAssetLookup();
 
-  const vehicleLookupResponse = await fetchVehicleByAssetNumber(assetNumber);
-  const vehicle = vehicleLookupResponse.vehicle || vehicleLookupResponse;
-
+  const vehicle = await fetchVehicleByAssetNumber(assetNumber);
   const devices = await fetchVehicleDevices(vehicle.id);
   const mappedDevices = mapVehicleDevices(devices);
   const meters = await fetchVehicleMeters(vehicle.id);
@@ -727,7 +728,7 @@ loginForm.addEventListener("submit", async (event) => {
 
     openAppForUser(currentSessionUser);
   } catch (error) {
-    showLoginError(error.message || "Access denied. Please contact Telematics.");
+    showLoginError();
   }
 });
 
@@ -794,6 +795,6 @@ assetSearchForm.addEventListener("submit", async (event) => {
     showAssetSearchMessage("");
   } catch (error) {
     resetActiveAssetLookup();
-    showAssetSearchMessage(error.message || "Asset not found.");
+    showAssetSearchMessage("Asset not found.");
   }
 });
