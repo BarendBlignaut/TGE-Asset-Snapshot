@@ -172,6 +172,7 @@ async function handleHermesDeviceStats(request, env) {
 
   return jsonResponse(matchedDevice);
 }
+
 async function handleCameraDeviceStats(request, env) {
   requireEnv(env);
 
@@ -209,6 +210,41 @@ async function handleCameraDeviceStats(request, env) {
 
   return jsonResponse(matchedDevice);
 }
+
+async function handleCameraSnapshots(request, env) {
+  requireEnv(env);
+
+  const body = await request.json();
+  const vehicleId = String(body.vehicleId || "").trim();
+
+  if (!vehicleId) {
+    return jsonResponse({ error: "Vehicle ID is required." }, 400);
+  }
+
+  const now = new Date();
+  const to = now.toISOString();
+  const fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const from = fromDate.toISOString();
+
+  const eventsUrl = `https://api-au.telematics.com/v1/events/?key=${env.TN360_API_KEY}&pruning=B2B&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+  const response = await fetch(eventsUrl);
+
+  if (!response.ok) {
+    return jsonResponse(
+      { error: `Camera snapshot lookup failed. HTTP ${response.status}` },
+      502,
+    );
+  }
+
+  const events = await response.json();
+
+  const matchedEvents = Array.isArray(events)
+    ? events.filter((event) => String(event.vehicleId || "") === vehicleId)
+    : [];
+
+  return jsonResponse(matchedEvents);
+}
+
 export default {
   async fetch(request, env) {
     try {
@@ -240,9 +276,15 @@ export default {
       if (request.method === "POST" && url.pathname === "/api/hermes-device-stats") {
         return handleHermesDeviceStats(request, env);
       }
-if (request.method === "POST" && url.pathname === "/api/camera-device-stats") {
-  return handleCameraDeviceStats(request, env);
-}
+
+      if (request.method === "POST" && url.pathname === "/api/camera-device-stats") {
+        return handleCameraDeviceStats(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/camera-snapshots") {
+        return handleCameraSnapshots(request, env);
+      }
+
       return env.ASSETS.fetch(request);
     } catch (error) {
       return jsonResponse(
