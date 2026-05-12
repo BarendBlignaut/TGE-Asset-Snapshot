@@ -8,7 +8,19 @@ function jsonResponse(data, status = 200) {
   });
 }
 
+function requireEnv(env) {
+  if (!env.TN360_BASE_URL) {
+    throw new Error("Missing TN360_BASE_URL");
+  }
+
+  if (!env.TN360_API_KEY) {
+    throw new Error("Missing TN360_API_KEY");
+  }
+}
+
 async function handleTn360Users(request, env) {
+  requireEnv(env);
+
   const url = new URL(request.url);
   const username = String(url.searchParams.get("username") || "").trim();
 
@@ -45,6 +57,8 @@ async function handleTn360Users(request, env) {
 }
 
 async function handleVehicleLookup(request, env) {
+  requireEnv(env);
+
   const body = await request.json();
   const assetNumber = String(body.assetNumber || "").trim();
 
@@ -72,6 +86,8 @@ async function handleVehicleLookup(request, env) {
 }
 
 async function handleVehicleDevices(request, env) {
+  requireEnv(env);
+
   const body = await request.json();
   const vehicleId = String(body.vehicleId || "").trim();
 
@@ -91,6 +107,8 @@ async function handleVehicleDevices(request, env) {
 }
 
 async function handleVehicleMeters(request, env) {
+  requireEnv(env);
+
   const body = await request.json();
   const vehicleId = String(body.vehicleId || "").trim();
 
@@ -110,6 +128,8 @@ async function handleVehicleMeters(request, env) {
 }
 
 async function handleHermesDeviceStats(request, env) {
+  requireEnv(env);
+
   const body = await request.json();
   const trackerId = String(body.trackerId || "").trim();
 
@@ -129,6 +149,8 @@ async function handleHermesDeviceStats(request, env) {
 }
 
 async function handleCameraDeviceStats(request, env) {
+  requireEnv(env);
+
   const body = await request.json();
   const cameraId = String(body.cameraId || "").trim();
 
@@ -148,6 +170,8 @@ async function handleCameraDeviceStats(request, env) {
 }
 
 async function handleCameraSnapshots(request, env) {
+  requireEnv(env);
+
   const body = await request.json();
   const vehicleId = String(body.vehicleId || "").trim();
 
@@ -168,36 +192,46 @@ async function handleCameraSnapshots(request, env) {
 
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
+    try {
+      const url = new URL(request.url);
 
-    if (request.method === "POST" && url.pathname === "/api/vehicle-lookup") {
-      return handleVehicleLookup(request, env);
+      if (request.method === "POST" && url.pathname === "/api/vehicle-lookup") {
+        return handleVehicleLookup(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/vehicle-devices") {
+        return handleVehicleDevices(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/vehicle-meters") {
+        return handleVehicleMeters(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/hermes-device-stats") {
+        return handleHermesDeviceStats(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/camera-device-stats") {
+        return handleCameraDeviceStats(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/camera-snapshots") {
+        return handleCameraSnapshots(request, env);
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/tn360-users") {
+        return handleTn360Users(request, env);
+      }
+
+      return env.ASSETS.fetch(request);
+    } catch (error) {
+      return jsonResponse(
+        {
+          error: "Worker runtime failure",
+          detail: error instanceof Error ? error.message : String(error),
+        },
+        500,
+      );
     }
-
-    if (request.method === "POST" && url.pathname === "/api/vehicle-devices") {
-      return handleVehicleDevices(request, env);
-    }
-
-    if (request.method === "POST" && url.pathname === "/api/vehicle-meters") {
-      return handleVehicleMeters(request, env);
-    }
-
-    if (request.method === "POST" && url.pathname === "/api/hermes-device-stats") {
-      return handleHermesDeviceStats(request, env);
-    }
-
-    if (request.method === "POST" && url.pathname === "/api/camera-device-stats") {
-      return handleCameraDeviceStats(request, env);
-    }
-
-    if (request.method === "POST" && url.pathname === "/api/camera-snapshots") {
-      return handleCameraSnapshots(request, env);
-    }
-
-    if (request.method === "GET" && url.pathname === "/api/tn360-users") {
-      return handleTn360Users(request, env);
-    }
-
-    return env.ASSETS.fetch(request);
   },
 };
