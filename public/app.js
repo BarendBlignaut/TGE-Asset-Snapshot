@@ -724,7 +724,7 @@ loginForm.addEventListener("submit", async (event) => {
 
     openAppForUser(currentSessionUser);
   } catch (error) {
-    showLoginError();
+    showLoginError(error.message || "Access denied. Please contact Telematics.");
   }
 });
 
