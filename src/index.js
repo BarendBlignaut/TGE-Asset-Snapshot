@@ -28,7 +28,10 @@ async function handleTn360Users(request, env) {
   const usersResponse = await fetch(usersUrl);
 
   if (!usersResponse.ok) {
-    return jsonResponse({ error: "Unable to load TN360 users." }, 502);
+    return jsonResponse(
+      { error: `Unable to load TN360 users. HTTP ${usersResponse.status}` },
+      502,
+    );
   }
 
   const users = await usersResponse.json();
@@ -58,7 +61,7 @@ async function handleVehicleLookup(request, env) {
   const response = await fetch(url);
 
   if (!response.ok) {
-    return jsonResponse({ error: "Vehicle lookup failed." }, 502);
+    return jsonResponse({ error: `Vehicle lookup failed. HTTP ${response.status}` }, 502);
   }
 
   const vehicles = await response.json();
@@ -87,7 +90,7 @@ async function handleVehicleDevices(request, env) {
   const response = await fetch(url);
 
   if (!response.ok) {
-    return jsonResponse({ error: "Device lookup failed." }, 502);
+    return jsonResponse({ error: `Device lookup failed. HTTP ${response.status}` }, 502);
   }
 
   const devices = await response.json();
@@ -108,7 +111,7 @@ async function handleVehicleMeters(request, env) {
   const response = await fetch(url);
 
   if (!response.ok) {
-    return jsonResponse({ error: "Meters lookup failed." }, 502);
+    return jsonResponse({ error: `Meters lookup failed. HTTP ${response.status}` }, 502);
   }
 
   const meters = await response.json();
@@ -129,7 +132,7 @@ async function handleHermesDeviceStats(request, env) {
   const response = await fetch(url);
 
   if (!response.ok) {
-    return jsonResponse({ error: "HERMES device stats lookup failed." }, 502);
+    return jsonResponse({ error: `HERMES device stats lookup failed. HTTP ${response.status}` }, 502);
   }
 
   const device = await response.json();
@@ -150,7 +153,7 @@ async function handleCameraDeviceStats(request, env) {
   const response = await fetch(url);
 
   if (!response.ok) {
-    return jsonResponse({ error: "Camera device stats lookup failed." }, 502);
+    return jsonResponse({ error: `Camera device stats lookup failed. HTTP ${response.status}` }, 502);
   }
 
   const device = await response.json();
@@ -171,7 +174,7 @@ async function handleCameraSnapshots(request, env) {
   const response = await fetch(url);
 
   if (!response.ok) {
-    return jsonResponse({ error: "Camera snapshot lookup failed." }, 502);
+    return jsonResponse({ error: `Camera snapshot lookup failed. HTTP ${response.status}` }, 502);
   }
 
   const events = await response.json();
