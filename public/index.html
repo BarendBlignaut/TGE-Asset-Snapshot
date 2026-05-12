@@ -6,16 +6,18 @@
   <title>TGE Asset Snapshot</title>
   <style>
     :root {
-      --tge-green: #2f8a43;
-      --tge-green-dark: #215d2d;
-      --tge-green-soft: #edf6ef;
-      --ink: #26332a;
-      --muted: #69766d;
-      --line: #d3ded5;
+      --tge-green: #00a651;
+      --tge-green-dark: #007a3b;
+      --tge-green-soft: #e9f8f0;
+      --tge-yellow: #ffd24a;
+      --ink: #1f2a24;
+      --muted: #64736c;
+      --line: #d7e2db;
       --surface: #ffffff;
-      --surface-soft: #f7faf8;
+      --surface-alt: #f5f8f6;
       --danger: #8a2f2f;
-      --shadow: 0 14px 36px rgba(25, 60, 34, 0.08);
+      --shadow: 0 20px 48px rgba(17, 39, 29, 0.08);
+      --radius: 8px;
     }
 
     * {
@@ -24,9 +26,9 @@
 
     body {
       margin: 0;
-      font-family: "Segoe UI", Arial, sans-serif;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
       color: var(--ink);
-      background: linear-gradient(180deg, #f4f8f5 0%, #f9fbfa 180px, #f3f7f4 100%);
+      background: linear-gradient(180deg, #eff6f1 0%, #f7faf8 180px, #f4f7f5 100%);
     }
 
     button,
@@ -40,25 +42,20 @@
     }
 
     .topbar {
-      background: linear-gradient(90deg, var(--tge-green-dark) 0%, var(--tge-green) 100%);
+      background: linear-gradient(90deg, #0d5f3a 0%, var(--tge-green-dark) 45%, var(--tge-green) 100%);
       color: #fff;
-      box-shadow: 0 10px 28px rgba(19, 57, 28, 0.18);
-    }
-
-    .topbar-inner,
-    .page {
-      max-width: 1280px;
-      margin: 0 auto;
-      padding-left: 24px;
-      padding-right: 24px;
+      padding: 16px 24px;
+      border-bottom: 4px solid rgba(255, 255, 255, 0.18);
+      box-shadow: 0 10px 30px rgba(0, 90, 45, 0.18);
     }
 
     .topbar-inner {
-      min-height: 88px;
+      max-width: 1280px;
+      margin: 0 auto;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 18px;
+      gap: 20px;
       flex-wrap: wrap;
     }
 
@@ -69,31 +66,37 @@
     }
 
     .brand-mark {
-      width: 46px;
-      height: 46px;
-      border-radius: 12px;
-      display: grid;
-      place-items: center;
+      width: 126px;
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 10px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.18);
       font-weight: 800;
-      border: 1px solid rgba(255, 255, 255, 0.24);
-      background: rgba(255, 255, 255, 0.12);
+      letter-spacing: 0.04em;
     }
 
     .brand-copy h1 {
       margin: 0;
-      font-size: 1rem;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--tge-yellow);
     }
 
     .brand-copy p {
-      margin: 4px 0 0;
-      color: rgba(255, 255, 255, 0.84);
+      margin: 2px 0 0;
+      font-size: 0.92rem;
+      color: rgba(255, 255, 255, 0.8);
     }
 
     .header-actions {
       display: flex;
-      align-items: center;
       gap: 10px;
       flex-wrap: wrap;
+      align-items: center;
     }
 
     .header-tab {
@@ -106,116 +109,130 @@
       cursor: pointer;
     }
 
-    .page {
-      padding-top: 24px;
-      padding-bottom: 48px;
+    .status-strip {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
     }
 
-    .login-wrap,
-    .panel {
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      box-shadow: var(--shadow);
+    .status-pill {
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 0.84rem;
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      backdrop-filter: blur(10px);
+    }
+
+    .page {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 28px 24px 56px;
+      position: relative;
+    }
+
+    .login-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: rgba(16, 31, 22, 0.42);
+      backdrop-filter: blur(8px);
     }
 
     .login-wrap {
-      max-width: 460px;
-      margin: 40px auto 0;
+      width: min(460px, 100%);
+      background: rgba(255, 255, 255, 0.97);
+      border: 1px solid rgba(215, 226, 219, 0.95);
+      border-radius: 14px;
+      box-shadow: 0 24px 56px rgba(17, 39, 29, 0.18);
       padding: 28px;
     }
 
-    .panel {
-      padding: 24px;
-    }
-
-    .panel + .panel {
+    .login-grid {
+      display: grid;
+      gap: 14px;
       margin-top: 18px;
     }
 
-    .section-head {
-      margin-bottom: 16px;
-    }
-
-    .section-kicker {
-      color: var(--tge-green);
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      font-weight: 800;
-      font-size: 0.8rem;
-    }
-
-    .section-head h2,
-    .section-head h3 {
-      margin: 6px 0 0;
-      font-size: 1.45rem;
-    }
-
-    .field-grid,
-    .search-grid,
-    .data-grid,
-    .camera-grid,
-    .admin-grid {
+    .hero {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 28px;
       display: grid;
-      gap: 14px;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 24px;
+      animation: rise 0.55s ease both;
     }
 
-    .field-grid {
-      grid-template-columns: 1fr;
+    .hero-copy h2 {
+      margin: 0 0 10px;
+      font-size: 1.85rem;
+      line-height: 1.1;
     }
 
-    .search-grid {
-      grid-template-columns: 1fr auto;
+    .hero-copy p {
+      margin: 0;
+      max-width: 58ch;
+      color: var(--muted);
+    }
+
+    .lookup {
+      margin-top: 22px;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
       align-items: end;
     }
 
-    .data-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .camera-grid {
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-    }
-
-    .admin-grid {
-      grid-template-columns: 1fr;
-    }
-
     .field {
-      display: grid;
-      gap: 8px;
+      flex: 1 1 260px;
     }
 
     .field label {
-      color: var(--muted);
+      display: block;
       font-size: 0.8rem;
       text-transform: uppercase;
       letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 8px;
       font-weight: 700;
     }
 
     .field input,
     .field select {
-      min-height: 46px;
-      border-radius: 10px;
+      width: 100%;
+      height: 48px;
       border: 1px solid var(--line);
+      border-radius: 8px;
       padding: 0 14px;
-      background: #fff;
+      font: inherit;
       color: var(--ink);
+      background: #fff;
     }
 
-    .btn {
-      min-height: 46px;
+    .action-btn {
+      height: 48px;
       border: 0;
-      border-radius: 10px;
+      border-radius: 8px;
       padding: 0 18px;
-      cursor: pointer;
+      background: var(--tge-green);
+      color: #fff;
+      font: inherit;
       font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 12px 28px rgba(0, 166, 81, 0.22);
+      transition: transform 160ms ease, background 160ms ease;
     }
 
-    .btn-primary {
-      background: linear-gradient(180deg, #3ca54b 0%, #2f8a43 100%);
-      color: #fff;
+    .action-btn:hover {
+      transform: translateY(-1px);
+      background: var(--tge-green-dark);
     }
 
     .message {
@@ -225,64 +242,318 @@
       font-size: 0.95rem;
     }
 
-    .card {
-      padding: 14px;
+    .hero-panel {
+      background:
+        linear-gradient(160deg, rgba(0, 166, 81, 0.12), rgba(0, 122, 59, 0.04)),
+        var(--surface-alt);
       border: 1px solid var(--line);
       border-radius: 10px;
-      background: var(--surface-soft);
+      padding: 18px;
+      display: grid;
+      align-content: space-between;
+      gap: 18px;
     }
 
-    .card span {
+    .hero-panel h3,
+    .section-title {
+      margin: 0;
+      font-size: 1rem;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .mini-metric {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .mini-metric span {
       display: block;
       color: var(--muted);
-      font-size: 0.8rem;
+      font-size: 0.75rem;
+      margin-bottom: 4px;
+    }
+
+    .mini-metric strong {
+      font-size: 1.05rem;
+    }
+
+    .stack {
+      display: grid;
+      gap: 18px;
+      margin-top: 24px;
+    }
+
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 22px;
+      animation: rise 0.6s ease both;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+
+    .section-kicker {
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--tge-green-dark);
+      font-weight: 700;
+    }
+
+    .meta-grid,
+    .metrics-grid,
+    .sd-grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .metrics-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .meta-item,
+    .metric-item,
+    .sd-item {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, #fff 0%, #fbfdfc 100%);
+    }
+
+    .meta-item span,
+    .metric-item span,
+    .sd-item span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.78rem;
       margin-bottom: 6px;
     }
 
-    .card strong {
+    .meta-item strong,
+    .metric-item strong,
+    .sd-item strong {
       display: block;
       font-size: 1rem;
       word-break: break-word;
     }
 
+    .metric-item strong {
+      font-size: 1.5rem;
+      color: var(--tge-green-dark);
+    }
+
+    .gps-grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .device-list {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 14px;
+    }
+
+    .device-card {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, #fff 0%, #fbfdfc 100%);
+    }
+
+    .device-card h4 {
+      margin: 0 0 10px;
+      font-size: 0.95rem;
+    }
+
+    .device-card p {
+      margin: 0 0 6px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      word-break: break-word;
+    }
+
+    .gps-card {
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 122, 59, 0.22);
+      background: linear-gradient(180deg, #eefaf2 0%, #e4f6eb 100%);
+    }
+
+    .gps-card h4 {
+      margin: 0 0 8px;
+      font-size: 0.95rem;
+    }
+
+    .gps-card p {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .gps-tag {
+      display: inline-block;
+      margin-top: 4px;
+      padding: 5px 8px;
+      font-size: 0.74rem;
+      border-radius: 999px;
+      background: rgba(0, 122, 59, 0.1);
+      color: var(--tge-green-dark);
+      font-weight: 700;
+    }
+
+    .camera-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
     .camera-card {
       border: 1px solid var(--line);
-      border-radius: 10px;
+      border-radius: 8px;
       overflow: hidden;
       background: #fff;
     }
 
-    .camera-label {
-      padding: 12px 12px 0;
-      font-weight: 700;
-    }
-
     .camera-frame {
-      height: 180px;
+      aspect-ratio: 4 / 3;
+      background:
+        linear-gradient(155deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.02)),
+        linear-gradient(135deg, #d8e6de 0%, #bccfc5 45%, #edf5f0 100%);
+      position: relative;
       display: grid;
       place-items: center;
-      padding: 12px;
-      background: linear-gradient(135deg, #dce7df 0%, #eef5f0 100%);
-      border-top: 1px solid var(--line);
-      border-bottom: 1px solid var(--line);
+      overflow: hidden;
+    }
+
+    .camera-frame::before {
+      content: "";
+      position: absolute;
+      inset: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.38);
+      border-radius: 6px;
+      pointer-events: none;
     }
 
     .camera-frame img {
       width: 100%;
       height: 100%;
       object-fit: cover;
-      border-radius: 6px;
+      position: relative;
+      z-index: 1;
     }
 
     .camera-empty {
+      position: relative;
+      z-index: 1;
       color: var(--muted);
       font-weight: 700;
+      font-size: 0.9rem;
     }
 
     .camera-meta {
       padding: 12px;
+    }
+
+    .camera-meta strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 0.95rem;
+    }
+
+    .camera-meta span {
       color: var(--muted);
-      font-size: 0.9rem;
+      font-size: 0.82rem;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .location-layout {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .map-panel {
+      min-height: 320px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0)),
+        linear-gradient(135deg, #d6efe1 0%, #bfe0cc 46%, #eaf7f0 100%);
+      position: relative;
+    }
+
+    .map-panel iframe {
+      width: 100%;
+      height: 100%;
+      min-height: 320px;
+      border: 0;
+      display: block;
+      filter: saturate(0.85) hue-rotate(-8deg);
+    }
+
+    .map-badge {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      z-index: 1;
+      padding: 8px 10px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #fff;
+      background: rgba(0, 122, 59, 0.86);
+      box-shadow: 0 8px 16px rgba(0, 90, 45, 0.2);
+    }
+
+    .location-meta {
+      display: grid;
+      gap: 14px;
+    }
+
+    .location-card {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, #fff 0%, #fbfdfc 100%);
+    }
+
+    .location-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-bottom: 6px;
+    }
+
+    .location-card strong {
+      display: block;
+      font-size: 1rem;
+      word-break: break-word;
     }
 
     .table-wrap {
@@ -304,38 +575,82 @@
     }
 
     th {
-      background: var(--surface-soft);
+      background: var(--surface-alt);
     }
 
-    @media (max-width: 1080px) {
-      .data-grid {
+    @keyframes rise {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 1120px) {
+      .hero,
+      .meta-grid,
+      .gps-grid,
+      .camera-grid,
+      .device-list,
+      .location-layout {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
-      .camera-grid {
+      .metrics-grid,
+      .sd-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
 
     @media (max-width: 760px) {
-      .topbar-inner,
       .page {
-        padding-left: 14px;
-        padding-right: 14px;
+        padding: 18px 14px 40px;
       }
 
-      .search-grid,
-      .data-grid,
-      .camera-grid {
+      .topbar {
+        padding: 14px;
+      }
+
+      .hero,
+      .meta-grid,
+      .metrics-grid,
+      .gps-grid,
+      .sd-grid,
+      .camera-grid,
+      .hero-grid,
+      .device-list,
+      .location-layout {
         grid-template-columns: 1fr;
       }
 
-      .header-actions {
+      .hero {
+        padding: 20px;
+      }
+
+      .section {
+        padding: 18px;
+      }
+
+      .field,
+      .lookup {
         width: 100%;
       }
 
-      .header-tab,
-      .btn {
+      .action-btn,
+      .header-tab {
+        width: 100%;
+      }
+
+      .field input,
+      .field select {
+        width: 100%;
+      }
+
+      .header-actions,
+      .status-strip {
         width: 100%;
       }
     }
@@ -357,196 +672,352 @@
           <button class="header-tab" id="standard-tab" type="button">Snapshot</button>
           <button class="header-tab" id="admin-tab" type="button" style="display: none;">Admin</button>
         </div>
+
+        <div class="status-strip">
+          <div class="status-pill">Mock View 2.0</div>
+          <div class="status-pill">Snapshot Ready</div>
+          <div class="status-pill">API Hook Pending</div>
+        </div>
       </div>
     </header>
 
     <main class="page">
-      <section class="login-wrap" id="login-screen">
-        <div class="section-head">
+      <section class="login-overlay" id="login-screen">
+        <div class="login-wrap">
           <div class="section-kicker">Secure Access</div>
           <h2>Sign in to continue</h2>
+
+          <form id="login-form">
+            <div class="login-grid">
+              <div class="field">
+                <label for="username">Username</label>
+                <input id="username" name="username" type="text" autocomplete="username" required />
+              </div>
+
+              <div class="field">
+                <label for="password">Password</label>
+                <input id="password" name="password" type="password" autocomplete="current-password" required />
+              </div>
+            </div>
+
+            <div style="margin-top: 16px;">
+              <button class="action-btn" type="submit">Log In</button>
+            </div>
+
+            <p class="message" id="login-message"></p>
+          </form>
         </div>
-
-        <form id="login-form">
-          <div class="field-grid">
-            <div class="field">
-              <label for="username">Username</label>
-              <input id="username" name="username" type="text" autocomplete="username" required />
-            </div>
-
-            <div class="field">
-              <label for="password">Password</label>
-              <input id="password" name="password" type="password" autocomplete="current-password" required />
-            </div>
-          </div>
-
-          <div style="margin-top: 14px;">
-            <button class="btn btn-primary" type="submit">Log In</button>
-          </div>
-
-          <p class="message" id="login-message"></p>
-        </form>
       </section>
 
-      <div id="app-shell" style="display: none;">
-        <section class="panel" id="standard-view">
-          <div class="section-head">
+      <div id="app-shell">
+        <section class="hero">
+          <div class="hero-copy">
             <div class="section-kicker">Asset Search</div>
-            <h2>Load asset snapshot</h2>
+            <h2>Track one vehicle, inspect one snapshot, move straight to the evidence.</h2>
+            <p>This mock layout is shaped around the final lookup flow: enter the fleet number, confirm the asset exists, then populate the grouped operational sections from the linked APIs without exposing the internal system ID to the user.</p>
+
+            <form class="lookup" id="asset-search-form">
+              <div class="field">
+                <label for="asset-number">Fleet Number</label>
+                <input id="asset-number" name="assetNumber" type="text" placeholder="Enter fleet number" required />
+              </div>
+              <button class="action-btn" type="submit">Load Asset Snapshot</button>
+            </form>
+
+            <p class="message" id="asset-search-message"></p>
           </div>
 
-          <form id="asset-search-form">
-            <div class="search-grid">
-              <div class="field">
-                <label for="asset-number">Asset Number</label>
-                <input id="asset-number" name="assetNumber" type="text" required />
-              </div>
-
-              <button class="btn btn-primary" type="submit">Load Asset Snapshot</button>
+          <aside class="hero-panel">
+            <div>
+              <div class="section-kicker">Current Snapshot</div>
+              <h3 id="hero-current-asset">No asset loaded</h3>
             </div>
-            <p class="message" id="asset-search-message"></p>
-          </form>
+            <div class="hero-grid">
+              <div class="mini-metric">
+                <span>Request Time</span>
+                <strong id="hero-request-time">--</strong>
+              </div>
+              <div class="mini-metric">
+                <span>Lookup Status</span>
+                <strong id="hero-lookup-status">Awaiting search</strong>
+              </div>
+              <div class="mini-metric">
+                <span>Fleet Number</span>
+                <strong id="hero-fleet-number">--</strong>
+              </div>
+              <div class="mini-metric">
+                <span>Vehicle ID</span>
+                <strong id="hero-vehicle-id">--</strong>
+              </div>
+            </div>
+          </aside>
         </section>
 
-        <div id="asset-shell" style="display: none;">
-          <section class="panel">
-            <div class="section-head">
-              <div class="section-kicker">Vehicle Information</div>
-              <h3>Asset Details</h3>
-            </div>
-            <div class="data-grid" id="asset-details">
-              <div class="card"><span>Asset</span><strong id="view-asset-number"></strong></div>
-              <div class="card"><span>Registration</span><strong id="view-registration"></strong></div>
-              <div class="card"><span>VIN</span><strong id="view-vin"></strong></div>
-              <div class="card"><span>Make / Model</span><strong id="view-make-model"></strong></div>
-              <div class="card"><span>Year</span><strong id="view-year"></strong></div>
-              <div class="card"><span>Driver</span><strong id="view-driver"></strong></div>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="section-head">
-              <div class="section-kicker">Devices</div>
-              <h3>Installed Systems</h3>
-            </div>
-            <div class="data-grid" id="device-details">
-              <div class="card"><span>Tracking IMEI</span><strong id="view-tracker-imei"></strong></div>
-              <div class="card"><span>Tracking Serial</span><strong id="view-tracker-serial"></strong></div>
-              <div class="card"><span>Tablet IMEI</span><strong id="view-tablet-imei"></strong></div>
-              <div class="card"><span>Tablet Serial</span><strong id="view-tablet-serial"></strong></div>
-              <div class="card"><span>Camera IMEI</span><strong id="view-camera-imei"></strong></div>
-              <div class="card"><span>Camera Serial</span><strong id="view-camera-serial"></strong></div>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="section-head">
-              <div class="section-kicker">Meters</div>
-              <h3>Odometer And Engine Hours</h3>
-            </div>
-            <div class="data-grid" id="meter-details">
-              <div class="card"><span>Odometer</span><strong id="view-odometer"></strong></div>
-              <div class="card"><span>Engine Hours</span><strong id="view-engine-hours"></strong></div>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="section-head">
-              <div class="section-kicker">Performance</div>
-              <h3>HERMES Stats</h3>
-            </div>
-            <div class="data-grid" id="performance-details">
-              <div class="card"><span>Ignition</span><strong id="view-ignition"></strong></div>
-              <div class="card"><span>Movement</span><strong id="view-movement"></strong></div>
-              <div class="card"><span>Location</span><strong id="view-location"></strong></div>
-              <div class="card"><span>Speed</span><strong id="view-speed"></strong></div>
-              <div class="card"><span>RPM</span><strong id="view-rpm"></strong></div>
-              <div class="card"><span>Oil Temp</span><strong id="view-oil-temp"></strong></div>
-              <div class="card"><span>Oil Pressure</span><strong id="view-oil-pressure"></strong></div>
-              <div class="card"><span>Engine Load</span><strong id="view-engine-load"></strong></div>
-              <div class="card"><span>Gear</span><strong id="view-gear"></strong></div>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="section-head">
-              <div class="section-kicker">Storage</div>
-              <h3>SD Card Information</h3>
-            </div>
-            <div class="data-grid" id="sd-card-details">
-              <div class="card"><span>Overall Status</span><strong id="view-sd-overall"></strong></div>
-              <div class="card"><span>SD Card 1</span><strong id="view-sd1"></strong></div>
-              <div class="card"><span>SD Card 1 Size</span><strong id="view-sd1-size"></strong></div>
-              <div class="card"><span>SD Card 2</span><strong id="view-sd2"></strong></div>
-              <div class="card"><span>SD Card 2 Size</span><strong id="view-sd2-size"></strong></div>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="section-head">
-              <div class="section-kicker">Camera Images</div>
-              <h3>Latest Snapshot</h3>
-            </div>
-            <div class="camera-grid" id="camera-images">
-              <div class="camera-card">
-                <div class="camera-label">Road Facing</div>
-                <div class="camera-frame">
-                  <img id="img-road-facing" style="display:none;" alt="Road Facing" />
-                  <p class="camera-empty" id="img-road-facing-empty">No image</p>
+        <div class="stack">
+          <div id="standard-view">
+            <div id="asset-shell">
+              <section class="section">
+                <div class="section-head">
+                  <div>
+                    <div class="section-kicker">Vehicle Information</div>
+                    <h3 class="section-title">Asset Details</h3>
+                  </div>
                 </div>
-                <div class="camera-meta">Most recent snapshot</div>
-              </div>
-
-              <div class="camera-card">
-                <div class="camera-label">Driver Facing</div>
-                <div class="camera-frame">
-                  <img id="img-driver-facing" style="display:none;" alt="Driver Facing" />
-                  <p class="camera-empty" id="img-driver-facing-empty">No image</p>
+                <div class="meta-grid">
+                  <div class="meta-item"><span>Vehicle ID</span><strong id="hero-vehicle-id-copy">--</strong></div>
+                  <div class="meta-item"><span>Fleet Number</span><strong id="view-asset-number"></strong></div>
+                  <div class="meta-item"><span>Registration</span><strong id="view-registration"></strong></div>
+                  <div class="meta-item"><span>VIN</span><strong id="view-vin"></strong></div>
+                  <div class="meta-item"><span>Make / Model</span><strong id="view-make-model"></strong></div>
+                  <div class="meta-item"><span>Year of Manufacture</span><strong id="view-year"></strong></div>
+                  <div class="meta-item"><span>Driver Login</span><strong id="view-driver"></strong></div>
                 </div>
-                <div class="camera-meta">Most recent snapshot</div>
-              </div>
 
-              <div class="camera-card">
-                <div class="camera-label">In-Cab Driver</div>
-                <div class="camera-frame">
-                  <img id="img-in-cab" style="display:none;" alt="In-Cab Driver" />
-                  <p class="camera-empty" id="img-in-cab-empty">No image</p>
+                <div class="device-list">
+                  <div class="device-card">
+                    <h4>Tracking System</h4>
+                    <p>IMEI: <strong id="view-tracker-imei"></strong></p>
+                    <p>Serial: <strong id="view-tracker-serial"></strong></p>
+                  </div>
+                  <div class="device-card">
+                    <h4>Camera System</h4>
+                    <p>IMEI: <strong id="view-camera-imei"></strong></p>
+                    <p>Serial: <strong id="view-camera-serial"></strong></p>
+                  </div>
+                  <div class="device-card">
+                    <h4>Tablet</h4>
+                    <p>IMEI: <strong id="view-tablet-imei"></strong></p>
+                    <p>Serial: <strong id="view-tablet-serial"></strong></p>
+                  </div>
                 </div>
-                <div class="camera-meta">Most recent snapshot</div>
-              </div>
+              </section>
 
-              <div class="camera-card">
-                <div class="camera-label">Driver External</div>
-                <div class="camera-frame">
-                  <img id="img-driver-external" style="display:none;" alt="Driver External" />
-                  <p class="camera-empty" id="img-driver-external-empty">No image</p>
+              <section class="section">
+                <div class="section-head">
+                  <div>
+                    <div class="section-kicker">Performance</div>
+                    <h3 class="section-title">Vehicle Tracking Metrics</h3>
+                  </div>
                 </div>
-                <div class="camera-meta">Most recent snapshot</div>
-              </div>
+                <div class="metrics-grid">
+                  <div class="metric-item">
+                    <span>Odometer</span>
+                    <strong id="view-odometer"></strong>
+                  </div>
+                  <div class="metric-item">
+                    <span>Speed</span>
+                    <strong id="view-speed"></strong>
+                  </div>
+                  <div class="metric-item">
+                    <span>RPM</span>
+                    <strong id="view-rpm"></strong>
+                  </div>
+                  <div class="metric-item">
+                    <span>Engine Hours</span>
+                    <strong id="view-engine-hours"></strong>
+                  </div>
+                  <div class="metric-item">
+                    <span>Oil Temperature</span>
+                    <strong id="view-oil-temp"></strong>
+                  </div>
+                  <div class="metric-item">
+                    <span>Oil Pressure</span>
+                    <strong id="view-oil-pressure"></strong>
+                  </div>
+                  <div class="metric-item">
+                    <span>Engine Load</span>
+                    <strong id="view-engine-load"></strong>
+                  </div>
+                  <div class="metric-item">
+                    <span>Gear</span>
+                    <strong id="view-gear"></strong>
+                  </div>
+                  <div class="metric-item">
+                    <span>Ignition / Movement</span>
+                    <strong><span id="view-ignition"></span> <span id="view-movement"></span></strong>
+                  </div>
+                </div>
+              </section>
 
-              <div class="camera-card">
-                <div class="camera-label">Left External</div>
-                <div class="camera-frame">
-                  <img id="img-left-external" style="display:none;" alt="Left External" />
-                  <p class="camera-empty" id="img-left-external-empty">No image</p>
+              <section class="section">
+                <div class="section-head">
+                  <div>
+                    <div class="section-kicker">GPIO Data State</div>
+                    <h3 class="section-title">Digital Inputs And Outputs</h3>
+                  </div>
                 </div>
-                <div class="camera-meta">Most recent snapshot</div>
-              </div>
+                <div class="gps-grid">
+                  <div class="gps-card">
+                    <h4>Seatbelt</h4>
+                    <p>Driver fastened</p>
+                    <span class="gps-tag">DIGIN 1</span>
+                  </div>
+                  <div class="gps-card">
+                    <h4>Door</h4>
+                    <p>Driver door closed</p>
+                    <span class="gps-tag">DIGIN 2</span>
+                  </div>
+                  <div class="gps-card">
+                    <h4>Park Brake</h4>
+                    <p>Current state tracked</p>
+                    <span class="gps-tag">DIGIN 3</span>
+                  </div>
+                  <div class="gps-card">
+                    <h4>Duress</h4>
+                    <p>Current state tracked</p>
+                    <span class="gps-tag">DIGIN 4</span>
+                  </div>
+                  <div class="gps-card">
+                    <h4>Siren</h4>
+                    <p>Current state tracked</p>
+                    <span class="gps-tag">DIGOUT 2</span>
+                  </div>
+                  <div class="gps-card">
+                    <h4>LED</h4>
+                    <p>Current state tracked</p>
+                    <span class="gps-tag">DIGOUT 3</span>
+                  </div>
+                </div>
+              </section>
+
+              <section class="section">
+                <div class="section-head">
+                  <div>
+                    <div class="section-kicker">Storage</div>
+                    <h3 class="section-title">SD Card Information</h3>
+                  </div>
+                </div>
+                <div class="sd-grid">
+                  <div class="sd-item"><span>Overall Status</span><strong id="view-sd-overall"></strong></div>
+                  <div class="sd-item"><span>SD Card 1</span><strong id="view-sd1"></strong></div>
+                  <div class="sd-item"><span>SD Card 1 Space</span><strong id="view-sd1-size"></strong></div>
+                  <div class="sd-item"><span>SD Card 2</span><strong id="view-sd2"></strong></div>
+                  <div class="sd-item"><span>SD Card 2 Space</span><strong id="view-sd2-size"></strong></div>
+                </div>
+              </section>
+
+              <section class="section">
+                <div class="section-head">
+                  <div>
+                    <div class="section-kicker">Camera Snapshots</div>
+                    <h3 class="section-title">Latest Image Set</h3>
+                  </div>
+                </div>
+
+                <div class="camera-grid">
+                  <article class="camera-card">
+                    <div class="camera-frame">
+                      <img id="img-road-facing" style="display:none;" alt="Road Facing" />
+                      <p class="camera-empty" id="img-road-facing-empty">No image</p>
+                    </div>
+                    <div class="camera-meta">
+                      <strong>Road Facing</strong>
+                      <span>Preview image area</span>
+                    </div>
+                  </article>
+
+                  <article class="camera-card">
+                    <div class="camera-frame">
+                      <img id="img-driver-facing" style="display:none;" alt="Driver Facing" />
+                      <p class="camera-empty" id="img-driver-facing-empty">No image</p>
+                    </div>
+                    <div class="camera-meta">
+                      <strong>Driver Facing</strong>
+                      <span>Preview image area</span>
+                    </div>
+                  </article>
+
+                  <article class="camera-card">
+                    <div class="camera-frame">
+                      <img id="img-in-cab" style="display:none;" alt="In-Cab Driver" />
+                      <p class="camera-empty" id="img-in-cab-empty">No image</p>
+                    </div>
+                    <div class="camera-meta">
+                      <strong>In-Cab Driver</strong>
+                      <span>Preview image area</span>
+                    </div>
+                  </article>
+
+                  <article class="camera-card">
+                    <div class="camera-frame">
+                      <img id="img-driver-external" style="display:none;" alt="Driver External" />
+                      <p class="camera-empty" id="img-driver-external-empty">No image</p>
+                    </div>
+                    <div class="camera-meta">
+                      <strong>Driver External</strong>
+                      <span>No image to preview</span>
+                    </div>
+                  </article>
+
+                  <article class="camera-card">
+                    <div class="camera-frame">
+                      <img id="img-left-external" style="display:none;" alt="Left External" />
+                      <p class="camera-empty" id="img-left-external-empty">No image</p>
+                    </div>
+                    <div class="camera-meta">
+                      <strong>Left External</strong>
+                      <span>No image to preview</span>
+                    </div>
+                  </article>
+                </div>
+
+                <div class="footer-note">This layout stays visible after login so the operator remains anchored to the approved snapshot workflow.</div>
+              </section>
+
+              <section class="section">
+                <div class="section-head">
+                  <div>
+                    <div class="section-kicker">Last Known Location</div>
+                    <h3 class="section-title">Map View And Coordinates</h3>
+                  </div>
+                </div>
+                <div class="location-layout">
+                  <div class="map-panel">
+                    <div class="map-badge">Last Location</div>
+                    <iframe
+                      title="Last known location map"
+                      loading="lazy"
+                      referrerpolicy="no-referrer-when-downgrade"
+                      src="https://www.openstreetmap.org/export/embed.html?bbox=151.44739%2C-33.09536%2C151.50739%2C-33.05536&layer=mapnik&marker=-33.07536%2C151.47739">
+                    </iframe>
+                  </div>
+
+                  <div class="location-meta">
+                    <div class="location-card">
+                      <span>Location</span>
+                      <strong id="view-location"></strong>
+                    </div>
+                    <div class="location-card">
+                      <span>Latitude</span>
+                      <strong>Pending live bind</strong>
+                    </div>
+                    <div class="location-card">
+                      <span>Longitude</span>
+                      <strong>Pending live bind</strong>
+                    </div>
+                    <div class="location-card">
+                      <span>Map Source</span>
+                      <strong>Placeholder preview for final live map feed</strong>
+                    </div>
+                  </div>
+                </div>
+              </section>
             </div>
-          </section>
-        </div>
-
-        <section class="panel" id="admin-view" style="display: none;">
-          <div class="section-head">
-            <div class="section-kicker">Admin</div>
-            <h2>Access Management</h2>
           </div>
 
-          <div class="admin-grid">
+          <section class="section" id="admin-view" style="display: none;">
+            <div class="section-head">
+              <div>
+                <div class="section-kicker">Admin</div>
+                <h3 class="section-title">Access Management</h3>
+              </div>
+            </div>
+
             <div>
               <h3>Approved Users</h3>
+
               <form id="approved-user-form">
-                <div class="data-grid">
+                <div class="meta-grid">
                   <div class="field">
                     <label for="approved-first-name">First Name</label>
                     <input id="approved-first-name" type="text" required />
@@ -576,7 +1047,7 @@
                 </div>
 
                 <div style="margin-top: 14px;">
-                  <button class="btn btn-primary" type="submit">Save User</button>
+                  <button class="action-btn" type="submit">Save User</button>
                 </div>
               </form>
 
@@ -599,7 +1070,7 @@
               </div>
             </div>
 
-            <div>
+            <div style="margin-top: 24px;">
               <h3>Access History</h3>
 
               <div class="field" style="max-width: 280px;">
@@ -622,12 +1093,10 @@
                 </table>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
       </div>
     </main>
   </div>
-
-  <script src="/app.js" defer></script>
 </body>
 </html>
