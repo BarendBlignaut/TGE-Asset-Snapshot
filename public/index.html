@@ -17,7 +17,6 @@
       --surface-alt: #f5f8f6;
       --danger: #8a2f2f;
       --shadow: 0 20px 48px rgba(17, 39, 29, 0.08);
-      --radius: 8px;
     }
 
     * {
@@ -50,19 +49,19 @@
     }
 
     .topbar-inner {
-      max-width: 1280px;
+      max-width: 1320px;
       margin: 0 auto;
-      display: flex;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
       align-items: center;
-      justify-content: space-between;
-      gap: 20px;
-      flex-wrap: wrap;
+      gap: 18px;
     }
 
     .brand {
       display: flex;
       align-items: center;
       gap: 14px;
+      min-width: 0;
     }
 
     .brand-mark {
@@ -75,25 +74,36 @@
       border-radius: 10px;
       background: rgba(255, 255, 255, 0.14);
       border: 1px solid rgba(255, 255, 255, 0.18);
-      font-weight: 800;
-      letter-spacing: 0.04em;
+      flex: 0 0 auto;
+    }
+
+    .brand-mark img {
+      max-width: 100%;
+      max-height: 100%;
+      display: block;
+    }
+
+    .brand-copy {
+      min-width: 0;
     }
 
     .brand-copy h1 {
       margin: 0;
-      font-size: 1.5rem;
+      font-size: 1.45rem;
       font-weight: 700;
-      color: var(--tge-yellow);
+      color: #fff;
+      white-space: nowrap;
     }
 
     .brand-copy p {
       margin: 2px 0 0;
-      font-size: 0.92rem;
-      color: rgba(255, 255, 255, 0.8);
+      font-size: 0.9rem;
+      color: rgba(255, 255, 255, 0.82);
     }
 
     .header-actions {
       display: flex;
+      justify-content: center;
       gap: 10px;
       flex-wrap: wrap;
       align-items: center;
@@ -105,28 +115,21 @@
       padding: 0 16px;
       border: 1px solid rgba(255, 255, 255, 0.18);
       background: rgba(255, 255, 255, 0.12);
-      color: #fff;
+      color: var(--tge-yellow);
       cursor: pointer;
+      font-weight: 700;
     }
 
-    .status-strip {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
-    .status-pill {
-      padding: 8px 12px;
-      border-radius: 999px;
-      font-size: 0.84rem;
-      background: rgba(255, 255, 255, 0.14);
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      backdrop-filter: blur(10px);
+    .version-ref {
+      justify-self: end;
+      color: rgba(255, 255, 255, 0.84);
+      font-size: 0.82rem;
+      font-weight: 600;
+      white-space: nowrap;
     }
 
     .page {
-      max-width: 1280px;
+      max-width: 1320px;
       margin: 0 auto;
       padding: 28px 24px 56px;
       position: relative;
@@ -144,12 +147,49 @@
     }
 
     .login-wrap {
-      width: min(460px, 100%);
+      width: min(520px, 100%);
       background: rgba(255, 255, 255, 0.97);
       border: 1px solid rgba(215, 226, 219, 0.95);
       border-radius: 14px;
       box-shadow: 0 24px 56px rgba(17, 39, 29, 0.18);
       padding: 28px;
+    }
+
+    .login-brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 10px;
+    }
+
+    .login-brand-mark {
+      width: 116px;
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 10px;
+      border-radius: 10px;
+      background: linear-gradient(180deg, #f7fbf8 0%, #eef6f0 100%);
+      border: 1px solid var(--line);
+      flex: 0 0 auto;
+    }
+
+    .login-brand-mark img {
+      max-width: 100%;
+      max-height: 100%;
+      display: block;
+    }
+
+    .login-brand-copy h2 {
+      margin: 0;
+      font-size: 1.3rem;
+    }
+
+    .login-brand-copy p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
     }
 
     .login-grid {
@@ -165,15 +205,15 @@
       box-shadow: var(--shadow);
       padding: 28px;
       display: grid;
-      grid-template-columns: 1.2fr 0.8fr;
+      grid-template-columns: 1.05fr 0.95fr;
       gap: 24px;
       animation: rise 0.55s ease both;
     }
 
     .hero-copy h2 {
       margin: 0 0 10px;
-      font-size: 1.85rem;
-      line-height: 1.1;
+      font-size: 1.8rem;
+      line-height: 1.08;
     }
 
     .hero-copy p {
@@ -184,14 +224,10 @@
 
     .lookup {
       margin-top: 22px;
-      display: flex;
+      display: grid;
+      grid-template-columns: minmax(280px, 1fr) auto auto auto;
       gap: 12px;
-      flex-wrap: wrap;
       align-items: end;
-    }
-
-    .field {
-      flex: 1 1 260px;
     }
 
     .field label {
@@ -216,16 +252,21 @@
       background: #fff;
     }
 
-    .action-btn {
+    .action-btn,
+    .secondary-btn {
       height: 48px;
-      border: 0;
       border-radius: 8px;
       padding: 0 18px;
-      background: var(--tge-green);
-      color: #fff;
       font: inherit;
       font-weight: 700;
       cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .action-btn {
+      border: 0;
+      background: var(--tge-green);
+      color: #fff;
       box-shadow: 0 12px 28px rgba(0, 166, 81, 0.22);
       transition: transform 160ms ease, background 160ms ease;
     }
@@ -233,6 +274,12 @@
     .action-btn:hover {
       transform: translateY(-1px);
       background: var(--tge-green-dark);
+    }
+
+    .secondary-btn {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
     }
 
     .message {
@@ -250,8 +297,8 @@
       border-radius: 10px;
       padding: 18px;
       display: grid;
-      align-content: space-between;
-      gap: 18px;
+      gap: 16px;
+      align-content: start;
     }
 
     .hero-panel h3,
@@ -262,18 +309,20 @@
 
     .hero-grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 12px;
     }
 
-    .mini-metric {
+    .mini-metric,
+    .debug-panel {
       background: #fff;
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 12px;
     }
 
-    .mini-metric span {
+    .mini-metric span,
+    .debug-panel span {
       display: block;
       color: var(--muted);
       font-size: 0.75rem;
@@ -281,7 +330,20 @@
     }
 
     .mini-metric strong {
-      font-size: 1.05rem;
+      font-size: 1rem;
+    }
+
+    .debug-panel {
+      display: none;
+    }
+
+    .debug-panel pre {
+      margin: 8px 0 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.78rem;
+      color: #5d3028;
     }
 
     .stack {
@@ -321,11 +383,18 @@
     .sd-grid {
       display: grid;
       gap: 14px;
+    }
+
+    .meta-grid {
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 
     .metrics-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .sd-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .meta-item,
@@ -355,7 +424,7 @@
     }
 
     .metric-item strong {
-      font-size: 1.5rem;
+      font-size: 1.35rem;
       color: var(--tge-green-dark);
     }
 
@@ -589,8 +658,15 @@
       }
     }
 
-    @media (max-width: 1120px) {
-      .hero,
+    @media (max-width: 1180px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+
+      .lookup {
+        grid-template-columns: 1fr 1fr;
+      }
+
       .meta-grid,
       .gps-grid,
       .camera-grid,
@@ -599,58 +675,47 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
-      .metrics-grid,
-      .sd-grid {
+      .metrics-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
 
     @media (max-width: 760px) {
-      .page {
-        padding: 18px 14px 40px;
-      }
-
       .topbar {
         padding: 14px;
       }
 
-      .hero,
+      .topbar-inner {
+        grid-template-columns: 1fr;
+      }
+
+      .header-actions {
+        justify-content: flex-start;
+      }
+
+      .version-ref {
+        justify-self: start;
+      }
+
+      .page {
+        padding: 18px 14px 40px;
+      }
+
+      .lookup,
+      .hero-grid,
       .meta-grid,
       .metrics-grid,
       .gps-grid,
       .sd-grid,
       .camera-grid,
-      .hero-grid,
       .device-list,
       .location-layout {
         grid-template-columns: 1fr;
       }
 
-      .hero {
-        padding: 20px;
-      }
-
-      .section {
-        padding: 18px;
-      }
-
-      .field,
-      .lookup {
-        width: 100%;
-      }
-
       .action-btn,
+      .secondary-btn,
       .header-tab {
-        width: 100%;
-      }
-
-      .field input,
-      .field select {
-        width: 100%;
-      }
-
-      .header-actions,
-      .status-strip {
         width: 100%;
       }
     }
@@ -661,10 +726,15 @@
     <header class="topbar">
       <div class="topbar-inner">
         <div class="brand">
-          <div class="brand-mark">TGE</div>
+          <div class="brand-mark">
+            <img
+              alt="TGE logo"
+              src="data:image/png;base64,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"
+            />
+          </div>
           <div class="brand-copy">
             <h1>TGE Asset Snapshot</h1>
-            <p>Latest asset status, location, system health and camera imagery</p>
+            <p>Complete asset status, location, diagnostics and evidence snapshot</p>
           </div>
         </div>
 
@@ -673,19 +743,25 @@
           <button class="header-tab" id="admin-tab" type="button" style="display: none;">Admin</button>
         </div>
 
-        <div class="status-strip">
-          <div class="status-pill">Mock View 2.0</div>
-          <div class="status-pill">Snapshot Ready</div>
-          <div class="status-pill">API Hook Pending</div>
-        </div>
+        <div class="version-ref">v1.0</div>
       </div>
     </header>
 
     <main class="page">
       <section class="login-overlay" id="login-screen">
         <div class="login-wrap">
-          <div class="section-kicker">Secure Access</div>
-          <h2>Sign in to continue</h2>
+          <div class="login-brand">
+            <div class="login-brand-mark">
+              <img
+                alt="TGE logo"
+                src="data:image/png;base64,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"
+              />
+            </div>
+            <div class="login-brand-copy">
+              <h2>TGE Asset Snapshot</h2>
+              <p>Sign in to access the full asset snapshot workspace.</p>
+            </div>
+          </div>
 
           <form id="login-form">
             <div class="login-grid">
@@ -713,8 +789,8 @@
         <section class="hero">
           <div class="hero-copy">
             <div class="section-kicker">Asset Search</div>
-            <h2>Track one vehicle, inspect one snapshot, move straight to the evidence.</h2>
-            <p>This mock layout is shaped around the final lookup flow: enter the fleet number, confirm the asset exists, then populate the grouped operational sections from the linked APIs without exposing the internal system ID to the user.</p>
+            <h2>Track one vehicle, inspect one full operational snapshot.</h2>
+            <p>Enter a fleet number to load the current asset snapshot and review the grouped operational information without leaving the page.</p>
 
             <form class="lookup" id="asset-search-form">
               <div class="field">
@@ -722,6 +798,8 @@
                 <input id="asset-number" name="assetNumber" type="text" placeholder="Enter fleet number" required />
               </div>
               <button class="action-btn" type="submit">Load Asset Snapshot</button>
+              <button class="secondary-btn" id="export-pdf-btn" type="button">Export PDF</button>
+              <button class="secondary-btn" id="email-pdf-btn" type="button">Email PDF</button>
             </form>
 
             <p class="message" id="asset-search-message"></p>
@@ -732,6 +810,7 @@
               <div class="section-kicker">Current Snapshot</div>
               <h3 id="hero-current-asset">No asset loaded</h3>
             </div>
+
             <div class="hero-grid">
               <div class="mini-metric">
                 <span>Request Time</span>
@@ -749,6 +828,15 @@
                 <span>Vehicle ID</span>
                 <strong id="hero-vehicle-id">--</strong>
               </div>
+              <div class="mini-metric">
+                <span>Render Time</span>
+                <strong id="hero-render-time">--</strong>
+              </div>
+            </div>
+
+            <div class="debug-panel" id="debug-panel">
+              <span>Admin Debug</span>
+              <pre id="debug-output">No debug entries.</pre>
             </div>
           </aside>
         </section>
@@ -763,14 +851,17 @@
                     <h3 class="section-title">Asset Details</h3>
                   </div>
                 </div>
+
                 <div class="meta-grid">
                   <div class="meta-item"><span>Vehicle ID</span><strong id="hero-vehicle-id-copy">--</strong></div>
                   <div class="meta-item"><span>Fleet Number</span><strong id="view-asset-number"></strong></div>
                   <div class="meta-item"><span>Registration</span><strong id="view-registration"></strong></div>
                   <div class="meta-item"><span>VIN</span><strong id="view-vin"></strong></div>
-                  <div class="meta-item"><span>Make / Model</span><strong id="view-make-model"></strong></div>
+                  <div class="meta-item"><span>Make</span><strong id="view-make"></strong></div>
+                  <div class="meta-item"><span>Model</span><strong id="view-model"></strong></div>
                   <div class="meta-item"><span>Year of Manufacture</span><strong id="view-year"></strong></div>
                   <div class="meta-item"><span>Driver Login</span><strong id="view-driver"></strong></div>
+                  <div class="meta-item"><span>Ignition Status</span><strong id="view-ignition-status"></strong></div>
                 </div>
 
                 <div class="device-list">
@@ -799,6 +890,7 @@
                     <h3 class="section-title">Vehicle Tracking Metrics</h3>
                   </div>
                 </div>
+
                 <div class="metrics-grid">
                   <div class="metric-item">
                     <span>Odometer</span>
@@ -833,8 +925,8 @@
                     <strong id="view-gear"></strong>
                   </div>
                   <div class="metric-item">
-                    <span>Ignition / Movement</span>
-                    <strong><span id="view-ignition"></span> <span id="view-movement"></span></strong>
+                    <span>Movement</span>
+                    <strong id="view-movement"></strong>
                   </div>
                 </div>
               </section>
@@ -846,6 +938,7 @@
                     <h3 class="section-title">Digital Inputs And Outputs</h3>
                   </div>
                 </div>
+
                 <div class="gps-grid">
                   <div class="gps-card">
                     <h4>Seatbelt</h4>
@@ -887,13 +980,15 @@
                     <h3 class="section-title">SD Card Information</h3>
                   </div>
                 </div>
+
                 <div class="sd-grid">
-                  <div class="sd-item"><span>Overall Status</span><strong id="view-sd-overall"></strong></div>
                   <div class="sd-item"><span>SD Card 1</span><strong id="view-sd1"></strong></div>
-                  <div class="sd-item"><span>SD Card 1 Space</span><strong id="view-sd1-size"></strong></div>
                   <div class="sd-item"><span>SD Card 2</span><strong id="view-sd2"></strong></div>
-                  <div class="sd-item"><span>SD Card 2 Space</span><strong id="view-sd2-size"></strong></div>
+                  <div class="sd-item"><span>SD Card 1 Size</span><strong id="view-sd1-size"></strong></div>
+                  <div class="sd-item"><span>SD Card 2 Size</span><strong id="view-sd2-size"></strong></div>
                 </div>
+
+                <strong id="view-sd-overall" style="display:none;"></strong>
               </section>
 
               <section class="section">
@@ -960,8 +1055,6 @@
                     </div>
                   </article>
                 </div>
-
-                <div class="footer-note">This layout stays visible after login so the operator remains anchored to the approved snapshot workflow.</div>
               </section>
 
               <section class="section">
@@ -971,6 +1064,7 @@
                     <h3 class="section-title">Map View And Coordinates</h3>
                   </div>
                 </div>
+
                 <div class="location-layout">
                   <div class="map-panel">
                     <div class="map-badge">Last Location</div>
@@ -1096,7 +1190,7 @@
           </section>
         </div>
       </div>
-        </main>
+    </main>
   </div>
 
   <script src="/app.js" defer></script>
