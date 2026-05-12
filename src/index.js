@@ -8,16 +8,40 @@ function jsonResponse(data, status = 200) {
   });
 }
 
-async function handleTn360Users(env) {
-  const url = `${env.TN360_BASE_URL}/v1/users/?key=${env.TN360_API_KEY}&pruning=B2B`;
-  const response = await fetch(url);
+async function handleTn360Users(request, env) {
+  const url = new URL(request.url);
+  const username = String(url.searchParams.get("username") || "").trim();
 
-  if (!response.ok) {
+  if (!username) {
+    return jsonResponse({ error: "Username is required." }, 400);
+  }
+
+  const listUrl = `${env.TN360_BASE_URL}/v1/users/?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const listResponse = await fetch(listUrl);
+
+  if (!listResponse.ok) {
     return jsonResponse({ error: "Unable to load TN360 users." }, 502);
   }
 
-  const users = await response.json();
-  return jsonResponse(users);
+  const users = await listResponse.json();
+
+  const matchedUser = users.find(
+    (user) => String(user.username || "").toLowerCase() === username.toLowerCase(),
+  );
+
+  if (!matchedUser || !matchedUser.id) {
+    return jsonResponse({ error: "TN360 user not found." }, 404);
+  }
+
+  const detailUrl = `${env.TN360_BASE_URL}/v1/users/${matchedUser.id}?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const detailResponse = await fetch(detailUrl);
+
+  if (!detailResponse.ok) {
+    return jsonResponse({ error: "Unable to load TN360 user detail." }, 502);
+  }
+
+  const detailedUser = await detailResponse.json();
+  return jsonResponse(detailedUser);
 }
 
 async function handleVehicleLookup(request, env) {
@@ -171,7 +195,7 @@ export default {
     }
 
     if (request.method === "GET" && url.pathname === "/api/tn360-users") {
-      return handleTn360Users(env);
+      return handleTn360Users(request, env);
     }
 
     return env.ASSETS.fetch(request);
