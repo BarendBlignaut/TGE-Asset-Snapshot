@@ -173,6 +173,49 @@ async function handleHermesDeviceStats(request, env) {
   return jsonResponse(matchedDevice);
 }
 
+async function handleCameraDeviceStats(request, env) {
+  requireEnv(env);
+
+  const body = await request.json();
+  const cameraId = String(body.cameraId || "").trim();
+
+  if (!cameraId) {
+    return jsonResponse({ error: "Camera ID is required." }, 400);
+  }
+
+  const devicesUrl = `https://api-au.telematics.com/v1/devices/?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const response = await fetch(devicesUrl);
+
+  if (!response.ok) {
+    return jsonResponse(
+      { error: `Camera device stats lookup failed. HTTP ${response.status}` },
+      502,
+    );
+  }
+
+  const devices = await response.json();
+  const searchValue = normalizeValue(cameraId);
+
+  const matchedDevice = devices.find((device) => {
+    const typeCode = normalizeValue(device?.type?.code);
+    const deviceId = normalizeValue(device?.id);
+    const imei = normalizeValue(device?.imei);
+    const serialNumber = normalizeValue(device?.serialNumber);
+
+    return typeCode === "camera" && (
+      deviceId === searchValue ||
+      imei === searchValue ||
+      serialNumber === searchValue
+    );
+  });
+
+  if (!matchedDevice) {
+    return jsonResponse({ error: "Camera device not found." }, 404);
+  }
+
+  return jsonResponse(matchedDevice);
+}
+
 export default {
   async fetch(request, env) {
     try {
@@ -203,6 +246,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/api/hermes-device-stats") {
         return handleHermesDeviceStats(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/camera-device-stats") {
+        return handleCameraDeviceStats(request, env);
       }
 
       return env.ASSETS.fetch(request);
