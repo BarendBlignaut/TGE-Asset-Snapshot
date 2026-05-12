@@ -1,342 +1,418 @@
-const approvedUsers = [
-  {
-    firstName: "Barend",
-    lastName: "Blignaut",
-    username: "bare1234",
-    role: "admin",
-    status: "active",
-    createdBy: "system",
-    createdDate: "2026-05-12T00:00:00Z",
-    updatedBy: "system",
-    updatedDate: "2026-05-12T00:00:00Z",
-  },
-];
+const state = {
+  currentSessionUser: null,
+  activeAssetLookup: null,
+  approvedUsers: [],
+  accessHistory: [],
+  lastDebugEntries: ["No debug entries."],
+};
 
-const loginHistory = [];
-let currentSessionUser = null;
-let activeAssetLookup = null;
+const el = {
+  loginForm: document.getElementById("login-form"),
+  loginMessage: document.getElementById("login-message"),
+  loginScreen: document.getElementById("login-screen"),
+  appShell: document.getElementById("app-shell"),
+  headerActions: document.getElementById("header-actions"),
+  adminTab: document.getElementById("admin-tab"),
+  standardTab: document.getElementById("standard-tab"),
+  standardView: document.getElementById("standard-view"),
+  adminView: document.getElementById("admin-view"),
+  approvedUserForm: document.getElementById("approved-user-form"),
+  approvedUsersTableBody: document.getElementById("approved-users-table-body"),
+  historyUserFilter: document.getElementById("history-user-filter"),
+  historyTableBody: document.getElementById("history-table-body"),
+  assetSearchForm: document.getElementById("asset-search-form"),
+  assetSearchMessage: document.getElementById("asset-search-message"),
+  assetShell: document.getElementById("asset-shell"),
+  debugPanel: document.getElementById("debug-panel"),
+  debugOutput: document.getElementById("debug-output"),
+  exportPdfButton: document.getElementById("export-pdf-btn"),
+  emailPdfButton: document.getElementById("email-pdf-btn"),
+};
 
-const loginForm = document.getElementById("login-form");
-const loginMessage = document.getElementById("login-message");
-const loginScreen = document.getElementById("login-screen");
-const appShell = document.getElementById("app-shell");
-const headerActions = document.getElementById("header-actions");
-const adminTab = document.getElementById("admin-tab");
-const standardTab = document.getElementById("standard-tab");
-const standardView = document.getElementById("standard-view");
-const adminView = document.getElementById("admin-view");
-
-const approvedUserForm = document.getElementById("approved-user-form");
-const approvedUsersTableBody = document.getElementById("approved-users-table-body");
-const historyUserFilter = document.getElementById("history-user-filter");
-const historyTableBody = document.getElementById("history-table-body");
-
-const assetSearchForm = document.getElementById("asset-search-form");
-const assetSearchMessage = document.getElementById("asset-search-message");
-const assetShell = document.getElementById("asset-shell");
-
-function findApprovedUser(username) {
-  return approvedUsers.find(
-    (user) => user.username.toLowerCase() === String(username).trim().toLowerCase(),
-  );
+function getNode(id) {
+  return document.getElementById(id);
 }
 
-function showLoginError(message = "Access denied. Please contact Telematics.") {
-  loginMessage.textContent = message;
-}
-
-function showLoginSuccess(user) {
-  loginMessage.textContent = "";
-  currentSessionUser = user;
-}
-
-function showStandardView() {
-  standardView.style.display = "block";
-  adminView.style.display = "none";
-}
-
-function showAdminView() {
-  standardView.style.display = "none";
-  adminView.style.display = "block";
-}
-
-function openAppForUser(sessionUser) {
-  loginScreen.style.display = "none";
-  appShell.style.display = "block";
-  headerActions.style.display = "flex";
-
-  if (sessionUser.role === "admin") {
-    adminTab.style.display = "inline-block";
-    renderApprovedUsersTable();
-    renderHistoryUserFilter();
-    renderHistoryTable();
-  } else {
-    adminTab.style.display = "none";
+function safeText(value, fallback = "") {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
   }
 
-  showStandardView();
+  return String(value);
 }
 
-function isDriverUser(tnUser) {
-  const roles = Array.isArray(tnUser.roles) ? tnUser.roles : [];
+function setText(ids, value, fallback = "") {
+  const resolvedIds = Array.isArray(ids) ? ids : [ids];
+  const text = safeText(value, fallback);
 
-  return roles.some((role) => {
-    const roleName = String(role.name || "").toLowerCase();
-    const features = Array.isArray(role.features) ? role.features : [];
-    return roleName === "driver" || features.includes("DRIVER");
+  resolvedIds.forEach((id) => {
+    const node = getNode(id);
+    if (node) node.textContent = text;
   });
 }
 
-async function fetchTn360UserByUsername(username) {
-  const response = await fetch(`/api/tn360-users?username=${encodeURIComponent(username)}`);
+function setVisible(node, visible, displayValue = "block") {
+  if (!node) return;
+  node.style.display = visible ? displayValue : "none";
+}
+
+function setFieldValue(id, value) {
+  const node = getNode(id);
+  if (node) node.value = safeText(value);
+}
+
+function currentIsoTime() {
+  return new Date().toISOString();
+}
+
+function formatDisplayDate(value) {
+  if (!value) return "--";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return safeText(value, "--");
+
+  return date.toLocaleString("en-AU", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+function formatMetric(value, suffix = "") {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
+
+  const numericValue = Number(value);
+  if (Number.isNaN(numericValue)) return safeText(value, "");
+
+  return `${Number.isInteger(numericValue) ? numericValue : numericValue.toFixed(2)}${suffix}`;
+}
+
+function formatBooleanState(value, truthyLabel, falsyLabel, fallback = "") {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+
+  if (typeof value === "boolean") {
+    return value ? truthyLabel : falsyLabel;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (["true", "on", "enabled", "active", "moving"].includes(normalized)) return truthyLabel;
+  if (["false", "off", "disabled", "inactive", "stopped"].includes(normalized)) return falsyLabel;
+
+  return safeText(value, fallback);
+}
+
+function showLoginError(message = "Access denied. Please contact Telematics.") {
+  setText("login-message", message);
+}
+
+function showAssetSearchMessage(message = "", isError = true) {
+  if (!el.assetSearchMessage) return;
+
+  el.assetSearchMessage.textContent = message;
+  el.assetSearchMessage.style.color = isError ? "" : "#0d5f3a";
+}
+
+function clearAssetSearchMessage() {
+  showAssetSearchMessage("", true);
+}
+
+function setImage(imageId, emptyId, url) {
+  const image = getNode(imageId);
+  const empty = getNode(emptyId);
+
+  if (!image || !empty) return;
+
+  if (url) {
+    image.src = url;
+    image.style.display = "block";
+    empty.style.display = "none";
+    return;
+  }
+
+  image.removeAttribute("src");
+  image.style.display = "none";
+  empty.style.display = "block";
+}
+
+function safeParseJson(value) {
+  if (!value || typeof value !== "string") return null;
+
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    return null;
+  }
+}
+
+function formatMaxTwoDecimals(value) {
+  const numericValue = Number(value);
+  if (Number.isNaN(numericValue)) return null;
+  return Number(numericValue.toFixed(2));
+}
+
+function formatBytesToGb(bytesValue) {
+  const numericValue = Number(bytesValue);
+  if (Number.isNaN(numericValue) || numericValue <= 0) return null;
+
+  const gbValue = numericValue / (1024 * 1024 * 1024);
+  return `${gbValue.toFixed(2)} GB`;
+}
+
+function writeDebug(label, data) {
+  const output = [label];
+
+  if (data !== undefined) {
+    output.push(typeof data === "string" ? data : JSON.stringify(data, null, 2));
+  }
+
+  state.lastDebugEntries = output;
+  renderDebug();
+}
+
+function renderDebug() {
+  const isAdmin = state.currentSessionUser?.role === "admin";
+
+  if (!el.debugPanel || !el.debugOutput) return;
+
+  setVisible(el.debugPanel, Boolean(isAdmin));
+  if (isAdmin) {
+    el.debugOutput.textContent = state.lastDebugEntries.join("\n\n");
+  }
+}
+
+function showStandardView() {
+  setVisible(el.standardView, true, "block");
+  setVisible(el.adminView, false);
+}
+
+function showAdminView() {
+  setVisible(el.standardView, false);
+  setVisible(el.adminView, true, "block");
+}
+
+function clearSessionUi() {
+  state.currentSessionUser = null;
+  state.approvedUsers = [];
+  state.accessHistory = [];
+  setVisible(el.loginScreen, true, "grid");
+  setVisible(el.appShell, false);
+  setVisible(el.headerActions, false);
+  setVisible(el.adminTab, false);
+  setText("login-message", "");
+  resetActiveAssetLookup();
+  renderDebug();
+}
+
+async function fetchJson(url, options = {}, fallbackMessage = "Request failed.") {
+  const response = await fetch(url, {
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+
+  const isJson = (response.headers.get("content-type") || "").includes("application/json");
+  const payload = isJson ? await response.json().catch(() => ({})) : {};
 
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({ error: "Unable to validate user." }));
-    throw new Error(payload.error || "Unable to validate user.");
+    if (response.status === 401) {
+      clearSessionUi();
+    }
+
+    throw new Error(payload.detail || payload.error || fallbackMessage);
   }
 
-  return response.json();
+  return payload;
 }
 
-async function validateLogin(username, password) {
-  const approvedUser = findApprovedUser(username);
+async function fetchBlob(url, options = {}, fallbackMessage = "Download failed.") {
+  const response = await fetch(url, {
+    credentials: "same-origin",
+    ...options,
+  });
 
-  if (!approvedUser || approvedUser.status !== "active") {
-    return { success: false };
+  if (!response.ok) {
+    let message = fallbackMessage;
+
+    try {
+      const payload = await response.json();
+      message = payload.detail || payload.error || fallbackMessage;
+    } catch (error) {
+      message = fallbackMessage;
+    }
+
+    if (response.status === 401) {
+      clearSessionUi();
+    }
+
+    throw new Error(message);
   }
 
-  const tnUser = await fetchTn360UserByUsername(username);
-
-  if (!tnUser) return { success: false };
-  if (tnUser.status !== "ENABLED") return { success: false };
-  if (!isDriverUser(tnUser)) return { success: false };
-  if (String(tnUser.externalPin || "") !== String(password)) return { success: false };
-
-  return {
-    success: true,
-    approvedUser,
-    tnUser,
-  };
+  return response.blob();
 }
 
-function addHistoryRecord({ username, dateTime, assetRequested }) {
-  loginHistory.push({ username, dateTime, assetRequested });
+async function apiGet(url, fallbackMessage) {
+  return fetchJson(url, { method: "GET" }, fallbackMessage);
+}
+
+async function apiPost(url, body, fallbackMessage) {
+  return fetchJson(
+    url,
+    {
+      method: "POST",
+      body: JSON.stringify(body || {}),
+    },
+    fallbackMessage,
+  );
+}
+
+async function loadSession() {
+  try {
+    const session = await apiGet("/api/session", "No active session.");
+    state.currentSessionUser = session.user;
+    openAppForUser(session.user);
+    writeDebug("Session restored", session.user);
+  } catch (error) {
+    clearSessionUi();
+  }
+}
+
+async function loadApprovedUsers() {
+  if (state.currentSessionUser?.role !== "admin") return;
+
+  state.approvedUsers = await apiGet("/api/approved-users", "Unable to load approved users.");
+  renderApprovedUsersTable();
+}
+
+async function loadAccessHistory() {
+  if (state.currentSessionUser?.role !== "admin") return;
+
+  state.accessHistory = await apiGet("/api/access-history", "Unable to load access history.");
+  renderHistoryUserFilter();
+  renderHistoryTable();
+}
+
+async function loadAdminData() {
+  await Promise.all([loadApprovedUsers(), loadAccessHistory()]);
+}
+
+function openAppForUser(sessionUser) {
+  state.currentSessionUser = sessionUser;
+  setVisible(el.loginScreen, false);
+  setVisible(el.appShell, true, "block");
+  setVisible(el.headerActions, true, "flex");
+
+  if (sessionUser.role === "admin") {
+    setVisible(el.adminTab, true, "inline-block");
+    loadAdminData().catch((error) => {
+      writeDebug("Admin data load failed", error.message);
+    });
+  } else {
+    setVisible(el.adminTab, false);
+  }
+
+  renderDebug();
+  showStandardView();
+}
+
+function initialiseUi() {
+  setVisible(el.appShell, false);
+  setVisible(el.headerActions, false);
+  setVisible(el.adminTab, false);
+  showStandardView();
+  resetRenderedAsset();
+  renderDebug();
 }
 
 function renderHistoryUserFilter() {
-  const usernames = [...new Set(loginHistory.map((item) => item.username))];
-  historyUserFilter.innerHTML = '<option value="">All Users</option>';
+  if (!el.historyUserFilter) return;
+
+  const usernames = [...new Set(state.accessHistory.map((item) => item.username))];
+  el.historyUserFilter.innerHTML = '<option value="">All Users</option>';
 
   usernames.forEach((username) => {
     const option = document.createElement("option");
     option.value = username;
     option.textContent = username;
-    historyUserFilter.appendChild(option);
+    el.historyUserFilter.appendChild(option);
   });
 }
 
 function renderHistoryTable() {
-  const selectedUser = historyUserFilter.value;
-  const filteredHistory = selectedUser
-    ? loginHistory.filter((item) => item.username === selectedUser)
-    : loginHistory;
+  if (!el.historyTableBody || !el.historyUserFilter) return;
 
-  historyTableBody.innerHTML = "";
+  const selectedUser = el.historyUserFilter.value;
+  const filteredHistory = selectedUser
+    ? state.accessHistory.filter((item) => item.username === selectedUser)
+    : state.accessHistory;
+
+  el.historyTableBody.innerHTML = "";
 
   filteredHistory.forEach((item) => {
     const row = document.createElement("tr");
     row.innerHTML = `
-      <td>${item.username}</td>
-      <td>${item.dateTime}</td>
-      <td>${item.assetRequested}</td>
+      <td>${safeText(item.username)}</td>
+      <td>${formatDisplayDate(item.dateTime)}</td>
+      <td>${safeText(item.assetRequested)}</td>
     `;
-    historyTableBody.appendChild(row);
+    el.historyTableBody.appendChild(row);
   });
 }
 
 function renderApprovedUsersTable() {
-  approvedUsersTableBody.innerHTML = "";
+  if (!el.approvedUsersTableBody) return;
 
-  approvedUsers.forEach((user) => {
+  el.approvedUsersTableBody.innerHTML = "";
+
+  state.approvedUsers.forEach((user) => {
     const row = document.createElement("tr");
     row.innerHTML = `
-      <td>${user.firstName}</td>
-      <td>${user.lastName}</td>
-      <td>${user.username}</td>
-      <td>${user.role}</td>
-      <td>${user.status}</td>
-      <td>${user.updatedBy}</td>
-      <td>${user.updatedDate}</td>
+      <td>${safeText(user.firstName)}</td>
+      <td>${safeText(user.lastName)}</td>
+      <td>${safeText(user.username)}</td>
+      <td>${safeText(user.role)}</td>
+      <td>${safeText(user.status)}</td>
+      <td>${safeText(user.updatedBy)}</td>
+      <td>${formatDisplayDate(user.updatedDate)}</td>
       <td>
         <button type="button" data-action="edit" data-username="${user.username}">Edit</button>
         <button type="button" data-action="deactivate" data-username="${user.username}">Deactivate</button>
       </td>
     `;
-    approvedUsersTableBody.appendChild(row);
+    el.approvedUsersTableBody.appendChild(row);
   });
 }
 
 function resetApprovedUserForm() {
-  approvedUserForm.reset();
+  if (el.approvedUserForm) el.approvedUserForm.reset();
 }
 
 function fillApprovedUserForm(user) {
-  document.getElementById("approved-first-name").value = user.firstName;
-  document.getElementById("approved-last-name").value = user.lastName;
-  document.getElementById("approved-username").value = user.username;
-  document.getElementById("approved-role").value = user.role;
-  document.getElementById("approved-status").value = user.status;
-}
-
-function upsertApprovedUser(formValues) {
-  const existingUser = approvedUsers.find(
-    (user) => user.username.toLowerCase() === formValues.username.toLowerCase(),
-  );
-
-  if (existingUser) {
-    existingUser.firstName = formValues.firstName;
-    existingUser.lastName = formValues.lastName;
-    existingUser.role = formValues.role;
-    existingUser.status = formValues.status;
-    existingUser.updatedBy = currentSessionUser.username;
-    existingUser.updatedDate = new Date().toISOString();
-    return;
-  }
-
-  approvedUsers.push({
-    firstName: formValues.firstName,
-    lastName: formValues.lastName,
-    username: formValues.username,
-    role: formValues.role,
-    status: formValues.status,
-    createdBy: currentSessionUser.username,
-    createdDate: new Date().toISOString(),
-    updatedBy: currentSessionUser.username,
-    updatedDate: new Date().toISOString(),
-  });
-}
-
-function deactivateApprovedUser(username) {
-  const user = approvedUsers.find(
-    (item) => item.username.toLowerCase() === String(username).toLowerCase(),
-  );
-
-  if (!user) return;
-
-  user.status = "inactive";
-  user.updatedBy = currentSessionUser.username;
-  user.updatedDate = new Date().toISOString();
-}
-
-function showAssetSearchMessage(message) {
-  assetSearchMessage.textContent = message;
-}
-
-function clearAssetSearchMessage() {
-  assetSearchMessage.textContent = "";
-}
-
-function resetActiveAssetLookup() {
-  activeAssetLookup = null;
-  assetShell.style.display = "none";
-}
-
-async function fetchVehicleByAssetNumber(assetNumber) {
-  const response = await fetch("/api/vehicle-lookup", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ assetNumber }),
-  });
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({ error: "Asset not found." }));
-    throw new Error(payload.error || "Asset not found.");
-  }
-
-  return response.json();
-}
-
-async function fetchVehicleDevices(vehicleId) {
-  const response = await fetch("/api/vehicle-devices", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ vehicleId }),
-  });
-
-  if (!response.ok) {
-    throw new Error("Device lookup failed.");
-  }
-
-  return response.json();
-}
-
-async function fetchVehicleMeters(vehicleId) {
-  const response = await fetch("/api/vehicle-meters", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ vehicleId }),
-  });
-
-  if (!response.ok) {
-    throw new Error("Meters lookup failed.");
-  }
-
-  return response.json();
-}
-
-async function fetchHermesDeviceStats(trackerId) {
-  const response = await fetch("/api/hermes-device-stats", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ trackerId }),
-  });
-
-  if (!response.ok) {
-    throw new Error("HERMES device stats lookup failed.");
-  }
-
-  return response.json();
-}
-
-async function fetchCameraDeviceStats(cameraId) {
-  const response = await fetch("/api/camera-device-stats", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cameraId }),
-  });
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({ error: "Camera device stats lookup failed." }));
-    throw new Error(payload.detail || payload.error || "Camera device stats lookup failed.");
-  }
-
-  return response.json();
-}
-
-async function fetchCameraSnapshots(vehicleId) {
-  const response = await fetch("/api/camera-snapshots", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ vehicleId }),
-  });
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({ error: "Camera snapshot lookup failed." }));
-    throw new Error(payload.detail || payload.error || "Camera snapshot lookup failed.");
-  }
-
-  return response.json();
+  setFieldValue("approved-first-name", user.firstName);
+  setFieldValue("approved-last-name", user.lastName);
+  setFieldValue("approved-username", user.username);
+  setFieldValue("approved-role", user.role);
+  setFieldValue("approved-status", user.status);
+  setFieldValue("approved-password", "");
 }
 
 function mapVehicleDevices(devices) {
   const trackingDevice = devices.find(
     (device) => String(device.type?.code || "").toUpperCase() === "HERMES",
   );
-
   const tabletDevice = devices.find(
     (device) => String(device.type?.code || "").toUpperCase() === "IFACE",
   );
-
   const cameraDevice = devices.find(
     (device) => String(device.type?.code || "").toUpperCase() === "CAMERA",
   );
@@ -369,12 +445,6 @@ function mapVehicleDevices(devices) {
   };
 }
 
-function formatMaxTwoDecimals(value) {
-  const numericValue = Number(value);
-  if (Number.isNaN(numericValue)) return null;
-  return Number(numericValue.toFixed(2));
-}
-
 function extractVehicleMeters(meters) {
   const engineHoursRecord = meters.find(
     (meter) =>
@@ -392,16 +462,6 @@ function extractVehicleMeters(meters) {
     engineHours: engineHoursRecord ? formatMaxTwoDecimals(engineHoursRecord.computed) : null,
     odometer: odometerRecord ? formatMaxTwoDecimals(odometerRecord.computed) : null,
   };
-}
-
-function safeParseJson(value) {
-  if (!value || typeof value !== "string") return null;
-
-  try {
-    return JSON.parse(value);
-  } catch (error) {
-    return null;
-  }
 }
 
 function extractHermesStats(device) {
@@ -439,13 +499,6 @@ function extractHermesStats(device) {
       : null,
     gpio: lastGpio || null,
   };
-}
-
-function formatBytesToGb(bytesValue) {
-  const numericValue = Number(bytesValue);
-  if (Number.isNaN(numericValue) || numericValue <= 0) return null;
-  const gbValue = numericValue / (1024 * 1024 * 1024);
-  return `${gbValue.toFixed(2)} GB`;
 }
 
 function extractCameraStats(device) {
@@ -552,52 +605,61 @@ function mapSnapshotLinksToSlots(snapshotData) {
   return slots;
 }
 
-function safeText(value, fallback = "") {
-  if (value === null || value === undefined || value === "") {
-    return fallback;
-  }
-  return String(value);
+function buildLookupSummary(
+  rawAssetNumber,
+  vehicle,
+  devices,
+  meters,
+  hermesStats,
+  cameraStats,
+  cameraSnapshot,
+  durations,
+) {
+  return {
+    requestedAssetNumber: rawAssetNumber,
+    requestedAt: currentIsoTime(),
+    renderDurationMs: durations.renderDurationMs,
+    vehicle: {
+      vehicleId: vehicle.id,
+      assetNumber: vehicle.name || rawAssetNumber,
+      registration: vehicle.registration,
+      registrationState: vehicle.registrationState,
+      vin: vehicle.vin,
+      make: vehicle.make,
+      model: vehicle.model,
+      yearOfManufacture: vehicle.operationalVehicleModel?.yearOfManufacture || null,
+    },
+    devices,
+    meters,
+    hermesStats,
+    cameraStats,
+    cameraSnapshot,
+  };
 }
 
-function setText(id, value, fallback = "") {
-  const node = document.getElementById(id);
-  if (!node) return;
-  node.textContent = safeText(value, fallback);
+function renderHero(lookup) {
+  const vehicle = lookup.vehicle || {};
+
+  setText("hero-current-asset", vehicle.registration || vehicle.assetNumber || "Asset loaded");
+  setText("hero-request-time", formatDisplayDate(lookup.requestedAt), "--");
+  setText("hero-lookup-status", "Loaded");
+  setText("hero-fleet-number", vehicle.assetNumber || lookup.requestedAssetNumber, "--");
+  setText(["hero-vehicle-id", "hero-vehicle-id-copy"], vehicle.vehicleId, "--");
+  setText("hero-render-time", `${lookup.renderDurationMs} ms`, "--");
 }
 
-function setImage(imageId, emptyId, url) {
-  const image = document.getElementById(imageId);
-  const empty = document.getElementById(emptyId);
-
-  if (!image || !empty) return;
-
-  if (url) {
-    image.src = url;
-    image.style.display = "block";
-    empty.style.display = "none";
-  } else {
-    image.removeAttribute("src");
-    image.style.display = "none";
-    empty.style.display = "block";
-  }
-}
-
-function renderResolvedAsset() {
-  if (!activeAssetLookup) return;
-
-  const vehicle = activeAssetLookup.vehicle || {};
-  const devices = activeAssetLookup.devices || {};
-  const meters = activeAssetLookup.meters || {};
-  const hermesStats = activeAssetLookup.hermesStats || {};
-  const performance = hermesStats.performance || {};
-  const cameraStats = activeAssetLookup.cameraStats || {};
-  const cameraSnapshot = activeAssetLookup.cameraSnapshot || {};
-  const slots = cameraSnapshot.slots || {};
+function renderVehicleDetails(lookup) {
+  const vehicle = lookup.vehicle || {};
+  const devices = lookup.devices || {};
+  const hermesStats = lookup.hermesStats || {};
+  const combinedMakeModel = [vehicle.make, vehicle.model].filter(Boolean).join(" ");
 
   setText("view-asset-number", vehicle.assetNumber);
   setText("view-registration", vehicle.registration);
   setText("view-vin", vehicle.vin);
-  setText("view-make-model", `${safeText(vehicle.make)} ${safeText(vehicle.model)}`.trim());
+  setText("view-make-model", combinedMakeModel);
+  setText("view-make", vehicle.make);
+  setText("view-model", vehicle.model);
   setText("view-year", vehicle.yearOfManufacture);
   setText("view-driver", hermesStats.driverName || "No driver");
 
@@ -607,25 +669,41 @@ function renderResolvedAsset() {
   setText("view-tablet-serial", devices.tablet?.serialNumber, "Not fitted");
   setText("view-camera-imei", devices.camera?.imei, "Not fitted");
   setText("view-camera-serial", devices.camera?.serialNumber, "Not fitted");
+}
 
-  setText("view-odometer", meters.odometer, "");
-  setText("view-engine-hours", meters.engineHours, "");
+function renderMetrics(lookup) {
+  const meters = lookup.meters || {};
+  const hermesStats = lookup.hermesStats || {};
+  const performance = hermesStats.performance || {};
+  const ignitionText = formatBooleanState(hermesStats.ignition, "On", "Off", "");
+  const movementText = formatBooleanState(hermesStats.movement, "Moving", "Stopped", "");
 
-  setText("view-ignition", hermesStats.ignition, "");
-  setText("view-movement", hermesStats.movement, "");
+  setText("view-odometer", formatMetric(meters.odometer));
+  setText("view-engine-hours", formatMetric(meters.engineHours));
+  setText("view-speed", formatMetric(performance.speed));
+  setText("view-rpm", formatMetric(performance.rpm));
+  setText("view-oil-temp", formatMetric(performance.oilTemperature));
+  setText("view-oil-pressure", formatMetric(performance.oilPressure));
+  setText("view-engine-load", formatMetric(performance.engineLoad));
+  setText("view-gear", formatMetric(performance.gear));
   setText("view-location", hermesStats.location, "");
-  setText("view-speed", performance.speed, "");
-  setText("view-rpm", performance.rpm, "");
-  setText("view-oil-temp", performance.oilTemperature, "");
-  setText("view-oil-pressure", performance.oilPressure, "");
-  setText("view-engine-load", performance.engineLoad, "");
-  setText("view-gear", performance.gear, "");
+  setText("view-ignition", ignitionText, "");
+  setText("view-movement", movementText, "");
+  setText("view-ignition-status", [ignitionText, movementText].filter(Boolean).join(" / "), "");
+}
+
+function renderStorage(lookup) {
+  const cameraStats = lookup.cameraStats || {};
 
   setText("view-sd-overall", cameraStats.overallStatus, "");
   setText("view-sd1", cameraStats.sdCard1?.present ? "Present" : "Not present", "");
   setText("view-sd1-size", cameraStats.sdCard1?.totalSizeDisplay, "");
   setText("view-sd2", cameraStats.sdCard2?.present ? "Present" : "Not present", "");
   setText("view-sd2-size", cameraStats.sdCard2?.totalSizeDisplay, "");
+}
+
+function renderSnapshots(lookup) {
+  const slots = lookup.cameraSnapshot?.slots || {};
 
   setImage("img-road-facing", "img-road-facing-empty", slots.roadFacing);
   setImage("img-driver-facing", "img-driver-facing-empty", slots.driverFacing);
@@ -634,172 +712,354 @@ function renderResolvedAsset() {
   setImage("img-left-external", "img-left-external-empty", slots.leftExternal);
 }
 
+function renderResolvedAsset() {
+  if (!state.activeAssetLookup) return;
+
+  renderHero(state.activeAssetLookup);
+  renderVehicleDetails(state.activeAssetLookup);
+  renderMetrics(state.activeAssetLookup);
+  renderStorage(state.activeAssetLookup);
+  renderSnapshots(state.activeAssetLookup);
+
+  setVisible(el.assetShell, true, "block");
+  renderDebug();
+}
+
+function resetHero() {
+  setText("hero-current-asset", "No asset loaded");
+  setText("hero-request-time", "--");
+  setText("hero-lookup-status", "Awaiting search");
+  setText("hero-fleet-number", "--");
+  setText(["hero-vehicle-id", "hero-vehicle-id-copy"], "--");
+  setText("hero-render-time", "--");
+}
+
+function resetRenderedAsset() {
+  resetHero();
+
+  [
+    "view-asset-number",
+    "view-registration",
+    "view-vin",
+    "view-make-model",
+    "view-make",
+    "view-model",
+    "view-year",
+    "view-driver",
+    "view-tracker-imei",
+    "view-tracker-serial",
+    "view-tablet-imei",
+    "view-tablet-serial",
+    "view-camera-imei",
+    "view-camera-serial",
+    "view-odometer",
+    "view-engine-hours",
+    "view-speed",
+    "view-rpm",
+    "view-oil-temp",
+    "view-oil-pressure",
+    "view-engine-load",
+    "view-gear",
+    "view-location",
+    "view-ignition",
+    "view-movement",
+    "view-ignition-status",
+    "view-sd-overall",
+    "view-sd1",
+    "view-sd1-size",
+    "view-sd2",
+    "view-sd2-size",
+  ].forEach((id) => setText(id, ""));
+
+  setImage("img-road-facing", "img-road-facing-empty", null);
+  setImage("img-driver-facing", "img-driver-facing-empty", null);
+  setImage("img-in-cab", "img-in-cab-empty", null);
+  setImage("img-driver-external", "img-driver-external-empty", null);
+  setImage("img-left-external", "img-left-external-empty", null);
+
+  setVisible(el.assetShell, false);
+}
+
+function resetActiveAssetLookup() {
+  state.activeAssetLookup = null;
+  resetRenderedAsset();
+}
+
 async function handleAssetSearch(assetNumber) {
+  const startedAt = performance.now();
+
   clearAssetSearchMessage();
   resetActiveAssetLookup();
+  setText("hero-lookup-status", "Loading");
+  setText("hero-fleet-number", assetNumber || "--");
+  setText("hero-request-time", formatDisplayDate(currentIsoTime()));
+  writeDebug("Lookup started", { assetNumber });
 
-  const vehicleLookupResponse = await fetchVehicleByAssetNumber(assetNumber);
+  const vehicleLookupResponse = await apiPost(
+    "/api/vehicle-lookup",
+    { assetNumber },
+    "Asset not found.",
+  );
   const vehicle = vehicleLookupResponse.vehicle || vehicleLookupResponse;
 
-  const devices = await fetchVehicleDevices(vehicle.id);
-  const mappedDevices = mapVehicleDevices(devices);
-  const meters = await fetchVehicleMeters(vehicle.id);
-  const extractedMeters = extractVehicleMeters(meters);
+  const [devicesResponse, metersResponse, snapshotEvents] = await Promise.all([
+    apiPost("/api/vehicle-devices", { vehicleId: vehicle.id }, "Device lookup failed."),
+    apiPost("/api/vehicle-meters", { vehicleId: vehicle.id }, "Meters lookup failed."),
+    apiPost("/api/camera-snapshots", { vehicleId: vehicle.id }, "Camera snapshot lookup failed."),
+  ]);
 
-  let hermesStats = null;
-  let cameraStats = null;
-  let cameraSnapshot = null;
+  const devices = mapVehicleDevices(devicesResponse);
+  const meters = extractVehicleMeters(metersResponse);
 
-  if (mappedDevices.trackingSystem?.imei || mappedDevices.trackingSystem?.serialNumber) {
-    const hermesIdentifier =
-      mappedDevices.trackingSystem.imei || mappedDevices.trackingSystem.serialNumber;
-    const hermesDevice = await fetchHermesDeviceStats(hermesIdentifier);
-    hermesStats = extractHermesStats(hermesDevice);
-  }
+  const [hermesDevice, cameraDevice] = await Promise.all([
+    devices.trackingSystem?.imei || devices.trackingSystem?.serialNumber
+      ? apiPost(
+          "/api/hermes-device-stats",
+          { trackerId: devices.trackingSystem.imei || devices.trackingSystem.serialNumber },
+          "HERMES device stats lookup failed.",
+        )
+      : Promise.resolve(null),
+    devices.camera?.imei
+      ? apiPost(
+          "/api/camera-device-stats",
+          { cameraId: devices.camera.imei },
+          "Camera device stats lookup failed.",
+        )
+      : Promise.resolve(null),
+  ]);
 
-  if (mappedDevices.camera?.imei) {
-    const cameraDevice = await fetchCameraDeviceStats(mappedDevices.camera.imei);
-    cameraStats = extractCameraStats(cameraDevice);
-  }
-
-  const snapshotEvents = await fetchCameraSnapshots(vehicle.id);
+  const hermesStats = hermesDevice ? extractHermesStats(hermesDevice) : null;
+  const cameraStats = cameraDevice ? extractCameraStats(cameraDevice) : null;
   const latestSnapshot = extractLatestSnapshot(snapshotEvents);
-
-  cameraSnapshot = {
+  const cameraSnapshot = {
     snapshotTime: latestSnapshot.snapshotTime,
     slots: mapSnapshotLinksToSlots(latestSnapshot),
   };
 
-  activeAssetLookup = {
-    requestedAssetNumber: assetNumber,
-    vehicle: {
-      vehicleId: vehicle.id,
-      assetNumber: vehicle.name,
-      registration: vehicle.registration,
-      registrationState: vehicle.registrationState,
-      vin: vehicle.vin,
-      make: vehicle.make,
-      model: vehicle.model,
-      yearOfManufacture: vehicle.operationalVehicleModel?.yearOfManufacture || null,
-    },
-    devices: mappedDevices,
-    meters: extractedMeters,
+  state.activeAssetLookup = buildLookupSummary(
+    assetNumber,
+    vehicle,
+    devices,
+    meters,
     hermesStats,
     cameraStats,
     cameraSnapshot,
-  };
-
-  addHistoryRecord({
-    username: currentSessionUser.username,
-    dateTime: new Date().toISOString(),
-    assetRequested: assetNumber,
-  });
-
-  if (currentSessionUser.role === "admin") {
-    renderHistoryUserFilter();
-    renderHistoryTable();
-  }
-
-  renderResolvedAsset();
-  assetShell.style.display = "block";
-}
-
-loginForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-
-  const username = document.getElementById("username").value.trim();
-  const password = document.getElementById("password").value.trim();
-
-  try {
-    const result = await validateLogin(username, password);
-
-    if (!result.success) {
-      showLoginError();
-      return;
-    }
-
-    showLoginSuccess({
-      username: result.approvedUser.username,
-      role: result.approvedUser.role,
-      firstName: result.tnUser.firstName,
-      lastName: result.tnUser.lastName,
-    });
-
-    addHistoryRecord({
-      username: currentSessionUser.username,
-      dateTime: new Date().toISOString(),
-      assetRequested: "Login only",
-    });
-
-    openAppForUser(currentSessionUser);
-  } catch (error) {
-    showLoginError(error.message || "Access denied. Please contact Telematics.");
-  }
-});
-
-standardTab.addEventListener("click", () => {
-  showStandardView();
-});
-
-adminTab.addEventListener("click", () => {
-  if (!currentSessionUser || currentSessionUser.role !== "admin") return;
-  showAdminView();
-});
-
-approvedUserForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-
-  if (!currentSessionUser || currentSessionUser.role !== "admin") return;
-
-  const formValues = {
-    firstName: document.getElementById("approved-first-name").value.trim(),
-    lastName: document.getElementById("approved-last-name").value.trim(),
-    username: document.getElementById("approved-username").value.trim(),
-    role: document.getElementById("approved-role").value,
-    status: document.getElementById("approved-status").value,
-  };
-
-  upsertApprovedUser(formValues);
-  renderApprovedUsersTable();
-  resetApprovedUserForm();
-});
-
-approvedUsersTableBody.addEventListener("click", (event) => {
-  const action = event.target.getAttribute("data-action");
-  const username = event.target.getAttribute("data-username");
-
-  if (!action || !username) return;
-  if (!currentSessionUser || currentSessionUser.role !== "admin") return;
-
-  const user = approvedUsers.find(
-    (item) => item.username.toLowerCase() === username.toLowerCase(),
+    { renderDurationMs: Math.round(performance.now() - startedAt) },
   );
 
-  if (action === "edit" && user) {
-    fillApprovedUserForm(user);
+  await apiPost(
+    "/api/access-history",
+    { assetRequested: assetNumber },
+    "Unable to record access history.",
+  );
+
+  if (state.currentSessionUser.role === "admin") {
+    await loadAccessHistory();
+  }
+
+  writeDebug("Lookup completed", state.activeAssetLookup);
+  renderResolvedAsset();
+}
+
+function handleAssetSearchError(assetNumber, error) {
+  resetActiveAssetLookup();
+  setText("hero-lookup-status", "Error");
+  setText("hero-fleet-number", assetNumber || "--");
+  showAssetSearchMessage(error.message || "Asset not found.");
+  writeDebug("Lookup failed", {
+    assetNumber,
+    message: error.message || "Asset not found.",
+  });
+}
+
+async function handleExportPdf() {
+  if (!state.activeAssetLookup) {
+    showAssetSearchMessage("Load an asset before exporting the PDF.");
     return;
   }
 
-  if (action === "deactivate") {
-    deactivateApprovedUser(username);
-    renderApprovedUsersTable();
-  }
-});
-
-historyUserFilter.addEventListener("change", () => {
-  renderHistoryTable();
-});
-
-assetSearchForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-
-  const assetNumber = document.getElementById("asset-number").value.trim();
-
   try {
-    await handleAssetSearch(assetNumber);
-    showAssetSearchMessage("");
+    showAssetSearchMessage("Generating PDF...", false);
+    const blob = await fetchBlob(
+      "/api/export-pdf",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ snapshot: state.activeAssetLookup }),
+      },
+      "PDF export failed.",
+    );
+
+    const vehicleLabel = state.activeAssetLookup.vehicle?.assetNumber || "snapshot";
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = `tge-asset-snapshot-${vehicleLabel}.pdf`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(objectUrl);
+
+    showAssetSearchMessage("PDF exported successfully.", false);
   } catch (error) {
-    resetActiveAssetLookup();
-    showAssetSearchMessage(error.message || "Asset not found.");
+    showAssetSearchMessage(error.message || "PDF export failed.");
+    writeDebug("PDF export failed", error.message);
   }
-});
+}
+
+function handleEmailPdf() {
+  if (!state.activeAssetLookup) {
+    showAssetSearchMessage("Load an asset before preparing the email.");
+    return;
+  }
+
+  const vehicle = state.activeAssetLookup.vehicle || {};
+  const subject = encodeURIComponent(`TGE Asset Snapshot - ${vehicle.assetNumber || "Asset"}`);
+  const body = encodeURIComponent(
+    [
+      `Asset: ${safeText(vehicle.assetNumber, "N/A")}`,
+      `Registration: ${safeText(vehicle.registration, "N/A")}`,
+      `Vehicle ID: ${safeText(vehicle.vehicleId, "N/A")}`,
+      `Requested At: ${formatDisplayDate(state.activeAssetLookup.requestedAt)}`,
+      "",
+      "Attach the exported PDF snapshot to this email before sending.",
+    ].join("\n"),
+  );
+
+  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+}
+
+if (el.loginForm) {
+  el.loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const username = safeText(getNode("username")?.value).trim();
+    const password = safeText(getNode("password")?.value).trim();
+
+    try {
+      const result = await apiPost(
+        "/api/login",
+        { username, password },
+        "Access denied. Please contact Telematics.",
+      );
+
+      setText("login-message", "");
+      openAppForUser(result.user);
+      writeDebug("Login successful", result.user);
+    } catch (error) {
+      showLoginError(error.message || "Access denied. Please contact Telematics.");
+      writeDebug("Login failed", { username, message: error.message });
+    }
+  });
+}
+
+if (el.standardTab) {
+  el.standardTab.addEventListener("click", () => {
+    showStandardView();
+  });
+}
+
+if (el.adminTab) {
+  el.adminTab.addEventListener("click", async () => {
+    if (!state.currentSessionUser || state.currentSessionUser.role !== "admin") return;
+
+    await loadAdminData().catch((error) => {
+      writeDebug("Admin reload failed", error.message);
+    });
+    showAdminView();
+  });
+}
+
+if (el.approvedUserForm) {
+  el.approvedUserForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    if (!state.currentSessionUser || state.currentSessionUser.role !== "admin") return;
+
+    const formValues = {
+      firstName: safeText(getNode("approved-first-name")?.value).trim(),
+      lastName: safeText(getNode("approved-last-name")?.value).trim(),
+      username: safeText(getNode("approved-username")?.value).trim(),
+      role: safeText(getNode("approved-role")?.value).trim(),
+      status: safeText(getNode("approved-status")?.value).trim(),
+      password: safeText(getNode("approved-password")?.value).trim(),
+    };
+
+    try {
+      await apiPost("/api/approved-users", formValues, "Unable to save approved user.");
+      await loadApprovedUsers();
+      resetApprovedUserForm();
+      writeDebug("Approved users updated", state.approvedUsers);
+    } catch (error) {
+      showAssetSearchMessage(error.message || "Unable to save approved user.");
+    }
+  });
+}
+
+if (el.approvedUsersTableBody) {
+  el.approvedUsersTableBody.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+
+    const action = target.getAttribute("data-action");
+    const username = target.getAttribute("data-username");
+
+    if (!action || !username) return;
+    if (!state.currentSessionUser || state.currentSessionUser.role !== "admin") return;
+
+    const user = state.approvedUsers.find(
+      (item) => item.username.toLowerCase() === username.toLowerCase(),
+    );
+
+    if (action === "edit" && user) {
+      fillApprovedUserForm(user);
+      return;
+    }
+
+    if (action === "deactivate") {
+      try {
+        await apiPost(
+          "/api/approved-users/deactivate",
+          { username },
+          "Unable to deactivate approved user.",
+        );
+        await loadApprovedUsers();
+        writeDebug("Approved user deactivated", { username });
+      } catch (error) {
+        showAssetSearchMessage(error.message || "Unable to deactivate approved user.");
+      }
+    }
+  });
+}
+
+if (el.historyUserFilter) {
+  el.historyUserFilter.addEventListener("change", () => {
+    renderHistoryTable();
+  });
+}
+
+if (el.assetSearchForm) {
+  el.assetSearchForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const assetNumber = safeText(getNode("asset-number")?.value).trim();
+
+    try {
+      await handleAssetSearch(assetNumber);
+      showAssetSearchMessage("", false);
+    } catch (error) {
+      handleAssetSearchError(assetNumber, error);
+    }
+  });
+}
+
+if (el.exportPdfButton) {
+  el.exportPdfButton.addEventListener("click", handleExportPdf);
+}
+
+if (el.emailPdfButton) {
+  el.emailPdfButton.addEventListener("click", handleEmailPdf);
+}
+
+initialiseUi();
+loadSession();
