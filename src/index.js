@@ -1,74 +1,179 @@
-const snapshotPayload = {
-  assetId: "349521",
-  snapshotTime: "2026-05-09T22:09:39+10:00",
-  status: "Ignition Active",
-  sync: "Ready",
-  vehicle: {
-    id: 349521,
-    name: "90134",
-    registration: "XW79SI",
-    make: "Volvo",
-    model: "FH",
-    location: "Depot - NSW - PE - Eastern Creek, Southridge Street, Eastern Creek, NSW",
-    movement: "Stationary",
-    ignition: "ON",
-    tripId: 687190025
-  },
-  metrics: {
-    distanceKm: 317417.77,
-    currentSpeedKph: 27.88,
-    fuelLitres: 161718.25,
-    batteryVolts: 28.603
-  },
-  gps: {
-    latitude: -28.22533,
-    longitude: 153.55599,
-    accuracy: "High",
-    bearing: 315.9,
-    altitudeM: 6
-  },
-  storage: {
-    sdCard1: "Operational",
-    sdCard2: "Operational",
-    videoStatus: "Available",
-    uploadRequest: "Queued Successfully"
-  },
-  cameras: [
-    { id: 1, label: "Road Facing" },
-    { id: 2, label: "Driver Facing" },
-    { id: 3, label: "In-Cab Driver Facing" },
-    { id: 4, label: "Driver External" },
-    { id: 5, label: "Additional Camera" }
-  ]
-};
-
-function json(data, init = {}) {
-  return new Response(JSON.stringify(data, null, 2), {
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
     headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      ...init.headers
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
     },
-    status: init.status ?? 200
   });
+}
+
+async function handleTn360Users(env) {
+  const url = `${env.TN360_BASE_URL}/v1/users/?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    return jsonResponse({ error: "Unable to load TN360 users." }, 502);
+  }
+
+  const users = await response.json();
+  return jsonResponse(users);
+}
+
+async function handleVehicleLookup(request, env) {
+  const body = await request.json();
+  const assetNumber = String(body.assetNumber || "").trim();
+
+  if (!assetNumber) {
+    return jsonResponse({ error: "Asset number is required." }, 400);
+  }
+
+  const url = `${env.TN360_BASE_URL}/v1/vehicles/?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    return jsonResponse({ error: "Vehicle lookup failed." }, 502);
+  }
+
+  const vehicles = await response.json();
+  const matchedVehicle = vehicles.find(
+    (vehicle) => String(vehicle.name || "").trim().toLowerCase() === assetNumber.toLowerCase(),
+  );
+
+  if (!matchedVehicle) {
+    return jsonResponse({ error: "Asset not found." }, 404);
+  }
+
+  return jsonResponse(matchedVehicle);
+}
+
+async function handleVehicleDevices(request, env) {
+  const body = await request.json();
+  const vehicleId = String(body.vehicleId || "").trim();
+
+  if (!vehicleId) {
+    return jsonResponse({ error: "Vehicle ID is required." }, 400);
+  }
+
+  const url = `${env.TN360_BASE_URL}/v1/vehicles/${vehicleId}/devices?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    return jsonResponse({ error: "Device lookup failed." }, 502);
+  }
+
+  const devices = await response.json();
+  return jsonResponse(devices);
+}
+
+async function handleVehicleMeters(request, env) {
+  const body = await request.json();
+  const vehicleId = String(body.vehicleId || "").trim();
+
+  if (!vehicleId) {
+    return jsonResponse({ error: "Vehicle ID is required." }, 400);
+  }
+
+  const url = `${env.TN360_BASE_URL}/v1/vehicles/${vehicleId}/meters?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    return jsonResponse({ error: "Meters lookup failed." }, 502);
+  }
+
+  const meters = await response.json();
+  return jsonResponse(meters);
+}
+
+async function handleHermesDeviceStats(request, env) {
+  const body = await request.json();
+  const trackerId = String(body.trackerId || "").trim();
+
+  if (!trackerId) {
+    return jsonResponse({ error: "Tracker ID is required." }, 400);
+  }
+
+  const url = `${env.TN360_BASE_URL}/v1/devices/${trackerId}?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    return jsonResponse({ error: "HERMES device stats lookup failed." }, 502);
+  }
+
+  const device = await response.json();
+  return jsonResponse(device);
+}
+
+async function handleCameraDeviceStats(request, env) {
+  const body = await request.json();
+  const cameraId = String(body.cameraId || "").trim();
+
+  if (!cameraId) {
+    return jsonResponse({ error: "Camera ID is required." }, 400);
+  }
+
+  const url = `${env.TN360_BASE_URL}/v1/devices/${cameraId}?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    return jsonResponse({ error: "Camera device stats lookup failed." }, 502);
+  }
+
+  const device = await response.json();
+  return jsonResponse(device);
+}
+
+async function handleCameraSnapshots(request, env) {
+  const body = await request.json();
+  const vehicleId = String(body.vehicleId || "").trim();
+
+  if (!vehicleId) {
+    return jsonResponse({ error: "Vehicle ID is required." }, 400);
+  }
+
+  const url = `${env.TN360_BASE_URL}/v1/events/?key=${env.TN360_API_KEY}&vehicleId=${vehicleId}&pruning=B2B`;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    return jsonResponse({ error: "Camera snapshot lookup failed." }, 502);
+  }
+
+  const events = await response.json();
+  return jsonResponse(events);
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/api/health") {
-      return json({ ok: true, worker: "tge-asset-snapshot" });
+    if (request.method === "POST" && url.pathname === "/api/vehicle-lookup") {
+      return handleVehicleLookup(request, env);
     }
 
-    if (url.pathname === "/api/asset-snapshot") {
-      const assetId = url.searchParams.get("assetId") || snapshotPayload.assetId;
-      return json({
-        ...snapshotPayload,
-        assetId
-      });
+    if (request.method === "POST" && url.pathname === "/api/vehicle-devices") {
+      return handleVehicleDevices(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/vehicle-meters") {
+      return handleVehicleMeters(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/hermes-device-stats") {
+      return handleHermesDeviceStats(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/camera-device-stats") {
+      return handleCameraDeviceStats(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/camera-snapshots") {
+      return handleCameraSnapshots(request, env);
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/tn360-users") {
+      return handleTn360Users(env);
     }
 
     return env.ASSETS.fetch(request);
-  }
+  },
 };
