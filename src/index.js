@@ -1,25 +1,631 @@
-function jsonResponse(data, status = 200) {
+const SESSION_COOKIE = "tge_session";
+const SESSION_TTL_SECONDS = 60 * 60 * 12;
+
+const sessions = new Map();
+
+const approvedUsers = [
+  {
+    firstName: "Barend",
+    lastName: "Blignaut",
+    username: "bare1234",
+    role: "admin",
+    status: "active",
+    createdBy: "system",
+    createdDate: "2026-05-12T00:00:00Z",
+    updatedBy: "system",
+    updatedDate: "2026-05-12T00:00:00Z",
+    password: "1234",
+  },
+];
+
+const accessHistory = [];
+
+const DEMO_VEHICLE = {
+  id: "veh-001",
+  name: "1001",
+  registration: "TGE-001",
+  registrationState: "NSW",
+  vin: "JH4DA9450LS000101",
+  make: "Hino",
+  model: "500 Series",
+  operationalVehicleModel: {
+    yearOfManufacture: 2022,
+  },
+};
+
+const DEMO_DEVICES = [
+  {
+    id: "hermes-001",
+    imei: "356938035643809",
+    serialNumber: "HERMES-001",
+    releaseVersion: "3.7.2",
+    type: { code: "HERMES" },
+  },
+  {
+    id: "camera-001",
+    imei: "866301234567890",
+    serialNumber: "CAM-001",
+    model: { name: "SureCam" },
+    type: { code: "CAMERA" },
+  },
+  {
+    id: "iface-001",
+    imei: "352099001761481",
+    serialNumber: "TAB-001",
+    model: { name: "Samsung Tab Active" },
+    type: { code: "IFACE" },
+  },
+];
+
+const DEMO_METERS = [
+  { type: "hours", maintenanceType: "TIME", computed: 1243.5 },
+  { type: "odometer", maintenanceType: "DISTANCE", computed: 84751.2 },
+];
+
+const DEMO_HERMES_DEVICE = {
+  id: "hermes-001",
+  type: { code: "HERMES" },
+  deviceStats: {
+    ignition: true,
+    movement: false,
+    tripId: "trip-001",
+    location: "Sydney Depot",
+    gps: {
+      Lat: -33.8688,
+      Lng: 151.2093,
+      At: new Date().toISOString(),
+    },
+    currentUser: {
+      firstName: "Demo",
+      lastName: "Driver",
+    },
+    lastVpm: JSON.stringify({
+      speed: 0,
+      rpm: 650,
+      oiltemp: 92,
+      oilpressure: 43,
+      engineload: 18,
+      gear: 1,
+      fuellevel: 65,
+      fuelconsumption: 21.4,
+    }),
+    lastGpio: JSON.stringify({
+      seatbelt: true,
+      door: false,
+      parkBrake: true,
+    }),
+  },
+};
+
+const DEMO_CAMERA_DEVICE = {
+  id: "camera-001",
+  type: { code: "CAMERA" },
+  deviceStats: {
+    attrs: {
+      "lm.sd_card.overall_status": "Healthy",
+      "lm.sd_card.1": "sdCardPresent",
+      "lm.sd_card.1_total_size_bytes": String(64 * 1024 * 1024 * 1024),
+      "lm.sd_card.2": "sdCardPresent",
+      "lm.sd_card.2_total_size_bytes": String(64 * 1024 * 1024 * 1024),
+    },
+  },
+};
+
+function jsonResponse(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "Content-Type": "application/json",
       "Cache-Control": "no-store",
+      ...extraHeaders,
     },
   });
 }
 
-function requireEnv(env) {
-  if (!env.TN360_API_KEY) {
-    throw new Error("Missing TN360_API_KEY");
-  }
+function pdfResponse(bytes, filename) {
+  return new Response(bytes, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+function textResponse(text, status = 200, contentType = "text/plain; charset=utf-8") {
+  return new Response(text, {
+    status,
+    headers: {
+      "Content-Type": contentType,
+      "Cache-Control": "no-store",
+    },
+  });
 }
 
 function normalizeValue(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function parseCookies(request) {
+  const cookieHeader = request.headers.get("Cookie") || "";
+  return cookieHeader.split(";").reduce((accumulator, pair) => {
+    const [rawKey, ...rawValue] = pair.trim().split("=");
+    if (!rawKey) return accumulator;
+    accumulator[rawKey] = decodeURIComponent(rawValue.join("="));
+    return accumulator;
+  }, {});
+}
+
+function createSession(user) {
+  const token = crypto.randomUUID();
+  sessions.set(token, {
+    user,
+    expiresAt: Date.now() + SESSION_TTL_SECONDS * 1000,
+  });
+  return token;
+}
+
+function getSession(request) {
+  const cookies = parseCookies(request);
+  const token = cookies[SESSION_COOKIE];
+
+  if (!token) return null;
+
+  const session = sessions.get(token);
+  if (!session) return null;
+
+  if (session.expiresAt < Date.now()) {
+    sessions.delete(token);
+    return null;
+  }
+
+  return { token, session };
+}
+
+function withSessionCookie(token) {
+  return {
+    "Set-Cookie": `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}`,
+  };
+}
+
+function clearSessionCookie() {
+  return {
+    "Set-Cookie": `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
+  };
+}
+
+function requireSession(request) {
+  const sessionRecord = getSession(request);
+  if (!sessionRecord) {
+    return {
+      ok: false,
+      response: jsonResponse({ error: "You are not signed in." }, 401),
+    };
+  }
+
+  return {
+    ok: true,
+    sessionRecord,
+  };
+}
+
+function requireAdmin(request) {
+  const sessionCheck = requireSession(request);
+  if (!sessionCheck.ok) return sessionCheck;
+
+  if (sessionCheck.sessionRecord.session.user.role !== "admin") {
+    return {
+      ok: false,
+      response: jsonResponse({ error: "Admin access is required." }, 403),
+    };
+  }
+
+  return sessionCheck;
+}
+
+function publicUser(user) {
+  const { password, ...rest } = user;
+  return rest;
+}
+
+function addAccessHistory(username, assetRequested) {
+  accessHistory.unshift({
+    username,
+    dateTime: new Date().toISOString(),
+    assetRequested,
+  });
+}
+
+function isDemoMode(env) {
+  return !env.TN360_API_KEY;
+}
+
+async function safeJson(request) {
+  try {
+    return await request.json();
+  } catch {
+    return {};
+  }
+}
+
+function demoImageDataUrl(label, tone) {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+      <defs>
+        <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="${tone[0]}"/>
+          <stop offset="100%" stop-color="${tone[1]}"/>
+        </linearGradient>
+      </defs>
+      <rect width="1280" height="720" fill="url(#g)"/>
+      <rect x="40" y="40" width="1200" height="640" rx="24" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.35)"/>
+      <text x="640" y="350" text-anchor="middle" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="52" font-weight="700">${label}</text>
+      <text x="640" y="410" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="Arial, Helvetica, sans-serif" font-size="24">Demo camera image</text>
+    </svg>
+  `.trim();
+
+  const encoded = btoa(unescape(encodeURIComponent(svg)));
+  return `data:image/svg+xml;base64,${encoded}`;
+}
+
+function demoSnapshotEvents() {
+  const mediaFiles = [
+    {
+      source: "ROAD_FACING",
+      mediaFile: demoImageDataUrl("Road Facing", ["#315f45", "#8eb79d"]),
+      imageDetails: { sources: ["ROAD"] },
+    },
+    {
+      source: "DRIVER_FACING",
+      mediaFile: demoImageDataUrl("Driver Facing", ["#4b4a6d", "#9fa0c8"]),
+      imageDetails: { sources: ["DRIVER"] },
+    },
+    {
+      source: "IN_CAB",
+      mediaFile: demoImageDataUrl("In-Cab Driver", ["#68493d", "#c7a18f"]),
+      imageDetails: { sources: ["TVI2"] },
+    },
+    {
+      source: "DRIVER_EXTERNAL",
+      mediaFile: demoImageDataUrl("Driver External", ["#2e5665", "#87b5c7"]),
+      imageDetails: { sources: ["TVI1"] },
+    },
+    {
+      source: "LEFT_EXTERNAL",
+      mediaFile: demoImageDataUrl("Left External", ["#465d2f", "#9eb97c"]),
+      imageDetails: { sources: ["UVC"] },
+    },
+  ];
+
+  return [
+    {
+      vehicleId: DEMO_VEHICLE.id,
+      type: "CAMERA",
+      action: "SNAPSHOT",
+      timeAt: new Date().toISOString(),
+      attributes: {
+        context: JSON.stringify({
+          response: {
+            mediaFiles,
+          },
+        }),
+      },
+    },
+  ];
+}
+
+function escapePdfText(value) {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
+}
+
+function buildSimplePdf(snapshot) {
+  const lines = [
+    "TGE Asset Snapshot",
+    "",
+    `Generated: ${new Date().toLocaleString("en-AU", { hour12: false })}`,
+    "",
+    "Asset Details",
+    `Fleet Number: ${snapshot.vehicle?.assetNumber || "-"}`,
+    `Registration: ${snapshot.vehicle?.registration || "-"}`,
+    `Vehicle ID: ${snapshot.vehicle?.vehicleId || "-"}`,
+    `VIN: ${snapshot.vehicle?.vin || "-"}`,
+    `Make: ${snapshot.vehicle?.make || "-"}`,
+    `Model: ${snapshot.vehicle?.model || "-"}`,
+    `Year: ${snapshot.vehicle?.yearOfManufacture || "-"}`,
+    `Driver: ${snapshot.hermesStats?.driverName || "-"}`,
+    `Ignition: ${snapshot.hermesStats?.ignition ?? "-"}`,
+    `Movement: ${snapshot.hermesStats?.movement ?? "-"}`,
+    "",
+    "Tracking Metrics",
+    `Odometer: ${snapshot.meters?.odometer ?? "-"}`,
+    `Engine Hours: ${snapshot.meters?.engineHours ?? "-"}`,
+    `Speed: ${snapshot.hermesStats?.performance?.speed ?? "-"}`,
+    `RPM: ${snapshot.hermesStats?.performance?.rpm ?? "-"}`,
+    `Oil Temperature: ${snapshot.hermesStats?.performance?.oilTemperature ?? "-"}`,
+    `Oil Pressure: ${snapshot.hermesStats?.performance?.oilPressure ?? "-"}`,
+    `Engine Load: ${snapshot.hermesStats?.performance?.engineLoad ?? "-"}`,
+    `Gear: ${snapshot.hermesStats?.performance?.gear ?? "-"}`,
+    `Location: ${snapshot.hermesStats?.location || "-"}`,
+    "",
+    "Devices",
+    `Tracker IMEI: ${snapshot.devices?.trackingSystem?.imei || "-"}`,
+    `Tracker Serial: ${snapshot.devices?.trackingSystem?.serialNumber || "-"}`,
+    `Camera IMEI: ${snapshot.devices?.camera?.imei || "-"}`,
+    `Camera Serial: ${snapshot.devices?.camera?.serialNumber || "-"}`,
+    `Tablet IMEI: ${snapshot.devices?.tablet?.imei || "-"}`,
+    `Tablet Serial: ${snapshot.devices?.tablet?.serialNumber || "-"}`,
+    "",
+    "Storage",
+    `Overall Status: ${snapshot.cameraStats?.overallStatus || "-"}`,
+    `SD Card 1: ${snapshot.cameraStats?.sdCard1?.present ? "Present" : "Not present"}`,
+    `SD Card 1 Size: ${snapshot.cameraStats?.sdCard1?.totalSizeDisplay || "-"}`,
+    `SD Card 2: ${snapshot.cameraStats?.sdCard2?.present ? "Present" : "Not present"}`,
+    `SD Card 2 Size: ${snapshot.cameraStats?.sdCard2?.totalSizeDisplay || "-"}`,
+  ];
+
+  let y = 800;
+  const content = lines
+    .map((line, index) => {
+      const fontSize = index === 0 ? 18 : line === "" ? 10 : 11;
+      if (line === "") {
+        y -= 10;
+        return "";
+      }
+      const command = `BT /F1 ${fontSize} Tf 40 ${y} Td (${escapePdfText(line)}) Tj ET`;
+      y -= fontSize + 6;
+      return command;
+    })
+    .filter(Boolean)
+    .join("\n");
+
+  const objects = [];
+  objects.push("1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj");
+  objects.push("2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj");
+  objects.push("3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj");
+  objects.push("4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj");
+  objects.push(`5 0 obj << /Length ${content.length} >> stream\n${content}\nendstream endobj`);
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+
+  for (const object of objects) {
+    offsets.push(pdf.length);
+    pdf += `${object}\n`;
+  }
+
+  const xrefStart = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += "0000000000 65535 f \n";
+
+  for (let i = 1; i < offsets.length; i += 1) {
+    pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
+  }
+
+  pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\n`;
+  pdf += `startxref\n${xrefStart}\n%%EOF`;
+
+  return new TextEncoder().encode(pdf);
+}
+
+async function fetchJsonFromTn360(url) {
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`TN360 request failed. HTTP ${response.status}. ${body}`);
+  }
+
+  return response.json();
+}
+
+function isDriverUser(tnUser) {
+  const roles = Array.isArray(tnUser.roles) ? tnUser.roles : [];
+
+  return roles.some((role) => {
+    const roleName = String(role.name || "").toLowerCase();
+    const features = Array.isArray(role.features) ? role.features : [];
+    return roleName === "driver" || features.includes("DRIVER");
+  });
+}
+
+async function handleLogin(request, env) {
+  const body = await safeJson(request);
+  const username = String(body.username || "").trim();
+  const password = String(body.password || "").trim();
+
+  if (!username || !password) {
+    return jsonResponse({ error: "Username and password are required." }, 400);
+  }
+
+  const approvedUser = approvedUsers.find(
+    (user) => user.username.toLowerCase() === username.toLowerCase(),
+  );
+
+  if (!approvedUser || approvedUser.status !== "active") {
+    return jsonResponse({ error: "Access denied. Please contact Telematics." }, 401);
+  }
+
+  let sessionUser;
+
+  if (isDemoMode(env)) {
+    if (approvedUser.password !== password) {
+      return jsonResponse({ error: "Access denied. Invalid username or password." }, 401);
+    }
+
+    sessionUser = {
+      username: approvedUser.username,
+      role: approvedUser.role,
+      firstName: approvedUser.firstName,
+      lastName: approvedUser.lastName,
+      mode: "demo",
+    };
+  } else {
+    const usersUrl = `https://api-au.telematics.com/v1/users/?key=${env.TN360_API_KEY}&pruning=B2B`;
+    const users = await fetchJsonFromTn360(usersUrl);
+
+    const matchedUser = users.find(
+      (user) => String(user.username || "").toLowerCase() === username.toLowerCase(),
+    );
+
+    if (!matchedUser || matchedUser.status !== "ENABLED" || !isDriverUser(matchedUser)) {
+      return jsonResponse({ error: "Access denied. Please contact Telematics." }, 401);
+    }
+
+    if (String(matchedUser.externalPin || "") !== password) {
+      return jsonResponse({ error: "Access denied. Invalid username or password." }, 401);
+    }
+
+    sessionUser = {
+      username: approvedUser.username,
+      role: approvedUser.role,
+      firstName: matchedUser.firstName,
+      lastName: matchedUser.lastName,
+      mode: "tn360",
+    };
+  }
+
+  const token = createSession(sessionUser);
+  addAccessHistory(sessionUser.username, "Login only");
+
+  return jsonResponse(
+    { user: sessionUser },
+    200,
+    withSessionCookie(token),
+  );
+}
+
+async function handleSession(request) {
+  const sessionCheck = requireSession(request);
+  if (!sessionCheck.ok) return sessionCheck.response;
+
+  return jsonResponse({ user: sessionCheck.sessionRecord.session.user });
+}
+
+async function handleLogout(request) {
+  const sessionRecord = getSession(request);
+  if (sessionRecord) {
+    sessions.delete(sessionRecord.token);
+  }
+
+  return jsonResponse({ ok: true }, 200, clearSessionCookie());
+}
+
+async function handleApprovedUsersGet(request) {
+  const adminCheck = requireAdmin(request);
+  if (!adminCheck.ok) return adminCheck.response;
+
+  return jsonResponse(approvedUsers.map(publicUser));
+}
+
+async function handleApprovedUsersUpsert(request) {
+  const adminCheck = requireAdmin(request);
+  if (!adminCheck.ok) return adminCheck.response;
+
+  const body = await safeJson(request);
+  const username = String(body.username || "").trim();
+
+  if (!username) {
+    return jsonResponse({ error: "Username is required." }, 400);
+  }
+
+  const existingUser = approvedUsers.find(
+    (user) => user.username.toLowerCase() === username.toLowerCase(),
+  );
+
+  const now = new Date().toISOString();
+  const currentUsername = adminCheck.sessionRecord.session.user.username;
+
+  if (existingUser) {
+    existingUser.firstName = String(body.firstName || existingUser.firstName || "").trim();
+    existingUser.lastName = String(body.lastName || existingUser.lastName || "").trim();
+    existingUser.role = String(body.role || existingUser.role || "user").trim();
+    existingUser.status = String(body.status || existingUser.status || "active").trim();
+    existingUser.updatedBy = currentUsername;
+    existingUser.updatedDate = now;
+
+    if (String(body.password || "").trim()) {
+      existingUser.password = String(body.password).trim();
+    }
+  } else {
+    approvedUsers.push({
+      firstName: String(body.firstName || "").trim(),
+      lastName: String(body.lastName || "").trim(),
+      username,
+      role: String(body.role || "user").trim(),
+      status: String(body.status || "active").trim(),
+      createdBy: currentUsername,
+      createdDate: now,
+      updatedBy: currentUsername,
+      updatedDate: now,
+      password: String(body.password || "").trim(),
+    });
+  }
+
+  return jsonResponse({ ok: true });
+}
+
+async function handleApprovedUsersDeactivate(request) {
+  const adminCheck = requireAdmin(request);
+  if (!adminCheck.ok) return adminCheck.response;
+
+  const body = await safeJson(request);
+  const username = String(body.username || "").trim();
+
+  const user = approvedUsers.find(
+    (item) => item.username.toLowerCase() === username.toLowerCase(),
+  );
+
+  if (!user) {
+    return jsonResponse({ error: "Approved user not found." }, 404);
+  }
+
+  user.status = "inactive";
+  user.updatedBy = adminCheck.sessionRecord.session.user.username;
+  user.updatedDate = new Date().toISOString();
+
+  return jsonResponse({ ok: true });
+}
+
+async function handleAccessHistoryGet(request) {
+  const adminCheck = requireAdmin(request);
+  if (!adminCheck.ok) return adminCheck.response;
+
+  return jsonResponse(accessHistory);
+}
+
+async function handleAccessHistoryPost(request) {
+  const sessionCheck = requireSession(request);
+  if (!sessionCheck.ok) return sessionCheck.response;
+
+  const body = await safeJson(request);
+  const assetRequested = String(body.assetRequested || "").trim();
+
+  if (!assetRequested) {
+    return jsonResponse({ error: "Asset requested is required." }, 400);
+  }
+
+  addAccessHistory(sessionCheck.sessionRecord.session.user.username, assetRequested);
+  return jsonResponse({ ok: true });
+}
+
 async function handleTn360Users(request, env) {
-  requireEnv(env);
+  const sessionCheck = requireSession(request);
+  if (!sessionCheck.ok) return sessionCheck.response;
+
+  if (isDemoMode(env)) {
+    return jsonResponse({
+      username: "bare1234",
+      status: "ENABLED",
+      firstName: "Barend",
+      lastName: "Blignaut",
+      roles: [{ name: "driver", features: ["DRIVER"] }],
+      externalPin: "1234",
+    });
+  }
 
   const url = new URL(request.url);
   const username = String(url.searchParams.get("username") || "").trim();
@@ -29,13 +635,7 @@ async function handleTn360Users(request, env) {
   }
 
   const usersUrl = `https://api-au.telematics.com/v1/users/?key=${env.TN360_API_KEY}&pruning=B2B`;
-  const usersResponse = await fetch(usersUrl);
-
-  if (!usersResponse.ok) {
-    return jsonResponse({ error: `Unable to load TN360 users. HTTP ${usersResponse.status}` }, 502);
-  }
-
-  const users = await usersResponse.json();
+  const users = await fetchJsonFromTn360(usersUrl);
 
   const matchedUser = users.find(
     (user) => String(user.username || "").toLowerCase() === username.toLowerCase(),
@@ -49,9 +649,10 @@ async function handleTn360Users(request, env) {
 }
 
 async function handleVehicleLookup(request, env) {
-  requireEnv(env);
+  const sessionCheck = requireSession(request);
+  if (!sessionCheck.ok) return sessionCheck.response;
 
-  const body = await request.json();
+  const body = await safeJson(request);
   const assetNumber = String(body.assetNumber || "").trim();
   const searchValue = assetNumber.replace(/\s+/g, "").toLowerCase();
 
@@ -59,14 +660,16 @@ async function handleVehicleLookup(request, env) {
     return jsonResponse({ error: "Asset number is required." }, 400);
   }
 
-  const vehiclesUrl = `https://api-au.telematics.com/v1/vehicles/?key=${env.TN360_API_KEY}&pruning=B2B`;
-  const response = await fetch(vehiclesUrl);
-
-  if (!response.ok) {
-    return jsonResponse({ error: `Vehicle lookup failed. HTTP ${response.status}` }, 502);
+  if (isDemoMode(env)) {
+    const demoValue = DEMO_VEHICLE.name.replace(/\s+/g, "").toLowerCase();
+    if (demoValue !== searchValue) {
+      return jsonResponse({ error: "Asset not found." }, 404);
+    }
+    return jsonResponse(DEMO_VEHICLE);
   }
 
-  const vehicles = await response.json();
+  const vehiclesUrl = `https://api-au.telematics.com/v1/vehicles/?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const vehicles = await fetchJsonFromTn360(vehiclesUrl);
 
   const matchedVehicle = vehicles.find((vehicle) => {
     const vehicleName = String(vehicle.name || "").replace(/\s+/g, "").toLowerCase();
@@ -74,83 +677,67 @@ async function handleVehicleLookup(request, env) {
   });
 
   if (!matchedVehicle) {
-    return jsonResponse(
-      {
-        error: "Asset not found.",
-        searchedAsset: assetNumber,
-        normalizedSearch: searchValue,
-        totalVehiclesReturned: vehicles.length,
-      },
-      404,
-    );
+    return jsonResponse({ error: "Asset not found." }, 404);
   }
 
   return jsonResponse(matchedVehicle);
 }
 
 async function handleVehicleDevices(request, env) {
-  requireEnv(env);
+  const sessionCheck = requireSession(request);
+  if (!sessionCheck.ok) return sessionCheck.response;
 
-  const body = await request.json();
+  const body = await safeJson(request);
   const vehicleId = String(body.vehicleId || "").trim();
 
   if (!vehicleId) {
     return jsonResponse({ error: "Vehicle ID is required." }, 400);
+  }
+
+  if (isDemoMode(env)) {
+    return jsonResponse(DEMO_DEVICES);
   }
 
   const devicesUrl = `https://api-au.telematics.com/v1/vehicles/${vehicleId}/devices?key=${env.TN360_API_KEY}&pruning=B2B`;
-  const response = await fetch(devicesUrl);
-
-  if (!response.ok) {
-    return jsonResponse({ error: `Device lookup failed. HTTP ${response.status}` }, 502);
-  }
-
-  const devices = await response.json();
-  return jsonResponse(devices);
+  return jsonResponse(await fetchJsonFromTn360(devicesUrl));
 }
 
 async function handleVehicleMeters(request, env) {
-  requireEnv(env);
+  const sessionCheck = requireSession(request);
+  if (!sessionCheck.ok) return sessionCheck.response;
 
-  const body = await request.json();
+  const body = await safeJson(request);
   const vehicleId = String(body.vehicleId || "").trim();
 
   if (!vehicleId) {
     return jsonResponse({ error: "Vehicle ID is required." }, 400);
   }
 
-  const metersUrl = `https://api-au.telematics.com/v1/vehicles/${vehicleId}/meters?key=${env.TN360_API_KEY}&pruning=B2B`;
-  const response = await fetch(metersUrl);
-
-  if (!response.ok) {
-    return jsonResponse({ error: `Meters lookup failed. HTTP ${response.status}` }, 502);
+  if (isDemoMode(env)) {
+    return jsonResponse(DEMO_METERS);
   }
 
-  const meters = await response.json();
-  return jsonResponse(meters);
+  const metersUrl = `https://api-au.telematics.com/v1/vehicles/${vehicleId}/meters?key=${env.TN360_API_KEY}&pruning=B2B`;
+  return jsonResponse(await fetchJsonFromTn360(metersUrl));
 }
 
 async function handleHermesDeviceStats(request, env) {
-  requireEnv(env);
+  const sessionCheck = requireSession(request);
+  if (!sessionCheck.ok) return sessionCheck.response;
 
-  const body = await request.json();
+  const body = await safeJson(request);
   const trackerId = String(body.trackerId || "").trim();
 
   if (!trackerId) {
     return jsonResponse({ error: "Tracker ID is required." }, 400);
   }
 
-  const devicesUrl = `https://api-au.telematics.com/v1/devices/?key=${env.TN360_API_KEY}&pruning=B2B`;
-  const response = await fetch(devicesUrl);
-
-  if (!response.ok) {
-    return jsonResponse(
-      { error: `HERMES device stats lookup failed. HTTP ${response.status}` },
-      502,
-    );
+  if (isDemoMode(env)) {
+    return jsonResponse(DEMO_HERMES_DEVICE);
   }
 
-  const devices = await response.json();
+  const devicesUrl = `https://api-au.telematics.com/v1/devices/?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const devices = await fetchJsonFromTn360(devicesUrl);
   const searchValue = normalizeValue(trackerId);
 
   const matchedDevice = devices.find((device) => {
@@ -174,33 +761,28 @@ async function handleHermesDeviceStats(request, env) {
 }
 
 async function handleCameraDeviceStats(request, env) {
-  requireEnv(env);
+  const sessionCheck = requireSession(request);
+  if (!sessionCheck.ok) return sessionCheck.response;
 
-  const body = await request.json();
+  const body = await safeJson(request);
   const cameraId = String(body.cameraId || "").trim();
 
   if (!cameraId) {
     return jsonResponse({ error: "Camera ID is required." }, 400);
   }
 
-  const devicesUrl = `https://api-au.telematics.com/v1/devices/?key=${env.TN360_API_KEY}&pruning=B2B`;
-  const response = await fetch(devicesUrl);
-
-  if (!response.ok) {
-    return jsonResponse(
-      { error: `Camera device stats lookup failed. HTTP ${response.status}` },
-      502,
-    );
+  if (isDemoMode(env)) {
+    return jsonResponse(DEMO_CAMERA_DEVICE);
   }
 
-  const devices = await response.json();
+  const devicesUrl = `https://api-au.telematics.com/v1/devices/?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const devices = await fetchJsonFromTn360(devicesUrl);
   const searchValue = normalizeValue(cameraId);
 
   const matchedDevice = devices.find((device) => {
     const deviceId = normalizeValue(device?.id);
     const imei = normalizeValue(device?.imei);
     const serialNumber = normalizeValue(device?.serialNumber);
-
     return deviceId === searchValue || imei === searchValue || serialNumber === searchValue;
   });
 
@@ -212,13 +794,18 @@ async function handleCameraDeviceStats(request, env) {
 }
 
 async function handleCameraSnapshots(request, env) {
-  requireEnv(env);
+  const sessionCheck = requireSession(request);
+  if (!sessionCheck.ok) return sessionCheck.response;
 
-  const body = await request.json();
+  const body = await safeJson(request);
   const vehicleId = String(body.vehicleId || "").trim();
 
   if (!vehicleId) {
     return jsonResponse({ error: "Vehicle ID is required." }, 400);
+  }
+
+  if (isDemoMode(env)) {
+    return jsonResponse(demoSnapshotEvents());
   }
 
   const now = new Date();
@@ -227,31 +814,30 @@ async function handleCameraSnapshots(request, env) {
   const from = fromDate.toISOString();
 
   const eventsUrl = `https://api-au.telematics.com/v1/events/?key=${env.TN360_API_KEY}&pruning=B2B&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
-  const response = await fetch(eventsUrl);
-
-  if (!response.ok) {
-    const responseText = await response.text().catch(() => "");
-    return jsonResponse(
-      {
-        error: `Camera snapshot lookup failed. HTTP ${response.status}`,
-        detail: responseText || "No response body returned from TN360 events endpoint.",
-        request: {
-          vehicleId,
-          from,
-          to,
-        },
-      },
-      502,
-    );
-  }
-
-  const events = await response.json();
+  const events = await fetchJsonFromTn360(eventsUrl);
 
   const matchedEvents = Array.isArray(events)
     ? events.filter((event) => String(event.vehicleId || "") === vehicleId)
     : [];
 
   return jsonResponse(matchedEvents);
+}
+
+async function handleExportPdf(request) {
+  const sessionCheck = requireSession(request);
+  if (!sessionCheck.ok) return sessionCheck.response;
+
+  const body = await safeJson(request);
+  const snapshot = body.snapshot;
+
+  if (!snapshot || !snapshot.vehicle) {
+    return jsonResponse({ error: "Snapshot data is required." }, 400);
+  }
+
+  const pdfBytes = buildSimplePdf(snapshot);
+  const filename = `tge-asset-snapshot-${snapshot.vehicle.assetNumber || "snapshot"}.pdf`;
+
+  return pdfResponse(pdfBytes, filename);
 }
 
 export default {
@@ -262,8 +848,41 @@ export default {
       if (request.method === "GET" && url.pathname === "/api/ping") {
         return jsonResponse({
           ok: true,
+          mode: isDemoMode(env) ? "demo" : "tn360",
           hasKey: Boolean(env.TN360_API_KEY),
         });
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/login") {
+        return handleLogin(request, env);
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/session") {
+        return handleSession(request);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/logout") {
+        return handleLogout(request);
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/approved-users") {
+        return handleApprovedUsersGet(request);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/approved-users") {
+        return handleApprovedUsersUpsert(request);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/approved-users/deactivate") {
+        return handleApprovedUsersDeactivate(request);
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/access-history") {
+        return handleAccessHistoryGet(request);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/access-history") {
+        return handleAccessHistoryPost(request);
       }
 
       if (request.method === "GET" && url.pathname === "/api/tn360-users") {
@@ -292,6 +911,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/api/camera-snapshots") {
         return handleCameraSnapshots(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/export-pdf") {
+        return handleExportPdf(request);
       }
 
       return env.ASSETS.fetch(request);
