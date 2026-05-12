@@ -26,6 +26,7 @@ async function handleAssetSearch(assetNumber) {
       totalSizeDisplay: null,
     },
   };
+
   let cameraSnapshot = {
     snapshotTime: null,
     slots: {
