@@ -1,4 +1,3 @@
-
 const approvedUsers = [
   {
     firstName: "Barend",
@@ -42,8 +41,8 @@ function findApprovedUser(username) {
   );
 }
 
-function showLoginError() {
-  loginMessage.textContent = "Access denied. Please contact Telematics.";
+function showLoginError(message = "Access denied. Please contact Telematics.") {
+  loginMessage.textContent = message;
 }
 
 function showLoginSuccess(user) {
@@ -88,11 +87,14 @@ function isDriverUser(tnUser) {
   });
 }
 
-async function fetchTn360Users() {
-  const response = await fetch("/api/tn360-users");
+async function fetchTn360UserByUsername(username) {
+  const response = await fetch(`/api/tn360-users?username=${encodeURIComponent(username)}`);
+
   if (!response.ok) {
-    throw new Error("Unable to validate user.");
+    const payload = await response.json().catch(() => ({ error: "Unable to validate user." }));
+    throw new Error(payload.error || "Unable to validate user.");
   }
+
   return response.json();
 }
 
@@ -103,16 +105,12 @@ async function validateLogin(username, password) {
     return { success: false };
   }
 
-  const tnUsers = await fetchTn360Users();
-  const tnUser = tnUsers.find(
-    (user) => String(user.username || "").toLowerCase() === String(username).trim().toLowerCase(),
-  );
+  const tnUser = await fetchTn360UserByUsername(username);
 
   if (!tnUser) return { success: false };
   if (tnUser.status !== "ENABLED") return { success: false };
   if (!isDriverUser(tnUser)) return { success: false };
-  console.log("TN360 matched user", tnUser);
-if (String(tnUser.externalPin || "") !== String(password)) return { success: false };
+  if (String(tnUser.externalPin || "") !== String(password)) return { success: false };
 
   return {
     success: true,
