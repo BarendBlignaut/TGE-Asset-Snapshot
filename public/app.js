@@ -101,38 +101,16 @@ async function fetchTn360UserByUsername(username) {
 async function validateLogin(username, password) {
   const approvedUser = findApprovedUser(username);
 
-  if (!approvedUser) {
-    return { success: false, reason: "Not in approved list" };
-  }
-
-  if (approvedUser.status !== "active") {
-    return { success: false, reason: "Approved user inactive" };
+  if (!approvedUser || approvedUser.status !== "active") {
+    return { success: false };
   }
 
   const tnUser = await fetchTn360UserByUsername(username);
 
-  if (!tnUser) {
-    return { success: false, reason: "TN360 user not found" };
-  }
-
-  if (tnUser.status !== "ENABLED") {
-    return { success: false, reason: `TN360 status is ${tnUser.status}` };
-  }
-
-  if (!isDriverUser(tnUser)) {
-    return { success: false, reason: "TN360 user is not classed as Driver" };
-  }
-
-  if (!tnUser.externalPin) {
-    return { success: false, reason: "TN360 externalPin missing from API response" };
-  }
-
-  if (String(tnUser.externalPin) !== String(password)) {
-    return {
-      success: false,
-      reason: `PIN mismatch. API returned externalPin "${tnUser.externalPin}"`,
-    };
-  }
+  if (!tnUser) return { success: false };
+  if (tnUser.status !== "ENABLED") return { success: false };
+  if (!isDriverUser(tnUser)) return { success: false };
+  if (String(tnUser.externalPin || "") !== String(password)) return { success: false };
 
   return {
     success: true,
@@ -727,7 +705,7 @@ loginForm.addEventListener("submit", async (event) => {
     const result = await validateLogin(username, password);
 
     if (!result.success) {
-      showLoginError(result.reason || "Access denied. Please contact Telematics.");
+      showLoginError();
       return;
     }
 
