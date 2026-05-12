@@ -249,7 +249,8 @@ async function fetchVehicleByAssetNumber(assetNumber) {
   });
 
   if (!response.ok) {
-    throw new Error("Asset not found.");
+    const payload = await response.json().catch(() => ({ error: "Asset not found." }));
+    throw new Error(payload.error || "Asset not found.");
   }
 
   return response.json();
@@ -631,7 +632,9 @@ async function handleAssetSearch(assetNumber) {
   clearAssetSearchMessage();
   resetActiveAssetLookup();
 
-  const vehicle = await fetchVehicleByAssetNumber(assetNumber);
+  const vehicleLookupResponse = await fetchVehicleByAssetNumber(assetNumber);
+  const vehicle = vehicleLookupResponse.vehicle || vehicleLookupResponse;
+
   const devices = await fetchVehicleDevices(vehicle.id);
   const mappedDevices = mapVehicleDevices(devices);
   const meters = await fetchVehicleMeters(vehicle.id);
@@ -791,6 +794,6 @@ assetSearchForm.addEventListener("submit", async (event) => {
     showAssetSearchMessage("");
   } catch (error) {
     resetActiveAssetLookup();
-    showAssetSearchMessage("Asset not found.");
+    showAssetSearchMessage(error.message || "Asset not found.");
   }
 });
