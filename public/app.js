@@ -306,7 +306,8 @@ async function fetchCameraDeviceStats(cameraId) {
   });
 
   if (!response.ok) {
-    throw new Error("Camera device stats lookup failed.");
+    const payload = await response.json().catch(() => ({ error: "Camera device stats lookup failed." }));
+    throw new Error(payload.detail || payload.error || "Camera device stats lookup failed.");
   }
 
   return response.json();
@@ -320,7 +321,8 @@ async function fetchCameraSnapshots(vehicleId) {
   });
 
   if (!response.ok) {
-    throw new Error("Camera snapshot lookup failed.");
+    const payload = await response.json().catch(() => ({ error: "Camera snapshot lookup failed." }));
+    throw new Error(payload.detail || payload.error || "Camera snapshot lookup failed.");
   }
 
   return response.json();
