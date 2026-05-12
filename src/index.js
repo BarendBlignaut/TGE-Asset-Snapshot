@@ -240,7 +240,9 @@ export default {
       if (request.method === "POST" && url.pathname === "/api/hermes-device-stats") {
         return handleHermesDeviceStats(request, env);
       }
-
+if (request.method === "POST" && url.pathname === "/api/camera-device-stats") {
+  return handleCameraDeviceStats(request, env);
+}
       return env.ASSETS.fetch(request);
     } catch (error) {
       return jsonResponse(
