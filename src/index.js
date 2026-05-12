@@ -69,10 +69,6 @@ async function handleVehicleLookup(request, env) {
     return vehicleName === searchValue;
   });
 
-  const sampleNames = vehicles
-    .slice(0, 20)
-    .map((vehicle) => vehicle.name);
-
   if (!matchedVehicle) {
     return jsonResponse(
       {
@@ -80,21 +76,33 @@ async function handleVehicleLookup(request, env) {
         searchedAsset: assetNumber,
         normalizedSearch: searchValue,
         totalVehiclesReturned: vehicles.length,
-        sampleVehicleNames: sampleNames,
       },
       404,
     );
   }
 
-  return jsonResponse({
-    debug: {
-      searchedAsset: assetNumber,
-      normalizedSearch: searchValue,
-      matchedVehicleName: matchedVehicle.name,
-      matchedVehicleId: matchedVehicle.id,
-    },
-    vehicle: matchedVehicle,
-  });
+  return jsonResponse(matchedVehicle);
+}
+
+async function handleVehicleDevices(request, env) {
+  requireEnv(env);
+
+  const body = await request.json();
+  const vehicleId = String(body.vehicleId || "").trim();
+
+  if (!vehicleId) {
+    return jsonResponse({ error: "Vehicle ID is required." }, 400);
+  }
+
+  const devicesUrl = `https://api-au.telematics.com/v1/vehicles/${vehicleId}/devices?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const response = await fetch(devicesUrl);
+
+  if (!response.ok) {
+    return jsonResponse({ error: `Device lookup failed. HTTP ${response.status}` }, 502);
+  }
+
+  const devices = await response.json();
+  return jsonResponse(devices);
 }
 
 export default {
@@ -115,6 +123,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/api/vehicle-lookup") {
         return handleVehicleLookup(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/vehicle-devices") {
+        return handleVehicleDevices(request, env);
       }
 
       return env.ASSETS.fetch(request);
