@@ -105,6 +105,27 @@ async function handleVehicleDevices(request, env) {
   return jsonResponse(devices);
 }
 
+async function handleVehicleMeters(request, env) {
+  requireEnv(env);
+
+  const body = await request.json();
+  const vehicleId = String(body.vehicleId || "").trim();
+
+  if (!vehicleId) {
+    return jsonResponse({ error: "Vehicle ID is required." }, 400);
+  }
+
+  const metersUrl = `https://api-au.telematics.com/v1/vehicles/${vehicleId}/meters?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const response = await fetch(metersUrl);
+
+  if (!response.ok) {
+    return jsonResponse({ error: `Meters lookup failed. HTTP ${response.status}` }, 502);
+  }
+
+  const meters = await response.json();
+  return jsonResponse(meters);
+}
+
 export default {
   async fetch(request, env) {
     try {
@@ -127,6 +148,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/api/vehicle-devices") {
         return handleVehicleDevices(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/vehicle-meters") {
+        return handleVehicleMeters(request, env);
       }
 
       return env.ASSETS.fetch(request);
