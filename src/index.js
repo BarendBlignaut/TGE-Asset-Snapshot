@@ -14,13 +14,6 @@ function requireEnv(env) {
   }
 }
 
-async function handlePing(env) {
-  return jsonResponse({
-    ok: true,
-    hasKey: Boolean(env.TN360_API_KEY),
-  });
-}
-
 async function handleTn360Users(request, env) {
   requireEnv(env);
 
@@ -35,10 +28,7 @@ async function handleTn360Users(request, env) {
   const usersResponse = await fetch(usersUrl);
 
   if (!usersResponse.ok) {
-    return jsonResponse(
-      { error: `Unable to load TN360 users. HTTP ${usersResponse.status}` },
-      502,
-    );
+    return jsonResponse({ error: `Unable to load TN360 users. HTTP ${usersResponse.status}` }, 502);
   }
 
   const users = await usersResponse.json();
@@ -59,6 +49,7 @@ async function handleVehicleLookup(request, env) {
 
   const body = await request.json();
   const assetNumber = String(body.assetNumber || "").trim();
+  const searchValue = assetNumber.replace(/\s+/g, "").toLowerCase();
 
   if (!assetNumber) {
     return jsonResponse({ error: "Asset number is required." }, 400);
@@ -68,24 +59,42 @@ async function handleVehicleLookup(request, env) {
   const response = await fetch(vehiclesUrl);
 
   if (!response.ok) {
-    return jsonResponse(
-      { error: `Vehicle lookup failed. HTTP ${response.status}` },
-      502,
-    );
+    return jsonResponse({ error: `Vehicle lookup failed. HTTP ${response.status}` }, 502);
   }
 
   const vehicles = await response.json();
 
-  const matchedVehicle = vehicles.find(
-    (vehicle) =>
-      String(vehicle.name || "").trim().toLowerCase() === assetNumber.toLowerCase(),
-  );
+  const matchedVehicle = vehicles.find((vehicle) => {
+    const vehicleName = String(vehicle.name || "").replace(/\s+/g, "").toLowerCase();
+    return vehicleName === searchValue;
+  });
+
+  const sampleNames = vehicles
+    .slice(0, 20)
+    .map((vehicle) => vehicle.name);
 
   if (!matchedVehicle) {
-    return jsonResponse({ error: "Asset not found." }, 404);
+    return jsonResponse(
+      {
+        error: "Asset not found.",
+        searchedAsset: assetNumber,
+        normalizedSearch: searchValue,
+        totalVehiclesReturned: vehicles.length,
+        sampleVehicleNames: sampleNames,
+      },
+      404,
+    );
   }
 
-  return jsonResponse(matchedVehicle);
+  return jsonResponse({
+    debug: {
+      searchedAsset: assetNumber,
+      normalizedSearch: searchValue,
+      matchedVehicleName: matchedVehicle.name,
+      matchedVehicleId: matchedVehicle.id,
+    },
+    vehicle: matchedVehicle,
+  });
 }
 
 export default {
@@ -94,7 +103,10 @@ export default {
       const url = new URL(request.url);
 
       if (request.method === "GET" && url.pathname === "/api/ping") {
-        return handlePing(env);
+        return jsonResponse({
+          ok: true,
+          hasKey: Boolean(env.TN360_API_KEY),
+        });
       }
 
       if (request.method === "GET" && url.pathname === "/api/tn360-users") {
