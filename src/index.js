@@ -28,10 +28,7 @@ async function handleTn360Users(request, env) {
   const usersResponse = await fetch(usersUrl);
 
   if (!usersResponse.ok) {
-    return jsonResponse(
-      { error: `Unable to load TN360 users. HTTP ${usersResponse.status}` },
-      502,
-    );
+    return jsonResponse({ error: `Unable to load TN360 users. HTTP ${usersResponse.status}` }, 502);
   }
 
   const users = await usersResponse.json();
