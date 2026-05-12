@@ -10,6 +10,19 @@ const approvedUsers = [
     updatedBy: "system",
     updatedDate: "2026-05-12T00:00:00Z",
   },
+  // Add your real login user here if it is not bare1234.
+  // Example:
+  // {
+  //   firstName: "YourFirstName",
+  //   lastName: "YourLastName",
+  //   username: "yourusername",
+  //   role: "admin",
+  //   status: "active",
+  //   createdBy: "system",
+  //   createdDate: "2026-05-12T00:00:00Z",
+  //   updatedBy: "system",
+  //   updatedDate: "2026-05-12T00:00:00Z",
+  // },
 ];
 
 const loginHistory = [];
