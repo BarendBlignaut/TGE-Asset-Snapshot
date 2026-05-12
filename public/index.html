@@ -553,12 +553,6 @@
       font-size: 0.82rem;
     }
 
-    .footer-note {
-      margin-top: 18px;
-      color: var(--muted);
-      font-size: 0.88rem;
-    }
-
     .location-layout {
       display: grid;
       grid-template-columns: 1.2fr 0.8fr;
@@ -1138,6 +1132,10 @@
                       <option value="inactive">Inactive</option>
                     </select>
                   </div>
+                  <div class="field">
+                    <label for="approved-password">Local Password</label>
+                    <input id="approved-password" type="password" autocomplete="new-password" />
+                  </div>
                 </div>
 
                 <div style="margin-top: 14px;">
@@ -1193,6 +1191,6 @@
     </main>
   </div>
 
-  <script src="/app.js" defer></script>
+  <script src="./app.js" defer></script>
 </body>
 </html>
