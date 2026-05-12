@@ -111,7 +111,8 @@ async function validateLogin(username, password) {
   if (!tnUser) return { success: false };
   if (tnUser.status !== "ENABLED") return { success: false };
   if (!isDriverUser(tnUser)) return { success: false };
-  if (String(tnUser.externalPin || "") !== String(password)) return { success: false };
+  console.log("TN360 matched user", tnUser);
+if (String(tnUser.externalPin || "") !== String(password)) return { success: false };
 
   return {
     success: true,
