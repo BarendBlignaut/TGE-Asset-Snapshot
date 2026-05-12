@@ -9,10 +9,6 @@ function jsonResponse(data, status = 200) {
 }
 
 function requireEnv(env) {
-  if (!env.TN360_BASE_URL) {
-    throw new Error("Missing TN360_BASE_URL");
-  }
-
   if (!env.TN360_API_KEY) {
     throw new Error("Missing TN360_API_KEY");
   }
@@ -28,32 +24,24 @@ async function handleTn360Users(request, env) {
     return jsonResponse({ error: "Username is required." }, 400);
   }
 
-  const listUrl = `${env.TN360_BASE_URL}/v1/users/?key=${env.TN360_API_KEY}&pruning=B2B`;
-  const listResponse = await fetch(listUrl);
+  const usersUrl = `https://api-au.telematics.com/v1/users/?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const usersResponse = await fetch(usersUrl);
 
-  if (!listResponse.ok) {
+  if (!usersResponse.ok) {
     return jsonResponse({ error: "Unable to load TN360 users." }, 502);
   }
 
-  const users = await listResponse.json();
+  const users = await usersResponse.json();
 
   const matchedUser = users.find(
     (user) => String(user.username || "").toLowerCase() === username.toLowerCase(),
   );
 
-  if (!matchedUser || !matchedUser.id) {
+  if (!matchedUser) {
     return jsonResponse({ error: "TN360 user not found." }, 404);
   }
 
-  const detailUrl = `${env.TN360_BASE_URL}/v1/users/${matchedUser.id}?key=${env.TN360_API_KEY}&pruning=B2B`;
-  const detailResponse = await fetch(detailUrl);
-
-  if (!detailResponse.ok) {
-    return jsonResponse({ error: "Unable to load TN360 user detail." }, 502);
-  }
-
-  const detailedUser = await detailResponse.json();
-  return jsonResponse(detailedUser);
+  return jsonResponse(matchedUser);
 }
 
 async function handleVehicleLookup(request, env) {
@@ -66,7 +54,7 @@ async function handleVehicleLookup(request, env) {
     return jsonResponse({ error: "Asset number is required." }, 400);
   }
 
-  const url = `${env.TN360_BASE_URL}/v1/vehicles/?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const url = `https://api-au.telematics.com/v1/vehicles/?key=${env.TN360_API_KEY}&pruning=B2B`;
   const response = await fetch(url);
 
   if (!response.ok) {
@@ -95,7 +83,7 @@ async function handleVehicleDevices(request, env) {
     return jsonResponse({ error: "Vehicle ID is required." }, 400);
   }
 
-  const url = `${env.TN360_BASE_URL}/v1/vehicles/${vehicleId}/devices?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const url = `https://api-au.telematics.com/v1/vehicles/${vehicleId}/devices?key=${env.TN360_API_KEY}&pruning=B2B`;
   const response = await fetch(url);
 
   if (!response.ok) {
@@ -116,7 +104,7 @@ async function handleVehicleMeters(request, env) {
     return jsonResponse({ error: "Vehicle ID is required." }, 400);
   }
 
-  const url = `${env.TN360_BASE_URL}/v1/vehicles/${vehicleId}/meters?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const url = `https://api-au.telematics.com/v1/vehicles/${vehicleId}/meters?key=${env.TN360_API_KEY}&pruning=B2B`;
   const response = await fetch(url);
 
   if (!response.ok) {
@@ -137,7 +125,7 @@ async function handleHermesDeviceStats(request, env) {
     return jsonResponse({ error: "Tracker ID is required." }, 400);
   }
 
-  const url = `${env.TN360_BASE_URL}/v1/devices/${trackerId}?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
+  const url = `https://api-au.telematics.com/v1/devices/${trackerId}?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
   const response = await fetch(url);
 
   if (!response.ok) {
@@ -158,7 +146,7 @@ async function handleCameraDeviceStats(request, env) {
     return jsonResponse({ error: "Camera ID is required." }, 400);
   }
 
-  const url = `${env.TN360_BASE_URL}/v1/devices/${cameraId}?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
+  const url = `https://api-au.telematics.com/v1/devices/${cameraId}?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
   const response = await fetch(url);
 
   if (!response.ok) {
@@ -179,7 +167,7 @@ async function handleCameraSnapshots(request, env) {
     return jsonResponse({ error: "Vehicle ID is required." }, 400);
   }
 
-  const url = `${env.TN360_BASE_URL}/v1/events/?key=${env.TN360_API_KEY}&vehicleId=${vehicleId}&pruning=B2B`;
+  const url = `https://api-au.telematics.com/v1/events/?key=${env.TN360_API_KEY}&vehicleId=${vehicleId}&pruning=B2B`;
   const response = await fetch(url);
 
   if (!response.ok) {
