@@ -13,7 +13,7 @@ const approvedUsers = [
     createdDate: "2026-05-12T00:00:00Z",
     updatedBy: "system",
     updatedDate: "2026-05-12T00:00:00Z",
-    password: "1234",
+    password: "12345678",
   },
 ];
 
