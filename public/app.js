@@ -724,23 +724,15 @@ function renderResolvedAsset() {
   renderStorage(state.activeAssetLookup);
   renderSnapshots(state.activeAssetLookup);
 
-  const gpio = state.activeAssetLookup.hermesStats?.gpio || {};
-
-  setText("gpio-seatbelt", gpio["digin.1"]?.custom_verb || gpio["digin.1"]?.verb || "No data");
-  setText("gpio-door", gpio["digin.2"]?.custom_verb || gpio["digin.2"]?.verb || "No data");
-  setText("gpio-parkbrake", gpio["digin.3"]?.custom_verb || gpio["digin.3"]?.verb || "No data");
-  setText("gpio-driverevent", gpio["digin.4"]?.custom_verb || gpio["digin.4"]?.verb || "No data");
-  setText("gpio-siren", gpio["digout.2"]?.custom_verb || gpio["digout.2"]?.verb || "No data");
-  setText("gpio-led", gpio["digout.3"]?.custom_verb || gpio["digout.3"]?.verb || "No data");
-
   setVisible(el.assetShell, true, "block");
   renderDebug();
+}
 }
 
 function resetRenderedAsset() {
   resetHero();
 
-    [
+  [
     "view-asset-number",
     "view-registration",
     "view-vin",
@@ -772,12 +764,6 @@ function resetRenderedAsset() {
     "view-sd1-size",
     "view-sd2",
     "view-sd2-size",
-    "gpio-seatbelt",
-    "gpio-door",
-    "gpio-parkbrake",
-    "gpio-driverevent",
-    "gpio-siren",
-    "gpio-led",
   ].forEach((id) => setText(id, ""));
   
 
