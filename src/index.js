@@ -767,28 +767,29 @@ async function handleHermesDeviceStats(request, env) {
     return jsonResponse(DEMO_HERMES_DEVICE);
   }
 
-  const devicesUrl = `https://api-au.telematics.com/v1/devices/?key=${env.TN360_API_KEY}&pruning=B2B`;
-  const devices = await fetchJsonFromTn360(devicesUrl);
-  const searchValue = normalizeValue(trackerId);
+  const deviceUrl =
+    `https://api-au.telematics.com/v1/devices/${encodeURIComponent(trackerId)}` +
+    `?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
 
-  const matchedDevice = devices.find((device) => {
-    const typeCode = normalizeValue(device?.type?.code);
-    const deviceId = normalizeValue(device?.id);
-    const imei = normalizeValue(device?.imei);
-    const serialNumber = normalizeValue(device?.serialNumber);
+  const response = await fetch(deviceUrl);
 
-    return typeCode === "hermes" && (
-      deviceId === searchValue ||
-      imei === searchValue ||
-      serialNumber === searchValue
+  if (!response.ok) {
+    const responseText = await response.text().catch(() => "");
+    return jsonResponse(
+      {
+        error: `HERMES device stats lookup failed. HTTP ${response.status}`,
+        detail: responseText || "No response body returned from HERMES device endpoint.",
+        request: {
+          trackerId,
+          deviceUrl,
+        },
+      },
+      502,
     );
-  });
-
-  if (!matchedDevice) {
-    return jsonResponse({ error: "HERMES device not found." }, 404);
   }
 
-  return jsonResponse(matchedDevice);
+  const device = await response.json();
+  return jsonResponse(device);
 }
 
 async function handleCameraDeviceStats(request, env) {
