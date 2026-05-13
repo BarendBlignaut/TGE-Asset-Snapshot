@@ -727,7 +727,7 @@ function renderResolvedAsset() {
   setVisible(el.assetShell, true, "block");
   renderDebug();
 }
-}
+
 
 function resetRenderedAsset() {
   resetHero();
