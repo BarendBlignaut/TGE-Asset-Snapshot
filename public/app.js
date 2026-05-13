@@ -1039,6 +1039,7 @@ if (el.assetSearchForm) {
     event.preventDefault();
 
     const assetNumber = safeText(getNode("asset-number")?.value).trim();
+    writeDebug("Asset search submitted", { assetNumber });
 
     try {
       await handleAssetSearch(assetNumber);
