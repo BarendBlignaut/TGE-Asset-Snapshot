@@ -793,22 +793,19 @@ async function handleAssetSearch(assetNumber) {
   const startedAt = performance.now();
 
   clearAssetSearchMessage();
-  resetActiveAssetLookup();
+
   setText("hero-lookup-status", "Loading");
   setText("hero-fleet-number", assetNumber || "--");
   setText("hero-request-time", formatDisplayDate(currentIsoTime()));
-  writeDebug("Lookup started", { assetNumber });
+  setText("hero-render-time", "--");
 
-   writeDebug("Calling vehicle lookup", { assetNumber });
+  writeDebug("Lookup started", { assetNumber });
 
   const vehicleLookupResponse = await apiPost(
     "/api/vehicle-lookup",
     { assetNumber },
     "Asset not found.",
   );
-
-  writeDebug("Vehicle lookup returned", vehicleLookupResponse);
-
   const vehicle = vehicleLookupResponse.vehicle || vehicleLookupResponse;
 
   const [devicesResponse, metersResponse, snapshotEvents] = await Promise.all([
@@ -845,7 +842,7 @@ async function handleAssetSearch(assetNumber) {
     slots: mapSnapshotLinksToSlots(latestSnapshot),
   };
 
-  state.activeAssetLookup = buildLookupSummary(
+  const nextLookup = buildLookupSummary(
     assetNumber,
     vehicle,
     devices,
@@ -866,7 +863,9 @@ async function handleAssetSearch(assetNumber) {
     await loadAccessHistory();
   }
 
-  writeDebug("Lookup completed", state.activeAssetLookup);
+  state.activeAssetLookup = nextLookup;
+
+  writeDebug("Lookup completed", nextLookup);
   renderResolvedAsset();
 }
 
