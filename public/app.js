@@ -705,6 +705,26 @@ function renderStorage(lookup) {
   setText("view-sd2-size", cameraStats.sdCard2?.totalSizeDisplay, "");
 }
 
+function getGpioVerb(entry, fallback = "Current state tracked") {
+  if (!entry) return fallback;
+
+  const rawValue = safeText(entry.custom_verb || entry.verb, "").trim();
+  if (!rawValue) return fallback;
+
+  return rawValue;
+}
+
+function renderGpio(lookup) {
+  const gpio = lookup.hermesStats?.gpio || {};
+
+  setText("gpio-seatbelt", getGpioVerb(gpio["digin.1"]));
+  setText("gpio-door", getGpioVerb(gpio["digin.2"]));
+  setText("gpio-parkbrake", getGpioVerb(gpio["digin.3"]));
+  setText("gpio-driverevent", getGpioVerb(gpio["digin.4"]));
+  setText("gpio-siren", getGpioVerb(gpio["digout.2"]));
+  setText("gpio-led", getGpioVerb(gpio["digout.3"]));
+}
+
 function renderSnapshots(lookup) {
   const slots = lookup.cameraSnapshot?.slots || {};
 
@@ -722,6 +742,7 @@ function renderResolvedAsset() {
   renderVehicleDetails(state.activeAssetLookup);
   renderMetrics(state.activeAssetLookup);
   renderStorage(state.activeAssetLookup);
+  renderGpio(state.activeAssetLookup);
   renderSnapshots(state.activeAssetLookup);
 
   setVisible(el.assetShell, true, "block");
@@ -772,6 +793,12 @@ function resetRenderedAsset() {
     "view-sd1-size",
     "view-sd2",
     "view-sd2-size",
+    "gpio-seatbelt",
+    "gpio-door",
+    "gpio-parkbrake",
+    "gpio-driverevent",
+    "gpio-siren",
+    "gpio-led",
   ].forEach((id) => setText(id, ""));
   
 
