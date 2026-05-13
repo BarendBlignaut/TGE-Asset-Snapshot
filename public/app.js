@@ -1144,6 +1144,9 @@ if (el.assetSearchForm) {
   });
 }
 
+if (el.refreshAssetButton) {
+  el.refreshAssetButton.addEventListener("click", handleRefreshAsset);
+}
 if (el.exportPdfButton) {
   el.exportPdfButton.addEventListener("click", handleExportPdf);
 }
