@@ -25,6 +25,7 @@ const el = {
   assetShell: document.getElementById("asset-shell"),
   debugPanel: document.getElementById("debug-panel"),
   debugOutput: document.getElementById("debug-output"),
+  refreshAssetButton: document.getElementById("refresh-asset-btn"),
   exportPdfButton: document.getElementById("export-pdf-btn"),
   emailPdfButton: document.getElementById("email-pdf-btn"),
 };
@@ -875,6 +876,22 @@ if (mapFrame) {
 function resetActiveAssetLookup() {
   state.activeAssetLookup = null;
   resetRenderedAsset();
+}
+function handleRefreshAsset() {
+  resetActiveAssetLookup();
+  clearAssetSearchMessage();
+  setText("hero-lookup-status", "Awaiting search");
+  setText("hero-fleet-number", "--");
+  setText("hero-request-time", "--");
+  setText("hero-render-time", "--");
+
+  const assetInput = getNode("asset-number");
+  if (assetInput) {
+    assetInput.value = "";
+    assetInput.focus();
+  }
+
+  writeDebug("Asset search reset");
 }
 
 async function handleAssetSearch(assetNumber) {
