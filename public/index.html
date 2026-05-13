@@ -838,43 +838,47 @@
         <div class="stack">
           <div id="standard-view">
             <div id="asset-shell">
-              <section class="section">
-                <div class="section-head">
-                  <div>
-                    <div class="section-kicker">Vehicle Information</div>
-                    <h3 class="section-title">Asset Details</h3>
-                  </div>
-                </div>
+            <section class="section">
+  <div class="section-head">
+    <div>
+      <div class="section-kicker">GPIO Data State</div>
+      <h3 class="section-title">Digital Inputs And Outputs</h3>
+    </div>
+  </div>
 
-                <div class="meta-grid">
-                   <div class="meta-item"><span>Fleet Number</span><strong id="view-asset-number"></strong></div>
-                  <div class="meta-item"><span>Registration</span><strong id="view-registration"></strong></div>
-                  <div class="meta-item"><span>VIN</span><strong id="view-vin"></strong></div>
-                  <div class="meta-item"><span>Make</span><strong id="view-make"></strong></div>
-                  <div class="meta-item"><span>Model</span><strong id="view-model"></strong></div>
-                  <div class="meta-item"><span>Year of Manufacture</span><strong id="view-year"></strong></div>
-                  <div class="meta-item"><span>Driver Login</span><strong id="view-driver"></strong></div>
-                 <div class="meta-item"><span>Ignition Status</span><strong id="view-ignition-status"></strong></div>
-                  </div>
-
-                <div class="device-list">
-                  <div class="device-card">
-                    <h4>Tracking System</h4>
-                    <p>IMEI: <strong id="view-tracker-imei"></strong></p>
-                    <p>Serial: <strong id="view-tracker-serial"></strong></p>
-                  </div>
-                  <div class="device-card">
-                    <h4>Camera System</h4>
-                    <p>IMEI: <strong id="view-camera-imei"></strong></p>
-                    <p>Serial: <strong id="view-camera-serial"></strong></p>
-                  </div>
-                  <div class="device-card">
-                    <h4>Tablet</h4>
-                    <p>IMEI: <strong id="view-tablet-imei"></strong></p>
-                    <p>Serial: <strong id="view-tablet-serial"></strong></p>
-                  </div>
-                </div>
-              </section>
+  <div class="gps-grid">
+    <div class="gps-card">
+      <h4>Seatbelt</h4>
+      <p id="gpio-seatbelt"></p>
+      <span class="gps-tag">DIGIN 1</span>
+    </div>
+    <div class="gps-card">
+      <h4>Door</h4>
+      <p id="gpio-door"></p>
+      <span class="gps-tag">DIGIN 2</span>
+    </div>
+    <div class="gps-card">
+      <h4>Park Brake</h4>
+      <p id="gpio-parkbrake"></p>
+      <span class="gps-tag">DIGIN 3</span>
+    </div>
+    <div class="gps-card">
+      <h4>Duress</h4>
+      <p id="gpio-driverevent"></p>
+      <span class="gps-tag">DIGIN 4</span>
+    </div>
+    <div class="gps-card">
+      <h4>Siren</h4>
+      <p id="gpio-siren"></p>
+      <span class="gps-tag">DIGOUT 2</span>
+    </div>
+    <div class="gps-card">
+      <h4>LED</h4>
+      <p id="gpio-led"></p>
+      <span class="gps-tag">DIGOUT 3</span>
+    </div>
+  </div>
+</section>
 
               <section class="section">
                 <div class="section-head">
