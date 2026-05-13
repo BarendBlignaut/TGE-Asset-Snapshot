@@ -728,6 +728,14 @@ function renderResolvedAsset() {
   renderDebug();
 }
 
+function resetHero() {
+  setText("hero-current-asset", "No asset loaded");
+  setText("hero-request-time", "--");
+  setText("hero-lookup-status", "Awaiting search");
+  setText("hero-fleet-number", "--");
+  setText(["hero-vehicle-id", "hero-vehicle-id-copy"], "--");
+  setText("hero-render-time", "--");
+}
 
 function resetRenderedAsset() {
   resetHero();
