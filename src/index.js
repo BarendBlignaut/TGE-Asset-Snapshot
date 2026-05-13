@@ -807,22 +807,29 @@ async function handleCameraDeviceStats(request, env) {
     return jsonResponse(DEMO_CAMERA_DEVICE);
   }
 
-  const devicesUrl = `https://api-au.telematics.com/v1/devices/?key=${env.TN360_API_KEY}&pruning=B2B`;
-  const devices = await fetchJsonFromTn360(devicesUrl);
-  const searchValue = normalizeValue(cameraId);
+  const deviceUrl =
+  `https://api-au.telematics.com/v1/devices/${encodeURIComponent(cameraId)}` +
+  `?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
 
-  const matchedDevice = devices.find((device) => {
-    const deviceId = normalizeValue(device?.id);
-    const imei = normalizeValue(device?.imei);
-    const serialNumber = normalizeValue(device?.serialNumber);
-    return deviceId === searchValue || imei === searchValue || serialNumber === searchValue;
-  });
+const response = await fetch(deviceUrl);
 
-  if (!matchedDevice) {
-    return jsonResponse({ error: "Camera device not found." }, 404);
-  }
+if (!response.ok) {
+  const responseText = await response.text().catch(() => "");
+  return jsonResponse(
+    {
+      error: `Camera device stats lookup failed. HTTP ${response.status}`,
+      detail: responseText || "No response body returned from camera device endpoint.",
+      request: {
+        cameraId,
+        deviceUrl,
+      },
+    },
+    502,
+  );
+}
 
-  return jsonResponse(matchedDevice);
+const device = await response.json();
+return jsonResponse(device);
 }
 
 async function handleCameraSnapshots(request, env) {
