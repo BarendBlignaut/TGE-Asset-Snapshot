@@ -619,16 +619,17 @@ function buildLookupSummary(
     requestedAssetNumber: rawAssetNumber,
     requestedAt: currentIsoTime(),
     renderDurationMs: durations.renderDurationMs,
-    vehicle: {
+       vehicle: {
       vehicleId: vehicle.id,
       assetNumber: vehicle.name || rawAssetNumber,
       registration: vehicle.registration,
       registrationState: vehicle.registrationState,
       vin: vehicle.vin,
-      make: vehicle.make,
-      model: vehicle.model,
-      yearOfManufacture: vehicle.operationalVehicleModel?.yearOfManufacture || null,
-    },
+      make: vehicle.operationalVehicleModel?.make || vehicle.make || "",
+      model: vehicle.operationalVehicleModel?.model || vehicle.model || "",
+      yearOfManufacture:
+        vehicle.operationalVehicleModel?.yearOfManufacture || vehicle.yearOfManufacture || null,
+    },    
     devices,
     meters,
     hermesStats,
