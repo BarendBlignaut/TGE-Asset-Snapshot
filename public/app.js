@@ -977,7 +977,8 @@ async function handleExportPdf() {
   try {
     showAssetSearchMessage("Preparing PDF...", false);
 
-    const printContents = document.getElementById("asset-shell")?.innerHTML;
+    const printRoot = document.getElementById("standard-view");
+const printContents = printRoot?.innerHTML;
     if (!printContents) {
       throw new Error("Nothing available to export.");
     }
