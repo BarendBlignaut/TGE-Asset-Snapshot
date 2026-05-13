@@ -1062,4 +1062,4 @@ if (el.emailPdfButton) {
 }
 
 initialiseUi();
-// loadSession();
+loadSession();
