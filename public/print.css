@@ -1,0 +1,178 @@
+body {
+  margin: 0;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  color: #1f2a24;
+  background: #ffffff;
+}
+
+.print-wrap {
+  padding: 24px;
+}
+
+.section {
+  background: #ffffff;
+  border: 1px solid #d7e2db;
+  border-radius: 12px;
+  box-shadow: none;
+  padding: 22px;
+  margin-bottom: 18px;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.section-kicker {
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #007a3b;
+  font-weight: 700;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.meta-grid,
+.metrics-grid,
+.sd-grid,
+.gps-grid,
+.device-list,
+.camera-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.meta-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.metrics-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.sd-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.gps-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.device-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.camera-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.meta-item,
+.metric-item,
+.sd-item,
+.device-card,
+.gps-card,
+.camera-card,
+.location-card {
+  border: 1px solid #d7e2db;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.meta-item span,
+.metric-item span,
+.sd-item span,
+.location-card span {
+  display: block;
+  color: #64736c;
+  font-size: 0.78rem;
+  margin-bottom: 6px;
+}
+
+.meta-item strong,
+.metric-item strong,
+.sd-item strong,
+.location-card strong {
+  display: block;
+  font-size: 1rem;
+  word-break: break-word;
+}
+
+.metric-item strong {
+  font-size: 1.2rem;
+  color: #007a3b;
+}
+
+.gps-tag {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 5px 8px;
+  font-size: 0.74rem;
+  border-radius: 999px;
+  background: rgba(0, 122, 59, 0.08);
+  color: #007a3b;
+  font-weight: 700;
+}
+
+.camera-frame {
+  aspect-ratio: 4 / 3;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f5f8f6;
+  display: grid;
+  place-items: center;
+}
+
+.camera-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.camera-empty {
+  color: #64736c;
+  font-size: 0.9rem;
+}
+
+.camera-meta {
+  padding-top: 10px;
+}
+
+.camera-meta strong,
+.camera-meta span {
+  display: block;
+}
+
+.location-layout {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 16px;
+}
+
+.map-panel iframe {
+  width: 100%;
+  min-height: 340px;
+  border: 1px solid #d7e2db;
+  border-radius: 8px;
+}
+
+@media print {
+  body {
+    background: #ffffff;
+  }
+
+  .print-wrap {
+    padding: 0;
+  }
+}
