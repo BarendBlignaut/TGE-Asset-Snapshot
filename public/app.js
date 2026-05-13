@@ -724,6 +724,59 @@ function renderGpio(lookup) {
   setText("gpio-siren", getGpioVerb(gpio["digout.2"]));
   setText("gpio-led", getGpioVerb(gpio["digout.3"]));
 }
+function formatCoordinate(value) {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
+
+  const numericValue = Number(value);
+  if (Number.isNaN(numericValue)) {
+    return "";
+  }
+
+  return numericValue.toFixed(5);
+}
+
+function buildMapEmbedUrl(latitude, longitude) {
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+
+  if (Number.isNaN(lat) || Number.isNaN(lng)) {
+    return "";
+  }
+
+  const paddingLat = 0.02;
+  const paddingLng = 0.02;
+
+  const left = lng - paddingLng;
+  const right = lng + paddingLng;
+  const top = lat + paddingLat;
+  const bottom = lat - paddingLat;
+
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${left}%2C${bottom}%2C${right}%2C${top}&layer=mapnik&marker=${lat}%2C${lng}`;
+}
+
+function renderLocationMap(lookup) {
+  const gps = lookup.hermesStats?.gps || {};
+  const latitude = gps.latitude;
+  const longitude = gps.longitude;
+
+  setText("view-location", lookup.hermesStats?.location, "");
+  setText("view-latitude", formatCoordinate(latitude), "");
+  setText("view-longitude", formatCoordinate(longitude), "");
+  setText("view-map-source", "OpenStreetMap", "");
+
+  const mapFrame = getNode("location-map");
+  if (!mapFrame) return;
+
+  const mapUrl = buildMapEmbedUrl(latitude, longitude);
+
+  if (mapUrl) {
+    mapFrame.src = mapUrl;
+  } else {
+    mapFrame.removeAttribute("src");
+  }
+}
 
 function renderSnapshots(lookup) {
   const slots = lookup.cameraSnapshot?.slots || {};
@@ -743,6 +796,7 @@ function renderResolvedAsset() {
   renderMetrics(state.activeAssetLookup);
   renderStorage(state.activeAssetLookup);
   renderGpio(state.activeAssetLookup);
+  renderLocationMap(state.activeAssetLookup);
   renderSnapshots(state.activeAssetLookup);
 
   setVisible(el.assetShell, true, "block");
@@ -793,6 +847,9 @@ function resetRenderedAsset() {
     "view-sd1-size",
     "view-sd2",
     "view-sd2-size",
+    "view-latitude",
+    "view-longitude",
+    "view-map-source",
     "gpio-seatbelt",
     "gpio-door",
     "gpio-parkbrake",
@@ -800,7 +857,11 @@ function resetRenderedAsset() {
     "gpio-siren",
     "gpio-led",
   ].forEach((id) => setText(id, ""));
-  
+
+  const mapFrame = getNode("location-map");
+if (mapFrame) {
+  mapFrame.removeAttribute("src");
+}
 
   setImage("img-road-facing", "img-road-facing-empty", null);
   setImage("img-driver-facing", "img-driver-facing-empty", null);
