@@ -974,66 +974,10 @@ async function handleExportPdf() {
     return;
   }
 
-  try {
-    showAssetSearchMessage("Preparing PDF...", false);
-
-    const printRoot = document.getElementById("standard-view");
-    const printContents = printRoot?.innerHTML;
-    if (!printContents) {
-      throw new Error("Nothing available to export.");
-    }
-
-    const printWindow = window.open("", "_blank", "width=1400,height=900");
-    if (!printWindow) {
-      throw new Error("Pop-up blocked. Please allow pop-ups and try again.");
-    }
-
-    printWindow.document.open();
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>TGE Asset Snapshot PDF</title>
-        <link rel="stylesheet" href="./print.css" />
-      </head>
-      <body>
-        <div class="print-wrap">
-          ${printContents}
-        </div>
-      </body>
-      </html>
-    `);
-    printWindow.document.close();
-
-    printWindow.onload = () => {
-      printWindow.focus();
-      printWindow.print();
-    };
-
-    showAssetSearchMessage("PDF ready to print.", false);
-  } catch (error) {
-    showAssetSearchMessage(error.message || "PDF export failed.");
-    writeDebug("PDF export failed", error.message);
-  }
-}
-
-    const vehicleLabel = state.activeAssetLookup.vehicle?.assetNumber || "snapshot";
-    const objectUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = objectUrl;
-    anchor.download = `tge-asset-snapshot-${vehicleLabel}.pdf`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(objectUrl);
-
-    showAssetSearchMessage("PDF exported successfully.", false);
-  } catch (error) {
-    showAssetSearchMessage(error.message || "PDF export failed.");
-    writeDebug("PDF export failed", error.message);
-  }
+  showAssetSearchMessage("PDF export is temporarily disabled while we fix the new export layout.", true);
+  writeDebug("PDF export skipped", {
+    assetNumber: state.activeAssetLookup.vehicle?.assetNumber || "",
+  });
 }
 
 function handleEmailPdf() {
