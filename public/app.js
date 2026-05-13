@@ -777,7 +777,7 @@ function resetRenderedAsset() {
   setImage("img-driver-external", "img-driver-external-empty", null);
   setImage("img-left-external", "img-left-external-empty", null);
 
-  setVisible(el.assetShell, false);
+  setVisible(el.assetShell, true, "block");
 }
 
 function resetActiveAssetLookup() {
