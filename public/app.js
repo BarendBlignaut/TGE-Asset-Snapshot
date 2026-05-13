@@ -466,6 +466,7 @@ function extractVehicleMeters(meters) {
 
 function extractHermesStats(device) {
   const deviceStats = device.deviceStats || {};
+  const attrs = deviceStats.attrs || {};
   const lastVpm = safeParseJson(deviceStats.lastVpm);
   const lastGpio = safeParseJson(deviceStats.lastGpio);
   const currentUser = deviceStats.currentUser || null;
@@ -474,7 +475,8 @@ function extractHermesStats(device) {
     driverName: currentUser
       ? `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim()
       : "No driver",
-    ignition: deviceStats.ignition || null,
+    ignition: attrs.last_ignition || deviceStats.ignition || null,
+    ignitionAt: attrs.last_ignition_at || null,
     movement: deviceStats.movement || null,
     tripId: deviceStats.tripId || null,
     location: deviceStats.location || null,
@@ -690,7 +692,7 @@ function renderMetrics(lookup) {
   setText("view-location", hermesStats.location, "");
   setText("view-ignition", ignitionText, "");
   setText("view-movement", movementText, "");
-  setText("view-ignition-status", [ignitionText, movementText].filter(Boolean).join(" / "), "");
+  setText("view-ignition-status", hermesStats.ignition || ignitionText || "", "");
 }
 
 function renderStorage(lookup) {
