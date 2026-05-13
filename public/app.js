@@ -791,11 +791,16 @@ async function handleAssetSearch(assetNumber) {
   setText("hero-request-time", formatDisplayDate(currentIsoTime()));
   writeDebug("Lookup started", { assetNumber });
 
+   writeDebug("Calling vehicle lookup", { assetNumber });
+
   const vehicleLookupResponse = await apiPost(
     "/api/vehicle-lookup",
     { assetNumber },
     "Asset not found.",
   );
+
+  writeDebug("Vehicle lookup returned", vehicleLookupResponse);
+
   const vehicle = vehicleLookupResponse.vehicle || vehicleLookupResponse;
 
   const [devicesResponse, metersResponse, snapshotEvents] = await Promise.all([
