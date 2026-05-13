@@ -1058,39 +1058,36 @@
                   </div>
                 </div>
 
-                <div class="location-layout">
-                  <div class="map-panel">
-                    <div class="map-badge">Last Location</div>
-                    <iframe
-                      title="Last known location map"
-                      loading="lazy"
-                      referrerpolicy="no-referrer-when-downgrade"
-                      src="https://www.openstreetmap.org/export/embed.html?bbox=151.44739%2C-33.09536%2C151.50739%2C-33.05536&layer=mapnik&marker=-33.07536%2C151.47739">
-                    </iframe>
-                  </div>
+  <div class="location-layout">
+  <div class="map-panel">
+    <div class="map-badge">Last Location</div>
+    <iframe
+      id="location-map"
+      title="Last known location map"
+      loading="lazy"
+      referrerpolicy="no-referrer-when-downgrade">
+    </iframe>
+  </div>
 
-                  <div class="location-meta">
-                    <div class="location-card">
-                      <span>Location</span>
-                      <strong id="view-location"></strong>
-                    </div>
-                    <div class="location-card">
-                      <span>Latitude</span>
-                      <strong>Pending live bind</strong>
-                    </div>
-                    <div class="location-card">
-                      <span>Longitude</span>
-                      <strong>Pending live bind</strong>
-                    </div>
-                    <div class="location-card">
-                      <span>Map Source</span>
-                      <strong>Placeholder preview for final live map feed</strong>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </div>
-          </div>
+  <div class="location-meta">
+    <div class="location-card">
+      <span>Location</span>
+      <strong id="view-location"></strong>
+    </div>
+    <div class="location-card">
+      <span>Latitude</span>
+      <strong id="view-latitude"></strong>
+    </div>
+    <div class="location-card">
+      <span>Longitude</span>
+      <strong id="view-longitude"></strong>
+    </div>
+    <div class="location-card">
+      <span>Map Source</span>
+      <strong id="view-map-source"></strong>
+    </div>
+  </div>
+</div>             
 
           <section class="section" id="admin-view" style="display: none;">
             <div class="section-head">
