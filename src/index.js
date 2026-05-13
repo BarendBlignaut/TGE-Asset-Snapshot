@@ -1,7 +1,6 @@
 const SESSION_COOKIE = "tge_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 12;
-
-const sessions = new Map();
+const DEFAULT_SESSION_SECRET = "tge-demo-session-secret-change-me";
 
 const approvedUsers = [
   {
@@ -133,16 +132,6 @@ function pdfResponse(bytes, filename) {
   });
 }
 
-function textResponse(text, status = 200, contentType = "text/plain; charset=utf-8") {
-  return new Response(text, {
-    status,
-    headers: {
-      "Content-Type": contentType,
-      "Cache-Control": "no-store",
-    },
-  });
-}
-
 function normalizeValue(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -155,73 +144,6 @@ function parseCookies(request) {
     accumulator[rawKey] = decodeURIComponent(rawValue.join("="));
     return accumulator;
   }, {});
-}
-
-function createSession(user) {
-  const token = crypto.randomUUID();
-  sessions.set(token, {
-    user,
-    expiresAt: Date.now() + SESSION_TTL_SECONDS * 1000,
-  });
-  return token;
-}
-
-function getSession(request) {
-  const cookies = parseCookies(request);
-  const token = cookies[SESSION_COOKIE];
-
-  if (!token) return null;
-
-  const session = sessions.get(token);
-  if (!session) return null;
-
-  if (session.expiresAt < Date.now()) {
-    sessions.delete(token);
-    return null;
-  }
-
-  return { token, session };
-}
-
-function withSessionCookie(token) {
-  return {
-    "Set-Cookie": `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}`,
-  };
-}
-
-function clearSessionCookie() {
-  return {
-    "Set-Cookie": `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
-  };
-}
-
-function requireSession(request) {
-  const sessionRecord = getSession(request);
-  if (!sessionRecord) {
-    return {
-      ok: false,
-      response: jsonResponse({ error: "You are not signed in." }, 401),
-    };
-  }
-
-  return {
-    ok: true,
-    sessionRecord,
-  };
-}
-
-function requireAdmin(request) {
-  const sessionCheck = requireSession(request);
-  if (!sessionCheck.ok) return sessionCheck;
-
-  if (sessionCheck.sessionRecord.session.user.role !== "admin") {
-    return {
-      ok: false,
-      response: jsonResponse({ error: "Admin access is required." }, 403),
-    };
-  }
-
-  return sessionCheck;
 }
 
 function publicUser(user) {
@@ -247,6 +169,124 @@ async function safeJson(request) {
   } catch {
     return {};
   }
+}
+
+function base64UrlEncodeBytes(bytes) {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlEncodeText(text) {
+  return base64UrlEncodeBytes(new TextEncoder().encode(text));
+}
+
+function base64UrlDecodeText(value) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+async function importSessionKey(env) {
+  const secret = env.SESSION_SECRET || DEFAULT_SESSION_SECRET;
+  return crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
+}
+
+async function signSessionValue(value, env) {
+  const key = await importSessionKey(env);
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(value),
+  );
+  return base64UrlEncodeBytes(new Uint8Array(signature));
+}
+
+async function createSessionToken(user, env) {
+  const payload = {
+    user,
+    exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
+  };
+  const encodedPayload = base64UrlEncodeText(JSON.stringify(payload));
+  const signature = await signSessionValue(encodedPayload, env);
+  return `${encodedPayload}.${signature}`;
+}
+
+async function readSessionFromRequest(request, env) {
+  const cookies = parseCookies(request);
+  const token = cookies[SESSION_COOKIE];
+
+  if (!token) return null;
+
+  const [encodedPayload, signature] = token.split(".");
+  if (!encodedPayload || !signature) return null;
+
+  const expectedSignature = await signSessionValue(encodedPayload, env);
+  if (signature !== expectedSignature) return null;
+
+  let payload;
+  try {
+    payload = JSON.parse(base64UrlDecodeText(encodedPayload));
+  } catch {
+    return null;
+  }
+
+  if (!payload?.user || !payload?.exp) return null;
+  if (payload.exp < Math.floor(Date.now() / 1000)) return null;
+
+  return payload.user;
+}
+
+function sessionCookieHeader(token) {
+  return {
+    "Set-Cookie": `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}`,
+  };
+}
+
+function clearSessionCookie() {
+  return {
+    "Set-Cookie": `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
+  };
+}
+
+async function requireSession(request, env) {
+  const user = await readSessionFromRequest(request, env);
+
+  if (!user) {
+    return {
+      ok: false,
+      response: jsonResponse({ error: "You are not signed in." }, 401, clearSessionCookie()),
+    };
+  }
+
+  return {
+    ok: true,
+    user,
+  };
+}
+
+async function requireAdmin(request, env) {
+  const sessionCheck = await requireSession(request, env);
+  if (!sessionCheck.ok) return sessionCheck;
+
+  if (sessionCheck.user.role !== "admin") {
+    return {
+      ok: false,
+      response: jsonResponse({ error: "Admin access is required." }, 403),
+    };
+  }
+
+  return sessionCheck;
 }
 
 function demoImageDataUrl(label, tone) {
@@ -488,41 +528,32 @@ async function handleLogin(request, env) {
     };
   }
 
-  const token = createSession(sessionUser);
+  const token = await createSessionToken(sessionUser, env);
   addAccessHistory(sessionUser.username, "Login only");
 
-  return jsonResponse(
-    { user: sessionUser },
-    200,
-    withSessionCookie(token),
-  );
+  return jsonResponse({ user: sessionUser }, 200, sessionCookieHeader(token));
 }
 
-async function handleSession(request) {
-  const sessionCheck = requireSession(request);
+async function handleSession(request, env) {
+  const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
 
-  return jsonResponse({ user: sessionCheck.sessionRecord.session.user });
+  return jsonResponse({ user: sessionCheck.user });
 }
 
-async function handleLogout(request) {
-  const sessionRecord = getSession(request);
-  if (sessionRecord) {
-    sessions.delete(sessionRecord.token);
-  }
-
+async function handleLogout() {
   return jsonResponse({ ok: true }, 200, clearSessionCookie());
 }
 
-async function handleApprovedUsersGet(request) {
-  const adminCheck = requireAdmin(request);
+async function handleApprovedUsersGet(request, env) {
+  const adminCheck = await requireAdmin(request, env);
   if (!adminCheck.ok) return adminCheck.response;
 
   return jsonResponse(approvedUsers.map(publicUser));
 }
 
-async function handleApprovedUsersUpsert(request) {
-  const adminCheck = requireAdmin(request);
+async function handleApprovedUsersUpsert(request, env) {
+  const adminCheck = await requireAdmin(request, env);
   if (!adminCheck.ok) return adminCheck.response;
 
   const body = await safeJson(request);
@@ -537,7 +568,7 @@ async function handleApprovedUsersUpsert(request) {
   );
 
   const now = new Date().toISOString();
-  const currentUsername = adminCheck.sessionRecord.session.user.username;
+  const currentUsername = adminCheck.user.username;
 
   if (existingUser) {
     existingUser.firstName = String(body.firstName || existingUser.firstName || "").trim();
@@ -568,8 +599,8 @@ async function handleApprovedUsersUpsert(request) {
   return jsonResponse({ ok: true });
 }
 
-async function handleApprovedUsersDeactivate(request) {
-  const adminCheck = requireAdmin(request);
+async function handleApprovedUsersDeactivate(request, env) {
+  const adminCheck = await requireAdmin(request, env);
   if (!adminCheck.ok) return adminCheck.response;
 
   const body = await safeJson(request);
@@ -584,21 +615,21 @@ async function handleApprovedUsersDeactivate(request) {
   }
 
   user.status = "inactive";
-  user.updatedBy = adminCheck.sessionRecord.session.user.username;
+  user.updatedBy = adminCheck.user.username;
   user.updatedDate = new Date().toISOString();
 
   return jsonResponse({ ok: true });
 }
 
-async function handleAccessHistoryGet(request) {
-  const adminCheck = requireAdmin(request);
+async function handleAccessHistoryGet(request, env) {
+  const adminCheck = await requireAdmin(request, env);
   if (!adminCheck.ok) return adminCheck.response;
 
   return jsonResponse(accessHistory);
 }
 
-async function handleAccessHistoryPost(request) {
-  const sessionCheck = requireSession(request);
+async function handleAccessHistoryPost(request, env) {
+  const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
 
   const body = await safeJson(request);
@@ -608,12 +639,12 @@ async function handleAccessHistoryPost(request) {
     return jsonResponse({ error: "Asset requested is required." }, 400);
   }
 
-  addAccessHistory(sessionCheck.sessionRecord.session.user.username, assetRequested);
+  addAccessHistory(sessionCheck.user.username, assetRequested);
   return jsonResponse({ ok: true });
 }
 
 async function handleTn360Users(request, env) {
-  const sessionCheck = requireSession(request);
+  const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
 
   if (isDemoMode(env)) {
@@ -649,7 +680,7 @@ async function handleTn360Users(request, env) {
 }
 
 async function handleVehicleLookup(request, env) {
-  const sessionCheck = requireSession(request);
+  const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
 
   const body = await safeJson(request);
@@ -684,7 +715,7 @@ async function handleVehicleLookup(request, env) {
 }
 
 async function handleVehicleDevices(request, env) {
-  const sessionCheck = requireSession(request);
+  const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
 
   const body = await safeJson(request);
@@ -703,7 +734,7 @@ async function handleVehicleDevices(request, env) {
 }
 
 async function handleVehicleMeters(request, env) {
-  const sessionCheck = requireSession(request);
+  const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
 
   const body = await safeJson(request);
@@ -722,7 +753,7 @@ async function handleVehicleMeters(request, env) {
 }
 
 async function handleHermesDeviceStats(request, env) {
-  const sessionCheck = requireSession(request);
+  const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
 
   const body = await safeJson(request);
@@ -761,7 +792,7 @@ async function handleHermesDeviceStats(request, env) {
 }
 
 async function handleCameraDeviceStats(request, env) {
-  const sessionCheck = requireSession(request);
+  const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
 
   const body = await safeJson(request);
@@ -794,7 +825,7 @@ async function handleCameraDeviceStats(request, env) {
 }
 
 async function handleCameraSnapshots(request, env) {
-  const sessionCheck = requireSession(request);
+  const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
 
   const body = await safeJson(request);
@@ -823,8 +854,8 @@ async function handleCameraSnapshots(request, env) {
   return jsonResponse(matchedEvents);
 }
 
-async function handleExportPdf(request) {
-  const sessionCheck = requireSession(request);
+async function handleExportPdf(request, env) {
+  const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
 
   const body = await safeJson(request);
@@ -858,31 +889,31 @@ export default {
       }
 
       if (request.method === "GET" && url.pathname === "/api/session") {
-        return handleSession(request);
+        return handleSession(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/logout") {
-        return handleLogout(request);
+        return handleLogout();
       }
 
       if (request.method === "GET" && url.pathname === "/api/approved-users") {
-        return handleApprovedUsersGet(request);
+        return handleApprovedUsersGet(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/approved-users") {
-        return handleApprovedUsersUpsert(request);
+        return handleApprovedUsersUpsert(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/approved-users/deactivate") {
-        return handleApprovedUsersDeactivate(request);
+        return handleApprovedUsersDeactivate(request, env);
       }
 
       if (request.method === "GET" && url.pathname === "/api/access-history") {
-        return handleAccessHistoryGet(request);
+        return handleAccessHistoryGet(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/access-history") {
-        return handleAccessHistoryPost(request);
+        return handleAccessHistoryPost(request, env);
       }
 
       if (request.method === "GET" && url.pathname === "/api/tn360-users") {
@@ -914,7 +945,7 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/api/export-pdf") {
-        return handleExportPdf(request);
+        return handleExportPdf(request, env);
       }
 
       return env.ASSETS.fetch(request);
