@@ -845,13 +845,39 @@ async function handleCameraSnapshots(request, env) {
   const from = fromDate.toISOString();
 
   const eventsUrl = `https://api-au.telematics.com/v1/events/?key=${env.TN360_API_KEY}&pruning=B2B&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
-  const events = await fetchJsonFromTn360(eventsUrl);
+
+  const response = await fetch(eventsUrl);
+
+  if (!response.ok) {
+    const responseText = await response.text().catch(() => "");
+    return jsonResponse(
+      {
+        error: `Camera snapshot lookup failed. HTTP ${response.status}`,
+        detail: responseText || "No response body returned from TN360 events endpoint.",
+        request: {
+          vehicleId,
+          from,
+          to,
+        },
+      },
+      502,
+    );
+  }
+
+  const events = await response.json();
 
   const matchedEvents = Array.isArray(events)
     ? events.filter((event) => String(event.vehicleId || "") === vehicleId)
     : [];
 
-  return jsonResponse(matchedEvents);
+  return jsonResponse({
+    vehicleId,
+    from,
+    to,
+    totalEventsReturned: Array.isArray(events) ? events.length : 0,
+    matchedEventsCount: matchedEvents.length,
+    matchedEvents,
+  });
 }
 
 async function handleExportPdf(request, env) {
