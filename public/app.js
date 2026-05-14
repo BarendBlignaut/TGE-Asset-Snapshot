@@ -13,6 +13,14 @@ const el = {
   appShell: document.getElementById("app-shell"),
   headerActions: document.getElementById("header-actions"),
   adminTab: document.getElementById("admin-tab"),
+  adminCurrentState: document.getElementById("admin-current-state"),
+adminRequestTime: document.getElementById("admin-request-time"),
+adminStatus: document.getElementById("admin-status"),
+adminUsersLoaded: document.getElementById("admin-users-loaded"),
+adminHistoryLoaded: document.getElementById("admin-history-loaded"),
+adminRenderTime: document.getElementById("admin-render-time"),
+adminDebugPanel: document.getElementById("admin-debug-panel"),
+adminDebugOutput: document.getElementById("admin-debug-output"),
   standardTab: document.getElementById("standard-tab"),
   standardView: document.getElementById("standard-view"),
   adminView: document.getElementById("admin-view"),
@@ -28,6 +36,14 @@ const el = {
   vpmSummary: document.getElementById("vpm-summary"),
   vpmResultsHead: document.getElementById("vpm-results-head"),
   vpmResultsBody: document.getElementById("vpm-results-body"),
+  vpmCurrentState: document.getElementById("vpm-current-state"),
+vpmRequestTime: document.getElementById("vpm-request-time"),
+vpmStatus: document.getElementById("vpm-status"),
+vpmQueriesSelected: document.getElementById("vpm-queries-selected"),
+vpmQueriesRun: document.getElementById("vpm-queries-run"),
+vpmRenderTime: document.getElementById("vpm-render-time"),
+vpmDebugPanel: document.getElementById("vpm-debug-panel"),
+vpmDebugOutput: document.getElementById("vpm-debug-output"),
   approvedUserForm: document.getElementById("approved-user-form"),
   approvedUsersTableBody: document.getElementById("approved-users-table-body"),
   historyUserFilter: document.getElementById("history-user-filter"),
@@ -238,6 +254,53 @@ function clearSessionUi() {
   setText("login-message", "");
   resetActiveAssetLookup();
   renderDebug();
+  function renderAdminDebug(message = "No debug entries.") {
+  const isAdmin = state.currentSessionUser?.role === "admin";
+
+  if (!el.adminDebugPanel || !el.adminDebugOutput) return;
+
+  setVisible(el.adminDebugPanel, Boolean(isAdmin));
+  if (isAdmin) {
+    el.adminDebugOutput.textContent = message;
+  }
+}
+
+function renderVpmDebug(message = "No debug entries.") {
+  const isAdmin = state.currentSessionUser?.role === "admin";
+
+  if (!el.vpmDebugPanel || !el.vpmDebugOutput) return;
+
+  setVisible(el.vpmDebugPanel, Boolean(isAdmin));
+  if (isAdmin) {
+    el.vpmDebugOutput.textContent = message;
+  }
+}
+
+function updateAdminSnapshot(status = "Awaiting action", debugMessage = "No debug entries.") {
+  setText("admin-current-state", "Admin ready");
+  setText("admin-request-time", formatDisplayDate(currentIsoTime()), "--");
+  setText("admin-status", status, "--");
+  setText("admin-users-loaded", String(state.approvedUsers?.length ?? 0), "--");
+  setText("admin-history-loaded", String(state.accessHistory?.length ?? 0), "--");
+  setText("admin-render-time", "--");
+  renderAdminDebug(debugMessage);
+}
+
+function updateVpmSnapshot({
+  stateLabel = "VPM ready",
+  status = "Awaiting action",
+  queriesSelected = "--",
+  queriesRun = "--",
+  debugMessage = "No debug entries.",
+} = {}) {
+  setText("vpm-current-state", stateLabel);
+  setText("vpm-request-time", formatDisplayDate(currentIsoTime()), "--");
+  setText("vpm-status", status, "--");
+  setText("vpm-queries-selected", String(queriesSelected), "--");
+  setText("vpm-queries-run", String(queriesRun), "--");
+  setText("vpm-render-time", "--");
+  renderVpmDebug(debugMessage);
+}
 }
 
 async function fetchJson(url, options = {}, fallbackMessage = "Request failed.") {
@@ -1067,12 +1130,26 @@ function handleRunVpmUserInput() {
 
   clearVpmResultsTable();
   setVpmSummary(`User Input mode ready. ${imeis.length} IMEI value(s) detected.`);
+  updateVpmSnapshot({
+  stateLabel: "User Input Analysis",
+  status: "Prepared",
+  queriesSelected: imeis.length,
+  queriesRun: 0,
+  debugMessage: `User Input mode ready. ${imeis.length} IMEI value(s) detected.`,
+});
   writeDebug("VPM user input prepared", { imeiCount: imeis.length });
 }
 
 function handleRunVpmFleet() {
   clearVpmResultsTable();
   setVpmSummary("Fleet Evaluation mode ready. Analysis logic not yet connected.");
+  updateVpmSnapshot({
+  stateLabel: "Fleet Evaluation",
+  status: "Prepared",
+  queriesSelected: "--",
+  queriesRun: 0,
+  debugMessage: "Fleet Evaluation mode ready. Analysis logic not yet connected.",
+});
   writeDebug("VPM fleet evaluation prepared");
 }
 
@@ -1114,12 +1191,20 @@ if (el.adminTab) {
       writeDebug("Admin reload failed", error.message);
     });
     showAdminView();
+    updateAdminSnapshot("Admin data loaded", "Admin panel opened.");
   });
 }
 
 if (el.vpmTab) {
   el.vpmTab.addEventListener("click", () => {
     showVpmView();
+    updateVpmSnapshot({
+      stateLabel: "VPM ready",
+      status: "Awaiting action",
+      queriesSelected: "--",
+      queriesRun: "--",
+      debugMessage: "VPM panel opened.",
+    });
   });
 }
 
