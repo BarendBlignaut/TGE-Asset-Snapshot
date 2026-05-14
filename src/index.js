@@ -975,8 +975,8 @@ async function handleCameraSnapshots(request, env) {
 
   return jsonResponse(matchedEvents);
 }
-
-  async function handleVpmUserInput(request, env) {
+  
+    async function handleVpmUserInput(request, env) {
   const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
 
