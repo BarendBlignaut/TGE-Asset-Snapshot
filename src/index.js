@@ -570,8 +570,6 @@ function buildVpmRow(vehicle, hermesDevice, lastVpmRaw, status = "Matched", erro
     vpm: extractAllowedVpmFields(lastVpmRaw),
   };
 }
-
-async function handleLogin(request, env) {
   
 async function handleLogin(request, env) {
   const body = await safeJson(request);
