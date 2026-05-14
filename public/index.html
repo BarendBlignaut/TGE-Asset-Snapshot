@@ -732,10 +732,11 @@
           </div>
         </div>
 
-        <div class="header-actions" id="header-actions" style="display: none;">
-          <button class="header-tab" id="standard-tab" type="button">Snapshot</button>
-          <button class="header-tab" id="admin-tab" type="button" style="display: none;">Admin</button>
-        </div>
+       <div class="header-actions" id="header-actions" style="display: none;">
+  <button class="header-tab" id="standard-tab" type="button">Snapshot</button>
+  <button class="header-tab" id="admin-tab" type="button" style="display: none;">Admin</button>
+  <button class="header-tab" id="vpm-tab" type="button">VPM</button>
+</div>
 
         <div class="version-ref">v1.5</div>
       </div>
@@ -1183,6 +1184,55 @@
               </div>
             </div>
           </section>
+                
+           <section class="section" id="vpm-view" style="display: none;">
+  <div class="section-head">
+    <div>
+      <div class="section-kicker">VPM</div>
+      <h3 class="section-title">VPM Confirmation</h3>
+    </div>
+  </div>
+
+  <div class="header-actions" style="justify-content: flex-start; margin-bottom: 18px;">
+    <button class="action-btn" id="vpm-user-input-mode" type="button">User Input</button>
+    <button class="action-btn" id="vpm-fleet-mode" type="button">Fleet Evaluation</button>
+  </div>
+
+  <div id="vpm-user-input-panel">
+    <div class="field" style="max-width: 100%;">
+      <label for="vpm-imei-input">IMEI Input</label>
+      <textarea
+        id="vpm-imei-input"
+        rows="10"
+        style="width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 14px; font: inherit;"
+        placeholder="Paste one IMEI per line"></textarea>
+    </div>
+
+    <div style="margin-top: 14px;">
+      <button class="action-btn" id="run-vpm-user-input-btn" type="button">Run User Input Analysis</button>
+    </div>
+  </div>
+
+  <div id="vpm-fleet-panel" style="display: none;">
+    <p style="margin: 0 0 14px; color: var(--muted);">
+      Run a full fleet evaluation across active assets with matched HERMES devices.
+    </p>
+
+    <button class="action-btn" id="run-vpm-fleet-btn" type="button">Run Fleet Evaluation</button>
+  </div>
+
+  <div style="margin-top: 24px;">
+    <h3 class="section-title">Results</h3>
+    <p id="vpm-summary" style="color: var(--muted);">No VPM analysis run yet.</p>
+
+    <div class="table-wrap" style="margin-top: 18px;">
+      <table id="vpm-results-table">
+        <thead id="vpm-results-head"></thead>
+        <tbody id="vpm-results-body"></tbody>
+      </table>
+    </div>
+  </div>
+</section>  
         </div>
       </div>
     </main>
