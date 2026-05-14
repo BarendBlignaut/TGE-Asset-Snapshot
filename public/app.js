@@ -16,6 +16,18 @@ const el = {
   standardTab: document.getElementById("standard-tab"),
   standardView: document.getElementById("standard-view"),
   adminView: document.getElementById("admin-view"),
+  vpmTab: document.getElementById("vpm-tab"),
+  vpmView: document.getElementById("vpm-view"),
+  vpmUserInputMode: document.getElementById("vpm-user-input-mode"),
+  vpmFleetMode: document.getElementById("vpm-fleet-mode"),
+  vpmUserInputPanel: document.getElementById("vpm-user-input-panel"),
+  vpmFleetPanel: document.getElementById("vpm-fleet-panel"),
+  vpmImeiInput: document.getElementById("vpm-imei-input"),
+  runVpmUserInputButton: document.getElementById("run-vpm-user-input-btn"),
+  runVpmFleetButton: document.getElementById("run-vpm-fleet-btn"),
+  vpmSummary: document.getElementById("vpm-summary"),
+  vpmResultsHead: document.getElementById("vpm-results-head"),
+  vpmResultsBody: document.getElementById("vpm-results-body"),
   approvedUserForm: document.getElementById("approved-user-form"),
   approvedUsersTableBody: document.getElementById("approved-users-table-body"),
   historyUserFilter: document.getElementById("history-user-filter"),
@@ -199,6 +211,21 @@ function showAdminView() {
   setVisible(el.adminView, true, "block");
 }
 
+function showVpmView() {
+  setVisible(el.standardView, false);
+  setVisible(el.adminView, false);
+  setVisible(el.vpmView, true, "block");
+}
+
+function showVpmUserInputMode() {
+  setVisible(el.vpmUserInputPanel, true, "block");
+  setVisible(el.vpmFleetPanel, false);
+}
+
+function showVpmFleetMode() {
+  setVisible(el.vpmUserInputPanel, false);
+  setVisible(el.vpmFleetPanel, true, "block");
+}
 function clearSessionUi() {
   state.currentSessionUser = null;
   state.approvedUsers = [];
@@ -330,7 +357,9 @@ function initialiseUi() {
   setVisible(el.appShell, false);
   setVisible(el.headerActions, false);
   setVisible(el.adminTab, false);
+  setVisible(el.vpmView, false);
   showStandardView();
+  showVpmUserInputMode();
   resetRenderedAsset();
   renderDebug();
 }
@@ -1018,6 +1047,33 @@ function handleEmailPdf() {
 
   window.location.href = `mailto:?subject=${subject}&body=${body}`;
 }
+function setVpmSummary(message) {
+  if (!el.vpmSummary) return;
+  el.vpmSummary.textContent = message;
+}
+
+function clearVpmResultsTable() {
+  if (el.vpmResultsHead) el.vpmResultsHead.innerHTML = "";
+  if (el.vpmResultsBody) el.vpmResultsBody.innerHTML = "";
+}
+
+function handleRunVpmUserInput() {
+  const rawInput = safeText(el.vpmImeiInput?.value, "");
+  const imeis = rawInput
+    .split("\n")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  clearVpmResultsTable();
+  setVpmSummary(`User Input mode ready. ${imeis.length} IMEI value(s) detected.`);
+  writeDebug("VPM user input prepared", { imeiCount: imeis.length });
+}
+
+function handleRunVpmFleet() {
+  clearVpmResultsTable();
+  setVpmSummary("Fleet Evaluation mode ready. Analysis logic not yet connected.");
+  writeDebug("VPM fleet evaluation prepared");
+}
 
 if (el.loginForm) {
   el.loginForm.addEventListener("submit", async (event) => {
@@ -1057,6 +1113,24 @@ if (el.adminTab) {
       writeDebug("Admin reload failed", error.message);
     });
     showAdminView();
+  });
+}
+
+if (el.vpmTab) {
+  el.vpmTab.addEventListener("click", () => {
+    showVpmView();
+  });
+}
+
+if (el.vpmUserInputMode) {
+  el.vpmUserInputMode.addEventListener("click", () => {
+    showVpmUserInputMode();
+  });
+}
+
+if (el.vpmFleetMode) {
+  el.vpmFleetMode.addEventListener("click", () => {
+    showVpmFleetMode();
   });
 }
 
@@ -1146,6 +1220,13 @@ if (el.assetSearchForm) {
 
 if (el.refreshAssetButton) {
   el.refreshAssetButton.addEventListener("click", handleRefreshAsset);
+}
+if (el.runVpmUserInputButton) {
+  el.runVpmUserInputButton.addEventListener("click", handleRunVpmUserInput);
+}
+
+if (el.runVpmFleetButton) {
+  el.runVpmFleetButton.addEventListener("click", handleRunVpmFleet);
 }
 if (el.exportPdfButton) {
   el.exportPdfButton.addEventListener("click", handleExportPdf);
