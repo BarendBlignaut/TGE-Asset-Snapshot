@@ -134,6 +134,82 @@ function pdfResponse(bytes, filename) {
 
 function normalizeValue(value) {
   return String(value || "").trim().toLowerCase();
+  const EXCLUDED_VPM_KEYS = new Set([
+  "gear",
+  "charge",
+  "gps",
+  "at",
+  "lng",
+  "engineload",
+  "alt",
+  "dir",
+  "nsat",
+  "hdop",
+  "lat",
+  "spd",
+  "id",
+]);
+
+function safeParseJsonString(value) {
+  if (!value || typeof value !== "string") return null;
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function formatVpmValue(value) {
+  if (value === null || value === undefined || value === "") {
+    return "N/A";
+  }
+
+  if (typeof value === "number") {
+    const normalized = value < 0 ? 0 : value;
+    return normalized.toFixed(2);
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "True" : "False";
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : "N/A";
+  }
+
+  return "N/A";
+}
+
+function extractAllowedVpmFields(lastVpmRaw) {
+  const parsed = typeof lastVpmRaw === "string" ? safeParseJsonString(lastVpmRaw) : lastVpmRaw;
+  if (!isPlainObject(parsed)) {
+    return {};
+  }
+
+  const result = {};
+
+  for (const [key, value] of Object.entries(parsed)) {
+    const normalizedKey = String(key || "").trim().toLowerCase();
+
+    if (!normalizedKey || EXCLUDED_VPM_KEYS.has(normalizedKey)) {
+      continue;
+    }
+
+    if (isPlainObject(value) || Array.isArray(value)) {
+      continue;
+    }
+
+    result[key] = formatVpmValue(value);
+  }
+
+  return result;
+}
 }
 
 function parseCookies(request) {
@@ -472,6 +548,30 @@ function isDriverUser(tnUser) {
   });
 }
 
+function buildVehicleIdentity(vehicle, hermesDevice) {
+  return {
+    fleetNumber: vehicle?.name || "N/A",
+    registration: vehicle?.registration || "N/A",
+    make: vehicle?.operationalVehicleModel?.make || vehicle?.make || "N/A",
+    model: vehicle?.operationalVehicleModel?.model || vehicle?.model || "N/A",
+    yearOfManufacture:
+      vehicle?.operationalVehicleModel?.yearOfManufacture ?? vehicle?.yearOfManufacture ?? "N/A",
+    vehicleId: vehicle?.id ?? "N/A",
+    hermesImei: hermesDevice?.imei || hermesDevice?.serialNumber || "N/A",
+  };
+}
+
+function buildVpmRow(vehicle, hermesDevice, lastVpmRaw, status = "Matched", errorMessage = "") {
+  return {
+    ...buildVehicleIdentity(vehicle, hermesDevice),
+    status,
+    errorMessage: errorMessage || "",
+    vpm: extractAllowedVpmFields(lastVpmRaw),
+  };
+}
+
+async function handleLogin(request, env) {
+  
 async function handleLogin(request, env) {
   const body = await safeJson(request);
   const username = String(body.username || "").trim();
@@ -876,6 +976,110 @@ async function handleCameraSnapshots(request, env) {
   return jsonResponse(matchedEvents);
 }
 
+  async function handleVpmUserInput(request, env) {
+  const sessionCheck = await requireSession(request, env);
+  if (!sessionCheck.ok) return sessionCheck.response;
+
+  const body = await safeJson(request);
+  const imeis = Array.isArray(body.imeis) ? body.imeis : [];
+
+  const cleanedImeis = [...new Set(
+    imeis.map((item) => String(item || "").trim()).filter(Boolean),
+  )];
+
+  if (!cleanedImeis.length) {
+    return jsonResponse({ error: "At least one IMEI is required." }, 400);
+  }
+
+  const vehiclesUrl = `https://api-au.telematics.com/v1/vehicles/?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const devicesUrl = `https://api-au.telematics.com/v1/devices/?key=${env.TN360_API_KEY}&pruning=B2B`;
+
+  const [vehicles, devices] = await Promise.all([
+    fetchJsonFromTn360(vehiclesUrl),
+    fetchJsonFromTn360(devicesUrl),
+  ]);
+
+  const activeVehicles = Array.isArray(vehicles)
+    ? vehicles.filter((vehicle) => String(vehicle.status || "").toUpperCase() === "ENABLED")
+    : [];
+
+  const hermesDevices = Array.isArray(devices)
+    ? devices.filter((device) => String(device?.type?.code || "").toUpperCase() === "HERMES")
+    : [];
+
+  const rows = [];
+  const discoveredKeys = new Set();
+
+  for (const imei of cleanedImeis) {
+    const hermesDevice = hermesDevices.find(
+      (device) => String(device?.imei || "").trim() === imei,
+    );
+
+    if (!hermesDevice) {
+      rows.push({
+        fleetNumber: "N/A",
+        registration: "N/A",
+        make: "N/A",
+        model: "N/A",
+        yearOfManufacture: "N/A",
+        vehicleId: "N/A",
+        hermesImei: imei,
+        status: "No HERMES Match",
+        errorMessage: "No active HERMES device matched the supplied IMEI.",
+        vpm: {},
+      });
+      continue;
+    }
+
+    const vehicle = activeVehicles.find(
+      (item) => String(item?.id ?? "") === String(hermesDevice?.vehicleId ?? ""),
+    );
+
+    if (!vehicle) {
+      rows.push({
+        ...buildVehicleIdentity(null, hermesDevice),
+        status: "No HERMES Match",
+        errorMessage: "Matched HERMES device is not assigned to an active vehicle.",
+        vpm: {},
+      });
+      continue;
+    }
+
+    try {
+      const deviceUrl =
+        `https://api-au.telematics.com/v1/devices/${encodeURIComponent(imei)}` +
+        `?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
+
+      const fullDevice = await fetchJsonFromTn360(deviceUrl);
+      const lastVpmRaw = fullDevice?.deviceStats?.lastVpm || null;
+      const row = buildVpmRow(vehicle, hermesDevice, lastVpmRaw, "Matched", "");
+
+      Object.keys(row.vpm).forEach((key) => discoveredKeys.add(key));
+      rows.push(row);
+    } catch (error) {
+      rows.push({
+        ...buildVehicleIdentity(vehicle, hermesDevice),
+        status: "API Failed",
+        errorMessage: error instanceof Error ? error.message : String(error),
+        vpm: {},
+      });
+    }
+  }
+
+  const dynamicColumns = [...discoveredKeys].sort((a, b) => a.localeCompare(b));
+
+  return jsonResponse({
+    mode: "user-input",
+    summary: {
+      queriesSelected: cleanedImeis.length,
+      queriesRun: rows.length,
+      dynamicFieldCount: dynamicColumns.length,
+    },
+    columns: dynamicColumns,
+    rows,
+  });
+}
+  
 async function handleExportPdf(request, env) {
   const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
@@ -966,6 +1170,9 @@ export default {
         return handleCameraSnapshots(request, env);
       }
 
+      if (request.method === "POST" && url.pathname === "/api/vpm-user-input") {
+  return handleVpmUserInput(request, env);
+}
       if (request.method === "POST" && url.pathname === "/api/export-pdf") {
         return handleExportPdf(request, env);
       }
