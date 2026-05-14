@@ -208,13 +208,14 @@ function showStandardView() {
 
 function showAdminView() {
   setVisible(el.standardView, false);
-  setVisible(el.adminView, true, "block");
+  setVisible(el.adminView, true);
+  setVisible(el.vpmView, false);
 }
 
 function showVpmView() {
   setVisible(el.standardView, false);
   setVisible(el.adminView, false);
-  setVisible(el.vpmView, true, "block");
+  setVisible(el.vpmView, true);
 }
 
 function showVpmUserInputMode() {
