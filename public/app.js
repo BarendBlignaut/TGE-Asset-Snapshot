@@ -1121,23 +1121,116 @@ function clearVpmResultsTable() {
   if (el.vpmResultsBody) el.vpmResultsBody.innerHTML = "";
 }
 
-function handleRunVpmUserInput() {
+async function handleRunVpmUserInput() {
   const rawInput = safeText(el.vpmImeiInput?.value, "");
-  const imeis = rawInput
-    .split("\n")
-    .map((item) => item.trim())
-    .filter(Boolean);
+  const imeis = [...new Set(
+    rawInput
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  )];
 
   clearVpmResultsTable();
-  setVpmSummary(`User Input mode ready. ${imeis.length} IMEI value(s) detected.`);
+
+  if (!imeis.length) {
+    setVpmSummary("No IMEI values supplied.");
+    updateVpmSnapshot({
+      stateLabel: "User Input Analysis",
+      status: "No input",
+      queriesSelected: 0,
+      queriesRun: 0,
+      debugMessage: "No IMEI values supplied.",
+    });
+    return;
+  }
+
   updateVpmSnapshot({
-  stateLabel: "User Input Analysis",
-  status: "Prepared",
-  queriesSelected: imeis.length,
-  queriesRun: 0,
-  debugMessage: `User Input mode ready. ${imeis.length} IMEI value(s) detected.`,
-});
-  writeDebug("VPM user input prepared", { imeiCount: imeis.length });
+    stateLabel: "User Input Analysis",
+    status: "Running",
+    queriesSelected: imeis.length,
+    queriesRun: 0,
+    debugMessage: `Running VPM analysis for ${imeis.length} IMEI value(s).`,
+  });
+
+  try {
+    const result = await apiPost(
+      "/api/vpm-user-input",
+      { imeis },
+      "VPM user input analysis failed.",
+    );
+
+    const fixedColumns = [
+      { key: "fleetNumber", label: "Fleet Number" },
+      { key: "registration", label: "Registration" },
+      { key: "make", label: "Make" },
+      { key: "model", label: "Model" },
+      { key: "yearOfManufacture", label: "Year of Manufacture" },
+      { key: "vehicleId", label: "Vehicle ID" },
+      { key: "hermesImei", label: "HERMES IMEI" },
+      { key: "status", label: "Status" },
+      { key: "errorMessage", label: "Error Message" },
+    ];
+
+    const dynamicColumns = Array.isArray(result.columns) ? result.columns : [];
+    const rows = Array.isArray(result.rows) ? result.rows : [];
+
+    if (el.vpmResultsHead) {
+      const headerRow = document.createElement("tr");
+
+      [...fixedColumns, ...dynamicColumns.map((key) => ({ key, label: key }))].forEach((column) => {
+        const th = document.createElement("th");
+        th.textContent = column.label;
+        headerRow.appendChild(th);
+      });
+
+      el.vpmResultsHead.innerHTML = "";
+      el.vpmResultsHead.appendChild(headerRow);
+    }
+
+    if (el.vpmResultsBody) {
+      el.vpmResultsBody.innerHTML = "";
+
+      rows.forEach((row) => {
+        const tr = document.createElement("tr");
+
+        fixedColumns.forEach((column) => {
+          const td = document.createElement("td");
+          td.textContent = safeText(row[column.key], "N/A");
+          tr.appendChild(td);
+        });
+
+        dynamicColumns.forEach((key) => {
+          const td = document.createElement("td");
+          td.textContent = safeText(row?.vpm?.[key], "N/A");
+          tr.appendChild(td);
+        });
+
+        el.vpmResultsBody.appendChild(tr);
+      });
+    }
+
+    setVpmSummary(
+      `User Input analysis complete. ${result.summary?.queriesRun ?? rows.length} row(s), ${result.summary?.dynamicFieldCount ?? dynamicColumns.length} dynamic field(s).`,
+    );
+
+    updateVpmSnapshot({
+      stateLabel: "User Input Analysis",
+      status: "Completed",
+      queriesSelected: result.summary?.queriesSelected ?? imeis.length,
+      queriesRun: result.summary?.queriesRun ?? rows.length,
+      debugMessage: `User Input analysis complete. ${rows.length} row(s) returned.`,
+    });
+  } catch (error) {
+    clearVpmResultsTable();
+    setVpmSummary(error.message || "VPM user input analysis failed.");
+    updateVpmSnapshot({
+      stateLabel: "User Input Analysis",
+      status: "Failed",
+      queriesSelected: imeis.length,
+      queriesRun: 0,
+      debugMessage: error.message || "VPM user input analysis failed.",
+    });
+  }
 }
 
 function handleRunVpmFleet() {
