@@ -134,7 +134,9 @@ function pdfResponse(bytes, filename) {
 
 function normalizeValue(value) {
   return String(value || "").trim().toLowerCase();
-  const EXCLUDED_VPM_KEYS = new Set([
+}
+
+const EXCLUDED_VPM_KEYS = new Set([
   "gear",
   "charge",
   "gps",
@@ -209,7 +211,6 @@ function extractAllowedVpmFields(lastVpmRaw) {
   }
 
   return result;
-}
 }
 
 function parseCookies(request) {
