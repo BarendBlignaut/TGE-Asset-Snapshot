@@ -683,7 +683,7 @@ function mapSnapshotLinksToSlots(snapshotData) {
       return;
     }
 
-    if (!slots.inCabDriverFacingCamera && firstChannel === "TVI2") {
+    if (!slots.inCabDriverFacingCamera && firstChannel === "UVC") {
       slots.inCabDriverFacingCamera = link.mediaFile;
       return;
     }
@@ -693,7 +693,7 @@ function mapSnapshotLinksToSlots(snapshotData) {
       return;
     }
 
-    if (!slots.leftExternal && firstChannel === "UVC") {
+    if (!slots.leftExternal && firstChannel === "TVI2") {
       slots.leftExternal = link.mediaFile;
     }
   });
