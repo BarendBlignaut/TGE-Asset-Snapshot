@@ -13,11 +13,37 @@ const el = {
   appShell: document.getElementById("app-shell"),
   headerActions: document.getElementById("header-actions"),
   adminTab: document.getElementById("admin-tab"),
-  vpmTab: document.getElementById("vpm-tab"),
+  adminCurrentState: document.getElementById("admin-current-state"),
+adminRequestTime: document.getElementById("admin-request-time"),
+adminStatus: document.getElementById("admin-status"),
+adminUsersLoaded: document.getElementById("admin-users-loaded"),
+adminHistoryLoaded: document.getElementById("admin-history-loaded"),
+adminRenderTime: document.getElementById("admin-render-time"),
+adminDebugPanel: document.getElementById("admin-debug-panel"),
+adminDebugOutput: document.getElementById("admin-debug-output"),
   standardTab: document.getElementById("standard-tab"),
   standardView: document.getElementById("standard-view"),
   adminView: document.getElementById("admin-view"),
+  vpmTab: document.getElementById("vpm-tab"),
   vpmView: document.getElementById("vpm-view"),
+  vpmUserInputMode: document.getElementById("vpm-user-input-mode"),
+  vpmFleetMode: document.getElementById("vpm-fleet-mode"),
+  vpmUserInputPanel: document.getElementById("vpm-user-input-panel"),
+  vpmFleetPanel: document.getElementById("vpm-fleet-panel"),
+  vpmImeiInput: document.getElementById("vpm-imei-input"),
+  runVpmUserInputButton: document.getElementById("run-vpm-user-input-btn"),
+  runVpmFleetButton: document.getElementById("run-vpm-fleet-btn"),
+  vpmSummary: document.getElementById("vpm-summary"),
+  vpmResultsHead: document.getElementById("vpm-results-head"),
+  vpmResultsBody: document.getElementById("vpm-results-body"),
+  vpmCurrentState: document.getElementById("vpm-current-state"),
+vpmRequestTime: document.getElementById("vpm-request-time"),
+vpmStatus: document.getElementById("vpm-status"),
+vpmQueriesSelected: document.getElementById("vpm-queries-selected"),
+vpmQueriesRun: document.getElementById("vpm-queries-run"),
+vpmRenderTime: document.getElementById("vpm-render-time"),
+vpmDebugPanel: document.getElementById("vpm-debug-panel"),
+vpmDebugOutput: document.getElementById("vpm-debug-output"),
   approvedUserForm: document.getElementById("approved-user-form"),
   approvedUsersTableBody: document.getElementById("approved-users-table-body"),
   historyUserFilter: document.getElementById("history-user-filter"),
@@ -25,17 +51,12 @@ const el = {
   assetSearchForm: document.getElementById("asset-search-form"),
   assetSearchMessage: document.getElementById("asset-search-message"),
   assetShell: document.getElementById("asset-shell"),
+  debugPanel: document.getElementById("debug-panel"),
+  debugOutput: document.getElementById("debug-output"),
+  refreshAssetButton: document.getElementById("refresh-asset-btn"),
   exportPdfButton: document.getElementById("export-pdf-btn"),
   emailPdfButton: document.getElementById("email-pdf-btn"),
 };
-
-function getDebugPanels() {
-  return Array.from(document.querySelectorAll("[data-debug-panel]"));
-}
-
-function getDebugOutputs() {
-  return Array.from(document.querySelectorAll("[data-debug-output]"));
-}
 
 function getNode(id) {
   return document.getElementById(id);
@@ -187,41 +208,41 @@ function writeDebug(label, data) {
 
 function renderDebug() {
   const isAdmin = state.currentSessionUser?.role === "admin";
-  const debugPanels = getDebugPanels();
-  const debugOutputs = getDebugOutputs();
 
-  if (!debugPanels.length || !debugOutputs.length) return;
+  if (!el.debugPanel || !el.debugOutput) return;
 
-  debugPanels.forEach((panel) => {
-    setVisible(panel, Boolean(isAdmin));
-  });
-
+  setVisible(el.debugPanel, Boolean(isAdmin));
   if (isAdmin) {
-    const content = state.lastDebugEntries.join("\n\n");
-    debugOutputs.forEach((output) => {
-      output.textContent = content;
-    });
+    el.debugOutput.textContent = state.lastDebugEntries.join("\n\n");
   }
 }
 
 function showStandardView() {
   setVisible(el.standardView, true, "block");
   setVisible(el.adminView, false);
-  setVisible(el.vpmView, false);
 }
 
 function showAdminView() {
   setVisible(el.standardView, false);
-  setVisible(el.adminView, true, "block");
+  setVisible(el.adminView, true);
   setVisible(el.vpmView, false);
 }
 
 function showVpmView() {
   setVisible(el.standardView, false);
   setVisible(el.adminView, false);
-  setVisible(el.vpmView, true, "block");
+  setVisible(el.vpmView, true);
 }
 
+function showVpmUserInputMode() {
+  setVisible(el.vpmUserInputPanel, true, "block");
+  setVisible(el.vpmFleetPanel, false);
+}
+
+function showVpmFleetMode() {
+  setVisible(el.vpmUserInputPanel, false);
+  setVisible(el.vpmFleetPanel, true, "block");
+}
 function clearSessionUi() {
   state.currentSessionUser = null;
   state.approvedUsers = [];
@@ -230,10 +251,56 @@ function clearSessionUi() {
   setVisible(el.appShell, false);
   setVisible(el.headerActions, false);
   setVisible(el.adminTab, false);
-  setVisible(el.vpmTab, false);
   setText("login-message", "");
   resetActiveAssetLookup();
   renderDebug();
+  function renderAdminDebug(message = "No debug entries.") {
+  const isAdmin = state.currentSessionUser?.role === "admin";
+
+  if (!el.adminDebugPanel || !el.adminDebugOutput) return;
+
+  setVisible(el.adminDebugPanel, Boolean(isAdmin));
+  if (isAdmin) {
+    el.adminDebugOutput.textContent = message;
+  }
+}
+
+function renderVpmDebug(message = "No debug entries.") {
+  const isAdmin = state.currentSessionUser?.role === "admin";
+
+  if (!el.vpmDebugPanel || !el.vpmDebugOutput) return;
+
+  setVisible(el.vpmDebugPanel, Boolean(isAdmin));
+  if (isAdmin) {
+    el.vpmDebugOutput.textContent = message;
+  }
+}
+
+function updateAdminSnapshot(status = "Awaiting action", debugMessage = "No debug entries.") {
+  setText("admin-current-state", "Admin ready");
+  setText("admin-request-time", formatDisplayDate(currentIsoTime()), "--");
+  setText("admin-status", status, "--");
+  setText("admin-users-loaded", String(state.approvedUsers?.length ?? 0), "--");
+  setText("admin-history-loaded", String(state.accessHistory?.length ?? 0), "--");
+  setText("admin-render-time", "--");
+  renderAdminDebug(debugMessage);
+}
+
+function updateVpmSnapshot({
+  stateLabel = "VPM ready",
+  status = "Awaiting action",
+  queriesSelected = "--",
+  queriesRun = "--",
+  debugMessage = "No debug entries.",
+} = {}) {
+  setText("vpm-current-state", stateLabel);
+  setText("vpm-request-time", formatDisplayDate(currentIsoTime()), "--");
+  setText("vpm-status", status, "--");
+  setText("vpm-queries-selected", String(queriesSelected), "--");
+  setText("vpm-queries-run", String(queriesRun), "--");
+  setText("vpm-render-time", "--");
+  renderVpmDebug(debugMessage);
+}
 }
 
 async function fetchJson(url, options = {}, fallbackMessage = "Request failed.") {
@@ -339,13 +406,11 @@ function openAppForUser(sessionUser) {
 
   if (sessionUser.role === "admin") {
     setVisible(el.adminTab, true, "inline-block");
-    setVisible(el.vpmTab, true, "inline-block");
     loadAdminData().catch((error) => {
       writeDebug("Admin data load failed", error.message);
     });
   } else {
     setVisible(el.adminTab, false);
-    setVisible(el.vpmTab, false);
   }
 
   renderDebug();
@@ -356,8 +421,9 @@ function initialiseUi() {
   setVisible(el.appShell, false);
   setVisible(el.headerActions, false);
   setVisible(el.adminTab, false);
-  setVisible(el.vpmTab, false);
+  setVisible(el.vpmView, false);
   showStandardView();
+  showVpmUserInputMode();
   resetRenderedAsset();
   renderDebug();
 }
@@ -617,17 +683,17 @@ function mapSnapshotLinksToSlots(snapshotData) {
       return;
     }
 
-    if (!slots.inCabDriverFacingCamera && firstChannel === "TVI2") {
+    if (!slots.inCabDriverFacingCamera && firstChannel === "UVC") {
       slots.inCabDriverFacingCamera = link.mediaFile;
       return;
     }
 
-    if (!slots.driverExternal && firstChannel === "TVI1") {
+    if (!slots.driverExternal && firstChannel === "TVI2") {
       slots.driverExternal = link.mediaFile;
       return;
     }
 
-    if (!slots.leftExternal && firstChannel === "UVC") {
+    if (!slots.leftExternal && firstChannel === "TVI1") {
       slots.leftExternal = link.mediaFile;
     }
   });
@@ -733,6 +799,79 @@ function renderStorage(lookup) {
   setText("view-sd2-size", cameraStats.sdCard2?.totalSizeDisplay, "");
 }
 
+function getGpioVerb(entry, fallback = "Current state tracked") {
+  if (!entry) return fallback;
+
+  const rawValue = safeText(entry.custom_verb || entry.verb, "").trim();
+  if (!rawValue) return fallback;
+
+  return rawValue;
+}
+
+function renderGpio(lookup) {
+  const gpio = lookup.hermesStats?.gpio || {};
+
+  setText("gpio-seatbelt", getGpioVerb(gpio["digin.1"]));
+  setText("gpio-door", getGpioVerb(gpio["digin.2"]));
+  setText("gpio-parkbrake", getGpioVerb(gpio["digin.3"]));
+  setText("gpio-driverevent", getGpioVerb(gpio["digin.4"]));
+  setText("gpio-siren", getGpioVerb(gpio["digout.2"]));
+  setText("gpio-led", getGpioVerb(gpio["digout.3"]));
+}
+function formatCoordinate(value) {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
+
+  const numericValue = Number(value);
+  if (Number.isNaN(numericValue)) {
+    return "";
+  }
+
+  return numericValue.toFixed(5);
+}
+
+function buildMapEmbedUrl(latitude, longitude) {
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+
+  if (Number.isNaN(lat) || Number.isNaN(lng)) {
+    return "";
+  }
+
+  const paddingLat = 0.02;
+  const paddingLng = 0.02;
+
+  const left = lng - paddingLng;
+  const right = lng + paddingLng;
+  const top = lat + paddingLat;
+  const bottom = lat - paddingLat;
+
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${left}%2C${bottom}%2C${right}%2C${top}&layer=mapnik&marker=${lat}%2C${lng}`;
+}
+
+function renderLocationMap(lookup) {
+  const gps = lookup.hermesStats?.gps || {};
+  const latitude = gps.latitude;
+  const longitude = gps.longitude;
+
+  setText("view-location", lookup.hermesStats?.location, "");
+  setText("view-latitude", formatCoordinate(latitude), "");
+  setText("view-longitude", formatCoordinate(longitude), "");
+  setText("view-map-source", "OpenStreetMap", "");
+
+  const mapFrame = getNode("location-map");
+  if (!mapFrame) return;
+
+  const mapUrl = buildMapEmbedUrl(latitude, longitude);
+
+  if (mapUrl) {
+    mapFrame.src = mapUrl;
+  } else {
+    mapFrame.removeAttribute("src");
+  }
+}
+
 function renderSnapshots(lookup) {
   const slots = lookup.cameraSnapshot?.slots || {};
 
@@ -750,6 +889,8 @@ function renderResolvedAsset() {
   renderVehicleDetails(state.activeAssetLookup);
   renderMetrics(state.activeAssetLookup);
   renderStorage(state.activeAssetLookup);
+  renderGpio(state.activeAssetLookup);
+  renderLocationMap(state.activeAssetLookup);
   renderSnapshots(state.activeAssetLookup);
 
   setVisible(el.assetShell, true, "block");
@@ -800,8 +941,21 @@ function resetRenderedAsset() {
     "view-sd1-size",
     "view-sd2",
     "view-sd2-size",
+    "view-latitude",
+    "view-longitude",
+    "view-map-source",
+    "gpio-seatbelt",
+    "gpio-door",
+    "gpio-parkbrake",
+    "gpio-driverevent",
+    "gpio-siren",
+    "gpio-led",
   ].forEach((id) => setText(id, ""));
-  
+
+  const mapFrame = getNode("location-map");
+if (mapFrame) {
+  mapFrame.removeAttribute("src");
+}
 
   setImage("img-road-facing", "img-road-facing-empty", null);
   setImage("img-driver-facing", "img-driver-facing-empty", null);
@@ -815,6 +969,22 @@ function resetRenderedAsset() {
 function resetActiveAssetLookup() {
   state.activeAssetLookup = null;
   resetRenderedAsset();
+}
+function handleRefreshAsset() {
+  resetActiveAssetLookup();
+  clearAssetSearchMessage();
+  setText("hero-lookup-status", "Awaiting search");
+  setText("hero-fleet-number", "--");
+  setText("hero-request-time", "--");
+  setText("hero-render-time", "--");
+
+  const assetInput = getNode("asset-number");
+  if (assetInput) {
+    assetInput.value = "";
+    assetInput.focus();
+  }
+
+  writeDebug("Asset search reset");
 }
 
 async function handleAssetSearch(assetNumber) {
@@ -914,33 +1084,10 @@ async function handleExportPdf() {
     return;
   }
 
-  try {
-    showAssetSearchMessage("Generating PDF...", false);
-    const blob = await fetchBlob(
-      "/api/export-pdf",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ snapshot: state.activeAssetLookup }),
-      },
-      "PDF export failed.",
-    );
-
-    const vehicleLabel = state.activeAssetLookup.vehicle?.assetNumber || "snapshot";
-    const objectUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = objectUrl;
-    anchor.download = `tge-asset-snapshot-${vehicleLabel}.pdf`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(objectUrl);
-
-    showAssetSearchMessage("PDF exported successfully.", false);
-  } catch (error) {
-    showAssetSearchMessage(error.message || "PDF export failed.");
-    writeDebug("PDF export failed", error.message);
-  }
+  showAssetSearchMessage("PDF export is temporarily disabled while we fix the new export layout.", true);
+  writeDebug("PDF export skipped", {
+    assetNumber: state.activeAssetLookup.vehicle?.assetNumber || "",
+  });
 }
 
 function handleEmailPdf() {
@@ -963,6 +1110,140 @@ function handleEmailPdf() {
   );
 
   window.location.href = `mailto:?subject=${subject}&body=${body}`;
+}
+function setVpmSummary(message) {
+  if (!el.vpmSummary) return;
+  el.vpmSummary.textContent = message;
+}
+
+function clearVpmResultsTable() {
+  if (el.vpmResultsHead) el.vpmResultsHead.innerHTML = "";
+  if (el.vpmResultsBody) el.vpmResultsBody.innerHTML = "";
+}
+
+async function handleRunVpmUserInput() {
+  const rawInput = safeText(el.vpmImeiInput?.value, "");
+  const imeis = [...new Set(
+    rawInput
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  )];
+
+  clearVpmResultsTable();
+
+  if (!imeis.length) {
+    setVpmSummary("No IMEI values supplied.");
+    updateVpmSnapshot({
+      stateLabel: "User Input Analysis",
+      status: "No input",
+      queriesSelected: 0,
+      queriesRun: 0,
+      debugMessage: "No IMEI values supplied.",
+    });
+    return;
+  }
+
+  updateVpmSnapshot({
+    stateLabel: "User Input Analysis",
+    status: "Running",
+    queriesSelected: imeis.length,
+    queriesRun: 0,
+    debugMessage: `Running VPM analysis for ${imeis.length} IMEI value(s).`,
+  });
+
+  try {
+    const result = await apiPost(
+      "/api/vpm-user-input",
+      { imeis },
+      "VPM user input analysis failed.",
+    );
+
+    const fixedColumns = [
+      { key: "fleetNumber", label: "Fleet Number" },
+      { key: "registration", label: "Registration" },
+      { key: "make", label: "Make" },
+      { key: "model", label: "Model" },
+      { key: "yearOfManufacture", label: "Year of Manufacture" },
+      { key: "vehicleId", label: "Vehicle ID" },
+      { key: "hermesImei", label: "HERMES IMEI" },
+      { key: "status", label: "Status" },
+      { key: "errorMessage", label: "Error Message" },
+    ];
+
+    const dynamicColumns = Array.isArray(result.columns) ? result.columns : [];
+    const rows = Array.isArray(result.rows) ? result.rows : [];
+
+    if (el.vpmResultsHead) {
+      const headerRow = document.createElement("tr");
+
+      [...fixedColumns, ...dynamicColumns.map((key) => ({ key, label: key }))].forEach((column) => {
+        const th = document.createElement("th");
+        th.textContent = column.label;
+        headerRow.appendChild(th);
+      });
+
+      el.vpmResultsHead.innerHTML = "";
+      el.vpmResultsHead.appendChild(headerRow);
+    }
+
+    if (el.vpmResultsBody) {
+      el.vpmResultsBody.innerHTML = "";
+
+      rows.forEach((row) => {
+        const tr = document.createElement("tr");
+
+        fixedColumns.forEach((column) => {
+          const td = document.createElement("td");
+          td.textContent = safeText(row[column.key], "N/A");
+          tr.appendChild(td);
+        });
+
+        dynamicColumns.forEach((key) => {
+          const td = document.createElement("td");
+          td.textContent = safeText(row?.vpm?.[key], "N/A");
+          tr.appendChild(td);
+        });
+
+        el.vpmResultsBody.appendChild(tr);
+      });
+    }
+
+    setVpmSummary(
+      `User Input analysis complete. ${result.summary?.queriesRun ?? rows.length} row(s), ${result.summary?.dynamicFieldCount ?? dynamicColumns.length} dynamic field(s).`,
+    );
+
+    updateVpmSnapshot({
+      stateLabel: "User Input Analysis",
+      status: "Completed",
+      queriesSelected: result.summary?.queriesSelected ?? imeis.length,
+      queriesRun: result.summary?.queriesRun ?? rows.length,
+      debugMessage: `User Input analysis complete. ${rows.length} row(s) returned.`,
+    });
+  } catch (error) {
+    clearVpmResultsTable();
+    setVpmSummary(error.message || "VPM user input analysis failed.");
+    updateVpmSnapshot({
+      stateLabel: "User Input Analysis",
+      status: "Failed",
+      queriesSelected: imeis.length,
+      queriesRun: 0,
+      debugMessage: error.message || "VPM user input analysis failed.",
+    });
+  }
+}
+
+function handleRunVpmFleet() {
+  clearVpmResultsTable();
+  setVpmSummary("Fleet Evaluation mode ready. Analysis logic not yet connected.");
+  updateVpmSnapshot({
+  stateLabel: "Fleet Evaluation",
+  status: "Prepared",
+  queriesSelected: "--",
+  queriesRun: 0,
+  debugMessage: "Fleet Evaluation mode ready. Analysis logic not yet connected.",
+});
+  writeDebug("VPM fleet evaluation prepared");
 }
 
 if (el.loginForm) {
@@ -1003,17 +1284,32 @@ if (el.adminTab) {
       writeDebug("Admin reload failed", error.message);
     });
     showAdminView();
+    updateAdminSnapshot("Admin data loaded", "Admin panel opened.");
   });
 }
 
 if (el.vpmTab) {
   el.vpmTab.addEventListener("click", () => {
-    if (!state.currentSessionUser || state.currentSessionUser.role !== "admin") return;
-    writeDebug("VPM view opened", {
-      username: state.currentSessionUser.username,
-      openedAt: currentIsoTime(),
-    });
     showVpmView();
+    updateVpmSnapshot({
+      stateLabel: "VPM ready",
+      status: "Awaiting action",
+      queriesSelected: "--",
+      queriesRun: "--",
+      debugMessage: "VPM panel opened.",
+    });
+  });
+}
+
+if (el.vpmUserInputMode) {
+  el.vpmUserInputMode.addEventListener("click", () => {
+    showVpmUserInputMode();
+  });
+}
+
+if (el.vpmFleetMode) {
+  el.vpmFleetMode.addEventListener("click", () => {
+    showVpmFleetMode();
   });
 }
 
@@ -1101,6 +1397,16 @@ if (el.assetSearchForm) {
   });
 }
 
+if (el.refreshAssetButton) {
+  el.refreshAssetButton.addEventListener("click", handleRefreshAsset);
+}
+if (el.runVpmUserInputButton) {
+  el.runVpmUserInputButton.addEventListener("click", handleRunVpmUserInput);
+}
+
+if (el.runVpmFleetButton) {
+  el.runVpmFleetButton.addEventListener("click", handleRunVpmFleet);
+}
 if (el.exportPdfButton) {
   el.exportPdfButton.addEventListener("click", handleExportPdf);
 }
