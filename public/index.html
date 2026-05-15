@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>TGE Asset Snapshot</title>
+  <link rel="icon" type="image/png" href="./favicon.png" />
   <style>
     :root {
       --tge-green: #00a651;
@@ -732,13 +733,13 @@
           </div>
         </div>
 
-       <div class="header-actions" id="header-actions" style="display: none;">
-  <button class="header-tab" id="standard-tab" type="button">Snapshot</button>
-  <button class="header-tab" id="admin-tab" type="button" style="display: none;">Admin</button>
-  <button class="header-tab" id="vpm-tab" type="button">VPM</button>
-</div>
+        <div class="header-actions" id="header-actions" style="display: none;">
+          <button class="header-tab" id="standard-tab" type="button">Snapshot</button>
+          <button class="header-tab" id="admin-tab" type="button" style="display: none;">Admin</button>
+          <button class="header-tab" id="vpm-tab" type="button" style="display: none;">VPM</button>
+        </div>
 
-        <div class="version-ref">v1.5</div>
+        <div class="version-ref">v1.4</div>
       </div>
     </header>
 
@@ -781,11 +782,7 @@
       </section>
 
       <div id="app-shell">
-       
-        <div class="stack">
-          <div id="standard-view">
-
-               <section class="hero">
+        <section class="hero">
           <div class="hero-copy">
             <div class="section-kicker">Asset Search</div>
             <h2>Track one vehicle, inspect one full operational snapshot.</h2>
@@ -796,10 +793,9 @@
                 <label for="asset-number">Fleet Number</label>
                 <input id="asset-number" name="assetNumber" type="text" placeholder="Enter fleet number" required />
               </div>
-                  <button class="action-btn" type="submit">Load Asset Snapshot</button>
-                  <button class="action-btn" id="refresh-asset-btn" type="button">Refresh</button>
-                  <button class="action-btn" id="export-pdf-btn" type="button">Export PDF</button>
-                  <button class="action-btn" id="email-pdf-btn" type="button">Email PDF</button>
+              <button class="action-btn" type="submit">Load Asset Snap
+              <button class="secondary-btn" id="export-pdf-btn" type="button">Export PDF</button>
+              <button class="secondary-btn" id="email-pdf-btn" type="button">Email PDF</button>
             </form>
 
             <p class="message" id="asset-search-message"></p>
@@ -834,13 +830,15 @@
               </div>
             </div>
 
-            <div class="debug-panel" id="debug-panel">
+            <div class="debug-panel" id="debug-panel" data-debug-panel>
               <span>Admin Debug</span>
-              <pre id="debug-output">No debug entries.</pre>
+              <pre id="debug-output" data-debug-output>No debug entries.</pre>
             </div>
           </aside>
         </section>
-            
+
+        <div class="stack">
+          <div id="standard-view">
             <div id="asset-shell">
               <section class="section">
                 <div class="section-head">
@@ -1062,84 +1060,48 @@
                   </div>
                 </div>
 
-  <div class="location-layout">
-  <div class="map-panel">
-    <div class="map-badge">Last Location</div>
-    <iframe
-      id="location-map"
-      title="Last known location map"
-      loading="lazy"
-      referrerpolicy="no-referrer-when-downgrade">
-    </iframe>
-  </div>
+                <div class="location-layout">
+                  <div class="map-panel">
+                    <div class="map-badge">Last Location</div>
+                    <iframe
+                      title="Last known location map"
+                      loading="lazy"
+                      referrerpolicy="no-referrer-when-downgrade"
+                      src="https://www.openstreetmap.org/export/embed.html?bbox=151.44739%2C-33.09536%2C151.50739%2C-33.05536&layer=mapnik&marker=-33.07536%2C151.47739">
+                    </iframe>
+                  </div>
 
-  <div class="location-meta">
-    <div class="location-card">
-      <span>Location</span>
-      <strong id="view-location"></strong>
-    </div>
-    <div class="location-card">
-      <span>Latitude</span>
-      <strong id="view-latitude"></strong>
-    </div>
-    <div class="location-card">
-      <span>Longitude</span>
-      <strong id="view-longitude"></strong>
-    </div>
-    <div class="location-card">
-      <span>Map Source</span>
-      <strong id="view-map-source"></strong>
-    </div>
-  </div>
-</div>             
+                  <div class="location-meta">
+                    <div class="location-card">
+                      <span>Location</span>
+                      <strong id="view-location"></strong>
+                    </div>
+                    <div class="location-card">
+                      <span>Latitude</span>
+                      <strong>Pending live bind</strong>
+                    </div>
+                    <div class="location-card">
+                      <span>Longitude</span>
+                      <strong>Pending live bind</strong>
+                    </div>
+                    <div class="location-card">
+                      <span>Map Source</span>
+                      <strong>Placeholder preview for final live map feed</strong>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
 
-</div>
-</section>
-</div>
-
-              <section class="section" id="admin-view" style="display: none;">
-              <div class="section-head">
+          <section class="section" id="admin-view" style="display: none;">
+            <div class="section-head">
               <div>
                 <div class="section-kicker">Admin</div>
                 <h3 class="section-title">Access Management</h3>
               </div>
             </div>
 
-                <div class="hero-panel" style="margin-bottom: 18px;">
-  <div>
-    <div class="section-kicker">Admin Snapshot</div>
-    <h3 id="admin-current-state">Admin ready</h3>
-  </div>
-
-  <div class="hero-grid">
-    <div class="mini-metric">
-      <span>Request Time</span>
-      <strong id="admin-request-time">--</strong>
-    </div>
-    <div class="mini-metric">
-      <span>Status</span>
-      <strong id="admin-status">Awaiting action</strong>
-    </div>
-    <div class="mini-metric">
-      <span>Users Loaded</span>
-      <strong id="admin-users-loaded">--</strong>
-    </div>
-    <div class="mini-metric">
-      <span>History Loaded</span>
-      <strong id="admin-history-loaded">--</strong>
-    </div>
-    <div class="mini-metric">
-      <span>Render Time</span>
-      <strong id="admin-render-time">--</strong>
-    </div>
-  </div>
-
-  <div class="debug-panel" id="admin-debug-panel">
-    <span>Admin Debug</span>
-    <pre id="admin-debug-output">No debug entries.</pre>
-  </div>
-</div>
-                
             <div>
               <h3>Approved Users</h3>
 
@@ -1224,96 +1186,35 @@
                 </table>
               </div>
             </div>
+
+            <div class="debug-panel" style="margin-top: 24px;" data-debug-panel>
+              <span>Admin Debug</span>
+              <pre data-debug-output>No debug entries.</pre>
+            </div>
           </section>
-                
-           <section class="section" id="vpm-view" style="display: none;">
-  <div class="section-head">
-    <div>
-      <div class="section-kicker">VPM</div>
-      <h3 class="section-title">VPM Confirmation</h3>
-    </div>
-  </div>
 
-             <div class="hero-panel" style="margin-bottom: 18px;">
-  <div>
-    <div class="section-kicker">VPM Snapshot</div>
-    <h3 id="vpm-current-state">VPM ready</h3>
-  </div>
+          <section class="section" id="vpm-view" style="display: none;">
+            <div class="section-head">
+              <div>
+                <div class="section-kicker">VPM</div>
+                <h3 class="section-title">Vehicle Performance Monitoring</h3>
+              </div>
+            </div>
 
-  <div class="hero-grid">
-    <div class="mini-metric">
-      <span>Request Time</span>
-      <strong id="vpm-request-time">--</strong>
-    </div>
-    <div class="mini-metric">
-      <span>Status</span>
-      <strong id="vpm-status">Awaiting action</strong>
-    </div>
-    <div class="mini-metric">
-      <span>Queries Selected</span>
-      <strong id="vpm-queries-selected">--</strong>
-    </div>
-    <div class="mini-metric">
-      <span>Queries Run</span>
-      <strong id="vpm-queries-run">--</strong>
-    </div>
-    <div class="mini-metric">
-      <span>Render Time</span>
-      <strong id="vpm-render-time">--</strong>
-    </div>
-  </div>
+            <p style="margin: 0; color: var(--muted);">
+              This workspace is ready for the VPM flow. The shared admin debug feed is available here while we wire in the VPM tools.
+            </p>
 
-  <div class="debug-panel" id="vpm-debug-panel">
-    <span>Admin Debug</span>
-    <pre id="vpm-debug-output">No debug entries.</pre>
-  </div>
-</div>
-             
-  <div class="header-actions" style="justify-content: flex-start; margin-bottom: 18px;">
-    <button class="action-btn" id="vpm-user-input-mode" type="button">User Input</button>
-    <button class="action-btn" id="vpm-fleet-mode" type="button">Fleet Evaluation</button>
-  </div>
-
-  <div id="vpm-user-input-panel">
-    <div class="field" style="max-width: 100%;">
-      <label for="vpm-imei-input">IMEI Input</label>
-      <textarea
-        id="vpm-imei-input"
-        rows="10"
-        style="width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 14px; font: inherit;"
-        placeholder="Paste one IMEI per line"></textarea>
-    </div>
-
-    <div style="margin-top: 14px;">
-      <button class="action-btn" id="run-vpm-user-input-btn" type="button">Run User Input Analysis</button>
-    </div>
-  </div>
-
-  <div id="vpm-fleet-panel" style="display: none;">
-    <p style="margin: 0 0 14px; color: var(--muted);">
-      Run a full fleet evaluation across active assets with matched HERMES devices.
-    </p>
-
-    <button class="action-btn" id="run-vpm-fleet-btn" type="button">Run Fleet Evaluation</button>
-  </div>
-
-  <div style="margin-top: 24px;">
-    <h3 class="section-title">Results</h3>
-    <p id="vpm-summary" style="color: var(--muted);">No VPM analysis run yet.</p>
-
-    <div class="table-wrap" style="margin-top: 18px;">
-      <table id="vpm-results-table">
-        <thead id="vpm-results-head"></thead>
-        <tbody id="vpm-results-body"></tbody>
-      </table>
-    </div>
-  </div>
-</section>  
+            <div class="debug-panel" style="margin-top: 24px;" data-debug-panel>
+              <span>VPM Debug</span>
+              <pre data-debug-output>No debug entries.</pre>
+            </div>
+          </section>
         </div>
       </div>
     </main>
   </div>
 
-<script src="./app.js?v=4" defer></script>
+ <script src="./app.js?v=3" defer></script>
 </body>
 </html>
