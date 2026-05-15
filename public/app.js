@@ -688,12 +688,12 @@ function mapSnapshotLinksToSlots(snapshotData) {
       return;
     }
 
-    if (!slots.driverExternal && firstChannel === "TVI1") {
+    if (!slots.driverExternal && firstChannel === "TVI2") {
       slots.driverExternal = link.mediaFile;
       return;
     }
 
-    if (!slots.leftExternal && firstChannel === "TVI2") {
+    if (!slots.leftExternal && firstChannel === "TVI1") {
       slots.leftExternal = link.mediaFile;
     }
   });
