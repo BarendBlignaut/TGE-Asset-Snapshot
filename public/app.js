@@ -1156,25 +1156,23 @@ async function fetchVpmFleetResults() {
 }
 
 function mapVpmApiResponse(response, mode) {
-  const baseColumns = ["Fleet Number", "Registration", "Make", "Model", "Year", "Vehicle ID", "HERMES IMEI", "Status"];
+  const baseColumns = ["Fleet Number", "Registration", "Make", "Model", "Year of Manufacture", "Vehicle ID", "IMEI", "Status"];
   const vpmColumns = Array.isArray(response.columns) ? response.columns : [];
   const columns = [...baseColumns, ...vpmColumns];
 
   const rows = Array.isArray(response.rows) ? response.rows.map((row) => {
     const mapped = {
-      "Fleet Number": row.fleetNumber || "",
-      Registration: row.registration || "",
-      Make: row.make || "",
-      Model: row.model || "",
-      Year: String(row.yearOfManufacture || ""),
-      "Vehicle ID": row.vehicleId || "",
-      "HERMES IMEI": row.hermesImei || "",
-      Status: row.status || "",
+      "Fleet Number": row.fleetNumber || "N/D",
+      Registration: row.registration || "N/D",
+      Make: row.make || "N/D",
+      Model: row.model || "N/D",
+      "Year of Manufacture": String(row.yearOfManufacture || "N/D"),
+      "Vehicle ID": String(row.vehicleId || "N/D"),
+      IMEI: row.hermesImei || "N/D",
+      Status: row.status || "N/D",
     };
-    if (row.vpm) {
-      for (const key of vpmColumns) {
-        mapped[key] = row.vpm[key] != null ? String(row.vpm[key]) : "";
-      }
+    for (const key of vpmColumns) {
+      mapped[key] = row.vpm && row.vpm[key] != null && row.vpm[key] !== "" ? String(row.vpm[key]) : "N/D";
     }
     return mapped;
   }) : [];
