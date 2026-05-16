@@ -195,6 +195,15 @@
       background: rgba(255, 255, 255, 0.25);
     }
 
+    .header-tab-logout {
+      border-color: rgba(255, 82, 82, 0.5);
+      color: #ff8a80;
+    }
+
+    .header-tab-logout:hover {
+      background: rgba(255, 82, 82, 0.2);
+    }
+
     .version-ref {
       justify-self: end;
       color: rgba(255, 255, 255, 0.84);
@@ -1032,9 +1041,10 @@
           <button class="header-tab" id="standard-tab" type="button">Snapshot</button>
           <button class="header-tab" id="admin-tab" type="button" style="display: none;">Admin</button>
           <button class="header-tab" id="vpm-tab" type="button" style="display: none;">VPM</button>
+          <button class="header-tab header-tab-logout" id="logout-btn" type="button">Logout</button>
         </div>
 
-        <div class="version-ref">v1.4</div>
+        <div class="version-ref">v1.5</div>
       </div>
     </header>
 
@@ -1383,6 +1393,10 @@
                   <div class="field">
                     <label for="approved-username">Username</label>
                     <input id="approved-username" type="text" required />
+                  </div>
+                  <div class="field">
+                    <label for="approved-password">Password</label>
+                    <input id="approved-password" type="password" placeholder="Set password" />
                   </div>
                   <div class="field">
                     <label for="approved-role">Role</label>

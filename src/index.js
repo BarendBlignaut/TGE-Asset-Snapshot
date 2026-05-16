@@ -975,7 +975,7 @@ async function handleCameraSnapshots(request, env) {
   return jsonResponse(matchedEvents);
 }
   
-    async function handleVpmUserInput(request, env) {
+async function handleVpmUserInput(request, env) {
   const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
 
@@ -988,6 +988,10 @@ async function handleCameraSnapshots(request, env) {
 
   if (!cleanedImeis.length) {
     return jsonResponse({ error: "At least one IMEI is required." }, 400);
+  }
+
+  if (isDemoMode(env)) {
+    return handleVpmUserInputDemo(cleanedImeis);
   }
 
   const vehiclesUrl = `https://api-au.telematics.com/v1/vehicles/?key=${env.TN360_API_KEY}&pruning=B2B`;
@@ -1071,6 +1075,121 @@ async function handleCameraSnapshots(request, env) {
     mode: "user-input",
     summary: {
       queriesSelected: cleanedImeis.length,
+      queriesRun: rows.length,
+      dynamicFieldCount: dynamicColumns.length,
+    },
+    columns: dynamicColumns,
+    rows,
+  });
+}
+
+function handleVpmUserInputDemo(cleanedImeis) {
+  const demoImei = DEMO_DEVICES.find((d) => d.type?.code === "HERMES")?.imei || "";
+  const rows = [];
+  const discoveredKeys = new Set();
+
+  for (const imei of cleanedImeis) {
+    if (imei === demoImei) {
+      const row = buildVpmRow(DEMO_VEHICLE, DEMO_DEVICES[0], DEMO_HERMES_DEVICE.deviceStats.lastVpm, "Matched", "");
+      Object.keys(row.vpm).forEach((key) => discoveredKeys.add(key));
+      rows.push(row);
+    } else {
+      rows.push({
+        fleetNumber: "N/A",
+        registration: "N/A",
+        make: "N/A",
+        model: "N/A",
+        yearOfManufacture: "N/A",
+        vehicleId: "N/A",
+        hermesImei: imei,
+        status: "No HERMES Match",
+        errorMessage: "No active HERMES device matched the supplied IMEI.",
+        vpm: {},
+      });
+    }
+  }
+
+  const dynamicColumns = [...discoveredKeys].sort((a, b) => a.localeCompare(b));
+
+  return jsonResponse({
+    mode: "user-input",
+    summary: {
+      queriesSelected: cleanedImeis.length,
+      queriesRun: rows.length,
+      dynamicFieldCount: dynamicColumns.length,
+    },
+    columns: dynamicColumns,
+    rows,
+  });
+}
+
+async function handleVpmFleetEvaluation(request, env) {
+  const sessionCheck = await requireSession(request, env);
+  if (!sessionCheck.ok) return sessionCheck.response;
+
+  if (isDemoMode(env)) {
+    const row = buildVpmRow(DEMO_VEHICLE, DEMO_DEVICES[0], DEMO_HERMES_DEVICE.deviceStats.lastVpm, "Matched", "");
+    const dynamicColumns = Object.keys(row.vpm).sort((a, b) => a.localeCompare(b));
+    return jsonResponse({
+      mode: "fleet",
+      summary: { queriesSelected: 1, queriesRun: 1, dynamicFieldCount: dynamicColumns.length },
+      columns: dynamicColumns,
+      rows: [row],
+    });
+  }
+
+  const vehiclesUrl = `https://api-au.telematics.com/v1/vehicles/?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const devicesUrl = `https://api-au.telematics.com/v1/devices/?key=${env.TN360_API_KEY}&pruning=B2B`;
+
+  const [vehicles, devices] = await Promise.all([
+    fetchJsonFromTn360(vehiclesUrl),
+    fetchJsonFromTn360(devicesUrl),
+  ]);
+
+  const activeVehicles = Array.isArray(vehicles)
+    ? vehicles.filter((v) => String(v.status || "").toUpperCase() === "ENABLED")
+    : [];
+
+  const hermesDevices = Array.isArray(devices)
+    ? devices.filter((d) => String(d?.type?.code || "").toUpperCase() === "HERMES")
+    : [];
+
+  const rows = [];
+  const discoveredKeys = new Set();
+
+  for (const hermesDevice of hermesDevices) {
+    const vehicle = activeVehicles.find(
+      (v) => String(v?.id ?? "") === String(hermesDevice?.vehicleId ?? ""),
+    );
+    if (!vehicle) continue;
+
+    try {
+      const deviceUrl =
+        `https://api-au.telematics.com/v1/devices/${encodeURIComponent(hermesDevice.imei)}` +
+        `?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
+
+      const fullDevice = await fetchJsonFromTn360(deviceUrl);
+      const lastVpmRaw = fullDevice?.deviceStats?.lastVpm || null;
+      const row = buildVpmRow(vehicle, hermesDevice, lastVpmRaw, "Matched", "");
+
+      Object.keys(row.vpm).forEach((key) => discoveredKeys.add(key));
+      rows.push(row);
+    } catch (error) {
+      rows.push({
+        ...buildVehicleIdentity(vehicle, hermesDevice),
+        status: "API Failed",
+        errorMessage: error instanceof Error ? error.message : String(error),
+        vpm: {},
+      });
+    }
+  }
+
+  const dynamicColumns = [...discoveredKeys].sort((a, b) => a.localeCompare(b));
+
+  return jsonResponse({
+    mode: "fleet",
+    summary: {
+      queriesSelected: hermesDevices.length,
       queriesRun: rows.length,
       dynamicFieldCount: dynamicColumns.length,
     },
@@ -1170,8 +1289,13 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/api/vpm-user-input") {
-  return handleVpmUserInput(request, env);
-}
+        return handleVpmUserInput(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/vpm-fleet-evaluation") {
+        return handleVpmFleetEvaluation(request, env);
+      }
+
       if (request.method === "POST" && url.pathname === "/api/export-pdf") {
         return handleExportPdf(request, env);
       }

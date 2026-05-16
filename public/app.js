@@ -68,6 +68,8 @@ const el = {
   vpmSummary: document.getElementById("vpm-summary"),
   vpmResultsHead: document.getElementById("vpm-results-head"),
   vpmResultsBody: document.getElementById("vpm-results-body"),
+  logoutButton: document.getElementById("logout-btn"),
+  approvedPassword: document.getElementById("approved-password"),
 };
 
 function getNode(id) {
@@ -1143,76 +1145,45 @@ function parseUniqueImeis(rawValue) {
   )].slice(0, 2000);
 }
 
-function buildVpmUserInputResults(imeis) {
-  const activeBase = buildVpmBaseRecord();
-  const activeTrackerImei = state.activeAssetLookup?.devices?.trackingSystem?.imei || "";
-  const rows = imeis.map((imei) => {
-    const matched = activeTrackerImei && imei === activeTrackerImei;
-
-    return {
-      IMEI: imei,
-      "Matched Asset": matched ? activeBase["Fleet Number"] || "Yes" : "Pending lookup",
-      Registration: matched ? activeBase.Registration : "",
-      Driver: matched ? activeBase.Driver : "",
-      Ignition: matched ? activeBase.Ignition : "Unknown",
-      Movement: matched ? activeBase.Movement : "Unknown",
-      Speed: matched ? activeBase.Speed : "",
-      RPM: matched ? activeBase.RPM : "",
-      "Fuel Level": matched ? activeBase["Fuel Level"] : "",
-      Status: matched ? "Matched to loaded snapshot" : "Awaiting live lookup",
-    };
-  });
-
-  const matchedCount = rows.filter((row) => row.Status === "Matched to loaded snapshot").length;
-  return {
-    mode: "user-input",
-    columns: [
-      "IMEI",
-      "Matched Asset",
-      "Registration",
-      "Driver",
-      "Ignition",
-      "Movement",
-      "Speed",
-      "RPM",
-      "Fuel Level",
-      "Status",
-    ],
-    rows,
-    summary: `${rows.length} IMEI analysed. ${matchedCount} matched the currently loaded asset snapshot.`,
-  };
+async function fetchVpmUserInputResults(imeis) {
+  const response = await apiPost("/api/vpm-user-input", { imeis }, "VPM user input analysis failed.");
+  return mapVpmApiResponse(response, "user-input");
 }
 
-function buildVpmFleetResults() {
-  if (!state.activeAssetLookup) {
-    return {
-      mode: "fleet",
-      columns: [],
-      rows: [],
-      summary: "Load an asset first to seed the fleet evaluation view.",
-    };
-  }
+async function fetchVpmFleetResults() {
+  const response = await apiPost("/api/vpm-fleet-evaluation", {}, "VPM fleet evaluation failed.");
+  return mapVpmApiResponse(response, "fleet");
+}
 
-  const base = buildVpmBaseRecord();
-  return {
-    mode: "fleet",
-    columns: [
-      "Fleet Number",
-      "Registration",
-      "Vehicle ID",
-      "Driver",
-      "Tracker IMEI",
-      "Ignition",
-      "Movement",
-      "Speed",
-      "RPM",
-      "Fuel Level",
-      "Fuel Consumption",
-      "Snapshot Time",
-    ],
-    rows: [base],
-    summary: "Fleet evaluation seeded from the currently loaded asset snapshot.",
-  };
+function mapVpmApiResponse(response, mode) {
+  const baseColumns = ["Fleet Number", "Registration", "Make", "Model", "Year", "Vehicle ID", "HERMES IMEI", "Status"];
+  const vpmColumns = Array.isArray(response.columns) ? response.columns : [];
+  const columns = [...baseColumns, ...vpmColumns];
+
+  const rows = Array.isArray(response.rows) ? response.rows.map((row) => {
+    const mapped = {
+      "Fleet Number": row.fleetNumber || "",
+      Registration: row.registration || "",
+      Make: row.make || "",
+      Model: row.model || "",
+      Year: String(row.yearOfManufacture || ""),
+      "Vehicle ID": row.vehicleId || "",
+      "HERMES IMEI": row.hermesImei || "",
+      Status: row.status || "",
+    };
+    if (row.vpm) {
+      for (const key of vpmColumns) {
+        mapped[key] = row.vpm[key] != null ? String(row.vpm[key]) : "";
+      }
+    }
+    return mapped;
+  }) : [];
+
+  const summary = response.summary
+    ? `${response.summary.queriesSelected} queried, ${response.summary.queriesRun} returned, ${response.summary.dynamicFieldCount} VPM fields.`
+    : "No results.";
+
+  return { mode, columns, rows, summary };
 }
 
 function setVpmRunning(mode, isRunning) {
@@ -1230,10 +1201,6 @@ async function runVpmAnalysis(mode) {
   setVpmRunning(mode, true);
 
   try {
-    await new Promise((resolve) => window.setTimeout(resolve, 220));
-
-    if (state.vpmRunToken !== token) return;
-
     if (mode === "user-input") {
       const imeis = parseUniqueImeis(el.vpmImeiInput?.value);
       if (!imeis.length) {
@@ -1244,11 +1211,13 @@ async function runVpmAnalysis(mode) {
           summary: "Enter at least one IMEI before running the VPM user input analysis.",
         };
       } else {
-        state.vpmResults = buildVpmUserInputResults(imeis);
+        state.vpmResults = await fetchVpmUserInputResults(imeis);
       }
     } else {
-      state.vpmResults = buildVpmFleetResults();
+      state.vpmResults = await fetchVpmFleetResults();
     }
+
+    if (state.vpmRunToken !== token) return;
 
     renderVpmResults();
     writeDebug("VPM analysis completed", {
@@ -1256,6 +1225,16 @@ async function runVpmAnalysis(mode) {
       rowCount: state.vpmResults.rows.length,
       summary: state.vpmResults.summary,
     });
+  } catch (error) {
+    if (state.vpmRunToken !== token) return;
+    state.vpmResults = {
+      mode,
+      columns: [],
+      rows: [],
+      summary: `VPM analysis failed: ${error.message || "Unknown error"}`,
+    };
+    renderVpmResults();
+    writeDebug("VPM analysis failed", { mode, error: error.message });
   } finally {
     if (state.vpmRunToken === token) {
       setVpmRunning(mode, false);
@@ -1690,6 +1669,7 @@ if (el.approvedUserForm) {
 
     if (!state.currentSessionUser || state.currentSessionUser.role !== "admin") return;
 
+    const passwordValue = safeText(el.approvedPassword?.value || "").trim();
     const formValues = {
       firstName: safeText(getNode("approved-first-name")?.value).trim(),
       lastName: safeText(getNode("approved-last-name")?.value).trim(),
@@ -1697,6 +1677,9 @@ if (el.approvedUserForm) {
       role: safeText(getNode("approved-role")?.value).trim(),
       status: safeText(getNode("approved-status")?.value).trim(),
     };
+    if (passwordValue) {
+      formValues.password = passwordValue;
+    }
 
     try {
       await apiPost("/api/approved-users", formValues, "Unable to save approved user.");
@@ -1801,5 +1784,21 @@ if (el.emailPdfButton) {
   el.emailPdfButton.addEventListener("click", handleEmailPdf);
 }
 
+if (el.logoutButton) {
+  el.logoutButton.addEventListener("click", async () => {
+    try {
+      await apiPost("/api/logout", {}, "Logout failed.");
+    } catch (_) {}
+    state.currentSessionUser = null;
+    state.activeAssetLookup = null;
+    state.approvedUsers = [];
+    state.accessHistory = [];
+    state.vpmResults = { mode: null, columns: [], rows: [], summary: "No VPM analysis has been run yet." };
+    initialiseUi();
+    setVisible(el.loginScreen, true, "grid");
+    writeDebug("Logged out", {});
+  });
+}
+
 initialiseUi();
-// loadSession();
+loadSession();
