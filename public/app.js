@@ -850,107 +850,43 @@ function renderPerformanceDetails(lookup) {
     .join("");
 }
 
-function resolveSignalAt(gpio, keys) {
-  const suffixes = ["At", "_at", "Timestamp", "TimeAt", "UpdatedAt", "RecordedAt"];
+function resolveGpioSignal(gpio, nouns) {
+  if (!gpio || typeof gpio !== "object") return { value: null, at: null };
 
-  for (const key of keys) {
-    for (const suffix of suffixes) {
-      const value = gpio?.[`${key}${suffix}`];
-      if (value !== undefined && value !== null && value !== "") {
-        return value;
-      }
-    }
+  const nounSet = new Set(nouns.map((n) => n.toLowerCase()));
+
+  for (const entry of Object.values(gpio)) {
+    if (!entry || typeof entry !== "object") continue;
+
+    const entryNoun = String(entry.noun || "").toLowerCase();
+    if (!nounSet.has(entryNoun)) continue;
+
+    const verb = entry.custom_verb || entry.verb || null;
+    const at = entry.eventat || entry.eventAt || null;
+
+    return { value: verb, at };
   }
 
-  return null;
+  return { value: null, at: null };
 }
 
-function resolveGpioSignal(gpio, keys) {
-  for (const key of keys) {
-    const value = gpio?.[key];
-    if (value === undefined || value === null || value === "") continue;
-
-    if (typeof value === "object" && !Array.isArray(value)) {
-      return {
-        value:
-          value.value
-          ?? value.state
-          ?? value.status
-          ?? value.active
-          ?? value.enabled
-          ?? value.on
-          ?? null,
-        at:
-          value.at
-          || value.timeAt
-          || value.updatedAt
-          || value.recordedAt
-          || resolveSignalAt(gpio, keys),
-      };
-    }
-
-    return {
-      value,
-      at: resolveSignalAt(gpio, keys),
-    };
-  }
-
-  return {
-    value: null,
-    at: null,
-  };
-}
-
-function renderGpioSignal(valueId, timeId, signal, truthyLabel, falsyLabel) {
-  setText(valueId, formatBooleanState(signal.value, truthyLabel, falsyLabel, "N/A No Data"));
+function renderGpioSignal(valueId, timeId, signal) {
+  const displayValue = signal.value
+    ? String(signal.value).charAt(0).toUpperCase() + String(signal.value).slice(1)
+    : "N/A No Data";
+  setText(valueId, displayValue);
   setText(timeId, signal.at ? formatDisplayDate(signal.at) : "N/A No Data");
 }
 
 function renderGpio(lookup) {
   const gpio = lookup.hermesStats?.gpio || {};
 
-  renderGpioSignal(
-    "gpio-seatbelt",
-    "gpio-seatbelt-at",
-    resolveGpioSignal(gpio, ["seatbelt", "seatBelt"]),
-    "Fastened",
-    "Unfastened",
-  );
-  renderGpioSignal(
-    "gpio-door",
-    "gpio-door-at",
-    resolveGpioSignal(gpio, ["door"]),
-    "Open",
-    "Closed",
-  );
-  renderGpioSignal(
-    "gpio-parkbrake",
-    "gpio-parkbrake-at",
-    resolveGpioSignal(gpio, ["parkBrake", "parkbrake", "park_brake"]),
-    "Applied",
-    "Released",
-  );
-  renderGpioSignal(
-    "gpio-driverevent",
-    "gpio-driverevent-at",
-    resolveGpioSignal(gpio, ["driverEvent", "driverevent", "eventButton"]),
-    "Triggered",
-    "Idle",
-  );
-  renderGpioSignal(
-    "gpio-siren",
-    "gpio-siren-at",
-    resolveGpioSignal(gpio, ["siren", "speedSiren"]),
-    "Active",
-    "Inactive",
-  );
-  renderGpioSignal(
-    "gpio-led",
-    "gpio-led-at",
-    resolveGpioSignal(gpio, ["led", "speedLed"]),
-    "Active",
-    "Inactive",
-  );
+  renderGpioSignal("gpio-seatbelt", "gpio-seatbelt-at", resolveGpioSignal(gpio, ["seatbelt"]));
+  renderGpioSignal("gpio-door", "gpio-door-at", resolveGpioSignal(gpio, ["door"]));
+  renderGpioSignal("gpio-parkbrake", "gpio-parkbrake-at", resolveGpioSignal(gpio, ["parkbrake"]));
+  renderGpioSignal("gpio-driverevent", "gpio-driverevent-at", resolveGpioSignal(gpio, ["driverevent"]));
+  renderGpioSignal("gpio-siren", "gpio-siren-at", resolveGpioSignal(gpio, ["siren"]));
+  renderGpioSignal("gpio-led", "gpio-led-at", resolveGpioSignal(gpio, ["led"]));
 }
 
 function renderStorage(lookup) {
