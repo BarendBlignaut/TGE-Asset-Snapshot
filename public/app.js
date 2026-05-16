@@ -1452,20 +1452,17 @@ async function handleAssetSearch(assetNumber) {
     { renderDurationMs: Math.round(performance.now() - startedAt) },
   );
 
-  await apiPost(
-    "/api/access-history",
-    { assetRequested: assetNumber },
-    "Unable to record access history.",
-  );
-
-  if (state.currentSessionUser.role === "admin") {
-    await loadAccessHistory();
-  }
-
   state.activeAssetLookup = nextLookup;
 
   writeDebug("Lookup completed", nextLookup);
   renderResolvedAsset();
+
+  try {
+    await apiPost("/api/access-history", { assetRequested: assetNumber }, "Unable to record access history.");
+    if (state.currentSessionUser?.role === "admin") {
+      await loadAccessHistory();
+    }
+  } catch (_) {}
 }
 
 function handleAssetSearchError(assetNumber, error) {

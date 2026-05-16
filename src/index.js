@@ -1,6 +1,14 @@
 const SESSION_COOKIE = "tge_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 12;
-const DEFAULT_SESSION_SECRET = "tge-demo-session-secret-change-me";
+let _fallbackSecret = null;
+function getFallbackSecret() {
+  if (!_fallbackSecret) {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    _fallbackSecret = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  return _fallbackSecret;
+}
 
 const approvedUsers = [
   {
@@ -274,7 +282,7 @@ function base64UrlDecodeText(value) {
 }
 
 async function importSessionKey(env) {
-  const secret = env.SESSION_SECRET || DEFAULT_SESSION_SECRET;
+  const secret = env.SESSION_SECRET || getFallbackSecret();
   return crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -331,13 +339,13 @@ async function readSessionFromRequest(request, env) {
 
 function sessionCookieHeader(token) {
   return {
-    "Set-Cookie": `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}`,
+    "Set-Cookie": `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}`,
   };
 }
 
 function clearSessionCookie() {
   return {
-    "Set-Cookie": `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
+    "Set-Cookie": `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
   };
 }
 
