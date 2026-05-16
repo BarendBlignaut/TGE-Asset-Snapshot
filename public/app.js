@@ -22,6 +22,10 @@ const el = {
   appShell: document.getElementById("app-shell"),
   heroSection: document.getElementById("snapshot-hero"),
   headerActions: document.getElementById("header-actions"),
+  heroDebugPanel: document.getElementById("hero-debug-panel"),
+  heroDebugTitle: document.getElementById("hero-debug-title"),
+  heroDebugOutput: document.getElementById("hero-debug-output"),
+  heroDebugSubcopy: document.getElementById("hero-debug-subcopy"),
   debugToggleWrap: document.getElementById("debug-toggle-wrap"),
   debugToggle: document.getElementById("debug-toggle"),
   debugWindow: document.getElementById("debug-window"),
@@ -230,6 +234,8 @@ function setDebugWindowOpen(shouldOpen) {
 
 function renderDebug() {
   const isAdmin = isAdminUser();
+  const debugContent = state.lastDebugEntries.join("\n\n");
+  const heroDebugTitle = state.lastDebugEntries[0] || "No debug entries.";
 
   setVisible(el.debugToggleWrap, isAdmin, "inline-flex");
 
@@ -237,8 +243,28 @@ function renderDebug() {
     setDebugWindowOpen(false);
   }
 
+  if (el.heroDebugPanel) {
+    el.heroDebugPanel.style.opacity = isAdmin ? "1" : "0.72";
+  }
+
+  if (el.heroDebugTitle) {
+    el.heroDebugTitle.textContent = isAdmin ? heroDebugTitle : "Admin debug only";
+  }
+
+  if (el.heroDebugSubcopy) {
+    el.heroDebugSubcopy.textContent = isAdmin
+      ? "Open the debug panel to inspect the latest request payloads and lookup results."
+      : "Debug output is available only for admin sessions.";
+  }
+
+  if (el.heroDebugOutput) {
+    el.heroDebugOutput.textContent = isAdmin
+      ? debugContent
+      : "Sign in with an admin account to inspect live debug output.";
+  }
+
   if (el.debugOutput) {
-    el.debugOutput.textContent = state.lastDebugEntries.join("\n\n");
+    el.debugOutput.textContent = debugContent;
   }
 }
 
