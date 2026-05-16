@@ -45,7 +45,7 @@
       position: relative;
       background: linear-gradient(90deg, #0d5f3a 0%, var(--tge-green-dark) 45%, var(--tge-green) 100%);
       color: #fff;
-      padding: 16px 24px 38px;
+      padding: 16px 24px;
       border-bottom: 4px solid rgba(255, 255, 255, 0.18);
       box-shadow: 0 10px 30px rgba(0, 90, 45, 0.18);
     }
@@ -59,13 +59,8 @@
       gap: 18px;
     }
 
-    .topbar-debug-row {
-      position: absolute;
-      left: 24px;
-      bottom: 12px;
-      display: flex;
-      justify-content: flex-start;
-      z-index: 2;
+    .header-actions-spacer {
+      flex: 1;
     }
 
     .brand {
@@ -179,7 +174,6 @@
 
     .header-actions {
       display: flex;
-      justify-content: center;
       gap: 10px;
       flex-wrap: wrap;
       align-items: center;
@@ -281,7 +275,7 @@
       box-shadow: var(--shadow);
       padding: 28px;
       display: grid;
-      grid-template-columns: 1.05fr 0.95fr;
+      grid-template-columns: 1fr;
       gap: 24px;
       animation: rise 0.55s ease both;
     }
@@ -963,9 +957,8 @@
         justify-content: flex-start;
       }
 
-      .topbar-debug-row {
-        position: static;
-        padding-top: 10px;
+      .header-actions-spacer {
+        display: none;
       }
 
       .version-ref {
@@ -1022,22 +1015,21 @@
         </div>
 
         <div class="header-actions" id="header-actions" style="display: none;">
+          <label class="debug-toggle-wrap" id="debug-toggle-wrap">
+            <span>Debug</span>
+            <span class="debug-switch">
+              <input id="debug-toggle" type="checkbox" />
+              <span class="debug-switch-track"></span>
+              <span class="debug-switch-thumb"></span>
+            </span>
+          </label>
+          <span class="header-actions-spacer"></span>
           <button class="header-tab" id="standard-tab" type="button">Snapshot</button>
           <button class="header-tab" id="admin-tab" type="button" style="display: none;">Admin</button>
           <button class="header-tab" id="vpm-tab" type="button" style="display: none;">VPM</button>
         </div>
 
         <div class="version-ref">v1.4</div>
-      </div>
-      <div class="topbar-debug-row">
-        <label class="debug-toggle-wrap" id="debug-toggle-wrap">
-          <span>Debug</span>
-          <span class="debug-switch">
-            <input id="debug-toggle" type="checkbox" />
-            <span class="debug-switch-track"></span>
-            <span class="debug-switch-thumb"></span>
-          </span>
-        </label>
       </div>
     </header>
 
@@ -1100,24 +1092,6 @@
             <p class="message" id="asset-search-message"></p>
           </div>
 
-          <aside class="hero-panel" id="hero-debug-panel">
-            <div>
-              <div class="section-kicker">Debug</div>
-              <h3>Live Admin Inspector</h3>
-              <p id="hero-debug-subcopy">Open the debug panel to inspect the latest request payloads and lookup results.</p>
-            </div>
-
-            <div class="debug-preview">
-              <div class="mini-metric">
-                <span>Last Event</span>
-                <strong id="hero-debug-title">No debug entries.</strong>
-              </div>
-              <div class="debug-log-panel">
-                <span>Latest Output</span>
-                <pre id="hero-debug-output">No debug entries.</pre>
-              </div>
-            </div>
-          </aside>
         </section>
 
         <div class="stack">
