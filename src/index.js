@@ -140,7 +140,6 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const VPM_CALL_DELAY_MS = 250;
 
 const EXCLUDED_VPM_KEYS = new Set([
   "gear",
@@ -1010,8 +1009,6 @@ async function handleVpmUserInput(request, env) {
 
   for (const imei of cleanedImeis) {
     try {
-      if (apiCallCount > 0) await delay(VPM_CALL_DELAY_MS);
-
       const deviceUrl =
         `https://api-au.telematics.com/v1/devices/${encodeURIComponent(imei)}` +
         `?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
@@ -1024,12 +1021,22 @@ async function handleVpmUserInput(request, env) {
         continue;
       }
 
+      if (!device?.vehicleId) {
+        rows.push(buildEmptyVpmRow(imei, "No Vehicle", "HERMES device is not assigned to a vehicle."));
+        continue;
+      }
+
       const vehicle = vehicleList.find(
-        (v) => String(v?.id ?? "") === String(device?.vehicleId ?? ""),
+        (v) => String(v?.id ?? "") === String(device.vehicleId ?? ""),
       );
 
+      if (!vehicle) {
+        rows.push(buildEmptyVpmRow(imei, "No Vehicle Match", "Vehicle ID not found in fleet list."));
+        continue;
+      }
+
       const lastVpmRaw = device?.deviceStats?.lastVpm || null;
-      const row = buildVpmRow(vehicle || null, device, lastVpmRaw, vehicle ? "Matched" : "No Vehicle Match", vehicle ? "" : "HERMES device not assigned to a vehicle.");
+      const row = buildVpmRow(vehicle, device, lastVpmRaw, "Matched", "");
 
       Object.keys(row.vpm).forEach((key) => discoveredKeys.add(key));
       rows.push(row);
@@ -1107,7 +1114,7 @@ async function handleVpmFleetImeis(request, env) {
 
   const hermesImeis = Array.isArray(devices)
     ? devices
-        .filter((d) => String(d?.type?.code || "").toUpperCase() === "HERMES")
+        .filter((d) => String(d?.type?.code || "").toUpperCase() === "HERMES" && d?.vehicleId)
         .map((d) => String(d.imei || "").trim())
         .filter(Boolean)
     : [];
