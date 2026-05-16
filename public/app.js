@@ -1129,103 +1129,147 @@ function parseUniqueImeis(rawValue) {
   )].slice(0, 2000);
 }
 
-async function fetchVpmUserInputResults(imeis) {
-  const response = await apiPost("/api/vpm-user-input", { imeis }, "VPM user input analysis failed.");
-  return mapVpmApiResponse(response, "user-input");
-}
+const VPM_BATCH_SIZE = 30;
 
-async function fetchVpmFleetResults() {
-  const response = await apiPost("/api/vpm-fleet-evaluation", {}, "VPM fleet evaluation failed.");
-  return mapVpmApiResponse(response, "fleet");
-}
-
-function mapVpmApiResponse(response, mode) {
-  const baseColumns = ["Fleet Number", "Registration", "Make", "Model", "Year", "Vehicle ID", "HERMES IMEI", "Status"];
+function mapVpmRows(response) {
   const vpmColumns = Array.isArray(response.columns) ? response.columns : [];
-  const columns = [...baseColumns, ...vpmColumns];
-
   const rows = Array.isArray(response.rows) ? response.rows.map((row) => {
     const mapped = {
-      "Fleet Number": row.fleetNumber || "",
-      Registration: row.registration || "",
-      Make: row.make || "",
-      Model: row.model || "",
-      Year: String(row.yearOfManufacture || ""),
-      "Vehicle ID": row.vehicleId || "",
-      "HERMES IMEI": row.hermesImei || "",
-      Status: row.status || "",
+      "Fleet Number": row.fleetNumber || "N/D",
+      Registration: row.registration || "N/D",
+      Make: row.make || "N/D",
+      Model: row.model || "N/D",
+      "Year of Manufacture": String(row.yearOfManufacture || "N/D"),
+      "Vehicle ID": String(row.vehicleId || "N/D"),
+      IMEI: row.hermesImei || "N/D",
+      Status: row.status || "N/D",
     };
-    if (row.vpm) {
-      for (const key of vpmColumns) {
-        mapped[key] = row.vpm[key] != null ? String(row.vpm[key]) : "";
-      }
+    for (const key of vpmColumns) {
+      mapped[key] = row.vpm && row.vpm[key] != null && row.vpm[key] !== "" ? String(row.vpm[key]) : "N/D";
     }
     return mapped;
   }) : [];
-
-  const summary = response.summary
-    ? `${response.summary.queriesSelected} queried, ${response.summary.queriesRun} returned, ${response.summary.dynamicFieldCount} VPM fields.`
-    : "No results.";
-
-  return { mode, columns, rows, summary };
+  return { vpmColumns, rows };
 }
 
-function setVpmRunning(mode, isRunning) {
-  if (el.runVpmButton) el.runVpmButton.disabled = isRunning;
+function setVpmRunning(isRunning, progressText) {
+  if (el.runVpmButton) {
+    el.runVpmButton.disabled = isRunning;
+    el.runVpmButton.textContent = isRunning ? (progressText || "Running...") : "Run";
+  }
   if (el.vpmExportButton) el.vpmExportButton.disabled = isRunning;
   setVisible(el.cancelVpmButton, isRunning);
+}
+
+function updateVpmProgress(processed, total) {
+  if (el.runVpmButton) {
+    el.runVpmButton.textContent = `Running... (${processed}/${total})`;
+  }
+  if (el.vpmSummary) {
+    el.vpmSummary.textContent = `Processing ${processed} of ${total} devices...`;
+  }
 }
 
 async function runVpmAnalysis(mode) {
   const token = Date.now();
   state.vpmRunToken = token;
-  setVpmRunning(mode, true);
+  setVpmRunning(true, "Starting...");
 
   try {
+    let imeis;
+
     if (mode === "user-input") {
-      const imeis = parseUniqueImeis(el.vpmImeiInput?.value);
+      imeis = parseUniqueImeis(el.vpmImeiInput?.value);
       if (!imeis.length) {
-        state.vpmResults = {
-          mode,
-          columns: [],
-          rows: [],
-          summary: "Enter at least one IMEI before running the VPM user input analysis.",
-        };
-      } else {
-        state.vpmResults = await fetchVpmUserInputResults(imeis);
+        state.vpmResults = { mode, columns: [], rows: [], summary: "Enter at least one IMEI before running." };
+        renderVpmResults();
+        return;
       }
     } else {
-      state.vpmResults = await fetchVpmFleetResults();
+      writeDebug("Fleet evaluation", "Fetching HERMES device list...");
+      setVpmRunning(true, "Fetching fleet...");
+      const fleetData = await apiGet("/api/vpm-fleet-imeis", "Failed to fetch fleet IMEI list.");
+      imeis = Array.isArray(fleetData.imeis) ? fleetData.imeis : [];
+      writeDebug("Fleet IMEI list loaded", `${imeis.length} HERMES devices found.`);
+      if (!imeis.length) {
+        state.vpmResults = { mode, columns: [], rows: [], summary: "No HERMES devices found in fleet." };
+        renderVpmResults();
+        return;
+      }
+    }
+
+    const totalImeis = imeis.length;
+    const totalBatches = Math.ceil(totalImeis / VPM_BATCH_SIZE);
+    const allRows = [];
+    const allVpmColumns = new Set();
+    const baseColumns = ["Fleet Number", "Registration", "Make", "Model", "Year of Manufacture", "Vehicle ID", "IMEI", "Status"];
+
+    writeDebug("VPM analysis started", `${totalImeis} IMEIs, ${totalBatches} batches of ${VPM_BATCH_SIZE}.`);
+
+    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+      if (state.vpmRunToken !== token) return;
+
+      const start = batchIndex * VPM_BATCH_SIZE;
+      const batchImeis = imeis.slice(start, start + VPM_BATCH_SIZE);
+      const processed = start + batchImeis.length;
+
+      updateVpmProgress(processed, totalImeis);
+      writeDebug(`Batch ${batchIndex + 1}/${totalBatches}`, `Sending ${batchImeis.length} IMEIs (${start + 1}-${processed})...`);
+
+      try {
+        const response = await apiPost("/api/vpm-user-input", { imeis: batchImeis }, "Batch failed.");
+        const { vpmColumns, rows } = mapVpmRows(response);
+
+        vpmColumns.forEach((col) => allVpmColumns.add(col));
+        allRows.push(...rows);
+
+        writeDebug(`Batch ${batchIndex + 1} complete`, `${rows.length} results. ${allRows.length}/${totalImeis} total.`);
+      } catch (error) {
+        writeDebug(`Batch ${batchIndex + 1} failed`, error.message || "Unknown error");
+        batchImeis.forEach((imei) => {
+          allRows.push({
+            "Fleet Number": "N/D", Registration: "N/D", Make: "N/D", Model: "N/D",
+            "Year of Manufacture": "N/D", "Vehicle ID": "N/D", IMEI: imei, Status: "Batch Failed",
+          });
+        });
+      }
+
+      const sortedVpmColumns = [...allVpmColumns].sort((a, b) => a.localeCompare(b));
+      state.vpmResults = {
+        mode,
+        columns: [...baseColumns, ...sortedVpmColumns],
+        rows: allRows,
+        summary: `${allRows.length} of ${totalImeis} processed...`,
+      };
+      renderVpmResults();
     }
 
     if (state.vpmRunToken !== token) return;
 
-    renderVpmResults();
-    writeDebug("VPM analysis completed", {
-      mode,
-      rowCount: state.vpmResults.rows.length,
-      summary: state.vpmResults.summary,
-    });
-  } catch (error) {
-    if (state.vpmRunToken !== token) return;
+    const sortedVpmColumns = [...allVpmColumns].sort((a, b) => a.localeCompare(b));
     state.vpmResults = {
       mode,
-      columns: [],
-      rows: [],
-      summary: `VPM analysis failed: ${error.message || "Unknown error"}`,
+      columns: [...baseColumns, ...sortedVpmColumns],
+      rows: allRows,
+      summary: `${allRows.length} queried, ${allRows.filter((r) => r.Status === "Matched").length} matched, ${sortedVpmColumns.length} VPM fields.`,
     };
+    renderVpmResults();
+    writeDebug("VPM analysis completed", { mode, total: allRows.length, matched: allRows.filter((r) => r.Status === "Matched").length });
+  } catch (error) {
+    if (state.vpmRunToken !== token) return;
+    state.vpmResults = { mode, columns: [], rows: [], summary: `VPM analysis failed: ${error.message || "Unknown error"}` };
     renderVpmResults();
     writeDebug("VPM analysis failed", { mode, error: error.message });
   } finally {
     if (state.vpmRunToken === token) {
-      setVpmRunning(mode, false);
+      setVpmRunning(false);
     }
   }
 }
 
 function cancelVpmAnalysis(mode) {
   state.vpmRunToken = 0;
-  setVpmRunning(mode, false);
+  setVpmRunning(false);
   if (el.vpmSummary) {
     el.vpmSummary.textContent = "VPM analysis cancelled.";
   }
