@@ -1535,26 +1535,105 @@ function handleRefreshAsset() {
   writeDebug("Page refreshed", "Ready for new search.");
 }
 
-function handleEmailPdf() {
+async function handleEmailPdf() {
   if (!state.activeAssetLookup) {
     showAssetSearchMessage("Load an asset before preparing the email.");
     return;
   }
 
-  const vehicle = state.activeAssetLookup.vehicle || {};
-  const subject = encodeURIComponent(`TGE Asset Snapshot - ${vehicle.assetNumber || "Asset"}`);
-  const body = encodeURIComponent(
-    [
-      `Asset: ${safeText(vehicle.assetNumber, "N/A")}`,
-      `Registration: ${safeText(vehicle.registration, "N/A")}`,
-      `Vehicle ID: ${safeText(vehicle.vehicleId, "N/A")}`,
-      `Requested At: ${formatDisplayDate(state.activeAssetLookup.requestedAt)}`,
-      "",
-      "Attach the exported PDF snapshot to this email before sending.",
-    ].join("\n"),
-  );
+  if (typeof html2canvas === "undefined" || typeof jspdf === "undefined") {
+    showAssetSearchMessage("PDF libraries are still loading. Please try again.");
+    return;
+  }
 
-  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  try {
+    showAssetSearchMessage("Generating PDF for email...", false);
+    writeDebug("Email PDF started", "Generating PDF attachment...");
+
+    const assetShell = getNode("asset-shell");
+    if (!assetShell) {
+      showAssetSearchMessage("No asset content to export.");
+      return;
+    }
+
+    const canvas = await html2canvas(assetShell, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: "#f5f8f6",
+      logging: false,
+    });
+
+    const imgWidth = canvas.width;
+    const imgHeight = canvas.height;
+    const pdfWidth = 595.28;
+    const pdfPadding = 20;
+    const contentWidth = pdfWidth - (pdfPadding * 2);
+    const scaleFactor = contentWidth / imgWidth;
+    const scaledHeight = imgHeight * scaleFactor;
+    const pageHeight = 841.89;
+    const contentPageHeight = pageHeight - (pdfPadding * 2);
+
+    const { jsPDF } = jspdf;
+    const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+
+    let yOffset = 0;
+    let pageNum = 0;
+
+    while (yOffset < scaledHeight) {
+      if (pageNum > 0) pdf.addPage();
+
+      const sourceY = yOffset / scaleFactor;
+      const sourceH = Math.min(contentPageHeight / scaleFactor, imgHeight - sourceY);
+      const drawH = sourceH * scaleFactor;
+
+      const sliceCanvas = document.createElement("canvas");
+      sliceCanvas.width = imgWidth;
+      sliceCanvas.height = sourceH;
+      const ctx = sliceCanvas.getContext("2d");
+      ctx.drawImage(canvas, 0, sourceY, imgWidth, sourceH, 0, 0, imgWidth, sourceH);
+
+      const sliceData = sliceCanvas.toDataURL("image/jpeg", 0.92);
+      pdf.addImage(sliceData, "JPEG", pdfPadding, pdfPadding, contentWidth, drawH);
+
+      yOffset += contentPageHeight;
+      pageNum++;
+    }
+
+    const vehicleLabel = state.activeAssetLookup.vehicle?.assetNumber || "snapshot";
+    const filename = `tge-asset-snapshot-${vehicleLabel}.pdf`;
+
+    const pdfBlob = pdf.output("blob");
+    const objectUrl = URL.createObjectURL(pdfBlob);
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(objectUrl);
+
+    const vehicle = state.activeAssetLookup.vehicle || {};
+    const subject = encodeURIComponent(`TGE Asset Snapshot - ${vehicle.assetNumber || "Asset"}`);
+    const body = encodeURIComponent(
+      [
+        `Asset: ${safeText(vehicle.assetNumber, "N/A")}`,
+        `Registration: ${safeText(vehicle.registration, "N/A")}`,
+        `Vehicle ID: ${safeText(vehicle.vehicleId, "N/A")}`,
+        `Requested At: ${formatDisplayDate(state.activeAssetLookup.requestedAt)}`,
+        "",
+        `Please find the attached PDF snapshot: ${filename}`,
+      ].join("\n"),
+    );
+
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+
+    showAssetSearchMessage(`PDF "${filename}" downloaded. Attach it to the email that just opened.`, false);
+    writeDebug("Email PDF completed", `${pageNum} page(s) generated, PDF downloaded as ${filename}.`);
+  } catch (error) {
+    showAssetSearchMessage(error.message || "Email PDF failed.");
+    writeDebug("Email PDF failed", error.message);
+  }
 }
 
 if (el.loginForm) {
