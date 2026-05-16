@@ -1087,7 +1087,8 @@ function setVpmTabButtonState(button, active) {
 function showVpmPanel(mode) {
   state.activeVpmMode = mode;
   setVisible(el.vpmUserInputPanel, mode === "user-input", "block");
-  setVisible(el.vpmFleetPanel, mode === "fleet", "block");
+  setVisible(el.runVpmUserInputButton, mode === "user-input", "inline-block");
+  setVisible(el.runVpmFleetButton, mode === "fleet", "inline-block");
   setVpmTabButtonState(el.vpmUserInputTab, mode === "user-input");
   setVpmTabButtonState(el.vpmFleetEvaluationTab, mode === "fleet");
 }
