@@ -60,10 +60,8 @@ const el = {
   vpmUserInputPanel: document.getElementById("vpm-user-input-panel"),
   vpmFleetPanel: document.getElementById("vpm-fleet-panel"),
   vpmImeiInput: document.getElementById("vpm-imei-input"),
-  runVpmUserInputButton: document.getElementById("run-vpm-user-input-btn"),
-  cancelVpmRunButton: document.getElementById("cancel-vpm-run-btn"),
-  runVpmFleetButton: document.getElementById("run-vpm-fleet-btn"),
-  cancelVpmFleetButton: document.getElementById("cancel-vpm-fleet-btn"),
+  runVpmButton: document.getElementById("run-vpm-btn"),
+  cancelVpmButton: document.getElementById("cancel-vpm-btn"),
   vpmExportButton: document.getElementById("vpm-export-btn"),
   vpmSummary: document.getElementById("vpm-summary"),
   vpmResultsHead: document.getElementById("vpm-results-head"),
@@ -1087,8 +1085,6 @@ function setVpmTabButtonState(button, active) {
 function showVpmPanel(mode) {
   state.activeVpmMode = mode;
   setVisible(el.vpmUserInputPanel, mode === "user-input", "block");
-  setVisible(el.runVpmUserInputButton, mode === "user-input", "inline-block");
-  setVisible(el.runVpmFleetButton, mode === "fleet", "inline-block");
   setVpmTabButtonState(el.vpmUserInputTab, mode === "user-input");
   setVpmTabButtonState(el.vpmFleetEvaluationTab, mode === "fleet");
 }
@@ -1188,12 +1184,9 @@ function mapVpmApiResponse(response, mode) {
 }
 
 function setVpmRunning(mode, isRunning) {
-  const isUserMode = mode === "user-input";
-  if (el.runVpmUserInputButton) el.runVpmUserInputButton.disabled = isRunning;
-  if (el.runVpmFleetButton) el.runVpmFleetButton.disabled = isRunning;
+  if (el.runVpmButton) el.runVpmButton.disabled = isRunning;
   if (el.vpmExportButton) el.vpmExportButton.disabled = isRunning;
-  setVisible(el.cancelVpmRunButton, isRunning && isUserMode);
-  setVisible(el.cancelVpmFleetButton, isRunning && !isUserMode);
+  setVisible(el.cancelVpmButton, isRunning);
 }
 
 async function runVpmAnalysis(mode) {
@@ -1595,27 +1588,15 @@ if (el.vpmFleetEvaluationTab) {
   });
 }
 
-if (el.runVpmUserInputButton) {
-  el.runVpmUserInputButton.addEventListener("click", () => {
-    runVpmAnalysis("user-input");
+if (el.runVpmButton) {
+  el.runVpmButton.addEventListener("click", () => {
+    runVpmAnalysis(state.activeVpmMode);
   });
 }
 
-if (el.runVpmFleetButton) {
-  el.runVpmFleetButton.addEventListener("click", () => {
-    runVpmAnalysis("fleet");
-  });
-}
-
-if (el.cancelVpmRunButton) {
-  el.cancelVpmRunButton.addEventListener("click", () => {
-    cancelVpmAnalysis("user-input");
-  });
-}
-
-if (el.cancelVpmFleetButton) {
-  el.cancelVpmFleetButton.addEventListener("click", () => {
-    cancelVpmAnalysis("fleet");
+if (el.cancelVpmButton) {
+  el.cancelVpmButton.addEventListener("click", () => {
+    cancelVpmAnalysis(state.activeVpmMode);
   });
 }
 
