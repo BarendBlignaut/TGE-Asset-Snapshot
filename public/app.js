@@ -31,6 +31,10 @@ const el = {
   debugWindow: document.getElementById("debug-window"),
   debugWindowHandle: document.getElementById("debug-window-handle"),
   debugCloseButton: document.getElementById("debug-close-btn"),
+  debugWindowPanelTitle: document.getElementById("debug-window-panel-title"),
+  debugWindowPanelSubcopy: document.getElementById("debug-window-panel-subcopy"),
+  debugWindowEventTitle: document.getElementById("debug-window-event-title"),
+  debugWindowEventOutput: document.getElementById("debug-window-event-output"),
   debugOutput: document.getElementById("debug-output"),
   adminTab: document.getElementById("admin-tab"),
   vpmTab: document.getElementById("vpm-tab"),
@@ -259,6 +263,26 @@ function renderDebug() {
 
   if (el.heroDebugOutput) {
     el.heroDebugOutput.textContent = isAdmin
+      ? debugContent
+      : "Sign in with an admin account to inspect live debug output.";
+  }
+
+  if (el.debugWindowPanelTitle) {
+    el.debugWindowPanelTitle.textContent = isAdmin ? "Live Admin Inspector" : "Admin debug only";
+  }
+
+  if (el.debugWindowPanelSubcopy) {
+    el.debugWindowPanelSubcopy.textContent = isAdmin
+      ? "Open the debug panel to inspect the latest request payloads and lookup results."
+      : "Debug output is available only for admin sessions.";
+  }
+
+  if (el.debugWindowEventTitle) {
+    el.debugWindowEventTitle.textContent = isAdmin ? heroDebugTitle : "Admin debug only";
+  }
+
+  if (el.debugWindowEventOutput) {
+    el.debugWindowEventOutput.textContent = isAdmin
       ? debugContent
       : "Sign in with an admin account to inspect live debug output.";
   }
