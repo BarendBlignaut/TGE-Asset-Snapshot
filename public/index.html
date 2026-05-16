@@ -183,11 +183,16 @@
       min-height: 40px;
       border-radius: 999px;
       padding: 0 16px;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      background: rgba(255, 255, 255, 0.12);
-      color: var(--tge-yellow);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
       cursor: pointer;
       font-weight: 700;
+      transition: background 160ms ease;
+    }
+
+    .header-tab:hover {
+      background: rgba(255, 255, 255, 0.28);
     }
 
     .version-ref {
@@ -294,10 +299,15 @@
 
     .lookup {
       margin-top: 22px;
-      display: grid;
-      grid-template-columns: minmax(280px, 1fr) auto auto auto;
+      display: flex;
+      flex-wrap: wrap;
       gap: 12px;
       align-items: end;
+    }
+
+    .lookup .field {
+      width: 200px;
+      flex-shrink: 0;
     }
 
     .field label {
@@ -347,9 +357,16 @@
     }
 
     .secondary-btn {
-      border: 1px solid var(--line);
+      border: 1px solid var(--tge-green);
       background: #fff;
-      color: var(--ink);
+      color: var(--tge-green-dark);
+      transition: transform 160ms ease, background 160ms ease, color 160ms ease;
+    }
+
+    .secondary-btn:hover {
+      background: var(--tge-green-soft);
+      color: var(--tge-green-dark);
+      transform: translateY(-1px);
     }
 
     .message {
@@ -969,7 +986,6 @@
         padding: 18px 14px 40px;
       }
 
-      .lookup,
       .hero-grid,
       .meta-grid,
       .metrics-grid,
