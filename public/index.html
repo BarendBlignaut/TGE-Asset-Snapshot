@@ -189,16 +189,16 @@
       min-height: 40px;
       border-radius: 999px;
       padding: 0 16px;
-      border: 1px solid rgba(255, 255, 255, 0.35);
-      background: rgba(255, 255, 255, 0.15);
-      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.12);
+      color: var(--tge-yellow);
       cursor: pointer;
       font-weight: 700;
       transition: background 160ms ease;
     }
 
     .header-tab:hover {
-      background: rgba(255, 255, 255, 0.28);
+      background: rgba(255, 255, 255, 0.25);
     }
 
     .version-ref {
@@ -349,30 +349,19 @@
       white-space: nowrap;
     }
 
-    .action-btn {
+    .action-btn,
+    .secondary-btn {
       border: 0;
-      background: var(--tge-green);
-      color: #fff;
+      background: var(--tge-green-dark);
+      color: var(--tge-yellow);
       box-shadow: 0 12px 28px rgba(0, 166, 81, 0.22);
       transition: transform 160ms ease, background 160ms ease;
     }
 
-    .action-btn:hover {
-      transform: translateY(-1px);
-      background: var(--tge-green-dark);
-    }
-
-    .secondary-btn {
-      border: 1px solid var(--tge-green);
-      background: #fff;
-      color: var(--tge-green-dark);
-      transition: transform 160ms ease, background 160ms ease, color 160ms ease;
-    }
-
+    .action-btn:hover,
     .secondary-btn:hover {
-      background: var(--tge-green-soft);
-      color: var(--tge-green-dark);
       transform: translateY(-1px);
+      background: #005a2b;
     }
 
     .message {
