@@ -204,6 +204,13 @@ function formatMaxTwoDecimals(value) {
   return Number(numericValue.toFixed(2));
 }
 
+function clampNegative(value) {
+  if (value === null || value === undefined) return null;
+  const num = Number(value);
+  if (Number.isNaN(num)) return null;
+  return num < 0 ? 0 : num;
+}
+
 function formatBytesToGb(bytesValue) {
   const numericValue = Number(bytesValue);
   if (Number.isNaN(numericValue) || numericValue <= 0) return null;
@@ -598,16 +605,21 @@ function extractHermesStats(device) {
           at: deviceStats.gps.At ?? null,
         }
       : null,
+    lastGpsAt: attrs.last_gps_at || deviceStats.gpsAt || null,
     performance: lastVpm
       ? {
-          speed: lastVpm.speed ?? null,
-          rpm: lastVpm.rpm ?? null,
-          oilTemperature: lastVpm.oiltemp ?? null,
-          oilPressure: lastVpm.oilpressure ?? null,
-          engineLoad: lastVpm.engineload ?? null,
-          gear: lastVpm.gear ?? null,
-          fuelLevel: lastVpm.fuellevel ?? null,
-          fuelConsumption: lastVpm.fuelconsumption ?? null,
+          speed: clampNegative(lastVpm.speed),
+          rpm: clampNegative(lastVpm.rpm),
+          oilTemperature: clampNegative(lastVpm.oiltemp),
+          oilPressure: clampNegative(lastVpm.oilpressure),
+          engineLoad: clampNegative(lastVpm.engineload),
+          gear: clampNegative(lastVpm.gear),
+          fuelLevel: clampNegative(lastVpm.fuellevel),
+          fuelConsumption: clampNegative(lastVpm.fuelconsumption),
+          odometer: clampNegative(lastVpm.odometer),
+          hours: clampNegative(lastVpm.hours),
+          mil: lastVpm.mil ?? null,
+          charge: clampNegative(lastVpm.charge),
         }
       : null,
     gpio: lastGpio || null,
@@ -785,6 +797,7 @@ function renderVehicleDetails(lookup) {
   setText("view-vin", vehicle.vin);
   setText("view-make", vehicle.make);
   setText("view-model", vehicle.model);
+  setText("view-system-id", vehicle.vehicleId);
   setText("view-year", vehicle.yearOfManufacture);
   setText("view-driver", hermesStats.driverName || "No driver");
 
@@ -833,8 +846,8 @@ function renderPerformanceDetails(lookup) {
       value: formatMetric(performance.fuelConsumption, " L/100km") || "N/A",
     },
     {
-      label: "Snapshot Time",
-      value: formatDisplayDate(lookup.cameraSnapshot?.snapshotTime),
+      label: "Last GPS Time",
+      value: formatDisplayDate(lookup.hermesStats?.lastGpsAt),
     },
   ];
 
@@ -942,6 +955,7 @@ function resetRenderedAsset() {
     "view-vin",
     "view-make",
     "view-model",
+    "view-system-id",
     "view-year",
     "view-driver",
     "view-tracker-imei",
@@ -1346,7 +1360,7 @@ async function handleAssetSearch(assetNumber) {
   const [devicesResponse, metersResponse, snapshotEvents] = await Promise.all([
     apiPost("/api/vehicle-devices", { vehicleId: vehicle.id }, "Device lookup failed."),
     apiPost("/api/vehicle-meters", { vehicleId: vehicle.id }, "Meters lookup failed."),
-    apiPost("/api/camera-snapshots", { vehicleId: vehicle.id }, "Camera snapshot lookup failed."),
+    apiPost("/api/camera-snapshots", { vehicleId: vehicle.id }, "Camera snapshot lookup failed.").catch(() => []),
   ]);
 
   const devices = mapVehicleDevices(devicesResponse);
