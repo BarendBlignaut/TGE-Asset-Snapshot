@@ -574,8 +574,8 @@
 
     .debug-window-body pre {
       margin: 0;
-      min-width: max-content;
-      white-space: pre;
+      white-space: pre-wrap;
+      word-break: break-word;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 0.8rem;
       line-height: 1.55;
@@ -628,6 +628,8 @@
     .debug-log-panel pre {
       margin: 0;
       white-space: pre-wrap;
+      max-height: 400px;
+      overflow: auto;
       word-break: break-word;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 0.78rem;

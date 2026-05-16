@@ -3,7 +3,8 @@ const state = {
   activeAssetLookup: null,
   approvedUsers: [],
   accessHistory: [],
-  lastDebugEntries: ["No debug entries."],
+  debugLog: [],
+  lastDebugLabel: "No debug entries.",
   debugWindowOpen: false,
   activeVpmMode: "user-input",
   vpmResults: {
@@ -212,13 +213,15 @@ function formatBytesToGb(bytesValue) {
 }
 
 function writeDebug(label, data) {
-  const output = [label];
+  const timestamp = new Date().toLocaleTimeString("en-AU", { hour12: false });
+  const detail = data !== undefined
+    ? (typeof data === "string" ? data : JSON.stringify(data, null, 2))
+    : "";
 
-  if (data !== undefined) {
-    output.push(typeof data === "string" ? data : JSON.stringify(data, null, 2));
-  }
-
-  state.lastDebugEntries = output;
+  const entry = `[${timestamp}] ${label}${detail ? "\n" + detail : ""}`;
+  state.debugLog.push(entry);
+  if (state.debugLog.length > 200) state.debugLog.shift();
+  state.lastDebugLabel = label;
   renderDebug();
 }
 
@@ -238,33 +241,13 @@ function setDebugWindowOpen(shouldOpen) {
 
 function renderDebug() {
   const isAdmin = isAdminUser();
-  const debugContent = state.lastDebugEntries.join("\n\n");
-  const heroDebugTitle = state.lastDebugEntries[0] || "No debug entries.";
+  const fullLog = state.debugLog.join("\n\n");
+  const latestLabel = state.lastDebugLabel || "No debug entries.";
 
   setVisible(el.debugToggleWrap, isAdmin, "inline-flex");
 
   if (!isAdmin) {
     setDebugWindowOpen(false);
-  }
-
-  if (el.heroDebugPanel) {
-    el.heroDebugPanel.style.opacity = isAdmin ? "1" : "0.72";
-  }
-
-  if (el.heroDebugTitle) {
-    el.heroDebugTitle.textContent = isAdmin ? heroDebugTitle : "Admin debug only";
-  }
-
-  if (el.heroDebugSubcopy) {
-    el.heroDebugSubcopy.textContent = isAdmin
-      ? "Open the debug panel to inspect the latest request payloads and lookup results."
-      : "Debug output is available only for admin sessions.";
-  }
-
-  if (el.heroDebugOutput) {
-    el.heroDebugOutput.textContent = isAdmin
-      ? debugContent
-      : "Sign in with an admin account to inspect live debug output.";
   }
 
   if (el.debugWindowPanelTitle) {
@@ -273,22 +256,26 @@ function renderDebug() {
 
   if (el.debugWindowPanelSubcopy) {
     el.debugWindowPanelSubcopy.textContent = isAdmin
-      ? "Open the debug panel to inspect the latest request payloads and lookup results."
+      ? `${state.debugLog.length} events logged this session.`
       : "Debug output is available only for admin sessions.";
   }
 
   if (el.debugWindowEventTitle) {
-    el.debugWindowEventTitle.textContent = isAdmin ? heroDebugTitle : "Admin debug only";
+    el.debugWindowEventTitle.textContent = isAdmin ? latestLabel : "Admin debug only";
   }
 
   if (el.debugWindowEventOutput) {
     el.debugWindowEventOutput.textContent = isAdmin
-      ? debugContent
+      ? fullLog || "No debug entries."
       : "Sign in with an admin account to inspect live debug output.";
+
+    if (isAdmin) {
+      el.debugWindowEventOutput.scrollTop = el.debugWindowEventOutput.scrollHeight;
+    }
   }
 
   if (el.debugOutput) {
-    el.debugOutput.textContent = debugContent;
+    el.debugOutput.textContent = fullLog;
   }
 }
 
