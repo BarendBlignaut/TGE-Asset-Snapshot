@@ -173,6 +173,7 @@ function clearAssetSearchMessage() {
 function setImage(imageId, emptyId, url) {
   const image = getNode(imageId);
   const empty = getNode(emptyId);
+  const status = getNode(imageId + "-status");
 
   if (!image || !empty) return;
 
@@ -180,12 +181,15 @@ function setImage(imageId, emptyId, url) {
     image.src = url;
     image.style.display = "block";
     empty.style.display = "none";
+    if (status) status.textContent = "";
     return;
   }
 
   image.removeAttribute("src");
   image.style.display = "none";
+  empty.textContent = "No image available";
   empty.style.display = "block";
+  if (status) status.textContent = "No image to preview";
 }
 
 function safeParseJson(value) {
@@ -714,9 +718,9 @@ function mapSnapshotLinksToSlots(snapshotData) {
   const slotRules = [
     { slot: "roadFacing", matches: ["ROAD_FACING", "ROAD", "FRONT", "FORWARD"] },
     { slot: "driverFacing", matches: ["DRIVER_FACING", "DRIVER", "CABIN"] },
-    { slot: "inCabDriverFacingCamera", matches: ["IN_CAB", "IN_CAB_DRIVER", "INCAB", "TVI2"] },
-    { slot: "driverExternal", matches: ["DRIVER_EXTERNAL", "RIGHT_EXTERNAL", "SIDE_RIGHT", "TVI1"] },
-    { slot: "leftExternal", matches: ["LEFT_EXTERNAL", "LEFT", "SIDE_LEFT", "UVC"] },
+    { slot: "inCabDriverFacingCamera", matches: ["IN_CAB", "IN_CAB_DRIVER", "INCAB", "UVC"] },
+    { slot: "driverExternal", matches: ["DRIVER_EXTERNAL", "RIGHT_EXTERNAL", "SIDE_RIGHT", "TVI2"] },
+    { slot: "leftExternal", matches: ["LEFT_EXTERNAL", "LEFT", "SIDE_LEFT", "TVI1"] },
   ];
   const remainingLinks = [];
 
@@ -824,6 +828,20 @@ function renderMetrics(lookup) {
   setText("view-oil-pressure", formatMetric(performance.oilPressure));
   setText("view-location", hermesStats.location, "");
   setText("view-ignition-status", ignitionText || safeText(hermesStats.ignition, ""), "");
+
+  const gps = hermesStats.gps || {};
+  const lat = gps.latitude;
+  const lng = gps.longitude;
+  setText("view-latitude", lat != null ? String(lat) : "N/A");
+  setText("view-longitude", lng != null ? String(lng) : "N/A");
+  setText("view-gps-time", formatDisplayDate(hermesStats.lastGpsAt) || "N/A");
+
+  const mapIframe = getNode("view-map-iframe");
+  if (mapIframe && lat != null && lng != null) {
+    const offset = 0.01;
+    const bbox = `${lng - offset}%2C${lat - offset}%2C${lng + offset}%2C${lat + offset}`;
+    mapIframe.src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
+  }
 }
 
 function renderPerformanceDetails(lookup) {
@@ -971,6 +989,9 @@ function resetRenderedAsset() {
     "view-oil-temp",
     "view-oil-pressure",
     "view-location",
+    "view-latitude",
+    "view-longitude",
+    "view-gps-time",
     "view-ignition-status",
     "view-sd-overall",
     "view-sd1",
@@ -1461,23 +1482,14 @@ async function handleExportPdf() {
   }
 }
 
-async function handleRefreshAsset() {
-  const assetNumber = safeText(getNode("asset-number")?.value).trim()
-    || safeText(state.activeAssetLookup?.requestedAssetNumber).trim();
-
-  if (!assetNumber) {
-    showAssetSearchMessage("Enter or load an asset before refreshing.");
-    return;
-  }
-
-  writeDebug("Asset refresh submitted", { assetNumber });
-
-  try {
-    await handleAssetSearch(assetNumber);
-    showAssetSearchMessage("Asset refreshed.", false);
-  } catch (error) {
-    handleAssetSearchError(assetNumber, error);
-  }
+function handleRefreshAsset() {
+  state.activeAssetLookup = null;
+  const assetInput = getNode("asset-number");
+  if (assetInput) assetInput.value = "";
+  clearAssetSearchMessage();
+  resetRenderedAsset();
+  setVisible(el.assetShell, false);
+  writeDebug("Page refreshed", "Ready for new search.");
 }
 
 function handleEmailPdf() {
@@ -1759,6 +1771,87 @@ if (el.logoutButton) {
     writeDebug("Logged out", {});
   });
 }
+
+const cameraSlotNames = ["Road Facing", "Driver Facing", "In-Cab Driver", "Driver External", "Left External"];
+const cameraSlotIds = ["img-road-facing", "img-driver-facing", "img-in-cab", "img-driver-external", "img-left-external"];
+let lightboxIndex = 0;
+
+function getLightboxImages() {
+  return cameraSlotIds
+    .map((id, index) => {
+      const img = getNode(id);
+      return img && img.src && img.style.display !== "none" ? { src: img.src, label: cameraSlotNames[index], index } : null;
+    })
+    .filter(Boolean);
+}
+
+function openLightbox(startIndex) {
+  const images = getLightboxImages();
+  if (!images.length) return;
+
+  const match = images.findIndex((item) => item.index === startIndex);
+  lightboxIndex = match >= 0 ? match : 0;
+
+  const overlay = getNode("lightbox-overlay");
+  if (overlay) overlay.style.display = "grid";
+  renderLightbox();
+}
+
+function renderLightbox() {
+  const images = getLightboxImages();
+  if (!images.length) return;
+
+  if (lightboxIndex < 0) lightboxIndex = images.length - 1;
+  if (lightboxIndex >= images.length) lightboxIndex = 0;
+
+  const current = images[lightboxIndex];
+  const img = getNode("lightbox-img");
+  const caption = getNode("lightbox-caption");
+  if (img) img.src = current.src;
+  if (caption) caption.textContent = `${current.label} (${lightboxIndex + 1} of ${images.length})`;
+}
+
+function closeLightbox() {
+  const overlay = getNode("lightbox-overlay");
+  if (overlay) overlay.style.display = "none";
+}
+
+document.querySelectorAll(".camera-card").forEach((card) => {
+  card.addEventListener("click", () => {
+    const slot = parseInt(card.getAttribute("data-camera-slot") || "0", 10);
+    openLightbox(slot);
+  });
+});
+
+const lightboxClose = getNode("lightbox-close");
+if (lightboxClose) lightboxClose.addEventListener("click", closeLightbox);
+
+const lightboxOverlay = getNode("lightbox-overlay");
+if (lightboxOverlay) lightboxOverlay.addEventListener("click", (e) => {
+  if (e.target === lightboxOverlay) closeLightbox();
+});
+
+const lightboxPrev = getNode("lightbox-prev");
+if (lightboxPrev) lightboxPrev.addEventListener("click", (e) => {
+  e.stopPropagation();
+  lightboxIndex--;
+  renderLightbox();
+});
+
+const lightboxNext = getNode("lightbox-next");
+if (lightboxNext) lightboxNext.addEventListener("click", (e) => {
+  e.stopPropagation();
+  lightboxIndex++;
+  renderLightbox();
+});
+
+document.addEventListener("keydown", (e) => {
+  const overlay = getNode("lightbox-overlay");
+  if (!overlay || overlay.style.display === "none") return;
+  if (e.key === "Escape") closeLightbox();
+  if (e.key === "ArrowLeft") { lightboxIndex--; renderLightbox(); }
+  if (e.key === "ArrowRight") { lightboxIndex++; renderLightbox(); }
+});
 
 initialiseUi();
 loadSession();
