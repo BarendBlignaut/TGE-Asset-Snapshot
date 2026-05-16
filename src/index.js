@@ -136,6 +136,12 @@ function normalizeValue(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const VPM_API_DELAY_MS = 500;
+
 const EXCLUDED_VPM_KEYS = new Set([
   "gear",
   "charge",
@@ -1049,6 +1055,8 @@ async function handleVpmUserInput(request, env) {
     }
 
     try {
+      if (rows.length > 0) await delay(VPM_API_DELAY_MS);
+
       const deviceUrl =
         `https://api-au.telematics.com/v1/devices/${encodeURIComponent(imei)}` +
         `?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
@@ -1164,6 +1172,8 @@ async function handleVpmFleetEvaluation(request, env) {
     if (!vehicle) continue;
 
     try {
+      if (rows.length > 0) await delay(VPM_API_DELAY_MS);
+
       const deviceUrl =
         `https://api-au.telematics.com/v1/devices/${encodeURIComponent(hermesDevice.imei)}` +
         `?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
