@@ -710,10 +710,6 @@
       word-break: break-word;
     }
 
-    .metric-item strong {
-      font-size: 1.35rem;
-      color: var(--tge-green-dark);
-    }
 
     .gps-grid {
       display: grid;
@@ -729,40 +725,49 @@
     }
 
     .device-card {
-      padding: 16px;
+      padding: 14px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: linear-gradient(180deg, #fff 0%, #fbfdfc 100%);
     }
 
     .device-card h4 {
-      margin: 0 0 10px;
-      font-size: 0.95rem;
+      margin: 0 0 6px;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      font-weight: 700;
     }
 
     .device-card p {
       margin: 0 0 6px;
-      color: var(--muted);
       font-size: 0.88rem;
+      color: var(--ink);
       word-break: break-word;
     }
 
     .gps-card {
-      padding: 16px;
+      padding: 14px;
       border-radius: 8px;
-      border: 1px solid rgba(0, 122, 59, 0.22);
-      background: linear-gradient(180deg, #eefaf2 0%, #e4f6eb 100%);
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #fff 0%, #fbfdfc 100%);
     }
 
     .gps-card h4 {
-      margin: 0 0 8px;
-      font-size: 0.95rem;
+      margin: 0 0 6px;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      font-weight: 700;
     }
 
     .gps-card p {
-      margin: 0 0 8px;
-      color: var(--muted);
-      font-size: 0.9rem;
+      margin: 0 0 6px;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--ink);
     }
 
     .gps-tag {
@@ -1662,6 +1667,8 @@
     </div>
   </div>
 
- <script src="./app.js?v=6" defer></script>
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js" defer></script>
+ <script src="./app.js?v=7" defer></script>
 </body>
 </html>
