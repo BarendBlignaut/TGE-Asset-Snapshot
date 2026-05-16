@@ -58,6 +58,14 @@
       gap: 18px;
     }
 
+    .topbar-debug-row {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding-top: 12px;
+      display: flex;
+      justify-content: flex-start;
+    }
+
     .brand {
       display: flex;
       align-items: center;
@@ -105,10 +113,13 @@
 
     .debug-toggle-wrap {
       display: none;
-      width: 100%;
-      padding-left: 140px;
       align-items: center;
       gap: 12px;
+      width: fit-content;
+      padding: 8px 12px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.18);
     }
 
     .debug-toggle-wrap span {
@@ -370,6 +381,12 @@
       font-size: 1rem;
     }
 
+    .hero-panel p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
     .hero-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -394,6 +411,11 @@
 
     .mini-metric strong {
       font-size: 1rem;
+    }
+
+    .debug-preview {
+      display: grid;
+      gap: 12px;
     }
 
     .debug-panel {
@@ -534,6 +556,9 @@
       overflow: auto;
       padding: 16px;
       background: #fff;
+      display: grid;
+      gap: 16px;
+      align-content: start;
     }
 
     .debug-window-body pre {
@@ -544,6 +569,44 @@
       font-size: 0.8rem;
       line-height: 1.55;
       color: #4b3028;
+    }
+
+    .debug-snapshot {
+      display: grid;
+      gap: 14px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background:
+        linear-gradient(160deg, rgba(0, 166, 81, 0.08), rgba(0, 122, 59, 0.03)),
+        var(--surface-alt);
+    }
+
+    .debug-snapshot-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .debug-log-panel {
+      display: grid;
+      gap: 10px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    .debug-log-panel pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      color: #4b3028;
+      max-height: 220px;
+      overflow: auto;
     }
 
     .section {
@@ -881,8 +944,8 @@
         justify-content: flex-start;
       }
 
-      .debug-toggle-wrap {
-        padding-left: 0;
+      .topbar-debug-row {
+        padding-top: 10px;
       }
 
       .version-ref {
@@ -901,7 +964,8 @@
       .sd-grid,
       .camera-grid,
       .device-list,
-      .location-layout {
+      .location-layout,
+      .debug-snapshot-grid {
         grid-template-columns: 1fr;
       }
 
@@ -935,14 +999,6 @@
             <h1>TGE Asset Snapshot</h1>
             <p>Complete asset status, location, diagnostics and evidence snapshot</p>
           </div>
-          <label class="debug-toggle-wrap" id="debug-toggle-wrap">
-            <span>Debug</span>
-            <span class="debug-switch">
-              <input id="debug-toggle" type="checkbox" />
-              <span class="debug-switch-track"></span>
-              <span class="debug-switch-thumb"></span>
-            </span>
-          </label>
         </div>
 
         <div class="header-actions" id="header-actions" style="display: none;">
@@ -951,7 +1007,17 @@
           <button class="header-tab" id="vpm-tab" type="button" style="display: none;">VPM</button>
         </div>
 
-        <div class="version-ref">v1.6</div>
+        <div class="version-ref">v1.4</div>
+      </div>
+      <div class="topbar-debug-row">
+        <label class="debug-toggle-wrap" id="debug-toggle-wrap">
+          <span>Debug</span>
+          <span class="debug-switch">
+            <input id="debug-toggle" type="checkbox" />
+            <span class="debug-switch-track"></span>
+            <span class="debug-switch-thumb"></span>
+          </span>
+        </label>
       </div>
     </header>
 
@@ -1014,35 +1080,23 @@
             <p class="message" id="asset-search-message"></p>
           </div>
 
-          <aside class="hero-panel">
+          <aside class="hero-panel" id="hero-debug-panel">
             <div>
-              <div class="section-kicker">Current Snapshot</div>
-              <h3 id="hero-current-asset">No asset loaded</h3>
+              <div class="section-kicker">Debug</div>
+              <h3>Live Admin Inspector</h3>
+              <p id="hero-debug-subcopy">Open the debug panel to inspect the latest request payloads and lookup results.</p>
             </div>
 
-            <div class="hero-grid">
+            <div class="debug-preview">
               <div class="mini-metric">
-                <span>Request Time</span>
-                <strong id="hero-request-time">--</strong>
+                <span>Last Event</span>
+                <strong id="hero-debug-title">No debug entries.</strong>
               </div>
-              <div class="mini-metric">
-                <span>Lookup Status</span>
-                <strong id="hero-lookup-status">Awaiting search</strong>
-              </div>
-              <div class="mini-metric">
-                <span>Fleet Number</span>
-                <strong id="hero-fleet-number">--</strong>
-              </div>
-              <div class="mini-metric">
-                <span>Vehicle ID</span>
-                <strong id="hero-vehicle-id">--</strong>
-              </div>
-              <div class="mini-metric">
-                <span>Render Time</span>
-                <strong id="hero-render-time">--</strong>
+              <div class="debug-log-panel">
+                <span>Latest Output</span>
+                <pre id="hero-debug-output">No debug entries.</pre>
               </div>
             </div>
-
           </aside>
         </section>
 
@@ -1460,14 +1514,47 @@
     <div class="debug-window-header" id="debug-window-handle">
       <div class="debug-window-title">
         <strong>Debug</strong>
-        <span>Live admin inspector</span>
+        <span>Live admin inspector and current snapshot</span>
       </div>
       <div class="debug-window-actions">
         <button class="debug-close-btn" id="debug-close-btn" type="button">X</button>
       </div>
     </div>
     <div class="debug-window-body">
-      <pre id="debug-output">No debug entries.</pre>
+      <section class="debug-snapshot">
+        <div>
+          <div class="section-kicker">Current Snapshot</div>
+          <h3 id="hero-current-asset">No asset loaded</h3>
+        </div>
+
+        <div class="debug-snapshot-grid">
+          <div class="mini-metric">
+            <span>Request Time</span>
+            <strong id="hero-request-time">--</strong>
+          </div>
+          <div class="mini-metric">
+            <span>Lookup Status</span>
+            <strong id="hero-lookup-status">Awaiting search</strong>
+          </div>
+          <div class="mini-metric">
+            <span>Fleet Number</span>
+            <strong id="hero-fleet-number">--</strong>
+          </div>
+          <div class="mini-metric">
+            <span>Vehicle ID</span>
+            <strong id="hero-vehicle-id">--</strong>
+          </div>
+          <div class="mini-metric">
+            <span>Render Time</span>
+            <strong id="hero-render-time">--</strong>
+          </div>
+        </div>
+      </section>
+
+      <div class="debug-log-panel">
+        <span>Latest Output</span>
+        <pre id="debug-output">No debug entries.</pre>
+      </div>
     </div>
   </aside>
 
