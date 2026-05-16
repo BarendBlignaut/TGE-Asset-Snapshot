@@ -42,9 +42,10 @@
     }
 
     .topbar {
+      position: relative;
       background: linear-gradient(90deg, #0d5f3a 0%, var(--tge-green-dark) 45%, var(--tge-green) 100%);
       color: #fff;
-      padding: 16px 24px;
+      padding: 16px 24px 38px;
       border-bottom: 4px solid rgba(255, 255, 255, 0.18);
       box-shadow: 0 10px 30px rgba(0, 90, 45, 0.18);
     }
@@ -59,11 +60,12 @@
     }
 
     .topbar-debug-row {
-      max-width: 1320px;
-      margin: 0 auto;
-      padding-top: 12px;
+      position: absolute;
+      left: 24px;
+      bottom: 12px;
       display: flex;
       justify-content: flex-start;
+      z-index: 2;
     }
 
     .brand {
@@ -393,14 +395,16 @@
       gap: 12px;
     }
 
-    .mini-metric {
+    .mini-metric,
+    .debug-panel {
       background: #fff;
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 12px;
     }
 
-    .mini-metric span {
+    .mini-metric span,
+    .debug-panel span {
       display: block;
       color: var(--muted);
       font-size: 0.75rem;
@@ -414,6 +418,19 @@
     .debug-preview {
       display: grid;
       gap: 12px;
+    }
+
+    .debug-panel {
+      display: none;
+    }
+
+    .debug-panel pre {
+      margin: 8px 0 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.78rem;
+      color: #5d3028;
     }
 
     .stack {
@@ -554,6 +571,23 @@
       font-size: 0.8rem;
       line-height: 1.55;
       color: #4b3028;
+    }
+
+    .debug-window-panel {
+      display: grid;
+      gap: 14px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background:
+        linear-gradient(160deg, rgba(0, 166, 81, 0.08), rgba(0, 122, 59, 0.03)),
+        var(--surface-alt);
+    }
+
+    .debug-window-panel p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
     }
 
     .debug-snapshot {
@@ -930,6 +964,7 @@
       }
 
       .topbar-debug-row {
+        position: static;
         padding-top: 10px;
       }
 
@@ -992,7 +1027,7 @@
           <button class="header-tab" id="vpm-tab" type="button" style="display: none;">VPM</button>
         </div>
 
-        <div class="version-ref">v1.6</div>
+        <div class="version-ref">v1.4</div>
       </div>
       <div class="topbar-debug-row">
         <label class="debug-toggle-wrap" id="debug-toggle-wrap">
@@ -1506,6 +1541,25 @@
       </div>
     </div>
     <div class="debug-window-body">
+      <section class="debug-window-panel">
+        <div>
+          <div class="section-kicker">Debug</div>
+          <h3 id="debug-window-panel-title">Live Admin Inspector</h3>
+          <p id="debug-window-panel-subcopy">Open the debug panel to inspect the latest request payloads and lookup results.</p>
+        </div>
+
+        <div class="debug-preview">
+          <div class="mini-metric">
+            <span>Last Event</span>
+            <strong id="debug-window-event-title">No debug entries.</strong>
+          </div>
+          <div class="debug-log-panel">
+            <span>Latest Output</span>
+            <pre id="debug-window-event-output">No debug entries.</pre>
+          </div>
+        </div>
+      </section>
+
       <section class="debug-snapshot">
         <div>
           <div class="section-kicker">Current Snapshot</div>
@@ -1536,13 +1590,10 @@
         </div>
       </section>
 
-      <div class="debug-log-panel">
-        <span>Latest Output</span>
-        <pre id="debug-output">No debug entries.</pre>
-      </div>
+      <pre id="debug-output" style="display:none;">No debug entries.</pre>
     </div>
   </aside>
 
- <script src="./app.js?v=4" defer></script>
+ <script src="./app.js?v=5" defer></script>
 </body>
 </html>
