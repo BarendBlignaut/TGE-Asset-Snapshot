@@ -1453,29 +1453,72 @@ async function handleExportPdf() {
     return;
   }
 
+  if (typeof html2canvas === "undefined" || typeof jspdf === "undefined") {
+    showAssetSearchMessage("PDF libraries are still loading. Please try again.");
+    return;
+  }
+
   try {
     showAssetSearchMessage("Generating PDF...", false);
-    const blob = await fetchBlob(
-      "/api/export-pdf",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ snapshot: state.activeAssetLookup }),
-      },
-      "PDF export failed.",
-    );
+    writeDebug("PDF export started", "Capturing snapshot...");
+
+    const assetShell = getNode("asset-shell");
+    if (!assetShell) {
+      showAssetSearchMessage("No asset content to export.");
+      return;
+    }
+
+    const canvas = await html2canvas(assetShell, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: "#f5f8f6",
+      logging: false,
+    });
+
+    const imgData = canvas.toDataURL("image/jpeg", 0.92);
+    const imgWidth = canvas.width;
+    const imgHeight = canvas.height;
+
+    const pdfWidth = 595.28;
+    const pdfPadding = 20;
+    const contentWidth = pdfWidth - (pdfPadding * 2);
+    const scaleFactor = contentWidth / imgWidth;
+    const scaledHeight = imgHeight * scaleFactor;
+    const pageHeight = 841.89;
+    const contentPageHeight = pageHeight - (pdfPadding * 2);
+
+    const { jsPDF } = jspdf;
+    const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+
+    let yOffset = 0;
+    let pageNum = 0;
+
+    while (yOffset < scaledHeight) {
+      if (pageNum > 0) pdf.addPage();
+
+      const sourceY = yOffset / scaleFactor;
+      const sourceH = Math.min(contentPageHeight / scaleFactor, imgHeight - sourceY);
+      const drawH = sourceH * scaleFactor;
+
+      const sliceCanvas = document.createElement("canvas");
+      sliceCanvas.width = imgWidth;
+      sliceCanvas.height = sourceH;
+      const ctx = sliceCanvas.getContext("2d");
+      ctx.drawImage(canvas, 0, sourceY, imgWidth, sourceH, 0, 0, imgWidth, sourceH);
+
+      const sliceData = sliceCanvas.toDataURL("image/jpeg", 0.92);
+      pdf.addImage(sliceData, "JPEG", pdfPadding, pdfPadding, contentWidth, drawH);
+
+      yOffset += contentPageHeight;
+      pageNum++;
+    }
 
     const vehicleLabel = state.activeAssetLookup.vehicle?.assetNumber || "snapshot";
-    const objectUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = objectUrl;
-    anchor.download = `tge-asset-snapshot-${vehicleLabel}.pdf`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(objectUrl);
+    pdf.save(`tge-asset-snapshot-${vehicleLabel}.pdf`);
 
     showAssetSearchMessage("PDF exported successfully.", false);
+    writeDebug("PDF export completed", `${pageNum} page(s) generated.`);
   } catch (error) {
     showAssetSearchMessage(error.message || "PDF export failed.");
     writeDebug("PDF export failed", error.message);
