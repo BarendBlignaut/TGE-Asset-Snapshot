@@ -140,7 +140,9 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const VPM_API_DELAY_MS = 500;
+const VPM_BATCH_SIZE = 40;
+const VPM_BATCH_COOLDOWN_MS = 60000;
+const VPM_CALL_DELAY_MS = 250;
 
 const EXCLUDED_VPM_KEYS = new Set([
   "gear",
@@ -1018,6 +1020,7 @@ async function handleVpmUserInput(request, env) {
 
   const rows = [];
   const discoveredKeys = new Set();
+  let apiCallCount = 0;
 
   for (const imei of cleanedImeis) {
     const hermesDevice = hermesDevices.find(
@@ -1025,18 +1028,7 @@ async function handleVpmUserInput(request, env) {
     );
 
     if (!hermesDevice) {
-      rows.push({
-        fleetNumber: "N/A",
-        registration: "N/A",
-        make: "N/A",
-        model: "N/A",
-        yearOfManufacture: "N/A",
-        vehicleId: "N/A",
-        hermesImei: imei,
-        status: "No HERMES Match",
-        errorMessage: "No active HERMES device matched the supplied IMEI.",
-        vpm: {},
-      });
+      rows.push(buildEmptyVpmRow(imei, "No HERMES Match", "No active HERMES device matched the supplied IMEI."));
       continue;
     }
 
@@ -1055,19 +1047,25 @@ async function handleVpmUserInput(request, env) {
     }
 
     try {
-      if (rows.length > 0) await delay(VPM_API_DELAY_MS);
+      if (apiCallCount > 0 && apiCallCount % VPM_BATCH_SIZE === 0) {
+        await delay(VPM_BATCH_COOLDOWN_MS);
+      } else if (apiCallCount > 0) {
+        await delay(VPM_CALL_DELAY_MS);
+      }
 
       const deviceUrl =
         `https://api-au.telematics.com/v1/devices/${encodeURIComponent(imei)}` +
         `?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
 
       const fullDevice = await fetchJsonFromTn360(deviceUrl);
+      apiCallCount++;
       const lastVpmRaw = fullDevice?.deviceStats?.lastVpm || null;
       const row = buildVpmRow(vehicle, hermesDevice, lastVpmRaw, "Matched", "");
 
       Object.keys(row.vpm).forEach((key) => discoveredKeys.add(key));
       rows.push(row);
     } catch (error) {
+      apiCallCount++;
       rows.push({
         ...buildVehicleIdentity(vehicle, hermesDevice),
         status: "API Failed",
@@ -1164,6 +1162,7 @@ async function handleVpmFleetEvaluation(request, env) {
 
   const rows = [];
   const discoveredKeys = new Set();
+  let apiCallCount = 0;
 
   for (const hermesDevice of hermesDevices) {
     const vehicle = activeVehicles.find(
@@ -1172,19 +1171,25 @@ async function handleVpmFleetEvaluation(request, env) {
     if (!vehicle) continue;
 
     try {
-      if (rows.length > 0) await delay(VPM_API_DELAY_MS);
+      if (apiCallCount > 0 && apiCallCount % VPM_BATCH_SIZE === 0) {
+        await delay(VPM_BATCH_COOLDOWN_MS);
+      } else if (apiCallCount > 0) {
+        await delay(VPM_CALL_DELAY_MS);
+      }
 
       const deviceUrl =
         `https://api-au.telematics.com/v1/devices/${encodeURIComponent(hermesDevice.imei)}` +
         `?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
 
       const fullDevice = await fetchJsonFromTn360(deviceUrl);
+      apiCallCount++;
       const lastVpmRaw = fullDevice?.deviceStats?.lastVpm || null;
       const row = buildVpmRow(vehicle, hermesDevice, lastVpmRaw, "Matched", "");
 
       Object.keys(row.vpm).forEach((key) => discoveredKeys.add(key));
       rows.push(row);
     } catch (error) {
+      apiCallCount++;
       rows.push({
         ...buildVehicleIdentity(vehicle, hermesDevice),
         status: "API Failed",
