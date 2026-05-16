@@ -929,6 +929,78 @@
       background: var(--surface-alt);
     }
 
+    .lightbox-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(0, 0, 0, 0.85);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .lightbox-content {
+      position: relative;
+      width: 70vw;
+      max-height: 80vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .lightbox-img {
+      max-width: 100%;
+      max-height: 80vh;
+      object-fit: contain;
+      border-radius: 8px;
+    }
+
+    .lightbox-close {
+      position: absolute;
+      top: -40px;
+      right: 0;
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 2rem;
+      cursor: pointer;
+    }
+
+    .lightbox-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(255, 255, 255, 0.15);
+      border: none;
+      color: #fff;
+      font-size: 2.5rem;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+    }
+
+    .lightbox-nav:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .lightbox-prev { left: -60px; }
+    .lightbox-next { right: -60px; }
+
+    .lightbox-caption {
+      position: absolute;
+      bottom: -36px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 0.9rem;
+    }
+
+    .camera-card { cursor: pointer; }
+
     @keyframes rise {
       from {
         opacity: 0;
@@ -1272,58 +1344,58 @@
                 </div>
 
                 <div class="camera-grid">
-                  <article class="camera-card">
+                  <article class="camera-card" data-camera-slot="0">
                     <div class="camera-frame">
                       <img id="img-road-facing" style="display:none;" alt="Road Facing" />
-                      <p class="camera-empty" id="img-road-facing-empty">No image</p>
+                      <p class="camera-empty" id="img-road-facing-empty">Awaiting search</p>
                     </div>
                     <div class="camera-meta">
                       <strong>Road Facing</strong>
-                      <span>Preview image area</span>
+                      <span id="img-road-facing-status"></span>
                     </div>
                   </article>
 
-                  <article class="camera-card">
+                  <article class="camera-card" data-camera-slot="1">
                     <div class="camera-frame">
                       <img id="img-driver-facing" style="display:none;" alt="Driver Facing" />
-                      <p class="camera-empty" id="img-driver-facing-empty">No image</p>
+                      <p class="camera-empty" id="img-driver-facing-empty">Awaiting search</p>
                     </div>
                     <div class="camera-meta">
                       <strong>Driver Facing</strong>
-                      <span>Preview image area</span>
+                      <span id="img-driver-facing-status"></span>
                     </div>
                   </article>
 
-                  <article class="camera-card">
+                  <article class="camera-card" data-camera-slot="2">
                     <div class="camera-frame">
                       <img id="img-in-cab" style="display:none;" alt="In-Cab Driver" />
-                      <p class="camera-empty" id="img-in-cab-empty">No image</p>
+                      <p class="camera-empty" id="img-in-cab-empty">Awaiting search</p>
                     </div>
                     <div class="camera-meta">
                       <strong>In-Cab Driver</strong>
-                      <span>Preview image area</span>
+                      <span id="img-in-cab-status"></span>
                     </div>
                   </article>
 
-                  <article class="camera-card">
+                  <article class="camera-card" data-camera-slot="3">
                     <div class="camera-frame">
                       <img id="img-driver-external" style="display:none;" alt="Driver External" />
-                      <p class="camera-empty" id="img-driver-external-empty">No image</p>
+                      <p class="camera-empty" id="img-driver-external-empty">Awaiting search</p>
                     </div>
                     <div class="camera-meta">
                       <strong>Driver External</strong>
-                      <span>No image to preview</span>
+                      <span id="img-driver-external-status"></span>
                     </div>
                   </article>
 
-                  <article class="camera-card">
+                  <article class="camera-card" data-camera-slot="4">
                     <div class="camera-frame">
                       <img id="img-left-external" style="display:none;" alt="Left External" />
-                      <p class="camera-empty" id="img-left-external-empty">No image</p>
+                      <p class="camera-empty" id="img-left-external-empty">Awaiting search</p>
                     </div>
                     <div class="camera-meta">
                       <strong>Left External</strong>
-                      <span>No image to preview</span>
+                      <span id="img-left-external-status"></span>
                     </div>
                   </article>
                 </div>
@@ -1341,10 +1413,11 @@
                   <div class="map-panel">
                     <div class="map-badge">Last Location</div>
                     <iframe
+                      id="view-map-iframe"
                       title="Last known location map"
                       loading="lazy"
                       referrerpolicy="no-referrer-when-downgrade"
-                      src="https://www.openstreetmap.org/export/embed.html?bbox=151.44739%2C-33.09536%2C151.50739%2C-33.05536&layer=mapnik&marker=-33.07536%2C151.47739">
+                      src="">
                     </iframe>
                   </div>
 
@@ -1355,15 +1428,15 @@
                     </div>
                     <div class="location-card">
                       <span>Latitude</span>
-                      <strong>Pending live bind</strong>
+                      <strong id="view-latitude"></strong>
                     </div>
                     <div class="location-card">
                       <span>Longitude</span>
-                      <strong>Pending live bind</strong>
+                      <strong id="view-longitude"></strong>
                     </div>
                     <div class="location-card">
-                      <span>Map Source</span>
-                      <strong>Placeholder preview for final live map feed</strong>
+                      <span>Last GPS Time</span>
+                      <strong id="view-gps-time"></strong>
                     </div>
                   </div>
                 </div>
@@ -1579,6 +1652,16 @@
     </div>
   </aside>
 
- <script src="./app.js?v=5" defer></script>
+  <div class="lightbox-overlay" id="lightbox-overlay" style="display:none;">
+    <div class="lightbox-content">
+      <button class="lightbox-close" id="lightbox-close" type="button">✕</button>
+      <button class="lightbox-nav lightbox-prev" id="lightbox-prev" type="button">‹</button>
+      <img class="lightbox-img" id="lightbox-img" alt="Camera snapshot" />
+      <button class="lightbox-nav lightbox-next" id="lightbox-next" type="button">›</button>
+      <div class="lightbox-caption" id="lightbox-caption"></div>
+    </div>
+  </div>
+
+ <script src="./app.js?v=6" defer></script>
 </body>
 </html>
