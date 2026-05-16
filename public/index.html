@@ -912,12 +912,13 @@
       width: 100%;
       border-collapse: collapse;
       background: #fff;
+      margin: 0 auto;
     }
 
     th,
     td {
       border: 1px solid var(--line);
-      text-align: left;
+      text-align: center;
       padding: 10px 12px;
       vertical-align: top;
     }
@@ -1478,27 +1479,17 @@
             <div class="vpm-mode-bar">
               <button class="action-btn" id="vpm-user-input-tab" type="button">User Input</button>
               <button class="action-btn" id="vpm-fleet-evaluation-tab" type="button">Fleet Evaluation</button>
-              <button class="secondary-btn" id="vpm-export-btn" type="button">Export Data</button>
+              <button class="action-btn" id="run-vpm-user-input-btn" type="button">Run</button>
+              <button class="action-btn" id="run-vpm-fleet-btn" type="button" style="display: none;">Run</button>
+              <button class="secondary-btn" id="cancel-vpm-run-btn" type="button" style="display: none;">Cancel</button>
+              <button class="secondary-btn" id="cancel-vpm-fleet-btn" type="button" style="display: none;">Cancel</button>
+              <button class="action-btn" id="vpm-export-btn" type="button">Export Data</button>
             </div>
 
             <div class="vpm-panel" id="vpm-user-input-panel" style="display: none;">
               <div class="field">
                 <label for="vpm-imei-input">Add IMEI (up to 2000 IMEI)</label>
                 <textarea id="vpm-imei-input" placeholder="Enter one IMEI per line"></textarea>
-              </div>
-              <div class="admin-form-actions">
-                <button class="action-btn" id="run-vpm-user-input-btn" type="button">Run</button>
-                <button class="secondary-btn" id="cancel-vpm-run-btn" type="button" style="display: none;">Cancel</button>
-              </div>
-            </div>
-
-            <div class="vpm-panel" id="vpm-fleet-panel" style="display: none;">
-              <p class="helper-copy">
-                Run a fleet-wide evaluation across active assets with matched Hermes devices.
-              </p>
-              <div class="admin-form-actions">
-                <button class="action-btn" id="run-vpm-fleet-btn" type="button">Run Fleet Evaluation</button>
-                <button class="secondary-btn" id="cancel-vpm-fleet-btn" type="button" style="display: none;">Cancel</button>
               </div>
             </div>
 
