@@ -1,0 +1,24 @@
+{
+  "name": "tge-asset-snapshot",
+  "version": "1.0.0",
+  "description": "TGE Asset Snapshot - Fleet/vehicle telematics dashboard on Cloudflare Workers",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BarendBlignaut/TGE-Asset-Snapshot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/BarendBlignaut/TGE-Asset-Snapshot/issues"
+  },
+  "homepage": "https://github.com/BarendBlignaut/TGE-Asset-Snapshot#readme",
+  "devDependencies": {
+    "wrangler": "^4.92.0"
+  }
+}
