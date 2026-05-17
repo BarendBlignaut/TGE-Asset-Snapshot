@@ -1113,6 +1113,21 @@ async function fetchAssetTrackVehiclesAndDevices(env) {
   };
 }
 
+async function fetchSingleAssetTrackDevice(env, trackerSerialOrImei) {
+  if (isDemoMode(env)) {
+    return DEMO_ASSET_TRACK_DEVICES.find((device) =>
+      String(device?.imei || "").trim() === String(trackerSerialOrImei || "").trim() ||
+      String(device?.serialNumber || "").trim() === String(trackerSerialOrImei || "").trim(),
+    ) || null;
+  }
+
+  const deviceUrl =
+    `https://api-au.telematics.com/v1/devices/${encodeURIComponent(trackerSerialOrImei)}` +
+    `?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
+
+  return fetchJsonFromTn360(deviceUrl);
+}
+
 async function handleAssetTrackUser(request, env) {
   const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
@@ -1135,22 +1150,67 @@ async function handleAssetTrackUser(request, env) {
 
   const { vehicles, devices } = await fetchAssetTrackVehiclesAndDevices(env);
   const vehicleMap = buildAssetTrackVehicleMap(vehicles);
-  const deviceMap = new Map(
-    devices.map((device) => [String(device?.imei || "").trim(), device]),
+  const bulkDeviceMap = new Map(
+    devices.flatMap((device) => {
+      const entries = [];
+      const imei = String(device?.imei || "").trim();
+      const serialNumber = String(device?.serialNumber || "").trim();
+      if (imei) entries.push([imei, device]);
+      if (serialNumber) entries.push([serialNumber, device]);
+      return entries;
+    }),
   );
 
-  const rows = imeis.map((imei) => {
-    const device = deviceMap.get(imei);
-    if (!device) return buildAssetTrackErrorRow(imei, "IMEI not found");
-    if (String(device?.status || "").toUpperCase() !== "ENABLED") return buildAssetTrackErrorRow(imei, "Inactive hardware");
-    if (!isAllowedAssetTrackModel(device)) return buildAssetTrackErrorRow(imei, "Unsupported device model");
-    if (!device?.vehicleId) return buildAssetTrackErrorRow(imei, "Not linked to asset");
+  const rows = [];
+  for (const imei of imeis) {
+    const bulkDevice = bulkDeviceMap.get(imei);
 
-    const vehicle = vehicleMap.get(String(device.vehicleId));
-    if (!vehicle) return buildAssetTrackErrorRow(imei, "Vehicle not found");
+    if (!bulkDevice) {
+      rows.push(buildAssetTrackErrorRow(imei, "IMEI not found"));
+      continue;
+    }
 
-    return buildAssetTrackRow(device, vehicle, "Matched");
-  });
+    if (String(bulkDevice?.status || "").toUpperCase() !== "ENABLED") {
+      rows.push(buildAssetTrackErrorRow(imei, "Inactive hardware"));
+      continue;
+    }
+
+    if (!isAllowedAssetTrackModel(bulkDevice)) {
+      rows.push(buildAssetTrackErrorRow(imei, "Unsupported device model"));
+      continue;
+    }
+
+    if (!bulkDevice?.vehicleId || !vehicleMap.get(String(bulkDevice.vehicleId))) {
+      const row = buildAssetTrackErrorRow(imei, "Not linked to asset");
+      row.fleetNumber = "Not linked to asset";
+      rows.push(row);
+      continue;
+    }
+
+    try {
+      const fullDevice = await fetchSingleAssetTrackDevice(
+        env,
+        bulkDevice.imei || bulkDevice.serialNumber || imei,
+      );
+
+      if (!fullDevice) {
+        rows.push(buildAssetTrackErrorRow(imei, "Device detail not found"));
+        continue;
+      }
+
+      const vehicle = vehicleMap.get(String(fullDevice.vehicleId || bulkDevice.vehicleId));
+      if (!vehicle) {
+        const row = buildAssetTrackErrorRow(imei, "Not linked to asset");
+        row.fleetNumber = "Not linked to asset";
+        rows.push(row);
+        continue;
+      }
+
+      rows.push(buildAssetTrackRow(fullDevice, vehicle, "Matched"));
+    } catch (error) {
+      rows.push(buildAssetTrackErrorRow(imei, "Device detail lookup failed"));
+    }
+  }
 
   return jsonResponse({
     rows,
@@ -1164,19 +1224,32 @@ async function handleAssetTrackFleet(request, env) {
 
   const { vehicles, devices } = await fetchAssetTrackVehiclesAndDevices(env);
   const vehicleMap = buildAssetTrackVehicleMap(vehicles);
+  const eligibleDevices = devices.filter((device) =>
+    String(device?.status || "").toUpperCase() === "ENABLED" &&
+    Boolean(device?.vehicleId) &&
+    isAllowedAssetTrackModel(device) &&
+    Boolean(vehicleMap.get(String(device.vehicleId))),
+  );
 
-  const rows = devices
-    .filter((device) =>
-      String(device?.status || "").toUpperCase() === "ENABLED" &&
-      Boolean(device?.vehicleId) &&
-      isAllowedAssetTrackModel(device),
-    )
-    .map((device) => {
-      const vehicle = vehicleMap.get(String(device.vehicleId));
-      return vehicle
-        ? buildAssetTrackRow(device, vehicle, "Matched")
-        : buildAssetTrackErrorRow(device?.imei || device?.serialNumber || "", "Vehicle not found");
-    });
+  const rows = [];
+  for (const device of eligibleDevices) {
+    try {
+      const fullDevice = await fetchSingleAssetTrackDevice(
+        env,
+        device.imei || device.serialNumber || device.id,
+      );
+      const vehicle = vehicleMap.get(String(fullDevice?.vehicleId || device.vehicleId));
+      if (!fullDevice || !vehicle) {
+        continue;
+      }
+      rows.push(buildAssetTrackRow(fullDevice, vehicle, "Matched"));
+    } catch (_) {
+      const fallbackVehicle = vehicleMap.get(String(device.vehicleId));
+      if (fallbackVehicle) {
+        rows.push(buildAssetTrackRow(device, fallbackVehicle, "Matched"));
+      }
+    }
+  }
 
   return jsonResponse({
     rows,
