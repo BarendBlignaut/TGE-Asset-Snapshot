@@ -1063,6 +1063,10 @@ function buildAssetTrackVehicleMap(vehicles) {
 function buildAssetTrackRow(device, vehicle, status) {
   const operationalModel = vehicle?.operationalVehicleModel || {};
   const deviceStats = device?.deviceStats || {};
+  const trackerModel = String(device?.model?.name || "").trim().toUpperCase();
+  const batteryStatus = trackerModel === "FLEX SOLAR TRACKER"
+    ? "ST"
+    : (deviceStats.batteryStatus ?? "");
 
   return {
     fleetNumber: vehicle?.name || "",
@@ -1074,7 +1078,7 @@ function buildAssetTrackRow(device, vehicle, status) {
     shutdownOdo: deviceStats.shutdownOdo ?? "",
     ignition: deviceStats.ignition ?? "",
     movement: deviceStats.movement ?? "",
-    batteryStatus: deviceStats.batteryStatus ?? "",
+    batteryStatus,
     batteryStatusAt: deviceStats.batteryStatusAt ?? "",
     imei: device?.imei || device?.serialNumber || "",
     status,
