@@ -14,6 +14,15 @@ const state = {
     summary: "No VPM analysis has been run yet.",
   },
   vpmRunToken: 0,
+  assetTrack: {
+    mode: "user",
+    rows: [],
+    filteredRows: [],
+    filters: {},
+    selectedKeys: [],
+    isRunning: false,
+    summary: "No Asset Track analysis has been run yet.",
+  },
 };
 
 const el = {
@@ -40,7 +49,10 @@ const el = {
   adminTab: document.getElementById("admin-tab"),
   vpmTab: document.getElementById("vpm-tab"),
   standardTab: document.getElementById("standard-tab"),
+  assetTrackTab: document.getElementById("asset-track-tab"),
   standardView: document.getElementById("standard-view"),
+  assetTrackView: document.getElementById("asset-track-view"),
+  assetTrackResultsView: document.getElementById("asset-track-results-view"),
   adminView: document.getElementById("admin-view"),
   vpmView: document.getElementById("vpm-view"),
   approvedUserForm: document.getElementById("approved-user-form"),
@@ -69,6 +81,20 @@ const el = {
   vpmResultsBody: document.getElementById("vpm-results-body"),
   logoutButton: document.getElementById("logout-btn"),
   approvedPassword: document.getElementById("approved-password"),
+  assetTrackUserTab: document.getElementById("asset-track-user-tab"),
+  assetTrackFleetTab: document.getElementById("asset-track-fleet-tab"),
+  assetTrackRefreshButton: document.getElementById("asset-track-refresh-btn"),
+  assetTrackExportPdfButton: document.getElementById("asset-track-export-pdf-btn"),
+  assetTrackEmailButton: document.getElementById("asset-track-email-btn"),
+  assetTrackUserPanel: document.getElementById("asset-track-user-panel"),
+  assetTrackFleetPanel: document.getElementById("asset-track-fleet-panel"),
+  assetTrackImeiInput: document.getElementById("asset-track-imei-input"),
+  assetTrackImeiHelper: document.getElementById("asset-track-imei-helper"),
+  assetTrackRunButton: document.getElementById("asset-track-run-btn"),
+  assetTrackMessage: document.getElementById("asset-track-message"),
+  assetTrackSummary: document.getElementById("asset-track-summary"),
+  assetTrackResultsHead: document.getElementById("asset-track-results-head"),
+  assetTrackResultsBody: document.getElementById("asset-track-results-body"),
 };
 
 function getNode(id) {
@@ -293,6 +319,17 @@ function renderDebug() {
 function showStandardView() {
   setVisible(el.heroSection, true, "grid");
   setVisible(el.standardView, true, "block");
+  setVisible(el.assetTrackView, false);
+  setVisible(el.assetTrackResultsView, false);
+  setVisible(el.adminView, false);
+  setVisible(el.vpmView, false);
+}
+
+function showAssetTrackView() {
+  setVisible(el.heroSection, false);
+  setVisible(el.standardView, false);
+  setVisible(el.assetTrackView, true, "block");
+  setVisible(el.assetTrackResultsView, state.assetTrack.rows.length > 0, "block");
   setVisible(el.adminView, false);
   setVisible(el.vpmView, false);
 }
@@ -300,6 +337,8 @@ function showStandardView() {
 function showAdminView() {
   setVisible(el.heroSection, false);
   setVisible(el.standardView, false);
+  setVisible(el.assetTrackView, false);
+  setVisible(el.assetTrackResultsView, false);
   setVisible(el.adminView, true, "block");
   setVisible(el.vpmView, false);
 }
@@ -307,6 +346,8 @@ function showAdminView() {
 function showVpmView() {
   setVisible(el.heroSection, false);
   setVisible(el.standardView, false);
+  setVisible(el.assetTrackView, false);
+  setVisible(el.assetTrackResultsView, false);
   setVisible(el.adminView, false);
   setVisible(el.vpmView, true, "block");
 }
@@ -320,9 +361,11 @@ function clearSessionUi() {
   setVisible(el.headerActions, false);
   setVisible(el.adminTab, false);
   setVisible(el.vpmTab, false);
+  setVisible(el.assetTrackTab, false);
   setDebugWindowOpen(false);
   setText("login-message", "");
   resetActiveAssetLookup();
+  resetAssetTrackView();
   renderDebug();
 }
 
@@ -426,6 +469,7 @@ function openAppForUser(sessionUser) {
   setVisible(el.loginScreen, false);
   setVisible(el.appShell, true, "block");
   setVisible(el.headerActions, true, "flex");
+  setVisible(el.assetTrackTab, true, "inline-block");
 
   if (sessionUser.role === "admin") {
     setVisible(el.adminTab, true, "inline-block");
@@ -440,6 +484,7 @@ function openAppForUser(sessionUser) {
 
   renderDebug();
   showVpmPanel("user-input");
+  resetAssetTrackView();
   showStandardView();
 }
 
@@ -448,12 +493,14 @@ function initialiseUi() {
   setVisible(el.headerActions, false);
   setVisible(el.adminTab, false);
   setVisible(el.vpmTab, false);
+  setVisible(el.assetTrackTab, false);
   setVisible(el.debugToggleWrap, false);
   setDebugWindowOpen(false);
   showStandardView();
   showVpmPanel("user-input");
   renderVpmResults();
   resetRenderedAsset();
+  resetAssetTrackView();
   renderDebug();
 }
 
@@ -1276,6 +1323,343 @@ function downloadVpmCsv() {
   URL.revokeObjectURL(objectUrl);
 }
 
+const assetTrackColumns = [
+  "Fleet Number",
+  "Vehicle System ID",
+  "Make",
+  "Model",
+  "Year Manufacture",
+  "Odometer",
+  "Shutdown Odo",
+  "Ignition",
+  "Movement",
+  "Battery Status",
+  "Battery Status At",
+  "IMEI",
+  "Status",
+];
+
+function showAssetTrackMessage(message = "", isError = true) {
+  if (!el.assetTrackMessage) return;
+  el.assetTrackMessage.textContent = message;
+  el.assetTrackMessage.style.color = isError ? "" : "#0d5f3a";
+}
+
+function setAssetTrackModeButtonState(button, active) {
+  if (!button) return;
+  button.classList.toggle("action-btn", active);
+  button.classList.toggle("secondary-btn", !active);
+}
+
+function assetTrackRowKey(row) {
+  return `${safeText(row.IMEI)}::${safeText(row["Vehicle System ID"])}::${safeText(row.Status)}`;
+}
+
+function assetTrackSelectionSet() {
+  return new Set(state.assetTrack.selectedKeys || []);
+}
+
+function formatAssetTrackRows(rows) {
+  return rows.map((row) => ({
+    "Fleet Number": safeText(row.fleetNumber, ""),
+    "Vehicle System ID": safeText(row.vehicleSystemId, ""),
+    Make: safeText(row.make, ""),
+    Model: safeText(row.model, ""),
+    "Year Manufacture": safeText(row.yearManufacture, ""),
+    Odometer: safeText(row.odometer, ""),
+    "Shutdown Odo": safeText(row.shutdownOdo, ""),
+    Ignition: safeText(row.ignition, ""),
+    Movement: safeText(row.movement, ""),
+    "Battery Status": safeText(row.batteryStatus, ""),
+    "Battery Status At": safeText(row.batteryStatusAt ? formatDisplayDate(row.batteryStatusAt) : "", ""),
+    IMEI: safeText(row.imei, ""),
+    Status: safeText(row.status, ""),
+  }));
+}
+
+function applyAssetTrackFilters() {
+  const filters = state.assetTrack.filters || {};
+  state.assetTrack.filteredRows = state.assetTrack.rows.filter((row) =>
+    assetTrackColumns.every((column) => {
+      const filterValue = safeText(filters[column], "").trim().toLowerCase();
+      if (!filterValue) return true;
+      return safeText(row[column], "").toLowerCase().includes(filterValue);
+    }),
+  );
+}
+
+function renderAssetTrackResults() {
+  applyAssetTrackFilters();
+
+  const filteredRows = state.assetTrack.filteredRows;
+  const selected = assetTrackSelectionSet();
+
+  if (el.assetTrackSummary) {
+    const selectedVisibleCount = filteredRows.filter((row) => selected.has(assetTrackRowKey(row))).length;
+    el.assetTrackSummary.textContent = filteredRows.length
+      ? `${filteredRows.length} rows visible, ${selectedVisibleCount} selected.`
+      : state.assetTrack.summary;
+  }
+
+  if (el.assetTrackResultsHead) {
+    const headerRow = `
+      <tr>
+        <th class="asset-track-select-cell">
+          <input id="asset-track-select-all" type="checkbox" aria-label="Select all visible rows" />
+        </th>
+        ${assetTrackColumns.map((column) => `<th>${column}</th>`).join("")}
+      </tr>
+    `;
+
+    const filterRow = `
+      <tr>
+        <th class="asset-track-select-cell"></th>
+        ${assetTrackColumns
+          .map(
+            (column) => `
+              <th>
+                <input
+                  class="asset-track-filter-input"
+                  data-asset-track-filter="${column}"
+                  type="text"
+                  placeholder="Filter"
+                  value="${safeText(state.assetTrack.filters?.[column], "")}"
+                />
+              </th>
+            `,
+          )
+          .join("")}
+      </tr>
+    `;
+
+    el.assetTrackResultsHead.innerHTML = headerRow + filterRow;
+  }
+
+  if (el.assetTrackResultsBody) {
+    el.assetTrackResultsBody.innerHTML = filteredRows.length
+      ? filteredRows
+          .map((row) => {
+            const rowKey = assetTrackRowKey(row);
+            return `
+              <tr>
+                <td class="asset-track-select-cell">
+                  <input class="asset-track-row-select" data-row-key="${rowKey}" type="checkbox" ${selected.has(rowKey) ? "checked" : ""} />
+                </td>
+                ${assetTrackColumns.map((column) => `<td>${safeText(row[column], "")}</td>`).join("")}
+              </tr>
+            `;
+          })
+          .join("")
+      : `<tr><td colspan="${assetTrackColumns.length + 1}">No rows match the current filters.</td></tr>`;
+  }
+
+  const selectAll = getNode("asset-track-select-all");
+  if (selectAll) {
+    const selectableRows = filteredRows.map((row) => assetTrackRowKey(row));
+    selectAll.checked = Boolean(selectableRows.length) && selectableRows.every((key) => selected.has(key));
+    selectAll.indeterminate = selectableRows.some((key) => selected.has(key)) && !selectAll.checked;
+  }
+
+  setVisible(el.assetTrackResultsView, state.assetTrack.rows.length > 0, "block");
+}
+
+function setAssetTrackMode(mode) {
+  state.assetTrack.mode = mode;
+  setVisible(el.assetTrackUserPanel, mode === "user", "block");
+  setVisible(el.assetTrackFleetPanel, mode === "fleet", "block");
+  setAssetTrackModeButtonState(el.assetTrackUserTab, mode === "user");
+  setAssetTrackModeButtonState(el.assetTrackFleetTab, mode === "fleet");
+  refreshAssetTrackRunButton();
+}
+
+function refreshAssetTrackRunButton() {
+  if (!el.assetTrackRunButton) return;
+
+  const imeiCount = parseUniqueImeis(el.assetTrackImeiInput?.value).length;
+  const visible = state.assetTrack.mode === "fleet" || imeiCount > 0;
+
+  setVisible(el.assetTrackRunButton, visible, "inline-flex");
+  el.assetTrackRunButton.disabled = state.assetTrack.isRunning;
+  el.assetTrackRunButton.textContent = state.assetTrack.isRunning ? "Running..." : "Run";
+}
+
+function resetAssetTrackState() {
+  state.assetTrack.rows = [];
+  state.assetTrack.filteredRows = [];
+  state.assetTrack.filters = {};
+  state.assetTrack.selectedKeys = [];
+  state.assetTrack.summary = "No Asset Track analysis has been run yet.";
+  state.assetTrack.isRunning = false;
+}
+
+function resetAssetTrackView() {
+  resetAssetTrackState();
+  if (el.assetTrackImeiInput) el.assetTrackImeiInput.value = "";
+  if (el.assetTrackImeiHelper) {
+    el.assetTrackImeiHelper.textContent = isAdminUser()
+      ? "Admin users can enter up to 2000 IMEIs per run."
+      : "Enter up to 20 IMEIs per run.";
+  }
+  showAssetTrackMessage("");
+  setAssetTrackMode("user");
+  if (el.assetTrackResultsHead) el.assetTrackResultsHead.innerHTML = "";
+  if (el.assetTrackResultsBody) el.assetTrackResultsBody.innerHTML = "";
+  if (el.assetTrackSummary) el.assetTrackSummary.textContent = state.assetTrack.summary;
+  setVisible(el.assetTrackResultsView, false);
+}
+
+function getSelectedAssetTrackRows() {
+  const selected = assetTrackSelectionSet();
+  return state.assetTrack.filteredRows.filter((row) => selected.has(assetTrackRowKey(row)));
+}
+
+function assetTrackRowsToCsv(rows) {
+  return [
+    assetTrackColumns.join(","),
+    ...rows.map((row) => assetTrackColumns.map((column) => csvEscape(row[column])).join(",")),
+  ].join("\n");
+}
+
+function downloadAssetTrackCsv(rows, filenameBase) {
+  const csv = assetTrackRowsToCsv(rows);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = `${filenameBase}.csv`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
+async function handleAssetTrackRun() {
+  const mode = state.assetTrack.mode;
+  const imeis = parseUniqueImeis(el.assetTrackImeiInput?.value);
+  const limit = isAdminUser() ? 2000 : 20;
+
+  if (mode === "user") {
+    if (!imeis.length) {
+      showAssetTrackMessage("Enter at least one IMEI before running.");
+      return;
+    }
+
+    if (imeis.length > limit) {
+      showAssetTrackMessage(`This user can run up to ${limit} IMEIs at a time.`);
+      return;
+    }
+  }
+
+  try {
+    state.assetTrack.isRunning = true;
+    refreshAssetTrackRunButton();
+    showAssetTrackMessage("Running Asset Track lookup...", false);
+    state.assetTrack.summary = "Processing Asset Track data...";
+    renderAssetTrackResults();
+
+    const response = mode === "fleet"
+      ? await apiGet("/api/asset-track-fleet", "Fleet Asset Track lookup failed.")
+      : await apiPost("/api/asset-track-user", { imeis }, "Asset Track lookup failed.");
+
+    const rows = formatAssetTrackRows(Array.isArray(response.rows) ? response.rows : []);
+    state.assetTrack.rows = rows;
+    state.assetTrack.filteredRows = rows;
+    state.assetTrack.filters = {};
+    state.assetTrack.selectedKeys = [];
+    state.assetTrack.summary = response.summary || `${rows.length} rows returned.`;
+    showAssetTrackMessage(`${rows.length} Asset Track row${rows.length === 1 ? "" : "s"} ready for review.`, false);
+    renderAssetTrackResults();
+    writeDebug("Asset Track completed", { mode, rows: rows.length });
+  } catch (error) {
+    resetAssetTrackState();
+    renderAssetTrackResults();
+    showAssetTrackMessage(error.message || "Asset Track lookup failed.");
+    writeDebug("Asset Track failed", { mode, error: error.message });
+  } finally {
+    state.assetTrack.isRunning = false;
+    refreshAssetTrackRunButton();
+  }
+}
+
+async function handleAssetTrackExportPdf() {
+  const rows = getSelectedAssetTrackRows();
+  if (!rows.length) {
+    showAssetTrackMessage("Select one or more visible rows before exporting the PDF.");
+    return;
+  }
+
+  if (typeof jspdf === "undefined") {
+    showAssetTrackMessage("PDF libraries are still loading. Please try again.");
+    return;
+  }
+
+  const { jsPDF } = jspdf;
+  const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+  const margins = { left: 20, top: 28 };
+  const lineHeight = 16;
+  const usableHeight = 560;
+  const columns = assetTrackColumns;
+
+  pdf.setFontSize(14);
+  pdf.text("TGE Asset Track Export", margins.left, margins.top);
+  pdf.setFontSize(9);
+  pdf.text(`Generated: ${formatDisplayDate(currentIsoTime())}`, margins.left, margins.top + 16);
+
+  let y = margins.top + 40;
+  const columnWidths = [80, 74, 70, 86, 72, 66, 72, 58, 62, 72, 96, 92, 86];
+  const drawRow = (values, isHeader = false) => {
+    let x = margins.left;
+    pdf.setFont(undefined, isHeader ? "bold" : "normal");
+    values.forEach((value, index) => {
+      const width = columnWidths[index];
+      const text = safeText(value, "").slice(0, 28);
+      pdf.text(text, x, y, { maxWidth: width - 4 });
+      x += width;
+    });
+    y += lineHeight;
+  };
+
+  drawRow(columns, true);
+
+  rows.forEach((row) => {
+    if (y > usableHeight) {
+      pdf.addPage("a4", "landscape");
+      y = margins.top;
+      drawRow(columns, true);
+    }
+
+    drawRow(columns.map((column) => row[column]));
+  });
+
+  pdf.save(`tge-asset-track-${state.assetTrack.mode}.pdf`);
+  showAssetTrackMessage("Asset Track PDF exported.", false);
+}
+
+async function handleAssetTrackEmailExport() {
+  const rows = getSelectedAssetTrackRows();
+  if (!rows.length) {
+    showAssetTrackMessage("Select one or more visible rows before preparing the email export.");
+    return;
+  }
+
+  const filenameBase = `tge-asset-track-${state.assetTrack.mode}`;
+  downloadAssetTrackCsv(rows, filenameBase);
+
+  const subject = encodeURIComponent("TGE Asset Track Export");
+  const body = encodeURIComponent(
+    [
+      `Mode: ${state.assetTrack.mode}`,
+      `Rows selected: ${rows.length}`,
+      "",
+      `The export file ${filenameBase}.csv has been downloaded.`,
+      "Attach the file to this email before sending.",
+    ].join("\n"),
+  );
+
+  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  showAssetTrackMessage(`CSV "${filenameBase}.csv" downloaded. Attach it to the email that just opened.`, false);
+}
+
 function parseCsvRow(line) {
   const cells = [];
   let current = "";
@@ -1666,6 +2050,12 @@ if (el.standardTab) {
   });
 }
 
+if (el.assetTrackTab) {
+  el.assetTrackTab.addEventListener("click", () => {
+    showAssetTrackView();
+  });
+}
+
 if (el.adminTab) {
   el.adminTab.addEventListener("click", async () => {
     if (!state.currentSessionUser || state.currentSessionUser.role !== "admin") return;
@@ -1698,6 +2088,41 @@ if (el.vpmFleetEvaluationTab) {
   el.vpmFleetEvaluationTab.addEventListener("click", () => {
     showVpmPanel("fleet");
   });
+}
+
+if (el.assetTrackUserTab) {
+  el.assetTrackUserTab.addEventListener("click", () => {
+    setAssetTrackMode("user");
+  });
+}
+
+if (el.assetTrackFleetTab) {
+  el.assetTrackFleetTab.addEventListener("click", () => {
+    setAssetTrackMode("fleet");
+  });
+}
+
+if (el.assetTrackImeiInput) {
+  el.assetTrackImeiInput.addEventListener("input", refreshAssetTrackRunButton);
+}
+
+if (el.assetTrackRunButton) {
+  el.assetTrackRunButton.addEventListener("click", handleAssetTrackRun);
+}
+
+if (el.assetTrackRefreshButton) {
+  el.assetTrackRefreshButton.addEventListener("click", () => {
+    resetAssetTrackView();
+    writeDebug("Asset Track reset", { mode: state.assetTrack.mode });
+  });
+}
+
+if (el.assetTrackExportPdfButton) {
+  el.assetTrackExportPdfButton.addEventListener("click", handleAssetTrackExportPdf);
+}
+
+if (el.assetTrackEmailButton) {
+  el.assetTrackEmailButton.addEventListener("click", handleAssetTrackEmailExport);
 }
 
 if (el.runVpmButton) {
@@ -1847,6 +2272,56 @@ if (el.approvedUsersTableBody) {
 if (el.historyUserFilter) {
   el.historyUserFilter.addEventListener("change", () => {
     renderHistoryTable();
+  });
+}
+
+if (el.assetTrackResultsHead) {
+  el.assetTrackResultsHead.addEventListener("input", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+
+    const filterColumn = target.getAttribute("data-asset-track-filter");
+    if (!filterColumn) return;
+
+    state.assetTrack.filters[filterColumn] = target.value;
+    renderAssetTrackResults();
+  });
+
+  el.assetTrackResultsHead.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (target.id !== "asset-track-select-all") return;
+
+    const selected = assetTrackSelectionSet();
+    state.assetTrack.filteredRows.forEach((row) => {
+      const key = assetTrackRowKey(row);
+      if (target.checked) {
+        selected.add(key);
+      } else {
+        selected.delete(key);
+      }
+    });
+    state.assetTrack.selectedKeys = [...selected];
+    renderAssetTrackResults();
+  });
+}
+
+if (el.assetTrackResultsBody) {
+  el.assetTrackResultsBody.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || !target.classList.contains("asset-track-row-select")) return;
+
+    const rowKey = target.getAttribute("data-row-key");
+    if (!rowKey) return;
+
+    const selected = assetTrackSelectionSet();
+    if (target.checked) {
+      selected.add(rowKey);
+    } else {
+      selected.delete(rowKey);
+    }
+    state.assetTrack.selectedKeys = [...selected];
+    renderAssetTrackResults();
   });
 }
 
