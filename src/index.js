@@ -118,6 +118,67 @@ const DEMO_CAMERA_DEVICE = {
   },
 };
 
+const ASSET_TRACK_ALLOWED_MODELS = new Set([
+  "FLEX SOLAR TRACKER",
+  "DMT OYSTER CELLULAR 3",
+]);
+
+const DEMO_ASSET_TRACK_VEHICLES = [
+  {
+    id: "306802",
+    name: "1001",
+    registration: "TGE-001",
+    make: "Isuzu",
+    model: "FRR",
+    operationalVehicleModel: {
+      yearOfManufacture: 2022,
+    },
+  },
+  {
+    id: "388728",
+    name: "1002",
+    registration: "TGE-002",
+    make: "Hino",
+    model: "500 Series",
+    operationalVehicleModel: {
+      yearOfManufacture: 2021,
+    },
+  },
+];
+
+const DEMO_ASSET_TRACK_DEVICES = [
+  {
+    id: "413919",
+    status: "ENABLED",
+    vehicleId: "306802",
+    model: { name: "Flex Solar Tracker" },
+    imei: "015262004121066",
+    deviceStats: {
+      odometer: 121247.365,
+      ignition: "OFF",
+      shutdownOdo: 0,
+      movement: "Stationary",
+      batteryStatus: "Good",
+      batteryStatusAt: "2026-05-17T07:57:11.000+10:00",
+    },
+  },
+  {
+    id: "631562",
+    status: "ENABLED",
+    vehicleId: "388728",
+    model: { name: "DMT Oyster Cellular 3" },
+    imei: "350976658052433",
+    deviceStats: {
+      odometer: 31576.696,
+      ignition: "OFF",
+      shutdownOdo: 0,
+      movement: "Stationary",
+      batteryStatus: "Low",
+      batteryStatusAt: "2026-05-12T12:18:09.000+10:00",
+    },
+  },
+];
+
 function jsonResponse(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
@@ -987,6 +1048,137 @@ async function handleCameraSnapshots(request, env) {
 
   return jsonResponse(matchedEvents);
 }
+
+function isAllowedAssetTrackModel(device) {
+  const modelName = String(device?.model?.name || "").trim().toUpperCase();
+  return ASSET_TRACK_ALLOWED_MODELS.has(modelName);
+}
+
+function buildAssetTrackVehicleMap(vehicles) {
+  return new Map(
+    (Array.isArray(vehicles) ? vehicles : []).map((vehicle) => [String(vehicle?.id ?? ""), vehicle]),
+  );
+}
+
+function buildAssetTrackRow(device, vehicle, status) {
+  const operationalModel = vehicle?.operationalVehicleModel || {};
+  const deviceStats = device?.deviceStats || {};
+
+  return {
+    fleetNumber: vehicle?.name || "",
+    vehicleSystemId: vehicle?.id ?? device?.vehicleId ?? "",
+    make: operationalModel.make || vehicle?.make || "",
+    model: operationalModel.model || vehicle?.model || "",
+    yearManufacture: operationalModel.yearOfManufacture ?? vehicle?.yearOfManufacture ?? "",
+    odometer: deviceStats.odometer ?? "",
+    shutdownOdo: deviceStats.shutdownOdo ?? "",
+    ignition: deviceStats.ignition ?? "",
+    movement: deviceStats.movement ?? "",
+    batteryStatus: deviceStats.batteryStatus ?? "",
+    batteryStatusAt: deviceStats.batteryStatusAt ?? "",
+    imei: device?.imei || device?.serialNumber || "",
+    status,
+  };
+}
+
+function buildAssetTrackErrorRow(imei, status) {
+  return buildAssetTrackRow({ imei, deviceStats: {} }, null, status);
+}
+
+async function fetchAssetTrackVehiclesAndDevices(env) {
+  if (isDemoMode(env)) {
+    return {
+      vehicles: DEMO_ASSET_TRACK_VEHICLES,
+      devices: DEMO_ASSET_TRACK_DEVICES,
+    };
+  }
+
+  const vehiclesUrl = `https://api-au.telematics.com/v1/vehicles?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const devicesUrl =
+    `https://api-au.telematics.com/v1/devices/?key=${env.TN360_API_KEY}` +
+    `&pruning=B2B&embed=devicestats`;
+
+  const [vehicles, devices] = await Promise.all([
+    fetchJsonFromTn360(vehiclesUrl),
+    fetchJsonFromTn360(devicesUrl),
+  ]);
+
+  return {
+    vehicles: Array.isArray(vehicles) ? vehicles : [],
+    devices: Array.isArray(devices) ? devices : [],
+  };
+}
+
+async function handleAssetTrackUser(request, env) {
+  const sessionCheck = await requireSession(request, env);
+  if (!sessionCheck.ok) return sessionCheck.response;
+
+  const body = await safeJson(request);
+  const imeis = [...new Set(
+    (Array.isArray(body.imeis) ? body.imeis : [])
+      .map((item) => String(item || "").trim())
+      .filter(Boolean),
+  )];
+
+  if (!imeis.length) {
+    return jsonResponse({ error: "At least one IMEI is required." }, 400);
+  }
+
+  const limit = sessionCheck.user.role === "admin" ? 2000 : 20;
+  if (imeis.length > limit) {
+    return jsonResponse({ error: `This user can run up to ${limit} IMEIs at a time.` }, 400);
+  }
+
+  const { vehicles, devices } = await fetchAssetTrackVehiclesAndDevices(env);
+  const vehicleMap = buildAssetTrackVehicleMap(vehicles);
+  const deviceMap = new Map(
+    devices.map((device) => [String(device?.imei || "").trim(), device]),
+  );
+
+  const rows = imeis.map((imei) => {
+    const device = deviceMap.get(imei);
+    if (!device) return buildAssetTrackErrorRow(imei, "IMEI not found");
+    if (String(device?.status || "").toUpperCase() !== "ENABLED") return buildAssetTrackErrorRow(imei, "Inactive hardware");
+    if (!isAllowedAssetTrackModel(device)) return buildAssetTrackErrorRow(imei, "Unsupported device model");
+    if (!device?.vehicleId) return buildAssetTrackErrorRow(imei, "Not linked to asset");
+
+    const vehicle = vehicleMap.get(String(device.vehicleId));
+    if (!vehicle) return buildAssetTrackErrorRow(imei, "Vehicle not found");
+
+    return buildAssetTrackRow(device, vehicle, "Matched");
+  });
+
+  return jsonResponse({
+    rows,
+    summary: `${rows.length} IMEI request${rows.length === 1 ? "" : "s"} processed.`,
+  });
+}
+
+async function handleAssetTrackFleet(request, env) {
+  const sessionCheck = await requireSession(request, env);
+  if (!sessionCheck.ok) return sessionCheck.response;
+
+  const { vehicles, devices } = await fetchAssetTrackVehiclesAndDevices(env);
+  const vehicleMap = buildAssetTrackVehicleMap(vehicles);
+
+  const rows = devices
+    .filter((device) =>
+      String(device?.status || "").toUpperCase() === "ENABLED" &&
+      Boolean(device?.vehicleId) &&
+      isAllowedAssetTrackModel(device),
+    )
+    .map((device) => {
+      const vehicle = vehicleMap.get(String(device.vehicleId));
+      return vehicle
+        ? buildAssetTrackRow(device, vehicle, "Matched")
+        : buildAssetTrackErrorRow(device?.imei || device?.serialNumber || "", "Vehicle not found");
+    });
+
+  return jsonResponse({
+    rows,
+    summary: `${rows.length} fleet-linked asset tracker${rows.length === 1 ? "" : "s"} returned.`,
+  });
+}
   
 async function handleVpmUserInput(request, env) {
   const sessionCheck = await requireSession(request, env);
@@ -1218,6 +1410,14 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/api/camera-snapshots") {
         return handleCameraSnapshots(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/asset-track-user") {
+        return handleAssetTrackUser(request, env);
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/asset-track-fleet") {
+        return handleAssetTrackFleet(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/vpm-user-input") {
