@@ -915,6 +915,78 @@
       overflow-x: auto;
     }
 
+    .asset-track-toolbar,
+    .asset-track-mode-bar,
+    .asset-track-run-row,
+    .asset-track-export-copy {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .asset-track-toolbar {
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+
+    .asset-track-input-panel {
+      display: grid;
+      gap: 14px;
+    }
+
+    .asset-track-panel {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: linear-gradient(180deg, #fff 0%, #fbfdfc 100%);
+    }
+
+    .asset-track-panel textarea {
+      width: 100%;
+      min-height: 220px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      font: inherit;
+      color: var(--ink);
+      resize: vertical;
+    }
+
+    .asset-track-helper {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .asset-track-table th,
+    .asset-track-table td {
+      min-width: 120px;
+    }
+
+    .asset-track-table th.asset-track-select-cell,
+    .asset-track-table td.asset-track-select-cell {
+      min-width: 54px;
+      width: 54px;
+      padding: 10px 8px;
+    }
+
+    .asset-track-filter-input {
+      width: 100%;
+      height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 10px;
+      font: inherit;
+      color: var(--ink);
+      background: #fff;
+    }
+
+    .asset-track-summary {
+      margin: 0 0 14px;
+      color: var(--muted);
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -1119,6 +1191,7 @@
           </label>
           <span class="header-actions-spacer"></span>
           <button class="header-tab" id="standard-tab" type="button">Snapshot</button>
+          <button class="header-tab" id="asset-track-tab" type="button">Asset Track</button>
           <button class="header-tab" id="admin-tab" type="button" style="display: none;">Admin</button>
           <button class="header-tab" id="vpm-tab" type="button" style="display: none;">VPM</button>
           <button class="header-tab header-tab-logout" id="logout-btn" type="button">Logout</button>
@@ -1448,6 +1521,74 @@
               </section>
             </div>
           </div>
+
+          <section class="section" id="asset-track-view" style="display: none;">
+            <div class="section-head">
+              <div>
+                <div class="section-kicker">Asset Track</div>
+                <h3 class="section-title">Fleet-linked tracker health snapshot</h3>
+              </div>
+            </div>
+
+            <p class="section-subcopy">
+              Run asset tracker checks by specific IMEI input or across the active fleet, then filter and export only the rows that need action.
+            </p>
+
+            <div class="asset-track-toolbar">
+              <div class="asset-track-mode-bar">
+                <button class="action-btn" id="asset-track-user-tab" type="button">User</button>
+                <button class="secondary-btn" id="asset-track-fleet-tab" type="button">Fleet</button>
+                <button class="secondary-btn" id="asset-track-refresh-btn" type="button">Refresh</button>
+              </div>
+              <div class="asset-track-export-copy">
+                <button class="secondary-btn" id="asset-track-export-pdf-btn" type="button">Export PDF</button>
+                <button class="secondary-btn" id="asset-track-email-btn" type="button">Export to Email</button>
+              </div>
+            </div>
+
+            <div class="asset-track-input-panel">
+              <div class="asset-track-panel" id="asset-track-user-panel">
+                <label for="asset-track-imei-input">IMEI Input</label>
+                <textarea
+                  id="asset-track-imei-input"
+                  placeholder="Enter one IMEI per line, or separate entries with commas."
+                ></textarea>
+                <p class="asset-track-helper" id="asset-track-imei-helper">
+                  Enter up to 20 IMEIs per run. Admin users can enter up to 2000.
+                </p>
+              </div>
+
+              <div class="asset-track-panel" id="asset-track-fleet-panel" style="display: none;">
+                <p class="asset-track-helper">
+                  Fleet mode checks the active fleet, validates linked hardware, and renders the tracker table only after all matching devices are confirmed.
+                </p>
+              </div>
+
+              <div class="asset-track-run-row">
+                <button class="action-btn" id="asset-track-run-btn" type="button" style="display: none;">Run</button>
+              </div>
+
+              <p class="message" id="asset-track-message"></p>
+            </div>
+          </section>
+
+          <section class="section" id="asset-track-results-view" style="display: none;">
+            <div class="section-head">
+              <div>
+                <div class="section-kicker">Result Table</div>
+                <h3 class="section-title">Filtered export-ready asset list</h3>
+              </div>
+            </div>
+
+            <p class="asset-track-summary" id="asset-track-summary">No Asset Track analysis has been run yet.</p>
+
+            <div class="table-wrap">
+              <table class="asset-track-table" id="asset-track-table">
+                <thead id="asset-track-results-head"></thead>
+                <tbody id="asset-track-results-body"></tbody>
+              </table>
+            </div>
+          </section>
 
           <section class="section" id="admin-view" style="display: none;">
             <div class="section-head">
