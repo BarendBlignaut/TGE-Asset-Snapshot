@@ -85,6 +85,7 @@ const el = {
   assetTrackFleetTab: document.getElementById("asset-track-fleet-tab"),
   assetTrackRefreshButton: document.getElementById("asset-track-refresh-btn"),
   assetTrackExportPdfButton: document.getElementById("asset-track-export-pdf-btn"),
+  assetTrackExportExcelButton: document.getElementById("asset-track-export-excel-btn"),
   assetTrackEmailButton: document.getElementById("asset-track-email-btn"),
   assetTrackUserPanel: document.getElementById("asset-track-user-panel"),
   assetTrackFleetPanel: document.getElementById("asset-track-fleet-panel"),
@@ -1463,6 +1464,17 @@ function renderAssetTrackResults() {
   setVisible(el.assetTrackResultsView, state.assetTrack.rows.length > 0, "block");
 }
 
+function focusAssetTrackResults() {
+  if (!el.assetTrackResultsView || !state.assetTrack.rows.length) return;
+  requestAnimationFrame(() => {
+    el.assetTrackResultsView.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+      inline: "nearest",
+    });
+  });
+}
+
 function setAssetTrackMode(mode) {
   state.assetTrack.mode = mode;
   setVisible(el.assetTrackUserPanel, mode === "user", "block");
@@ -1533,6 +1545,12 @@ function downloadAssetTrackCsv(rows, filenameBase) {
   URL.revokeObjectURL(objectUrl);
 }
 
+function getAssetTrackExportRows() {
+  const selectedRows = getSelectedAssetTrackRows();
+  if (selectedRows.length) return selectedRows;
+  return state.assetTrack.filteredRows.length ? state.assetTrack.filteredRows : state.assetTrack.rows;
+}
+
 async function handleAssetTrackRun() {
   const mode = state.assetTrack.mode;
   const imeis = parseUniqueImeis(el.assetTrackImeiInput?.value);
@@ -1569,6 +1587,7 @@ async function handleAssetTrackRun() {
     state.assetTrack.summary = response.summary || `${rows.length} rows returned.`;
     showAssetTrackMessage(`${rows.length} Asset Track row${rows.length === 1 ? "" : "s"} ready for review.`, false);
     renderAssetTrackResults();
+    focusAssetTrackResults();
     writeDebug("Asset Track completed", { mode, rows: rows.length });
   } catch (error) {
     resetAssetTrackState();
@@ -1582,9 +1601,9 @@ async function handleAssetTrackRun() {
 }
 
 async function handleAssetTrackExportPdf() {
-  const rows = getSelectedAssetTrackRows();
+  const rows = getAssetTrackExportRows();
   if (!rows.length) {
-    showAssetTrackMessage("Select one or more visible rows before exporting the PDF.");
+    showAssetTrackMessage("Run Asset Track and keep at least one visible row before exporting the PDF.");
     return;
   }
 
@@ -1595,50 +1614,111 @@ async function handleAssetTrackExportPdf() {
 
   const { jsPDF } = jspdf;
   const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-  const margins = { left: 20, top: 28 };
-  const lineHeight = 16;
-  const usableHeight = 560;
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margins = { left: 18, right: 18, top: 24, bottom: 18 };
   const columns = assetTrackColumns;
+  const relativeWidths = [0.12, 0.09, 0.08, 0.09, 0.07, 0.07, 0.07, 0.06, 0.07, 0.08, 0.1, 0.11, 0.09];
+  const usableWidth = pageWidth - margins.left - margins.right;
+  const usableHeight = pageHeight - margins.top - margins.bottom;
+  const columnWidths = relativeWidths.map((value) => value * usableWidth);
+  const headerFontSize = 8;
+  const bodyFontSize = 7;
+  const lineHeight = 11;
+  const rowPadding = 5;
 
-  pdf.setFontSize(14);
-  pdf.text("TGE Asset Track Export", margins.left, margins.top);
-  pdf.setFontSize(9);
-  pdf.text(`Generated: ${formatDisplayDate(currentIsoTime())}`, margins.left, margins.top + 16);
-
-  let y = margins.top + 40;
-  const columnWidths = [80, 74, 70, 86, 72, 66, 72, 58, 62, 72, 96, 92, 86];
-  const drawRow = (values, isHeader = false) => {
-    let x = margins.left;
-    pdf.setFont(undefined, isHeader ? "bold" : "normal");
-    values.forEach((value, index) => {
-      const width = columnWidths[index];
-      const text = safeText(value, "").slice(0, 28);
-      pdf.text(text, x, y, { maxWidth: width - 4 });
-      x += width;
-    });
-    y += lineHeight;
+  const wrapText = (value, width, fontSize) => {
+    pdf.setFontSize(fontSize);
+    const text = safeText(value, "");
+    return pdf.splitTextToSize(text, Math.max(width - 6, 20));
   };
 
-  drawRow(columns, true);
+  const drawHeaderBlock = () => {
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(13);
+    pdf.text("TGE Asset Track Export", margins.left, margins.top);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8);
+    pdf.text(`Generated: ${formatDisplayDate(currentIsoTime())}`, margins.left, margins.top + 13);
+  };
 
-  rows.forEach((row) => {
-    if (y > usableHeight) {
+  let y = margins.top + 30;
+
+  const drawTableHeader = () => {
+    pdf.setDrawColor(180, 196, 186);
+    pdf.setFillColor(245, 248, 246);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(headerFontSize);
+    let x = margins.left;
+    let maxHeight = 0;
+    const headerLines = columns.map((column, index) => {
+      const lines = wrapText(column, columnWidths[index], headerFontSize);
+      maxHeight = Math.max(maxHeight, lines.length * lineHeight + rowPadding * 2);
+      return lines;
+    });
+
+    columns.forEach((_, index) => {
+      pdf.rect(x, y, columnWidths[index], maxHeight, "FD");
+      pdf.text(headerLines[index], x + 3, y + rowPadding + lineHeight - 2);
+      x += columnWidths[index];
+    });
+
+    y += maxHeight;
+  };
+
+  const drawBodyRow = (row) => {
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(bodyFontSize);
+    let maxHeight = 0;
+    const rowLines = columns.map((column, index) => {
+      const lines = wrapText(row[column], columnWidths[index], bodyFontSize);
+      maxHeight = Math.max(maxHeight, lines.length * lineHeight + rowPadding * 2);
+      return lines;
+    });
+
+    if (y + maxHeight > margins.top + usableHeight) {
       pdf.addPage("a4", "landscape");
-      y = margins.top;
-      drawRow(columns, true);
+      drawHeaderBlock();
+      y = margins.top + 30;
+      drawTableHeader();
     }
 
-    drawRow(columns.map((column) => row[column]));
+    let x = margins.left;
+    rowLines.forEach((lines, index) => {
+      pdf.rect(x, y, columnWidths[index], maxHeight);
+      pdf.text(lines, x + 3, y + rowPadding + lineHeight - 2);
+      x += columnWidths[index];
+    });
+
+    y += maxHeight;
+  };
+
+  drawHeaderBlock();
+  drawTableHeader();
+
+  rows.forEach((row) => {
+    drawBodyRow(row);
   });
 
   pdf.save(`tge-asset-track-${state.assetTrack.mode}.pdf`);
   showAssetTrackMessage("Asset Track PDF exported.", false);
 }
 
-async function handleAssetTrackEmailExport() {
-  const rows = getSelectedAssetTrackRows();
+function handleAssetTrackExportExcel() {
+  const rows = getAssetTrackExportRows();
   if (!rows.length) {
-    showAssetTrackMessage("Select one or more visible rows before preparing the email export.");
+    showAssetTrackMessage("Run Asset Track and keep at least one visible row before exporting Excel.");
+    return;
+  }
+
+  downloadAssetTrackCsv(rows, `tge-asset-track-${state.assetTrack.mode}`);
+  showAssetTrackMessage("Asset Track Excel export downloaded.", false);
+}
+
+async function handleAssetTrackEmailExport() {
+  const rows = getAssetTrackExportRows();
+  if (!rows.length) {
+    showAssetTrackMessage("Run Asset Track and keep at least one visible row before preparing the email export.");
     return;
   }
 
@@ -2119,6 +2199,10 @@ if (el.assetTrackRefreshButton) {
 
 if (el.assetTrackExportPdfButton) {
   el.assetTrackExportPdfButton.addEventListener("click", handleAssetTrackExportPdf);
+}
+
+if (el.assetTrackExportExcelButton) {
+  el.assetTrackExportExcelButton.addEventListener("click", handleAssetTrackExportExcel);
 }
 
 if (el.assetTrackEmailButton) {
