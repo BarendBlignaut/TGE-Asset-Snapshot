@@ -1926,93 +1926,110 @@ async function prepareImagesForPdf(imgIds) {
 
   for (const id of imgIds) {
     const img = document.getElementById(id);
-    if (!img || img.style.display === "none" || !img.src) continue;
+    const src = img ? img.getAttribute("src") : null;
 
-    const originalSrc = img.src;
-    const originalCrossOrigin = img.crossOrigin;
+    console.log("[PDF] checking", id, "display:", img ? img.style.display : "no element", "src prefix:", src ? src.substring(0, 30) : "none");
+
+    if (!img || img.style.display === "none" || !src) {
+      console.log("[PDF] skipping", id);
+      continue;
+    }
 
     try {
       let dataUrl;
 
-      if (originalSrc.startsWith("data:image/svg")) {
-        // SVG data: URL — convert via Blob URL to avoid canvas taint
-        dataUrl = await svgDataUrlToJpeg(originalSrc);
-      } else if (originalSrc.startsWith("data:")) {
-        // Already a raster data URL — html2canvas can handle this fine, skip swap
+      if (src.startsWith("data:image/svg")) {
+        console.log("[PDF] converting SVG->JPEG for", id);
+        dataUrl = await svgDataUrlToJpeg(src);
+        console.log("[PDF]", id, "SVG converted:", dataUrl ? "OK (" + dataUrl.substring(0,30) + "...)" : "FAILED");
+      } else if (src.startsWith("data:")) {
+        console.log("[PDF]", id, "already raster data URL, no swap needed");
         continue;
       } else {
-        // External http(s) URL — proxy through Worker to get a same-origin data URL
-        dataUrl = await fetchImageViaProxy(originalSrc);
+        console.log("[PDF] fetching via proxy for", id, src.substring(0, 60));
+        dataUrl = await fetchImageViaProxy(src);
+        console.log("[PDF]", id, "proxy result:", dataUrl ? "OK" : "FAILED");
       }
 
-      if (!dataUrl) continue;
+      if (!dataUrl) {
+        console.warn("[PDF]", id, "dataUrl is null, skipping");
+        continue;
+      }
 
-      // Swap src to the safe data URL and wait for the browser to load it
+      // Set src BEFORE attaching onload to avoid race condition
+      const originalSrc = src;
+      img.removeAttribute("crossorigin");
+
       await new Promise((resolve) => {
-        img.onload = resolve;
-        img.onerror = resolve;
-        // Remove crossOrigin so data URL loads without CORS check
-        img.removeAttribute("crossorigin");
+        if (img.complete && img.src === dataUrl) {
+          resolve();
+          return;
+        }
+        img.onload = () => { img.onload = null; img.onerror = null; resolve(); };
+        img.onerror = () => { img.onload = null; img.onerror = null; resolve(); };
         img.src = dataUrl;
-        // If already complete (cached), resolve immediately
-        if (img.complete) resolve();
       });
 
-      restoreFns.push(() => {
-        img.src = originalSrc;
-        if (originalCrossOrigin) {
-          img.crossOrigin = originalCrossOrigin;
-        } else {
-          img.removeAttribute("crossorigin");
-        }
-      });
+      console.log("[PDF]", id, "src swapped successfully");
+      restoreFns.push(() => { img.src = originalSrc; });
 
     } catch (e) {
-      console.warn("prepareImagesForPdf: failed for", id, e);
+      console.error("[PDF] error for", id, e);
     }
   }
 
+  console.log("[PDF] prepareImagesForPdf done,", restoreFns.length, "images converted");
   return function restoreImages() {
     restoreFns.forEach((fn) => fn());
   };
 }
 
 function svgDataUrlToJpeg(svgDataUrl) {
-  // Drawing an SVG data: URL directly onto a canvas taints it and blocks toDataURL().
-  // Fix: decode the base64 SVG bytes -> Blob -> object URL -> draw -> revoke.
-  // The browser treats blob: URLs as same-origin, so no taint.
   return new Promise((resolve, reject) => {
     try {
-      // Strip the data URL header and decode base64 to raw SVG string
       const base64 = svgDataUrl.split(",")[1];
+      if (!base64) { reject(new Error("no base64 data")); return; }
+
       const svgStr = decodeURIComponent(escape(atob(base64)));
       const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
       const blobUrl = URL.createObjectURL(blob);
+      console.log("[PDF] svgDataUrlToJpeg: blobUrl created", blobUrl.substring(0,40));
 
-      const img = new Image();
-      img.onload = () => {
-        const W = 640, H = 360;
+      const tmp = new Image();
+
+      tmp.onload = () => {
+        console.log("[PDF] SVG image loaded, natural size:", tmp.naturalWidth, "x", tmp.naturalHeight);
+        const W = Math.max(tmp.naturalWidth, 320) || 640;
+        const H = Math.max(tmp.naturalHeight, 180) || 360;
         const canvas = document.createElement("canvas");
         canvas.width = W;
         canvas.height = H;
         const ctx = canvas.getContext("2d");
         ctx.fillStyle = "#1a2e20";
         ctx.fillRect(0, 0, W, H);
-        ctx.drawImage(img, 0, 0, W, H);
+        try {
+          ctx.drawImage(tmp, 0, 0, W, H);
+        } catch(drawErr) {
+          console.warn("[PDF] drawImage error:", drawErr);
+        }
         URL.revokeObjectURL(blobUrl);
         try {
-          resolve(canvas.toDataURL("image/jpeg", 0.88));
-        } catch (e) {
-          // Still tainted somehow — resolve with null so export continues without image
-          console.warn("svgDataUrlToJpeg: canvas still tainted", e);
+          const result = canvas.toDataURL("image/jpeg", 0.88);
+          console.log("[PDF] toDataURL OK, length:", result.length);
+          resolve(result);
+        } catch (taintErr) {
+          console.error("[PDF] canvas tainted:", taintErr);
           resolve(null);
         }
       };
-      img.onerror = (e) => {
+
+      tmp.onerror = (e) => {
+        console.error("[PDF] SVG image load error:", e);
         URL.revokeObjectURL(blobUrl);
-        reject(e);
+        reject(new Error("SVG image failed to load"));
       };
-      img.src = blobUrl;
+
+      tmp.src = blobUrl;
     } catch (e) {
       reject(e);
     }
