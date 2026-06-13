@@ -1051,6 +1051,188 @@ async function handleSendEmail(request, env) {
   }
 }
 
+
+// ── Camera Diagnostics: User Input (by IMEI list) ────────────────────────────
+async function handleCameraSnapshotByImei(request, env) {
+  const sessionCheck = await requireSession(request, env);
+  if (!sessionCheck.ok) return sessionCheck.response;
+
+  const body = await safeJson(request);
+  const imeis = Array.isArray(body.imeis)
+    ? body.imeis.map(i => String(i).trim()).filter(Boolean)
+    : [];
+
+  if (!imeis.length) {
+    return jsonResponse({ error: "At least one IMEI is required." }, 400);
+  }
+
+  if (isDemoMode(env)) {
+    // Return demo data for each IMEI
+    const results = imeis.map((imei, idx) => ({
+      imei,
+      vehicleId: String(306802 + idx),
+      fleetNumber: `100${idx + 1}`,
+      registration: `TGE-00${idx + 1}`,
+      make: "Demo",
+      model: "Vehicle",
+      snapshotTime: new Date().toISOString(),
+      slots: {
+        roadFacing:             demoImageDataUrl("Road Facing",     ["#315f45", "#8eb79d"]),
+        driverFacing:           demoImageDataUrl("Driver Facing",   ["#4b4a6d", "#9fa0c8"]),
+        inCabDriverFacingCamera:demoImageDataUrl("In-Cab Driver",   ["#68493d", "#c7a18f"]),
+        driverExternal:         demoImageDataUrl("Driver External", ["#2e5665", "#87b5c7"]),
+        leftExternal:           demoImageDataUrl("Left External",   ["#465d2f", "#9eb97c"]),
+      },
+    }));
+    return jsonResponse({ results });
+  }
+
+  // Fetch all camera events once, then match by device IMEI via vehicle lookup
+  const eventsUrl = `https://api-au.telematics.com/v1/events?types=camera&pruning=B2B&key=${env.TN360_API_KEY}`;
+  const eventsRes = await fetch(eventsUrl);
+  if (!eventsRes.ok) {
+    return jsonResponse({ error: `Events fetch failed: HTTP ${eventsRes.status}` }, 502);
+  }
+  const allEvents = await eventsRes.json().catch(() => []);
+
+  // Fetch all devices to map IMEI -> vehicleId
+  const devicesUrl = `https://api-au.telematics.com/v1/devices?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const devicesRes = await fetch(devicesUrl);
+  const allDevices = devicesRes.ok ? await devicesRes.json().catch(() => []) : [];
+
+  // Fetch all vehicles for name/registration lookup
+  const vehiclesUrl = `https://api-au.telematics.com/v1/vehicles?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const vehiclesRes = await fetch(vehiclesUrl);
+  const allVehicles = vehiclesRes.ok ? await vehiclesRes.json().catch(() => []) : [];
+  const vehicleMap = new Map((Array.isArray(allVehicles) ? allVehicles : []).map(v => [String(v.id), v]));
+
+  const results = [];
+  for (const imei of imeis) {
+    const device = Array.isArray(allDevices)
+      ? allDevices.find(d => String(d.imei || "") === imei)
+      : null;
+
+    const vehicleId = device ? String(device.vehicleId || "") : null;
+    const vehicle   = vehicleId ? vehicleMap.get(vehicleId) : null;
+
+    const events = Array.isArray(allEvents) && vehicleId
+      ? allEvents.filter(e => String(e.vehicleId || "") === vehicleId &&
+          String(e.type || "").toUpperCase() === "CAMERA" &&
+          String(e.action || "").toUpperCase() === "SNAPSHOT")
+      : [];
+
+    events.sort((a, b) => new Date(b.timeAt || b.createdAt || 0) - new Date(a.timeAt || a.createdAt || 0));
+    const latest = events[0] || null;
+    const context = latest ? safeParseJson(latest.attributes?.context) : null;
+    const mediaFiles = context?.response?.mediaFiles || [];
+    const snapshotData = { links: mediaFiles.map(item => ({
+      source: item.source || null,
+      mediaType: item.mediaType || null,
+      mediaFile: item.mediaFile || null,
+      status: item.status || null,
+      sources: Array.isArray(item.imageDetails?.sources) ? item.imageDetails.sources : [],
+    }))};
+
+    results.push({
+      imei,
+      vehicleId: vehicleId || null,
+      fleetNumber: vehicle?.name || null,
+      registration: vehicle?.registration || null,
+      make: vehicle?.operationalVehicleModel?.make || vehicle?.make || null,
+      model: vehicle?.operationalVehicleModel?.model || vehicle?.model || null,
+      snapshotTime: latest?.timeAt || latest?.createdAt || null,
+      slots: mapSnapshotLinksToSlots(snapshotData),
+      error: !device ? "IMEI not found" : !vehicleId ? "No vehicle linked" : null,
+    });
+  }
+
+  return jsonResponse({ results });
+}
+
+// ── Camera Diagnostics: Fleet Mode (all vehicles) ────────────────────────────
+async function handleCameraSnapshotFleet(request, env) {
+  const sessionCheck = await requireSession(request, env);
+  if (!sessionCheck.ok) return sessionCheck.response;
+
+  if (isDemoMode(env)) {
+    const vehicles = DEMO_ASSET_TRACK_VEHICLES;
+    const results = vehicles.map((v, idx) => ({
+      imei: `01526200412${1066 + idx}`,
+      vehicleId: String(v.id),
+      fleetNumber: v.name,
+      registration: v.registration,
+      make: v.make,
+      model: v.model,
+      snapshotTime: new Date().toISOString(),
+      slots: {
+        roadFacing:             demoImageDataUrl("Road Facing",     ["#315f45", "#8eb79d"]),
+        driverFacing:           demoImageDataUrl("Driver Facing",   ["#4b4a6d", "#9fa0c8"]),
+        inCabDriverFacingCamera:demoImageDataUrl("In-Cab Driver",   ["#68493d", "#c7a18f"]),
+        driverExternal:         demoImageDataUrl("Driver External", ["#2e5665", "#87b5c7"]),
+        leftExternal:           demoImageDataUrl("Left External",   ["#465d2f", "#9eb97c"]),
+      },
+    }));
+    return jsonResponse({ results });
+  }
+
+  // Fetch all vehicles + all camera events in parallel
+  const [vehiclesRes, eventsRes] = await Promise.all([
+    fetch(`https://api-au.telematics.com/v1/vehicles?key=${env.TN360_API_KEY}&pruning=B2B`),
+    fetch(`https://api-au.telematics.com/v1/events?types=camera&pruning=B2B&key=${env.TN360_API_KEY}`),
+  ]);
+
+  if (!vehiclesRes.ok) {
+    return jsonResponse({ error: `Vehicles fetch failed: HTTP ${vehiclesRes.status}` }, 502);
+  }
+
+  const allVehicles = await vehiclesRes.json().catch(() => []);
+  const allEvents   = eventsRes.ok ? await eventsRes.json().catch(() => []) : [];
+
+  // Group events by vehicleId, keep latest snapshot per vehicle
+  const eventsByVehicle = new Map();
+  if (Array.isArray(allEvents)) {
+    for (const e of allEvents) {
+      if (String(e.type || "").toUpperCase() !== "CAMERA" ||
+          String(e.action || "").toUpperCase() !== "SNAPSHOT") continue;
+      const vid = String(e.vehicleId || "");
+      if (!vid) continue;
+      const existing = eventsByVehicle.get(vid);
+      const eTime = new Date(e.timeAt || e.createdAt || 0).getTime();
+      if (!existing || eTime > new Date(existing.timeAt || existing.createdAt || 0).getTime()) {
+        eventsByVehicle.set(vid, e);
+      }
+    }
+  }
+
+  const results = (Array.isArray(allVehicles) ? allVehicles : []).map(vehicle => {
+    const vid    = String(vehicle.id || "");
+    const latest = eventsByVehicle.get(vid) || null;
+    const context = latest ? safeParseJson(latest.attributes?.context) : null;
+    const mediaFiles = context?.response?.mediaFiles || [];
+    const snapshotData = { links: mediaFiles.map(item => ({
+      source: item.source || null,
+      mediaType: item.mediaType || null,
+      mediaFile: item.mediaFile || null,
+      status: item.status || null,
+      sources: Array.isArray(item.imageDetails?.sources) ? item.imageDetails.sources : [],
+    }))};
+
+    return {
+      imei: null,
+      vehicleId: vid,
+      fleetNumber: vehicle.name || vid,
+      registration: vehicle.registration || null,
+      make: vehicle.operationalVehicleModel?.make || vehicle.make || null,
+      model: vehicle.operationalVehicleModel?.model || vehicle.model || null,
+      snapshotTime: latest?.timeAt || latest?.createdAt || null,
+      slots: mapSnapshotLinksToSlots(snapshotData),
+      error: null,
+    };
+  });
+
+  return jsonResponse({ results });
+}
+
 async function handleImageProxy(request, env) {
   const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
@@ -1653,6 +1835,14 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/api/camera-snapshots") {
         return handleCameraSnapshots(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/camera-snapshot-imei") {
+        return handleCameraSnapshotByImei(request, env);
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/camera-snapshot-fleet") {
+        return handleCameraSnapshotFleet(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/send-email") {
