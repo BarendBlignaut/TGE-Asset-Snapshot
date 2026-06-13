@@ -965,6 +965,79 @@ async function handleHermesDeviceStats(request, env) {
   return jsonResponse(device);
 }
 
+async function handleImageProxy(request, env) {
+  // Requires a valid session — prevents open proxy abuse
+  const sessionCheck = await requireSession(request, env);
+  if (!sessionCheck.ok) return sessionCheck.response;
+
+  const body = await safeJson(request);
+  const imageUrl = String(body.url || "").trim();
+
+  if (!imageUrl) {
+    return jsonResponse({ error: "url is required." }, 400);
+  }
+
+  // Only allow telematics CDN domains to prevent open proxy abuse
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(imageUrl);
+  } catch {
+    return jsonResponse({ error: "Invalid URL." }, 400);
+  }
+
+  const allowedHosts = [
+    "api-au.telematics.com",
+    "telematics.com",
+    "tn360.com",
+    "media.tn360.com",
+    "assets.tn360.com",
+    "cdn.telematics.com",
+  ];
+
+  const hostAllowed = allowedHosts.some(
+    (h) => parsedUrl.hostname === h || parsedUrl.hostname.endsWith("." + h)
+  );
+
+  if (!hostAllowed) {
+    return jsonResponse({ error: "URL host not permitted." }, 403);
+  }
+
+  try {
+    const upstream = await fetch(imageUrl, {
+      headers: {
+        // Forward API key if the URL is from the telematics API
+        ...(env.TN360_API_KEY && parsedUrl.hostname.includes("telematics.com")
+          ? { Authorization: `Bearer ${env.TN360_API_KEY}` }
+          : {}),
+      },
+    });
+
+    if (!upstream.ok) {
+      return jsonResponse(
+        { error: `Upstream image fetch failed: HTTP ${upstream.status}` },
+        502
+      );
+    }
+
+    const contentType = upstream.headers.get("content-type") || "image/jpeg";
+    const imageBuffer = await upstream.arrayBuffer();
+
+    return new Response(imageBuffer, {
+      status: 200,
+      headers: {
+        "Content-Type": contentType,
+        "Cache-Control": "private, max-age=300",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  } catch (err) {
+    return jsonResponse(
+      { error: "Image proxy failed.", detail: err instanceof Error ? err.message : String(err) },
+      502
+    );
+  }
+}
+
 async function handleCameraDeviceStats(request, env) {
   const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
@@ -1487,6 +1560,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/api/camera-snapshots") {
         return handleCameraSnapshots(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/image-proxy") {
+        return handleImageProxy(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/asset-track-user") {
