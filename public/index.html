@@ -1233,6 +1233,117 @@
       .sd-health-grid   { grid-template-columns: 1fr; }
     }
 
+    /* ── Camera tool selector cards ─────────────── */
+    .cam-tool-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 28px 20px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+      cursor: pointer;
+      transition: border-color 160ms, background 160ms, box-shadow 160ms;
+      text-align: center;
+    }
+
+    .cam-tool-card:hover {
+      border-color: var(--green-600);
+      background: var(--green-50, #f0faf4);
+      box-shadow: 0 4px 16px rgba(0,122,59,0.10);
+    }
+
+    .cam-tool-card.active {
+      border-color: var(--green-700);
+      background: var(--green-50, #f0faf4);
+    }
+
+    .cam-tool-card svg {
+      color: var(--green-700);
+      margin-bottom: 4px;
+    }
+
+    .cam-tool-card strong {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .cam-tool-card span {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .cam-panel-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 18px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--line-2);
+    }
+
+    .cam-back-btn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      height: 34px;
+      padding: 0 12px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 140ms, color 140ms;
+    }
+
+    .cam-back-btn:hover {
+      background: var(--surface-3);
+      color: var(--ink);
+    }
+
+    .cam-action-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      padding: 12px 16px;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+
+    .cam-mode-btn {
+      height: 34px;
+      padding: 0 14px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink-2);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 140ms, border-color 140ms, color 140ms;
+    }
+
+    .cam-mode-btn:hover {
+      background: var(--surface-3);
+      border-color: var(--green-600);
+    }
+
+    .cam-mode-btn.active {
+      background: var(--green-700);
+      border-color: var(--green-700);
+      color: var(--yellow);
+    }
+
     /* ── Diagnostics snapshot thumbnails ────────── */
     .snap-thumb {
       width: 64px;
@@ -1335,12 +1446,13 @@
           <span class="nav-label">VPM Analysis</span>
         </button>
 
-        <span class="nav-section-label">Diagnostics</span>
+        <span class="nav-section-label">Camera</span>
         <button class="nav-item" id="diagnostics-tab" type="button">
           <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-            <path d="M10 2v4M10 14v4M2 10h4M14 10h4"/><circle cx="10" cy="10" r="4"/>
+            <path d="M2 7a2 2 0 012-2h1l1.5-2h5L13 5h1a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V7z"/>
+            <circle cx="10" cy="10.5" r="2.5"/>
           </svg>
-          <span class="nav-label">Diagnostics</span>
+          <span class="nav-label">Camera</span>
         </button>
       </nav>
 
@@ -1818,89 +1930,103 @@
             </section>
           </section>
 
-          <!-- DIAGNOSTICS VIEW -->
+          <!-- CAMERA VIEW -->
           <section class="section" id="diagnostics-view" style="display:none;">
+
+            <!-- Top section header -->
             <div class="section-head">
               <div>
-                <div class="section-kicker">Diagnostics</div>
-                <h3 class="section-title">Fleet Diagnostics</h3>
+                <div class="section-kicker">Camera</div>
+                <h3 class="section-title">Camera Diagnostics</h3>
               </div>
             </div>
 
-            <!-- Tool bar -->
-            <div class="diag-tool-bar">
-              <button class="diag-tool-btn active" id="diag-camera-btn" type="button">
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                  <path d="M2 7a2 2 0 012-2h1l1.5-2h5L13 5h1a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V7z"/>
-                  <circle cx="10" cy="10.5" r="2.5"/>
+            <!-- Tool selector — two large option cards -->
+            <div id="cam-tool-selector" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px;">
+
+              <button id="cam-snap-select-btn" class="cam-tool-card" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:28px;height:28px;margin-bottom:8px;">
+                  <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
                 </svg>
-                Camera
+                <strong>Camera Snapshots</strong>
+                <span>Pull latest images per vehicle or fleet</span>
               </button>
+
+              <button id="cam-sd-select-btn" class="cam-tool-card" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:28px;height:28px;margin-bottom:8px;">
+                  <rect x="2" y="2" width="20" height="20" rx="3"/>
+                  <path d="M7 2v10M12 2v10M17 2v10"/>
+                  <circle cx="7" cy="17" r="1.5" fill="currentColor"/>
+                  <circle cx="12" cy="17" r="1.5" fill="currentColor"/>
+                </svg>
+                <strong>SD Card Health</strong>
+                <span>Check storage status across the fleet</span>
+              </button>
+
             </div>
 
-            <!-- Camera sub-options -->
-            <div class="diag-sub-bar open" id="diag-camera-sub">
-              <button class="diag-sub-btn active" id="diag-snap-btn" type="button">Camera Snapshots</button>
-              <button class="diag-sub-btn" id="diag-sd-btn" type="button">SD Card Health</button>
-            </div>
-
-            <!-- Camera Snapshots panel -->
-            <div class="diag-panel active" id="diag-snap-panel">
-
-              <!-- Mode bar -->
-              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
-                <button class="action-btn" id="diag-snap-user-tab" type="button">User Input</button>
-                <button class="action-btn" id="diag-snap-fleet-tab" type="button">Fleet Mode</button>
-                <button class="action-btn" id="diag-snap-run-btn" type="button" style="display:none;">Run</button>
-                <button class="secondary-btn" id="diag-snap-cancel-btn" type="button" style="display:none;background:var(--surface-2);border-color:var(--line);color:var(--ink-2);">Cancel</button>
-                <div style="flex:1;"></div>
-                <button class="secondary-btn" id="diag-snap-export-pdf-btn" type="button" style="display:none;background:var(--surface-2);border-color:var(--line);color:var(--ink-2);">Export PDF</button>
-                <button class="secondary-btn" id="diag-snap-export-csv-btn" type="button" style="display:none;background:var(--surface-2);border-color:var(--line);color:var(--ink-2);">Export CSV</button>
-                <button class="secondary-btn" id="diag-snap-export-zip-btn" type="button" style="display:none;background:var(--surface-2);border-color:var(--line);color:var(--ink-2);">Download ZIP</button>
+            <!-- ── CAMERA SNAPSHOTS PANEL ── -->
+            <div id="cam-snap-panel" style="display:none;">
+              <div class="cam-panel-header">
+                <button class="cam-back-btn" id="cam-snap-back" type="button">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px;height:14px;"><path d="M13 4L7 10l6 6"/></svg>
+                  Back
+                </button>
+                <div>
+                  <div class="section-kicker">Camera Snapshots</div>
+                  <h3 class="section-title" style="margin:0;">Latest image set per vehicle</h3>
+                </div>
               </div>
 
-              <!-- User input panel -->
-              <div id="diag-snap-user-panel" style="display:none;margin-bottom:16px;">
+              <!-- Mode + action bar -->
+              <div class="cam-action-bar">
+                <div style="display:flex;gap:8px;">
+                  <button class="cam-mode-btn active" id="snap-user-tab" type="button">User Input</button>
+                  <button class="cam-mode-btn" id="snap-fleet-tab" type="button">Fleet Mode</button>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button class="action-btn" id="snap-run-btn" type="button" style="display:none;height:36px;font-size:12px;background:var(--green-700);color:var(--yellow);">Run</button>
+                  <button class="secondary-btn" id="snap-cancel-btn" type="button" style="display:none;height:36px;font-size:12px;background:var(--surface-2);border-color:var(--line);color:var(--ink-2);">Cancel</button>
+                  <button class="secondary-btn" id="snap-export-pdf-btn" type="button" style="display:none;height:36px;font-size:12px;background:var(--surface-2);border-color:var(--line);color:var(--ink-2);">Export PDF</button>
+                  <button class="secondary-btn" id="snap-export-csv-btn" type="button" style="display:none;height:36px;font-size:12px;background:var(--surface-2);border-color:var(--line);color:var(--ink-2);">Export CSV</button>
+                  <button class="secondary-btn" id="snap-export-email-btn" type="button" style="display:none;height:36px;font-size:12px;background:var(--surface-2);border-color:var(--line);color:var(--ink-2);">Email PDF</button>
+                </div>
+              </div>
+
+              <!-- User input -->
+              <div id="snap-user-panel" style="display:none;margin-bottom:14px;">
                 <div class="field dark-field">
-                  <label for="diag-snap-imei-input">IMEI Numbers (one per line, up to 500)</label>
-                  <textarea id="diag-snap-imei-input" rows="6"
+                  <label for="snap-imei-input">IMEI Numbers — one per line</label>
+                  <textarea id="snap-imei-input" rows="5"
                     style="width:100%;border:1px solid var(--line);border-radius:8px;padding:12px;font:inherit;color:var(--ink);resize:vertical;background:var(--surface);"
-                    placeholder="Enter one IMEI per line&#10;015678004545626&#10;867734081081313"></textarea>
+                    placeholder="015678004545626&#10;867734081081313"></textarea>
                 </div>
               </div>
 
-              <!-- Fleet mode panel -->
-              <div id="diag-snap-fleet-panel" style="display:none;margin-bottom:16px;">
-                <div style="padding:14px 16px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;">
-                  <p style="margin:0;font-size:13px;color:var(--muted);">
-                    Fleet mode retrieves the latest camera snapshot for every active vehicle in your fleet.
-                    All available camera angles are fetched per vehicle.
-                  </p>
+              <!-- Fleet mode -->
+              <div id="snap-fleet-panel" style="display:none;margin-bottom:14px;">
+                <div style="padding:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;font-size:13px;color:var(--muted);">
+                  Fleet mode retrieves the latest camera snapshot for every active vehicle. All camera angles are included.
                 </div>
               </div>
 
-              <!-- Message -->
-              <p class="message" id="diag-snap-message" style="margin-bottom:12px;"></p>
+              <p class="message" id="snap-message"></p>
+              <p id="snap-summary" style="margin:0 0 12px;font-size:13px;color:var(--muted);">Select a mode and click Run to begin.</p>
 
-              <!-- Summary -->
-              <p id="diag-snap-summary" style="margin:0 0 14px;font-size:13px;color:var(--muted);">No camera snapshot analysis has been run yet.</p>
-
-              <!-- Results table -->
-              <div id="diag-snap-results" style="display:none;">
-                <!-- Selection toolbar -->
-                <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+              <!-- Results -->
+              <div id="snap-results" style="display:none;">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
                   <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
-                    <input type="checkbox" id="diag-snap-select-all" />
-                    Select all
+                    <input type="checkbox" id="snap-select-all" /> Select all
                   </label>
-                  <span id="diag-snap-selected-count" style="font-size:12px;color:var(--muted);"></span>
+                  <span id="snap-sel-count" style="font-size:12px;color:var(--muted);"></span>
                 </div>
-
                 <div class="table-wrap">
-                  <table id="diag-snap-table">
+                  <table id="snap-table">
                     <thead>
                       <tr>
-                        <th style="width:40px;"></th>
+                        <th style="width:36px;"></th>
                         <th>Fleet No.</th>
                         <th>Registration</th>
                         <th>Make / Model</th>
@@ -1914,77 +2040,92 @@
                         <th>Status</th>
                       </tr>
                     </thead>
-                    <tbody id="diag-snap-tbody"></tbody>
+                    <tbody id="snap-tbody"></tbody>
                   </table>
                 </div>
               </div>
-
             </div>
 
-            <!-- SD Card Health panel -->
-            <div class="diag-panel" id="diag-sd-panel">
-              <div class="section-head" style="margin-bottom:14px;">
+            <!-- ── SD CARD HEALTH PANEL ── -->
+            <div id="cam-sd-panel" style="display:none;">
+              <div class="cam-panel-header">
+                <button class="cam-back-btn" id="cam-sd-back" type="button">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px;height:14px;"><path d="M13 4L7 10l6 6"/></svg>
+                  Back
+                </button>
                 <div>
-                  <div class="section-kicker">Storage</div>
-                  <h3 class="section-title">SD Card Health</h3>
+                  <div class="section-kicker">SD Card Health</div>
+                  <h3 class="section-title" style="margin:0;">Storage status across the fleet</h3>
                 </div>
               </div>
 
-              <div id="diag-sd-status" style="margin-bottom:12px;font-size:13px;color:var(--muted);"></div>
-
-              <div class="sd-health-grid" id="diag-sd-grid">
-                <!-- SD Card 1 -->
-                <div class="sd-health-card">
-                  <div class="sd-health-card-header">
-                    <span class="sd-health-card-title">SD Card 1</span>
-                    <span class="sd-status-badge absent" id="diag-sd1-badge">Unknown</span>
-                  </div>
-                  <div>
-                    <div class="sd-health-row">
-                      <span>Status</span>
-                      <strong id="diag-sd1-status">—</strong>
-                    </div>
-                    <div class="sd-health-row">
-                      <span>Total Size</span>
-                      <strong id="diag-sd1-size">—</strong>
-                    </div>
-                    <div class="sd-health-row">
-                      <span>Raw Status</span>
-                      <strong id="diag-sd1-raw">—</strong>
-                    </div>
-                  </div>
+              <!-- Mode + action bar -->
+              <div class="cam-action-bar">
+                <div style="display:flex;gap:8px;">
+                  <button class="cam-mode-btn active" id="sd-user-tab" type="button">User Input</button>
+                  <button class="cam-mode-btn" id="sd-fleet-tab" type="button">Fleet Mode</button>
                 </div>
-
-                <!-- SD Card 2 -->
-                <div class="sd-health-card">
-                  <div class="sd-health-card-header">
-                    <span class="sd-health-card-title">SD Card 2</span>
-                    <span class="sd-status-badge absent" id="diag-sd2-badge">Unknown</span>
-                  </div>
-                  <div>
-                    <div class="sd-health-row">
-                      <span>Status</span>
-                      <strong id="diag-sd2-status">—</strong>
-                    </div>
-                    <div class="sd-health-row">
-                      <span>Total Size</span>
-                      <strong id="diag-sd2-size">—</strong>
-                    </div>
-                    <div class="sd-health-row">
-                      <span>Raw Status</span>
-                      <strong id="diag-sd2-raw">—</strong>
-                    </div>
-                  </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button class="action-btn" id="sd-run-btn" type="button" style="display:none;height:36px;font-size:12px;background:var(--green-700);color:var(--yellow);">Run</button>
+                  <button class="secondary-btn" id="sd-cancel-btn" type="button" style="display:none;height:36px;font-size:12px;background:var(--surface-2);border-color:var(--line);color:var(--ink-2);">Cancel</button>
+                  <button class="secondary-btn" id="sd-export-pdf-btn" type="button" style="display:none;height:36px;font-size:12px;background:var(--surface-2);border-color:var(--line);color:var(--ink-2);">Export PDF</button>
+                  <button class="secondary-btn" id="sd-export-csv-btn" type="button" style="display:none;height:36px;font-size:12px;background:var(--surface-2);border-color:var(--line);color:var(--ink-2);">Export CSV</button>
+                  <button class="secondary-btn" id="sd-export-email-btn" type="button" style="display:none;height:36px;font-size:12px;background:var(--surface-2);border-color:var(--line);color:var(--ink-2);">Email PDF</button>
                 </div>
               </div>
 
-              <div id="diag-sd-overall" style="margin-top:14px;"></div>
+              <!-- User input -->
+              <div id="sd-user-panel" style="display:none;margin-bottom:14px;">
+                <div class="field dark-field">
+                  <label for="sd-imei-input">Camera IMEI Numbers — one per line</label>
+                  <textarea id="sd-imei-input" rows="5"
+                    style="width:100%;border:1px solid var(--line);border-radius:8px;padding:12px;font:inherit;color:var(--ink);resize:vertical;background:var(--surface);"
+                    placeholder="867734081081313"></textarea>
+                </div>
+              </div>
+
+              <!-- Fleet mode -->
+              <div id="sd-fleet-panel" style="display:none;margin-bottom:14px;">
+                <div style="padding:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;font-size:13px;color:var(--muted);">
+                  Fleet mode checks SD card health for all camera-equipped vehicles in your fleet.
+                </div>
+              </div>
+
+              <p class="message" id="sd-message"></p>
+              <p id="sd-summary" style="margin:0 0 12px;font-size:13px;color:var(--muted);">Select a mode and click Run to begin.</p>
+
+              <!-- Results -->
+              <div id="sd-results" style="display:none;">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+                  <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                    <input type="checkbox" id="sd-select-all" /> Select all
+                  </label>
+                  <span id="sd-sel-count" style="font-size:12px;color:var(--muted);"></span>
+                </div>
+                <div class="table-wrap">
+                  <table id="sd-table">
+                    <thead>
+                      <tr>
+                        <th style="width:36px;"></th>
+                        <th>Fleet No.</th>
+                        <th>Registration</th>
+                        <th>Camera IMEI</th>
+                        <th>Overall Status</th>
+                        <th>SD Card 1</th>
+                        <th>SD Card 1 Size</th>
+                        <th>SD Card 2</th>
+                        <th>SD Card 2 Size</th>
+                      </tr>
+                    </thead>
+                    <tbody id="sd-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
             </div>
 
           </section>
 
-        </div><!-- /stack -->
-      </div><!-- /page / app-shell -->
+        </div><!-- /stack -->shell -->
 
     </main><!-- /main -->
   </div><!-- /shell -->
@@ -2052,550 +2193,7 @@
   <script src="./lib/jspdf.umd.min.js" defer></script>
   <script src="./app.js?v=8" defer></script>
 
-  <script>
-    // ── Diagnostics tab wiring ─────────────────────────────────────────────────
-    (function() {
-      // ── Camera tool button ────────────────────────────────────────────────
-      var cameraBtn = document.getElementById('diag-camera-btn');
-      if (cameraBtn) {
-        cameraBtn.addEventListener('click', function() {
-          // Toggle active on tool button
-          document.querySelectorAll('.diag-tool-btn').forEach(function(b) { b.classList.remove('active'); });
-          cameraBtn.classList.add('active');
-          // Show camera sub-bar
-          var sub = document.getElementById('diag-camera-sub');
-          if (sub) sub.classList.add('open');
-        });
-      }
-
-      // ── Sub-panel switching ───────────────────────────────────────────────
-      function showDiagPanel(panelId, btnId) {
-        document.querySelectorAll('.diag-panel').forEach(function(p) { p.classList.remove('active'); });
-        document.querySelectorAll('.diag-sub-btn').forEach(function(b) { b.classList.remove('active'); });
-        var panel = document.getElementById(panelId);
-        var btn   = document.getElementById(btnId);
-        if (panel) panel.classList.add('active');
-        if (btn)   btn.classList.add('active');
-      }
-
-      var snapBtn = document.getElementById('diag-snap-btn');
-      var sdBtn   = document.getElementById('diag-sd-btn');
-      if (snapBtn) snapBtn.addEventListener('click', function() { showDiagPanel('diag-snap-panel', 'diag-snap-btn'); });
-      if (sdBtn)   sdBtn.addEventListener('click',   function() { showDiagPanel('diag-sd-panel',   'diag-sd-btn'); });
-
-      // ── Refresh snapshots button ──────────────────────────────────────────
-      var refreshBtn = document.getElementById('diag-snap-refresh');
-      if (refreshBtn) {
-        refreshBtn.addEventListener('click', function() {
-          populateDiagCameraImages();
-        });
-      }
-
-      // ── Populate diagnostics from window.state ────────────────────────────
-      function setText(id, val, fallback) {
-        var el = document.getElementById(id);
-        if (el) el.textContent = val != null && val !== '' ? val : (fallback || '—');
-      }
-
-      function setImage(imgId, emptyId, url) {
-        var img   = document.getElementById(imgId);
-        var empty = document.getElementById(emptyId);
-        if (!img || !empty) return;
-        if (url) {
-          img.src = url;
-          img.style.display = 'block';
-          empty.style.display = 'none';
-        } else {
-          img.removeAttribute('src');
-          img.style.display = 'none';
-          empty.textContent = 'No image available';
-          empty.style.display = 'block';
-        }
-      }
-
-      function populateDiagCameraImages() {
-        var lookup = window.state && window.state.activeAssetLookup;
-        var slots  = lookup && lookup.cameraSnapshot && lookup.cameraSnapshot.slots || {};
-        var snapTime = lookup && lookup.cameraSnapshot && lookup.cameraSnapshot.snapshotTime;
-
-        setImage('diag-img-road-facing',     'diag-img-road-facing-empty',     slots.roadFacing);
-        setImage('diag-img-driver-facing',   'diag-img-driver-facing-empty',   slots.driverFacing);
-        setImage('diag-img-in-cab',          'diag-img-in-cab-empty',          slots.inCabDriverFacingCamera);
-        setImage('diag-img-driver-external', 'diag-img-driver-external-empty', slots.driverExternal);
-        setImage('diag-img-left-external',   'diag-img-left-external-empty',   slots.leftExternal);
-
-        var status = document.getElementById('diag-snap-status');
-        if (status) {
-          if (!lookup) {
-            status.textContent = 'Load an asset from the Snapshot tab first.';
-          } else if (snapTime) {
-            status.textContent = 'Snapshot time: ' + new Date(snapTime).toLocaleString('en-AU', { hour12: false });
-          } else {
-            status.textContent = 'No snapshot data available for this asset.';
-          }
-        }
-
-        var meta = document.getElementById('diag-snap-meta');
-        if (meta && lookup) {
-          var vehicle = lookup.vehicle || {};
-          meta.textContent = 'Fleet ' + (vehicle.assetNumber || '—') + '  ·  ' + (vehicle.registration || '—');
-        }
-      }
-
-      // ── Camera Snapshot Tool ─────────────────────────────────────────────────
-      var diagSnapState = {
-        mode: null,         // 'user' | 'fleet'
-        running: false,
-        results: [],        // [{imei, fleetNumber, registration, make, model, snapshotTime, slots, error, selected}]
-        cancelToken: false,
-      };
-
-      var snapUserTab    = document.getElementById('diag-snap-user-tab');
-      var snapFleetTab   = document.getElementById('diag-snap-fleet-tab');
-      var snapRunBtn     = document.getElementById('diag-snap-run-btn');
-      var snapCancelBtn  = document.getElementById('diag-snap-cancel-btn');
-      var snapUserPanel  = document.getElementById('diag-snap-user-panel');
-      var snapFleetPanel = document.getElementById('diag-snap-fleet-panel');
-      var snapSummary    = document.getElementById('diag-snap-summary');
-      var snapResults    = document.getElementById('diag-snap-results');
-      var snapTbody      = document.getElementById('diag-snap-tbody');
-      var snapMessage    = document.getElementById('diag-snap-message');
-      var snapSelectAll  = document.getElementById('diag-snap-select-all');
-      var snapCount      = document.getElementById('diag-snap-selected-count');
-
-      var exportPdfBtn   = document.getElementById('diag-snap-export-pdf-btn');
-      var exportCsvBtn   = document.getElementById('diag-snap-export-csv-btn');
-      var exportZipBtn   = document.getElementById('diag-snap-export-zip-btn');
-
-      function setSnapMode(mode) {
-        diagSnapState.mode = mode;
-        snapUserPanel.style.display  = mode === 'user'  ? '' : 'none';
-        snapFleetPanel.style.display = mode === 'fleet' ? '' : 'none';
-        snapRunBtn.style.display     = '';
-        snapUserTab.style.background  = mode === 'user'  ? 'var(--green-700)' : '';
-        snapUserTab.style.color       = mode === 'user'  ? 'var(--yellow)'    : '';
-        snapFleetTab.style.background = mode === 'fleet' ? 'var(--green-700)' : '';
-        snapFleetTab.style.color      = mode === 'fleet' ? 'var(--yellow)'    : '';
-      }
-
-      if (snapUserTab)  snapUserTab.addEventListener('click',  function() { setSnapMode('user'); });
-      if (snapFleetTab) snapFleetTab.addEventListener('click', function() { setSnapMode('fleet'); });
-
-      if (snapCancelBtn) snapCancelBtn.addEventListener('click', function() {
-        diagSnapState.cancelToken = true;
-      });
-
-      if (snapRunBtn) snapRunBtn.addEventListener('click', async function() {
-        if (!diagSnapState.mode) { snapMessage.textContent = 'Select User Input or Fleet Mode first.'; return; }
-        if (diagSnapState.running) return;
-
-        snapMessage.textContent = '';
-        diagSnapState.running = true;
-        diagSnapState.cancelToken = false;
-        diagSnapState.results = [];
-        snapRunBtn.style.display    = 'none';
-        snapCancelBtn.style.display = '';
-        snapResults.style.display   = 'none';
-        exportPdfBtn.style.display  = 'none';
-        exportCsvBtn.style.display  = 'none';
-        exportZipBtn.style.display  = 'none';
-        snapSummary.textContent     = 'Running...';
-
-        try {
-          var data;
-          if (diagSnapState.mode === 'user') {
-            var raw = document.getElementById('diag-snap-imei-input').value;
-            var imeis = raw.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
-            if (!imeis.length) { snapMessage.textContent = 'Enter at least one IMEI.'; return; }
-            snapSummary.textContent = 'Fetching snapshots for ' + imeis.length + ' IMEI(s)...';
-            var res = await fetch('/api/camera-snapshot-imei', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ imeis }),
-            });
-            data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Request failed');
-          } else {
-            snapSummary.textContent = 'Fetching fleet snapshot data...';
-            var res = await fetch('/api/camera-snapshot-fleet');
-            data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Request failed');
-          }
-
-          if (diagSnapState.cancelToken) { snapSummary.textContent = 'Cancelled.'; return; }
-
-          diagSnapState.results = (data.results || []).map(function(r) {
-            return Object.assign({ selected: false }, r);
-          });
-
-          renderSnapTable();
-          var total = diagSnapState.results.length;
-          var withImages = diagSnapState.results.filter(function(r) {
-            return r.slots && Object.values(r.slots).some(function(v){ return !!v; });
-          }).length;
-          snapSummary.textContent = total + ' vehicle(s) returned, ' + withImages + ' with snapshot images.';
-          snapResults.style.display   = '';
-          exportPdfBtn.style.display  = '';
-          exportCsvBtn.style.display  = '';
-          exportZipBtn.style.display  = '';
-        } catch(e) {
-          snapMessage.textContent = e.message || 'Failed to fetch snapshots.';
-          snapSummary.textContent = 'Error — see message above.';
-        } finally {
-          diagSnapState.running = false;
-          snapRunBtn.style.display    = '';
-          snapCancelBtn.style.display = 'none';
-        }
-      });
-
-      function formatSnapDate(iso) {
-        if (!iso) return '—';
-        try { return new Date(iso).toLocaleString('en-AU', { hour12: false }); } catch(e) { return iso; }
-      }
-
-      function thumbCell(url, label) {
-        if (!url) return '<td><div class="snap-thumb-empty">None</div></td>';
-        return '<td><img class="snap-thumb" src="' + url + '" alt="' + label + '" title="' + label + '" onclick="window.__diagLightbox(this.src,\'' + label + '\')" /></td>';
-      }
-
-      function renderSnapTable() {
-        if (!snapTbody) return;
-        snapTbody.innerHTML = diagSnapState.results.map(function(r, idx) {
-          var slots = r.slots || {};
-          var chk = '<input type="checkbox" data-idx="' + idx + '" class="diag-snap-chk"' + (r.selected ? ' checked' : '') + ' />';
-          var info = (r.error ? '<span style="color:var(--danger);font-size:11px;">' + r.error + '</span>' : '<span style="color:var(--green-600);font-size:11px;">OK</span>');
-          return '<tr>' +
-            '<td>' + chk + '</td>' +
-            '<td><strong>' + (r.fleetNumber || '—') + '</strong></td>' +
-            '<td>' + (r.registration || '—') + '</td>' +
-            '<td>' + [r.make, r.model].filter(Boolean).join(' ') + '</td>' +
-            '<td style="font-size:11px;font-family:monospace;">' + (r.imei || '—') + '</td>' +
-            '<td style="font-size:11px;">' + formatSnapDate(r.snapshotTime) + '</td>' +
-            thumbCell(slots.roadFacing,              'Road Facing') +
-            thumbCell(slots.driverFacing,            'Driver Facing') +
-            thumbCell(slots.inCabDriverFacingCamera, 'In-Cab Driver') +
-            thumbCell(slots.driverExternal,          'Driver External') +
-            thumbCell(slots.leftExternal,            'Left External') +
-            '<td>' + info + '</td>' +
-            '</tr>';
-        }).join('');
-
-        // Wire checkboxes
-        snapTbody.querySelectorAll('.diag-snap-chk').forEach(function(chk) {
-          chk.addEventListener('change', function() {
-            var idx = parseInt(this.dataset.idx);
-            diagSnapState.results[idx].selected = this.checked;
-            updateSnapCount();
-          });
-        });
-        updateSnapCount();
-      }
-
-      function updateSnapCount() {
-        var sel = diagSnapState.results.filter(function(r){ return r.selected; }).length;
-        if (snapCount) snapCount.textContent = sel + ' selected';
-        if (snapSelectAll) snapSelectAll.indeterminate = sel > 0 && sel < diagSnapState.results.length;
-        if (snapSelectAll) snapSelectAll.checked = sel === diagSnapState.results.length && sel > 0;
-      }
-
-      if (snapSelectAll) snapSelectAll.addEventListener('change', function() {
-        var checked = this.checked;
-        diagSnapState.results.forEach(function(r){ r.selected = checked; });
-        renderSnapTable();
-      });
-
-      // Lightbox for thumbnail clicks
-      window.__diagLightbox = function(url, label) {
-        var overlay = document.getElementById('lightbox-overlay');
-        var img     = document.getElementById('lightbox-img');
-        var cap     = document.getElementById('lightbox-caption');
-        if (overlay && img) {
-          img.src = url;
-          if (cap) cap.textContent = label;
-          overlay.style.display = 'grid';
-        }
-      };
-
-      // ── Export CSV ──────────────────────────────────────────────────────────
-      if (exportCsvBtn) exportCsvBtn.addEventListener('click', function() {
-        var rows = diagSnapState.results.filter(function(r){ return r.selected; });
-        if (!rows.length) rows = diagSnapState.results;
-        var headers = ['Fleet Number','Registration','Make','Model','IMEI','Snapshot Time','Road Facing','Driver Facing','In-Cab Driver','Driver External','Left External','Status'];
-        var csv = [headers.join(',')].concat(rows.map(function(r) {
-          var s = r.slots || {};
-          return [
-            r.fleetNumber, r.registration, r.make, r.model, r.imei,
-            r.snapshotTime || '',
-            s.roadFacing ? 'Yes' : 'No',
-            s.driverFacing ? 'Yes' : 'No',
-            s.inCabDriverFacingCamera ? 'Yes' : 'No',
-            s.driverExternal ? 'Yes' : 'No',
-            s.leftExternal ? 'Yes' : 'No',
-            r.error || 'OK',
-          ].map(function(v){ return '"' + String(v||'').replace(/"/g,'""') + '"'; }).join(',');
-        })).join('\n');
-        var blob = new Blob([csv], { type: 'text/csv' });
-        var a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'camera-snapshots-' + new Date().toISOString().slice(0,10) + '.csv';
-        document.body.appendChild(a); a.click(); a.remove();
-      });
-
-      // ── Export ZIP ─────────────────────────────────────────────────────────
-      if (exportZipBtn) exportZipBtn.addEventListener('click', async function() {
-        var rows = diagSnapState.results.filter(function(r){ return r.selected; });
-        if (!rows.length) rows = diagSnapState.results;
-        exportZipBtn.textContent = 'Preparing...';
-        exportZipBtn.disabled = true;
-
-        // Collect all image URLs
-        var downloads = [];
-        rows.forEach(function(r) {
-          var s = r.slots || {};
-          var prefix = (r.fleetNumber || r.imei || 'vehicle').replace(/[^a-z0-9]/gi, '_');
-          [
-            ['road_facing', s.roadFacing],
-            ['driver_facing', s.driverFacing],
-            ['in_cab_driver', s.inCabDriverFacingCamera],
-            ['driver_external', s.driverExternal],
-            ['left_external', s.leftExternal],
-          ].forEach(function(pair) {
-            if (pair[1]) downloads.push({ filename: prefix + '_' + pair[0] + '.jpg', url: pair[1] });
-          });
-        });
-
-        // Download each image as a blob and trigger individual downloads
-        // (true ZIP requires a library — we download each image separately for now)
-        var count = 0;
-        for (var i = 0; i < downloads.length; i++) {
-          try {
-            var res = await fetch('/api/image-proxy', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ url: downloads[i].url }),
-            });
-            if (res.ok) {
-              var blob = await res.blob();
-              var a = document.createElement('a');
-              a.href = URL.createObjectURL(blob);
-              a.download = downloads[i].filename;
-              document.body.appendChild(a); a.click(); a.remove();
-              count++;
-              await new Promise(function(r){ setTimeout(r, 200); });
-            }
-          } catch(e) {}
-        }
-        exportZipBtn.textContent = 'Download ZIP';
-        exportZipBtn.disabled = false;
-        snapMessage.textContent = count + ' image(s) downloaded.';
-      });
-
-      // ── Export PDF ─────────────────────────────────────────────────────────
-      if (exportPdfBtn) exportPdfBtn.addEventListener('click', async function() {
-        if (typeof jspdf === 'undefined') { snapMessage.textContent = 'PDF library not loaded.'; return; }
-        var rows = diagSnapState.results.filter(function(r){ return r.selected; });
-        if (!rows.length) rows = diagSnapState.results;
-        exportPdfBtn.textContent = 'Building PDF...';
-        exportPdfBtn.disabled = true;
-
-        try {
-          var { jsPDF } = jspdf;
-          var pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
-          var PW = 595.28, PH = 841.89, ML = 32, MR = 32, MT = 36, CW = PW - ML - MR;
-          var y = MT;
-          var GREEN = [0, 90, 45], INK = [20, 30, 24], MUTED = [90, 108, 98], LINE = [215, 226, 219];
-
-          // Header
-          pdf.setFillColor(...GREEN).rect(0, 0, PW, 48, 'F');
-          pdf.setFontSize(14).setFont(undefined, 'bold').setTextColor(255, 255, 255);
-          pdf.text('TGE Camera Snapshot Report', ML, 22);
-          pdf.setFontSize(8).setFont(undefined, 'normal').setTextColor(195, 230, 208);
-          pdf.text('Generated: ' + new Date().toLocaleString('en-AU', { hour12: false }) + '  ·  ' + rows.length + ' vehicle(s)', ML, 38);
-          y = 62;
-
-          for (var vi = 0; vi < rows.length; vi++) {
-            var r = rows[vi];
-            var s = r.slots || {};
-            if (y > PH - 220) { pdf.addPage(); y = MT; }
-
-            // Vehicle header
-            pdf.setFillColor(245, 249, 246).rect(ML, y, CW, 28, 'F');
-            pdf.setDrawColor(...LINE).setLineWidth(0.4).rect(ML, y, CW, 28);
-            pdf.setFontSize(9).setFont(undefined, 'bold').setTextColor(...INK);
-            pdf.text('Fleet ' + (r.fleetNumber || '—') + '  ·  ' + (r.registration || '—') + '  ·  ' + [r.make, r.model].filter(Boolean).join(' '), ML + 8, y + 17);
-            pdf.setFontSize(7).setFont(undefined, 'normal').setTextColor(...MUTED);
-            pdf.text('Snapshot: ' + formatSnapDate(r.snapshotTime), PW - MR, y + 17, { align: 'right' });
-            y += 32;
-
-            // Images — 5 across
-            var slots5 = [
-              { label: 'Road Facing',     url: s.roadFacing },
-              { label: 'Driver Facing',   url: s.driverFacing },
-              { label: 'In-Cab Driver',   url: s.inCabDriverFacingCamera },
-              { label: 'Driver External', url: s.driverExternal },
-              { label: 'Left External',   url: s.leftExternal },
-            ];
-            var imgW = (CW - 4 * 4) / 5, imgH = imgW * 0.75;
-            for (var si = 0; si < slots5.length; si++) {
-              var sx = ML + si * (imgW + 4);
-              if (slots5[si].url) {
-                try {
-                  var imgData = await fetch('/api/image-proxy', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: slots5[si].url }),
-                  }).then(function(r){ return r.blob(); }).then(function(b) {
-                    return new Promise(function(res) {
-                      var fr = new FileReader(); fr.onload = function(){ res(fr.result); }; fr.readAsDataURL(b);
-                    });
-                  });
-                  pdf.addImage(imgData, 'JPEG', sx, y, imgW, imgH);
-                } catch(e) {
-                  pdf.setFillColor(245, 249, 246).rect(sx, y, imgW, imgH, 'F');
-                }
-              } else {
-                pdf.setFillColor(245, 249, 246).rect(sx, y, imgW, imgH, 'F');
-                pdf.setDrawColor(...LINE).setLineWidth(0.3).rect(sx, y, imgW, imgH);
-              }
-              pdf.setFontSize(6).setFont(undefined, 'bold').setTextColor(...MUTED);
-              pdf.text(slots5[si].label.toUpperCase(), sx + 2, y + imgH + 9);
-            }
-            y += imgH + 20;
-          }
-
-          // Footers
-          var pc = pdf.getNumberOfPages();
-          for (var p = 1; p <= pc; p++) {
-            pdf.setPage(p);
-            pdf.setFontSize(7).setFont(undefined, 'normal').setTextColor(...MUTED);
-            pdf.text('TGE Camera Snapshot Report  ·  Page ' + p + ' of ' + pc, ML, PH - 16);
-          }
-
-          pdf.save('camera-snapshot-report-' + new Date().toISOString().slice(0, 10) + '.pdf');
-          snapMessage.textContent = 'PDF exported successfully.';
-        } catch(e) {
-          snapMessage.textContent = 'PDF export failed: ' + e.message;
-        } finally {
-          exportPdfBtn.textContent = 'Export PDF';
-          exportPdfBtn.disabled = false;
-        }
-      });
-
-      function populateDiagSD() {
-        var lookup    = window.state && window.state.activeAssetLookup;
-        var camStats  = lookup && lookup.cameraStats || {};
-        var sd1       = camStats.sdCard1 || {};
-        var sd2       = camStats.sdCard2 || {};
-
-        var status = document.getElementById('diag-sd-status');
-        if (status) {
-          status.textContent = !lookup
-            ? 'Load an asset from the Snapshot tab first.'
-            : 'Overall status: ' + (camStats.overallStatus || 'Unknown');
-        }
-
-        // SD Card 1
-        var b1 = document.getElementById('diag-sd1-badge');
-        if (b1) {
-          b1.textContent = sd1.present ? 'Present' : 'Not present';
-          b1.className = 'sd-status-badge ' + (sd1.present ? 'present' : 'absent');
-        }
-        setText('diag-sd1-status', sd1.present ? 'Present' : 'Not present');
-        setText('diag-sd1-size',   sd1.totalSizeDisplay);
-        setText('diag-sd1-raw',    sd1.rawStatus);
-
-        // SD Card 2
-        var b2 = document.getElementById('diag-sd2-badge');
-        if (b2) {
-          b2.textContent = sd2.present ? 'Present' : 'Not present';
-          b2.className = 'sd-status-badge ' + (sd2.present ? 'present' : 'absent');
-        }
-        setText('diag-sd2-status', sd2.present ? 'Present' : 'Not present');
-        setText('diag-sd2-size',   sd2.totalSizeDisplay);
-        setText('diag-sd2-raw',    sd2.rawStatus);
-
-        var overall = document.getElementById('diag-sd-overall');
-        if (overall && camStats.overallStatus) {
-          overall.innerHTML = '<span style="font-size:12px;color:var(--muted);">Overall camera storage status: </span>' +
-            '<strong style="font-size:12px;">' + camStats.overallStatus + '</strong>';
-        }
-      }
-
-      function populateDiagnostics() {
-        populateDiagCameraImages();
-        populateDiagSD();
-      }
-
-      // Expose globally so app.js can call it after tab switch
-      window.__populateDiagnostics = populateDiagnostics;
-
-    })();
-
-    // Show sidebar + topbar actions after login; wire nav active states
-    // These complement app.js without replacing it.
-    (function() {
-      var sidebarShown = false;
-
-      function showSidebar(user) {
-        if (sidebarShown) return;
-        sidebarShown = true;
-        var sb = document.getElementById('sidebar');
-        var su = document.getElementById('sidebar-user');
-        var av = document.getElementById('user-avatar');
-        var dn = document.getElementById('user-display-name');
-        var rl = document.getElementById('user-role-label');
-        if (sb) sb.style.display = 'flex';
-        if (su) su.style.display = 'flex';
-        if (user) {
-          var initials = ((user.firstName||'?')[0] + (user.lastName||'?')[0]).toUpperCase();
-          if (av) av.textContent = initials;
-          if (dn) dn.textContent = (user.firstName||'') + ' ' + (user.lastName||'');
-          if (rl) rl.textContent = user.role || 'user';
-        }
-      }
-
-      // Watch for app-shell to become visible (login success)
-      var appShell = document.getElementById('app-shell');
-      if (appShell) {
-        var obs = new MutationObserver(function() {
-          var style = window.getComputedStyle(appShell);
-          if (style.display !== 'none') {
-            // Try to get user from app state
-            var user = window.state && window.state.currentSessionUser;
-            showSidebar(user || {});
-            obs.disconnect();
-          }
-        });
-        obs.observe(appShell, { attributes: true, attributeFilter: ['style'] });
-      }
-
-      // Nav active state wiring — keeps sidebar in sync with app.js tab switching
-      var navMap = {
-        'standard-tab':    'Asset Snapshot',
-        'asset-track-tab': 'Asset Track',
-        'admin-tab':       'Admin',
-        'vpm-tab':         'VPM Analysis',
-        'diagnostics-tab': 'Diagnostics',
-      };
-
-      document.addEventListener('click', function(e) {
-        var btn = e.target.closest('[id$="-tab"]');
-        if (!btn) return;
-        var id = btn.id;
-        if (!navMap[id]) return;
-        document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
-        var sidebarBtn = document.getElementById(id);
-        if (sidebarBtn) sidebarBtn.classList.add('active');
-        var title = document.getElementById('topbar-page-title');
-        if (title) title.textContent = navMap[id];
-        // Show diagnostics view and populate when tab clicked
-        if (id === 'diagnostics-tab') {
-          var diagView = document.getElementById('diagnostics-view');
-          if (diagView) diagView.style.display = '';
-          if (typeof populateDiagnostics === 'function') populateDiagnostics();
-        }
-      });
-    })();
-  </script>
+  <script src="./camera.js?v=1" defer></script>
 
   <script>
     (function() {
