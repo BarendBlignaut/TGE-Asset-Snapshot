@@ -1930,7 +1930,16 @@ async function fetchImageViaProxy(url) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Log the failure details so we can diagnose blocked domains
+      try {
+        const errJson = await res.json();
+        console.warn("[ImageProxy] failed for", url, "status:", res.status, "detail:", errJson);
+      } catch(e) {
+        console.warn("[ImageProxy] failed for", url, "status:", res.status);
+      }
+      return null;
+    }
     const blob = await res.blob();
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -1939,6 +1948,7 @@ async function fetchImageViaProxy(url) {
       reader.readAsDataURL(blob);
     });
   } catch (e) {
+    console.warn("[ImageProxy] fetch error for", url, e);
     return null;
   }
 }
