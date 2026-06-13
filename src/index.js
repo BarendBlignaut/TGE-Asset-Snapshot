@@ -983,33 +983,31 @@ async function handleImageProxy(request, env) {
     return jsonResponse({ error: "Invalid URL." }, 400);
   }
 
-  const allowedHosts = [
-    // Telematics vendor domains
-    "api-au.telematics.com",
-    "api-au2.telematics.com",
+  // Allow any S3 bucket in any region, any CloudFront, telematics domains, OSM tiles
+  // Using a broader match so presigned S3 URLs with bucket-name prefixes work
+  const allowedSuffixes = [
+    ".amazonaws.com",
+    ".cloudfront.net",
     "telematics.com",
     "tn360.com",
-    "media.tn360.com",
-    "assets.tn360.com",
-    "cdn.telematics.com",
     "mixtelematics.com",
     "mixtelematics.com.au",
-    "s3.amazonaws.com",
-    "s3.ap-southeast-2.amazonaws.com",
-    "cloudfront.net",
-    // Map tiles
-    "staticmap.openstreetmap.de",
-    "openstreetmap.de",
     "openstreetmap.org",
+    "openstreetmap.de",
+  ];
+
+  const allowedExact = [
     "tile.openstreetmap.org",
     "a.tile.openstreetmap.org",
     "b.tile.openstreetmap.org",
     "c.tile.openstreetmap.org",
+    "staticmap.openstreetmap.de",
+    "s3.amazonaws.com",
   ];
 
-  const hostAllowed = allowedHosts.some(
-    (h) => parsedUrl.hostname === h || parsedUrl.hostname.endsWith("." + h)
-  );
+  const hostAllowed =
+    allowedExact.includes(parsedUrl.hostname) ||
+    allowedSuffixes.some((s) => parsedUrl.hostname.endsWith(s));
 
   if (!hostAllowed) {
     // Return the blocked hostname so the client can report it for debugging
