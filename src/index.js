@@ -1,1607 +1,1779 @@
-const SESSION_COOKIE = "tge_session";
-const SESSION_TTL_SECONDS = 60 * 60 * 12;
-let _fallbackSecret = null;
-function getFallbackSecret() {
-  if (!_fallbackSecret) {
-    const bytes = new Uint8Array(32);
-    crypto.getRandomValues(bytes);
-    _fallbackSecret = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  }
-  return _fallbackSecret;
-}
-
-const approvedUsers = [
-  {
-    firstName: "Barend",
-    lastName: "Blignaut",
-    username: "bare1234",
-    role: "admin",
-    status: "active",
-    createdBy: "system",
-    createdDate: "2026-05-12T00:00:00Z",
-    updatedBy: "system",
-    updatedDate: "2026-05-12T00:00:00Z",
-    password: "12345678",
-  },
-];
-
-const accessHistory = [];
-
-const DEMO_VEHICLE = {
-  id: "veh-001",
-  name: "1001",
-  registration: "TGE-001",
-  registrationState: "NSW",
-  vin: "JH4DA9450LS000101",
-  make: "Hino",
-  model: "500 Series",
-  operationalVehicleModel: {
-    yearOfManufacture: 2022,
-  },
-};
-
-const DEMO_DEVICES = [
-  {
-    id: "hermes-001",
-    imei: "356938035643809",
-    serialNumber: "HERMES-001",
-    releaseVersion: "3.7.2",
-    type: { code: "HERMES" },
-  },
-  {
-    id: "camera-001",
-    imei: "866301234567890",
-    serialNumber: "CAM-001",
-    model: { name: "SureCam" },
-    type: { code: "CAMERA" },
-  },
-  {
-    id: "iface-001",
-    imei: "352099001761481",
-    serialNumber: "TAB-001",
-    model: { name: "Samsung Tab Active" },
-    type: { code: "IFACE" },
-  },
-];
-
-const DEMO_METERS = [
-  { type: "hours", maintenanceType: "TIME", computed: 1243.5 },
-  { type: "odometer", maintenanceType: "DISTANCE", computed: 84751.2 },
-];
-
-const DEMO_HERMES_DEVICE = {
-  id: "hermes-001",
-  type: { code: "HERMES" },
-  deviceStats: {
-    ignition: true,
-    movement: false,
-    tripId: "trip-001",
-    location: "Sydney Depot",
-    gps: {
-      Lat: -33.8688,
-      Lng: 151.2093,
-      At: new Date().toISOString(),
-    },
-    currentUser: {
-      firstName: "Demo",
-      lastName: "Driver",
-    },
-    lastVpm: JSON.stringify({
-      speed: 0,
-      rpm: 650,
-      oiltemp: 92,
-      oilpressure: 43,
-      engineload: 18,
-      gear: 1,
-      fuellevel: 65,
-      fuelconsumption: 21.4,
-    }),
-    lastGpio: JSON.stringify({
-      seatbelt: true,
-      door: false,
-      parkBrake: true,
-    }),
-  },
-};
-
-const DEMO_CAMERA_DEVICE = {
-  id: "camera-001",
-  type: { code: "CAMERA" },
-  deviceStats: {
-    attrs: {
-      "lm.sd_card.overall_status": "Healthy",
-      "lm.sd_card.1": "sdCardPresent",
-      "lm.sd_card.1_total_size_bytes": String(64 * 1024 * 1024 * 1024),
-      "lm.sd_card.2": "sdCardPresent",
-      "lm.sd_card.2_total_size_bytes": String(64 * 1024 * 1024 * 1024),
-    },
-  },
-};
-
-const ASSET_TRACK_ALLOWED_MODELS = new Set([
-  "FLEX SOLAR TRACKER",
-  "DMT OYSTER CELLULAR 3",
-]);
-
-const DEMO_ASSET_TRACK_VEHICLES = [
-  {
-    id: "306802",
-    name: "1001",
-    registration: "TGE-001",
-    make: "Isuzu",
-    model: "FRR",
-    operationalVehicleModel: {
-      yearOfManufacture: 2022,
-    },
-  },
-  {
-    id: "388728",
-    name: "1002",
-    registration: "TGE-002",
-    make: "Hino",
-    model: "500 Series",
-    operationalVehicleModel: {
-      yearOfManufacture: 2021,
-    },
-  },
-];
-
-const DEMO_ASSET_TRACK_DEVICES = [
-  {
-    id: "413919",
-    status: "ENABLED",
-    vehicleId: "306802",
-    model: { name: "Flex Solar Tracker" },
-    imei: "015262004121066",
-    deviceStats: {
-      odometer: 121247.365,
-      ignition: "OFF",
-      shutdownOdo: 0,
-      movement: "Stationary",
-      batteryStatus: "Good",
-      batteryStatusAt: "2026-05-17T07:57:11.000+10:00",
-    },
-  },
-  {
-    id: "631562",
-    status: "ENABLED",
-    vehicleId: "388728",
-    model: { name: "DMT Oyster Cellular 3" },
-    imei: "350976658052433",
-    deviceStats: {
-      odometer: 31576.696,
-      ignition: "OFF",
-      shutdownOdo: 0,
-      movement: "Stationary",
-      batteryStatus: "Low",
-      batteryStatusAt: "2026-05-12T12:18:09.000+10:00",
-    },
-  },
-];
-
-function jsonResponse(data, status = 200, extraHeaders = {}) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      "Cache-Control": "no-store",
-      ...extraHeaders,
-    },
-  });
-}
-
-function pdfResponse(bytes, filename) {
-  return new Response(bytes, {
-    status: 200,
-    headers: {
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      "Cache-Control": "no-store",
-    },
-  });
-}
-
-function normalizeValue(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-
-const EXCLUDED_VPM_KEYS = new Set([
-  "gear",
-  "charge",
-  "gps",
-  "at",
-  "lng",
-  "engineload",
-  "alt",
-  "dir",
-  "nsat",
-  "hdop",
-  "lat",
-  "spd",
-  "id",
-]);
-
-function safeParseJsonString(value) {
-  if (!value || typeof value !== "string") return null;
-
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
-}
-
-function isPlainObject(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function formatVpmValue(value) {
-  if (value === null || value === undefined || value === "") {
-    return "N/A";
-  }
-
-  if (typeof value === "number") {
-    const normalized = value < 0 ? 0 : value;
-    return normalized.toFixed(2);
-  }
-
-  if (typeof value === "boolean") {
-    return value ? "True" : "False";
-  }
-
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed ? trimmed : "N/A";
-  }
-
-  return "N/A";
-}
-
-function extractAllowedVpmFields(lastVpmRaw) {
-  const parsed = typeof lastVpmRaw === "string" ? safeParseJsonString(lastVpmRaw) : lastVpmRaw;
-  if (!isPlainObject(parsed)) {
-    return {};
-  }
-
-  const result = {};
-
-  for (const [key, value] of Object.entries(parsed)) {
-    const normalizedKey = String(key || "").trim().toLowerCase();
-
-    if (!normalizedKey || EXCLUDED_VPM_KEYS.has(normalizedKey)) {
-      continue;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TGE Asset Snapshot</title>
+  <link rel="icon" type="image/png" href="./favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --green-900: #0a3d20;
+      --green-800: #0f5c30;
+      --green-700: #007a3b;
+      --green-600: #00a651;
+      --green-100: #e6f5ec;
+      --green-50:  #f0faf4;
+      --yellow:    #d4f026;
+      --yellow-dim:#b8d520;
+      --ink:       #0f1a13;
+      --ink-2:     #2d3d34;
+      --muted:     #5a6e62;
+      --muted-2:   #8a9e92;
+      --line:      #dce8e0;
+      --line-2:    #eaf2ec;
+      --surface:   #ffffff;
+      --surface-2: #f5f9f6;
+      --surface-3: #eef5f0;
+      --danger:    #c0392b;
+      --danger-bg: #fdf0ee;
+      --success:   #007a3b;
+      --warning:   #b45309;
+      --warning-bg:#fef9ec;
+      --sidebar-w: 240px;
+      --topbar-h:  60px;
+      --radius:    10px;
+      --radius-lg: 14px;
+      --shadow-sm: 0 1px 3px rgba(10,40,20,0.08);
+      --shadow:    0 4px 16px rgba(10,40,20,0.10);
+      --shadow-lg: 0 12px 40px rgba(10,40,20,0.14);
     }
 
-    if (isPlainObject(value) || Array.isArray(value)) {
-      continue;
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Inter", "Segoe UI", Arial, sans-serif;
+      color: var(--ink);
+      background: var(--surface-2);
+      font-size: 14px;
+      line-height: 1.5;
     }
 
-    result[key] = formatVpmValue(value);
-  }
+    button, input, select, textarea { font: inherit; }
 
-  return result;
-}
+    /* ── LAYOUT SHELL ───────────────────────────── */
+    .shell {
+      display: grid;
+      grid-template-columns: var(--sidebar-w) 1fr;
+      grid-template-rows: var(--topbar-h) 1fr;
+      min-height: 100vh;
+    }
 
-function parseCookies(request) {
-  const cookieHeader = request.headers.get("Cookie") || "";
-  return cookieHeader.split(";").reduce((accumulator, pair) => {
-    const [rawKey, ...rawValue] = pair.trim().split("=");
-    if (!rawKey) return accumulator;
-    accumulator[rawKey] = decodeURIComponent(rawValue.join("="));
-    return accumulator;
-  }, {});
-}
+    /* ── SIDEBAR ────────────────────────────────── */
+    .sidebar {
+      grid-row: 1 / -1;
+      background: var(--green-900);
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid rgba(255,255,255,0.06);
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: hidden;
+    }
 
-function publicUser(user) {
-  const { password, ...rest } = user;
-  return rest;
-}
+    .sidebar-brand {
+      padding: 16px 18px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: var(--topbar-h);
+    }
 
-function addAccessHistory(username, assetRequested) {
-  accessHistory.unshift({
-    username,
-    dateTime: new Date().toISOString(),
-    assetRequested,
-  });
-}
+    .sidebar-logo {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.10);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
 
-function isDemoMode(env) {
-  return !env.TN360_API_KEY;
-}
+    .sidebar-logo img {
+      width: 28px;
+      height: 28px;
+      object-fit: contain;
+    }
 
-async function safeJson(request) {
-  try {
-    return await request.json();
-  } catch {
-    return {};
-  }
-}
+    .sidebar-brand-text {
+      min-width: 0;
+    }
 
-function base64UrlEncodeBytes(bytes) {
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
+    .sidebar-brand-text strong {
+      display: block;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
-function base64UrlEncodeText(text) {
-  return base64UrlEncodeBytes(new TextEncoder().encode(text));
-}
+    .sidebar-brand-text span {
+      display: block;
+      font-size: 11px;
+      color: rgba(255,255,255,0.45);
+      white-space: nowrap;
+    }
 
-function base64UrlDecodeText(value) {
-  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
-  const binary = atob(padded);
-  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
-}
+    .sidebar-nav {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
 
-async function importSessionKey(env) {
-  const secret = env.SESSION_SECRET || getFallbackSecret();
-  return crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign", "verify"],
-  );
-}
+    .nav-section-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.30);
+      padding: 10px 8px 4px;
+    }
 
-async function signSessionValue(value, env) {
-  const key = await importSessionKey(env);
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(value),
-  );
-  return base64UrlEncodeBytes(new Uint8Array(signature));
-}
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: 8px;
+      color: rgba(255,255,255,0.65);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+      transition: background 140ms, color 140ms;
+      white-space: nowrap;
+    }
 
-async function createSessionToken(user, env) {
-  const payload = {
-    user,
-    exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
-  };
-  const encodedPayload = base64UrlEncodeText(JSON.stringify(payload));
-  const signature = await signSessionValue(encodedPayload, env);
-  return `${encodedPayload}.${signature}`;
-}
+    .nav-item:hover {
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+    }
 
-async function readSessionFromRequest(request, env) {
-  const cookies = parseCookies(request);
-  const token = cookies[SESSION_COOKIE];
+    .nav-item.active {
+      background: var(--yellow);
+      color: var(--green-900);
+    }
 
-  if (!token) return null;
+    .nav-item.active .nav-icon {
+      opacity: 1;
+    }
 
-  const [encodedPayload, signature] = token.split(".");
-  if (!encodedPayload || !signature) return null;
+    .nav-icon {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      opacity: 0.7;
+    }
 
-  const expectedSignature = await signSessionValue(encodedPayload, env);
-  if (signature !== expectedSignature) return null;
+    .nav-item.active .nav-icon {
+      opacity: 1;
+    }
 
-  let payload;
-  try {
-    payload = JSON.parse(base64UrlDecodeText(encodedPayload));
-  } catch {
-    return null;
-  }
 
-  if (!payload?.user || !payload?.exp) return null;
-  if (payload.exp < Math.floor(Date.now() / 1000)) return null;
+    /* ── SIDEBAR COLLAPSE ───────────────────────── */
+    .shell {
+      transition: grid-template-columns 0.25s cubic-bezier(0.4,0,0.2,1);
+    }
+    .shell.sidebar-collapsed {
+      grid-template-columns: 60px 1fr;
+    }
+    .sidebar {
+      overflow: hidden;
+      width: var(--sidebar-w, 240px);
+      transition: width 0.25s cubic-bezier(0.4,0,0.2,1);
+    }
+    .shell.sidebar-collapsed .sidebar {
+      width: 60px;
+    }
+    .sidebar-brand-text,
+    .nav-label,
+    .nav-section-label,
+    .user-info {
+      transition: opacity 0.15s ease, max-width 0.25s ease;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .shell.sidebar-collapsed .sidebar-brand-text,
+    .shell.sidebar-collapsed .nav-label,
+    .shell.sidebar-collapsed .nav-section-label,
+    .shell.sidebar-collapsed .user-info {
+      opacity: 0;
+      max-width: 0;
+      pointer-events: none;
+    }
+    .shell.sidebar-collapsed .nav-item {
+      justify-content: center;
+      padding: 9px 0;
+    }
+    .shell.sidebar-collapsed .sidebar-brand {
+      justify-content: center;
+      padding: 12px 0;
+    }
+    .shell.sidebar-collapsed .sidebar-user {
+      justify-content: center;
+      padding: 8px 0;
+    }
+    .sidebar-toggle {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 140ms;
+    }
+    .sidebar-toggle:hover { background: var(--surface-3); color: var(--ink); }
+    .sidebar-toggle svg { width: 16px; height: 16px; transition: transform 0.25s ease; }
+    .shell.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 
-  return payload.user;
-}
+    .sidebar-footer {
+      padding: 12px 10px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
 
-function sessionCookieHeader(token) {
-  return {
-    "Set-Cookie": `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}`,
-  };
-}
+    .sidebar-user {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+    }
 
-function clearSessionCookie() {
-  return {
-    "Set-Cookie": `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
-  };
-}
+    .user-avatar {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: var(--green-700);
+      color: var(--yellow);
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      letter-spacing: 0.03em;
+    }
 
-async function requireSession(request, env) {
-  const user = await readSessionFromRequest(request, env);
+    .user-info {
+      min-width: 0;
+      flex: 1;
+    }
 
-  if (!user) {
-    return {
-      ok: false,
-      response: jsonResponse({ error: "You are not signed in." }, 401, clearSessionCookie()),
-    };
-  }
+    .user-info strong {
+      display: block;
+      color: #fff;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
-  return {
-    ok: true,
-    user,
-  };
-}
+    .user-info span {
+      display: block;
+      font-size: 11px;
+      color: rgba(255,255,255,0.40);
+    }
 
-async function requireAdmin(request, env) {
-  const sessionCheck = await requireSession(request, env);
-  if (!sessionCheck.ok) return sessionCheck;
+    .role-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
 
-  if (sessionCheck.user.role !== "admin") {
-    return {
-      ok: false,
-      response: jsonResponse({ error: "Admin access is required." }, 403),
-    };
-  }
+    .role-badge.user     { background: rgba(255,255,255,0.10); color: rgba(255,255,255,0.60); }
+    .role-badge.admin    { background: rgba(212,240,38,0.18);  color: var(--yellow); }
+    .role-badge.superuser{ background: rgba(255,180,0,0.18);   color: #fbbf24; }
 
-  return sessionCheck;
-}
+    /* ── TOPBAR ─────────────────────────────────── */
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      gap: 16px;
+      box-shadow: var(--shadow-sm);
+    }
 
-function demoImageDataUrl(label, tone) {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
-      <defs>
-        <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0%" stop-color="${tone[0]}"/>
-          <stop offset="100%" stop-color="${tone[1]}"/>
-        </linearGradient>
-      </defs>
-      <rect width="1280" height="720" fill="url(#g)"/>
-      <rect x="40" y="40" width="1200" height="640" rx="24" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.35)"/>
-      <text x="640" y="350" text-anchor="middle" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="52" font-weight="700">${label}</text>
-      <text x="640" y="410" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="Arial, Helvetica, sans-serif" font-size="24">Demo camera image</text>
-    </svg>
-  `.trim();
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
 
-  const encoded = btoa(unescape(encodeURIComponent(svg)));
-  return `data:image/svg+xml;base64,${encoded}`;
-}
+    .topbar-page-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink);
+    }
 
-function demoSnapshotEvents() {
-  const mediaFiles = [
-    {
-      source: "ROAD_FACING",
-      mediaFile: demoImageDataUrl("Road Facing", ["#315f45", "#8eb79d"]),
-      imageDetails: { sources: ["ROAD"] },
-    },
-    {
-      source: "DRIVER_FACING",
-      mediaFile: demoImageDataUrl("Driver Facing", ["#4b4a6d", "#9fa0c8"]),
-      imageDetails: { sources: ["DRIVER"] },
-    },
-    {
-      source: "IN_CAB",
-      mediaFile: demoImageDataUrl("In-Cab Driver", ["#68493d", "#c7a18f"]),
-      imageDetails: { sources: ["TVI2"] },
-    },
-    {
-      source: "DRIVER_EXTERNAL",
-      mediaFile: demoImageDataUrl("Driver External", ["#2e5665", "#87b5c7"]),
-      imageDetails: { sources: ["TVI1"] },
-    },
-    {
-      source: "LEFT_EXTERNAL",
-      mediaFile: demoImageDataUrl("Left External", ["#465d2f", "#9eb97c"]),
-      imageDetails: { sources: ["UVC"] },
-    },
-  ];
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
 
-  return [
-    {
-      vehicleId: DEMO_VEHICLE.id,
-      type: "CAMERA",
-      action: "SNAPSHOT",
-      timeAt: new Date().toISOString(),
-      attributes: {
-        context: JSON.stringify({
-          response: {
-            mediaFiles,
-          },
-        }),
-      },
-    },
-  ];
-}
+    .version-badge {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      background: var(--surface-3);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 8px;
+    }
 
-function escapePdfText(value) {
-  return String(value || "")
-    .replace(/\\/g, "\\\\")
-    .replace(/\(/g, "\\(")
-    .replace(/\)/g, "\\)");
-}
+    .mode-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: var(--surface-2);
+    }
 
-function buildSimplePdf(snapshot) {
-  const lines = [
-    "TGE Asset Snapshot",
-    "",
-    `Generated: ${new Date().toLocaleString("en-AU", { hour12: false })}`,
-    "",
-    "Asset Details",
-    `Fleet Number: ${snapshot.vehicle?.assetNumber || "-"}`,
-    `Registration: ${snapshot.vehicle?.registration || "-"}`,
-    `Vehicle ID: ${snapshot.vehicle?.vehicleId || "-"}`,
-    `VIN: ${snapshot.vehicle?.vin || "-"}`,
-    `Make: ${snapshot.vehicle?.make || "-"}`,
-    `Model: ${snapshot.vehicle?.model || "-"}`,
-    `Year: ${snapshot.vehicle?.yearOfManufacture || "-"}`,
-    `Driver: ${snapshot.hermesStats?.driverName || "-"}`,
-    `Ignition: ${snapshot.hermesStats?.ignition ?? "-"}`,
-    `Movement: ${snapshot.hermesStats?.movement ?? "-"}`,
-    "",
-    "Tracking Metrics",
-    `Odometer: ${snapshot.meters?.odometer ?? "-"}`,
-    `Engine Hours: ${snapshot.meters?.engineHours ?? "-"}`,
-    `Speed: ${snapshot.hermesStats?.performance?.speed ?? "-"}`,
-    `RPM: ${snapshot.hermesStats?.performance?.rpm ?? "-"}`,
-    `Oil Temperature: ${snapshot.hermesStats?.performance?.oilTemperature ?? "-"}`,
-    `Oil Pressure: ${snapshot.hermesStats?.performance?.oilPressure ?? "-"}`,
-    `Engine Load: ${snapshot.hermesStats?.performance?.engineLoad ?? "-"}`,
-    `Gear: ${snapshot.hermesStats?.performance?.gear ?? "-"}`,
-    `Location: ${snapshot.hermesStats?.location || "-"}`,
-    "",
-    "Devices",
-    `Tracker IMEI: ${snapshot.devices?.trackingSystem?.imei || "-"}`,
-    `Tracker Serial: ${snapshot.devices?.trackingSystem?.serialNumber || "-"}`,
-    `Camera IMEI: ${snapshot.devices?.camera?.imei || "-"}`,
-    `Camera Serial: ${snapshot.devices?.camera?.serialNumber || "-"}`,
-    `Tablet IMEI: ${snapshot.devices?.tablet?.imei || "-"}`,
-    `Tablet Serial: ${snapshot.devices?.tablet?.serialNumber || "-"}`,
-    "",
-    "Storage",
-    `Overall Status: ${snapshot.cameraStats?.overallStatus || "-"}`,
-    `SD Card 1: ${snapshot.cameraStats?.sdCard1?.present ? "Present" : "Not present"}`,
-    `SD Card 1 Size: ${snapshot.cameraStats?.sdCard1?.totalSizeDisplay || "-"}`,
-    `SD Card 2: ${snapshot.cameraStats?.sdCard2?.present ? "Present" : "Not present"}`,
-    `SD Card 2 Size: ${snapshot.cameraStats?.sdCard2?.totalSizeDisplay || "-"}`,
-  ];
+    .mode-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--muted-2);
+    }
 
-  let y = 800;
-  const content = lines
-    .map((line, index) => {
-      const fontSize = index === 0 ? 18 : line === "" ? 10 : 11;
-      if (line === "") {
-        y -= 10;
-        return "";
+    .mode-indicator.live .mode-dot { background: var(--green-600); box-shadow: 0 0 6px rgba(0,166,81,0.5); }
+    .mode-indicator.demo .mode-dot { background: var(--warning); }
+
+    .debug-toggle-wrap {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      cursor: pointer;
+    }
+
+    .debug-toggle-wrap span {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .debug-switch {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      width: 36px;
+      height: 20px;
+    }
+
+    .debug-switch input {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      margin: 0;
+    }
+
+    .debug-switch-track {
+      width: 100%;
+      height: 100%;
+      border-radius: 999px;
+      background: var(--line);
+      transition: background 0.2s;
+    }
+
+    .debug-switch-thumb {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+      transition: transform 0.2s;
+    }
+
+    .debug-switch input:checked + .debug-switch-track { background: var(--green-600); }
+    .debug-switch input:checked + .debug-switch-track + .debug-switch-thumb { transform: translateX(16px); }
+
+    .logout-btn {
+      height: 32px;
+      border-radius: 8px;
+      padding: 0 12px;
+      border: 1px solid rgba(192,57,43,0.3);
+      background: var(--danger-bg);
+      color: var(--danger);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 140ms;
+    }
+
+    .logout-btn:hover { background: rgba(192,57,43,0.12); }
+
+    /* ── MAIN CONTENT ───────────────────────────── */
+    .main {
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .page {
+      flex: 1;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      max-width: 1280px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    /* ── LOGIN OVERLAY ──────────────────────────── */
+    .login-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: rgba(10,30,18,0.55);
+      backdrop-filter: blur(10px);
+    }
+
+    .login-wrap {
+      width: min(460px, 100%);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      padding: 32px;
+      animation: fadeUp 0.35s ease both;
+    }
+
+    .login-brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--line-2);
+    }
+
+    .login-brand-mark {
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      background: var(--green-900);
+      flex-shrink: 0;
+    }
+
+    .login-brand-mark img {
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
+    }
+
+    .login-brand-copy h2 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .login-brand-copy p {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .login-grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    /* ── CARDS / SECTIONS ───────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      padding: 20px;
+      animation: fadeUp 0.4s ease both;
+    }
+
+    .section { /* keep for backwards compat with app.js class expectations */
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      padding: 20px;
+      animation: fadeUp 0.4s ease both;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .section-kicker {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      color: var(--green-600);
+      margin-bottom: 3px;
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .section-subcopy {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+
+    /* ── HERO SEARCH ────────────────────────────── */
+    .hero {
+      background: linear-gradient(135deg, var(--green-900) 0%, var(--green-800) 60%, #0d6b36 100%);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+      color: #fff;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: "";
+      position: absolute;
+      top: -60px;
+      right: -60px;
+      width: 260px;
+      height: 260px;
+      border-radius: 50%;
+      background: rgba(212,240,38,0.07);
+      pointer-events: none;
+    }
+
+    .hero-copy h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+
+    .hero-copy p {
+      color: rgba(255,255,255,0.65);
+      font-size: 13px;
+      max-width: 58ch;
+      margin-bottom: 0;
+    }
+
+    .lookup {
+      margin-top: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    .lookup .field {
+      width: 200px;
+      flex-shrink: 0;
+    }
+
+    /* ── FORM ELEMENTS ──────────────────────────── */
+    .field label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: rgba(255,255,255,0.55);
+      margin-bottom: 6px;
+    }
+
+    .field.dark-field label { color: var(--muted); }
+
+    .field input,
+    .field select,
+    .field textarea {
+      width: 100%;
+      height: 42px;
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 8px;
+      padding: 0 12px;
+      background: rgba(255,255,255,0.10);
+      color: #fff;
+      font-size: 14px;
+      transition: border-color 140ms, background 140ms;
+    }
+
+    .field input::placeholder { color: rgba(255,255,255,0.35); }
+
+    .field input:focus,
+    .field select:focus {
+      outline: none;
+      border-color: var(--yellow);
+      background: rgba(255,255,255,0.15);
+    }
+
+    /* Light field (admin form, etc) */
+    .field.dark-field input,
+    .field.dark-field select,
+    .field.dark-field textarea {
+      border-color: var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      height: 42px;
+    }
+
+    .field.dark-field input::placeholder { color: var(--muted-2); }
+    .field.dark-field input:focus,
+    .field.dark-field select:focus {
+      outline: none;
+      border-color: var(--green-600);
+    }
+
+    /* Override for admin/asset sections which use bare .field */
+    #admin-view .field label,
+    #asset-track-view .field label,
+    #vpm-view .field label {
+      color: var(--muted);
+    }
+
+    #admin-view .field input,
+    #admin-view .field select,
+    #asset-track-view .field input,
+    #asset-track-view .field select,
+    #vpm-view .field input,
+    #vpm-view .field select {
+      border-color: var(--line);
+      background: var(--surface);
+      color: var(--ink);
+    }
+
+    /* ── BUTTONS ────────────────────────────────── */
+    .action-btn {
+      height: 42px;
+      border-radius: 8px;
+      padding: 0 18px;
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+      border: none;
+      background: var(--yellow);
+      color: var(--green-900);
+      transition: background 140ms, transform 120ms;
+      box-shadow: 0 2px 8px rgba(212,240,38,0.25);
+    }
+
+    .action-btn:hover { background: var(--yellow-dim); transform: translateY(-1px); }
+    .action-btn:active { transform: translateY(0); }
+
+    .secondary-btn {
+      height: 42px;
+      border-radius: 8px;
+      padding: 0 16px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(255,255,255,0.10);
+      color: rgba(255,255,255,0.85);
+      transition: background 140ms;
+    }
+
+    .secondary-btn:hover { background: rgba(255,255,255,0.18); }
+
+    /* Light secondary for non-hero contexts */
+    #admin-view .secondary-btn,
+    #asset-track-view .secondary-btn,
+    #vpm-view .secondary-btn {
+      background: var(--surface-2);
+      border-color: var(--line);
+      color: var(--ink-2);
+    }
+
+    #admin-view .secondary-btn:hover,
+    #asset-track-view .secondary-btn:hover,
+    #vpm-view .secondary-btn:hover {
+      background: var(--surface-3);
+    }
+
+    #admin-view .action-btn,
+    #asset-track-view .action-btn,
+    #vpm-view .action-btn {
+      background: var(--green-700);
+      color: var(--yellow);
+      box-shadow: 0 2px 8px rgba(0,100,50,0.18);
+    }
+
+    #admin-view .action-btn:hover,
+    #asset-track-view .action-btn:hover,
+    #vpm-view .action-btn:hover { background: var(--green-800); }
+
+    .message {
+      min-height: 18px;
+      margin-top: 10px;
+      color: var(--danger);
+      font-size: 13px;
+    }
+
+    /* ── DATA GRIDS ─────────────────────────────── */
+    .meta-grid,
+    .metrics-grid,
+    .sd-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .meta-grid    { grid-template-columns: repeat(4, minmax(0,1fr)); }
+    .metrics-grid { grid-template-columns: repeat(4, minmax(0,1fr)); }
+    .sd-grid      { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .gps-grid     { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .device-list  { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0,1fr)); margin-top: 14px; }
+    .camera-grid  { display: grid; gap: 14px; grid-template-columns: repeat(5, minmax(0,1fr)); }
+
+    .meta-item,
+    .metric-item,
+    .sd-item {
+      padding: 14px;
+      border: 1px solid var(--line-2);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+    }
+
+    .meta-item span,
+    .metric-item span,
+    .sd-item span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 5px;
+    }
+
+    .meta-item strong,
+    .metric-item strong,
+    .sd-item strong {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      word-break: break-word;
+    }
+
+    .metric-item strong {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--green-700);
+    }
+
+    /* ── GPS / GPIO CARDS ───────────────────────── */
+    .gps-card {
+      padding: 14px;
+      border: 1px solid var(--line-2);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+    }
+
+    .gps-card h4 {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .gps-card p {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--ink);
+      margin-bottom: 4px;
+    }
+
+    .gps-tag {
+      display: inline-flex;
+      align-items: center;
+      margin-top: 5px;
+      padding: 3px 8px;
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 999px;
+      background: var(--green-100);
+      color: var(--green-700);
+      letter-spacing: 0.05em;
+    }
+
+    /* ── STATUS PILLS ───────────────────────────── */
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .status-pill::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .status-pill.on  { background: var(--green-100); color: var(--green-700); }
+    .status-pill.on::before  { background: var(--green-600); }
+    .status-pill.off { background: var(--surface-3); color: var(--muted); }
+    .status-pill.off::before { background: var(--muted-2); }
+    .status-pill.warn{ background: var(--warning-bg); color: var(--warning); }
+    .status-pill.warn::before{ background: var(--warning); }
+
+    /* ── DEVICE CARDS ───────────────────────────── */
+    .device-card {
+      padding: 14px;
+      border: 1px solid var(--line-2);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+    }
+
+    .device-card h4 {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .device-card p {
+      font-size: 12px;
+      color: var(--ink-2);
+      margin-bottom: 3px;
+      word-break: break-word;
+    }
+
+    /* ── CAMERA ─────────────────────────────────── */
+    .camera-card { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); cursor: pointer; }
+    .camera-frame { aspect-ratio: 4/3; background: var(--surface-3); display: grid; place-items: center; overflow: hidden; position: relative; }
+    .camera-frame img { width: 100%; height: 100%; object-fit: cover; }
+    .camera-empty { color: var(--muted); font-size: 12px; font-weight: 600; }
+    .camera-meta { padding: 10px 12px; }
+    .camera-meta strong { display: block; font-size: 12px; margin-bottom: 2px; }
+    .camera-meta span { font-size: 11px; color: var(--muted); }
+
+    /* ── LOCATION ───────────────────────────────── */
+    .location-layout { display: grid; grid-template-columns: 1.3fr 0.7fr; gap: 16px; align-items: stretch; }
+    .map-panel { min-height: 280px; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; position: relative; background: var(--surface-3); }
+    .map-panel iframe { width: 100%; height: 100%; min-height: 280px; border: 0; display: block; }
+    .map-badge { position: absolute; top: 12px; left: 12px; z-index: 1; padding: 5px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #fff; background: rgba(0,90,40,0.85); }
+    .location-meta { display: grid; gap: 10px; }
+    .location-card { padding: 14px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--surface-2); }
+    .location-card span { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; }
+    .location-card strong { display: block; font-size: 13px; font-weight: 600; word-break: break-word; }
+
+    /* ── TABLES ─────────────────────────────────── */
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .asset-track-table-wrap { width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+
+    table { width: 100%; border-collapse: collapse; background: var(--surface); }
+    th, td { border-bottom: 1px solid var(--line-2); text-align: left; padding: 10px 14px; vertical-align: top; font-size: 13px; }
+    th { background: var(--surface-2); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); white-space: nowrap; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--surface-2); }
+
+    /* ── STACK / VIEW CONTAINER ─────────────────── */
+    .stack { display: grid; gap: 16px; }
+
+    /* ── ASSET TRACK ────────────────────────────── */
+    .asset-track-toolbar,
+    .asset-track-mode-bar,
+    .asset-track-run-row,
+    .asset-track-export-copy {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .asset-track-toolbar { justify-content: space-between; margin-bottom: 16px; }
+    .asset-track-shell { display: grid; gap: 16px; width: 100%; }
+    .asset-track-input-panel { display: grid; gap: 12px; }
+    .asset-track-panel { padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); }
+
+    .asset-track-panel textarea {
+      width: 100%;
+      min-height: 200px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      color: var(--ink);
+      resize: vertical;
+      background: var(--surface);
+    }
+
+    .asset-track-helper { color: var(--muted); font-size: 13px; }
+    .asset-track-summary { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+    .asset-track-results-panel { overflow: hidden; }
+    .table-summary { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+
+    .asset-track-table th,
+    .asset-track-table td { min-width: 110px; }
+    .asset-track-table th.asset-track-select-cell,
+    .asset-track-table td.asset-track-select-cell { min-width: 46px; width: 46px; padding: 8px 6px; }
+
+    .asset-track-filter-input {
+      width: 100%;
+      height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 8px;
+      color: var(--ink);
+      background: var(--surface);
+      font-size: 12px;
+    }
+
+    /* ── VPM ────────────────────────────────────── */
+    .vpm-mode-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+    .vpm-panel { display: grid; gap: 14px; margin-top: 16px; }
+    .vpm-panel textarea { width: 100%; min-height: 220px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; color: var(--ink); resize: vertical; background: var(--surface); }
+
+    /* ── ADMIN ──────────────────────────────────── */
+    .admin-form-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+    .helper-copy { color: var(--muted); font-size: 13px; }
+    .utility-input { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+    /* ── DEBUG WINDOW ───────────────────────────── */
+    .debug-window {
+      position: fixed;
+      top: 80px;
+      left: 260px;
+      width: min(60vw, 720px);
+      min-width: 400px;
+      height: min(65vh, 600px);
+      display: none;
+      flex-direction: column;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+      z-index: 120;
+      resize: both;
+    }
+
+    .debug-window-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--line);
+      cursor: move;
+    }
+
+    .debug-window-title strong { font-size: 13px; display: block; }
+    .debug-window-title span { color: var(--muted); font-size: 11px; display: block; }
+    .debug-window-actions { display: flex; gap: 8px; }
+    .debug-close-btn { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; font-weight: 700; font-size: 12px; }
+
+    .debug-window-body { flex: 1; overflow: auto; padding: 14px; background: var(--surface); display: grid; gap: 14px; align-content: start; }
+    .debug-window-body pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+    .debug-window-panel, .debug-snapshot { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); }
+    .debug-window-panel p, .debug-snapshot p { margin: 0; color: var(--muted); font-size: 12px; }
+    .debug-snapshot-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+    .debug-preview { display: grid; gap: 10px; }
+    .debug-log-panel { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .debug-log-panel pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.5; color: var(--ink-2); max-height: 200px; overflow: auto; }
+    .mini-metric { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+    .mini-metric span { display: block; color: var(--muted); font-size: 11px; margin-bottom: 3px; }
+    .mini-metric strong { font-size: 13px; font-weight: 600; }
+    .debug-panel { display: none; }
+
+    /* ── LIGHTBOX ───────────────────────────────── */
+    .lightbox-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.88); display: grid; place-items: center; padding: 24px; }
+    .lightbox-content { position: relative; width: 70vw; max-height: 80vh; display: flex; align-items: center; justify-content: center; }
+    .lightbox-img { max-width: 100%; max-height: 80vh; object-fit: contain; border-radius: 8px; }
+    .lightbox-close { position: absolute; top: -40px; right: 0; background: none; border: none; color: #fff; font-size: 2rem; cursor: pointer; }
+    .lightbox-nav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.12); border: none; color: #fff; font-size: 2.5rem; width: 46px; height: 46px; border-radius: 50%; cursor: pointer; display: grid; place-items: center; }
+    .lightbox-nav:hover { background: rgba(255,255,255,0.25); }
+    .lightbox-prev { left: -58px; }
+    .lightbox-next { right: -58px; }
+    .lightbox-caption { position: absolute; bottom: -34px; left: 0; right: 0; text-align: center; color: rgba(255,255,255,0.7); font-size: 12px; }
+
+    /* ── HERO PANEL (snapshot side stats) ──────── */
+    .hero-panel { display: none; } /* legacy, kept for JS compat */
+
+    /* ── ANIMATIONS ─────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── RESPONSIVE ─────────────────────────────── */
+    @media (max-width: 1100px) {
+      .meta-grid   { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .metrics-grid{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .camera-grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
+      .location-layout { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 800px) {
+      :root { --sidebar-w: 0px; }
+      .sidebar { display: none; }
+      .shell { grid-template-columns: 1fr; }
+      .meta-grid, .gps-grid, .device-list { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .camera-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .page { padding: 16px; }
+    }
+
+    @media (max-width: 500px) {
+      .meta-grid, .metrics-grid, .gps-grid, .sd-grid, .device-list { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+
+    <!-- ── SIDEBAR ── -->
+    <aside class="sidebar" id="sidebar" style="display:none;">
+      <div class="sidebar-brand">
+        <div class="sidebar-logo">
+          <img alt="TGE" src="data:image/png;base64,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" />
+        </div>
+        <div class="sidebar-brand-text">
+          <strong>TGE Asset Snapshot</strong>
+          <span>Fleet Operations</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav" id="sidebar-nav">
+        <span class="nav-section-label">Operations</span>
+
+        <button class="nav-item active" id="standard-tab" type="button">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+            <rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/>
+            <rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/>
+          </svg>
+          <span class="nav-label">Snapshot</span>
+        </button>
+
+        <button class="nav-item" id="asset-track-tab" type="button">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M10 2L18 6v8l-8 4-8-4V6l8-4z"/><path d="M10 2v12M2 6l8 4 8-4"/>
+          </svg>
+          <span class="nav-label">Asset Track</span>
+        </button>
+
+        <span class="nav-section-label">Management</span>
+
+        <button class="nav-item" id="admin-tab" type="button" style="display:none;">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+            <circle cx="10" cy="7" r="3"/><path d="M3 17c0-3.3 3.1-6 7-6s7 2.7 7 6"/>
+          </svg>
+          <span class="nav-label">Admin</span>
+        </button>
+
+        <button class="nav-item" id="vpm-tab" type="button" style="display:none;">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M3 12l4-4 4 4 6-7"/><path d="M17 5h-4v4"/>
+          </svg>
+          <span class="nav-label">VPM Analysis</span>
+        </button>
+
+        <span class="nav-section-label">Diagnostics</span>
+        <button class="nav-item" id="diagnostics-tab" type="button" style="display:none;">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M10 2v4M10 14v4M2 10h4M14 10h4"/><circle cx="10" cy="10" r="4"/>
+          </svg>
+          <span class="nav-label">Diagnostics</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-user" id="sidebar-user" style="display:none;">
+          <div class="user-avatar" id="user-avatar">--</div>
+          <div class="user-info">
+            <strong id="user-display-name">--</strong>
+            <span id="user-role-label">user</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ── TOPBAR ── -->
+    <header class="topbar" id="topbar">
+      <div class="topbar-left">
+        <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar" aria-label="Toggle sidebar">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="10" y2="8"/><line x1="2" y1="12" x2="14" y2="12"/>
+          </svg>
+        </button>
+        <span class="topbar-page-title" id="topbar-page-title">Asset Snapshot</span>
+      </div>
+      <div class="topbar-right" id="header-actions" style="display:none;">
+        <div class="mode-indicator demo" id="mode-indicator">
+          <span class="mode-dot"></span>
+          <span id="mode-label">Demo</span>
+        </div>
+
+        <label class="debug-toggle-wrap" id="debug-toggle-wrap">
+          <span>Debug</span>
+          <span class="debug-switch">
+            <input id="debug-toggle" type="checkbox" />
+            <span class="debug-switch-track"></span>
+            <span class="debug-switch-thumb"></span>
+          </span>
+        </label>
+
+        <span class="version-badge">v1.5</span>
+
+        <button class="logout-btn" id="logout-btn" type="button">Sign out</button>
+      </div>
+    </header>
+
+    <!-- ── MAIN ── -->
+    <main class="main">
+
+      <!-- LOGIN -->
+      <section class="login-overlay" id="login-screen">
+        <div class="login-wrap">
+          <div class="login-brand">
+            <div class="login-brand-mark">
+              <img alt="TGE logo" src="data:image/png;base64,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" />
+            </div>
+            <div class="login-brand-copy">
+              <h2>TGE Asset Snapshot</h2>
+              <p>Sign in to access the fleet workspace</p>
+            </div>
+          </div>
+
+          <form id="login-form">
+            <div class="login-grid">
+              <div class="field">
+                <label for="username">Username</label>
+                <input id="username" name="username" type="text" autocomplete="username" required
+                  style="border-color:var(--line);background:var(--surface);color:var(--ink);" />
+              </div>
+              <div class="field">
+                <label for="password">Password</label>
+                <input id="password" name="password" type="password" autocomplete="current-password" required
+                  style="border-color:var(--line);background:var(--surface);color:var(--ink);" />
+              </div>
+            </div>
+            <div style="margin-top:18px;">
+              <button class="action-btn" type="submit"
+                style="background:var(--green-700);color:var(--yellow);">Sign In</button>
+            </div>
+            <p class="message" id="login-message"></p>
+          </form>
+        </div>
+      </section>
+
+      <!-- APP SHELL -->
+      <div class="page" id="app-shell">
+
+        <!-- HERO SEARCH -->
+        <section class="hero" id="snapshot-hero">
+          <div class="hero-copy">
+            <div class="section-kicker" style="color:rgba(212,240,38,0.8);">Asset Search</div>
+            <h2>Track one vehicle — full operational snapshot</h2>
+            <p>Enter a fleet number to load the current asset snapshot: location, metrics, diagnostics, and camera evidence.</p>
+
+            <form class="lookup" id="asset-search-form">
+              <div class="field">
+                <label for="asset-number">Fleet Number</label>
+                <input id="asset-number" name="assetNumber" type="text" placeholder="e.g. 1001" required />
+              </div>
+              <button class="action-btn" type="submit">Load Snapshot</button>
+              <button class="secondary-btn" id="refresh-asset-btn" type="button">Refresh</button>
+              <button class="secondary-btn" id="export-pdf-btn" type="button">Export PDF</button>
+              <button class="secondary-btn" id="email-pdf-btn" type="button">Email PDF</button>
+            </form>
+
+            <p class="message" id="asset-search-message"></p>
+          </div>
+          <div class="hero-panel" id="hero-panel"></div>
+        </section>
+
+        <div class="stack">
+          <!-- STANDARD VIEW -->
+          <div id="standard-view">
+            <div id="asset-shell">
+              <div class="stack">
+
+                <section class="section">
+                  <div class="section-head">
+                    <div>
+                      <div class="section-kicker">Vehicle Information</div>
+                      <h3 class="section-title">Asset Details</h3>
+                    </div>
+                  </div>
+                  <div class="meta-grid">
+                    <div class="meta-item"><span>Fleet Number</span><strong id="view-asset-number"></strong></div>
+                    <div class="meta-item"><span>Registration</span><strong id="view-registration"></strong></div>
+                    <div class="meta-item"><span>VIN</span><strong id="view-vin"></strong></div>
+                    <div class="meta-item"><span>Make</span><strong id="view-make"></strong></div>
+                    <div class="meta-item"><span>Model</span><strong id="view-model"></strong></div>
+                    <div class="meta-item"><span>System ID</span><strong id="view-system-id"></strong></div>
+                    <div class="meta-item"><span>Year</span><strong id="view-year"></strong></div>
+                  </div>
+                  <div class="device-list">
+                    <div class="device-card">
+                      <h4>Tracking System</h4>
+                      <p>IMEI: <strong id="view-tracker-imei"></strong></p>
+                      <p>Serial: <strong id="view-tracker-serial"></strong></p>
+                    </div>
+                    <div class="device-card">
+                      <h4>Camera System</h4>
+                      <p>IMEI: <strong id="view-camera-imei"></strong></p>
+                      <p>Serial: <strong id="view-camera-serial"></strong></p>
+                    </div>
+                    <div class="device-card">
+                      <h4>Tablet</h4>
+                      <p>IMEI: <strong id="view-tablet-imei"></strong></p>
+                      <p>Serial: <strong id="view-tablet-serial"></strong></p>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="section">
+                  <div class="section-head">
+                    <div>
+                      <div class="section-kicker">Performance</div>
+                      <h3 class="section-title">Vehicle Tracking Metrics</h3>
+                    </div>
+                  </div>
+                  <div class="metrics-grid">
+                    <div class="metric-item"><span>Driver Logged In</span><strong id="view-driver"></strong></div>
+                    <div class="metric-item"><span>Engine Hours</span><strong id="view-engine-hours"></strong></div>
+                    <div class="metric-item"><span>Ignition</span><strong id="view-ignition-status"></strong></div>
+                    <div class="metric-item"><span>Odometer</span><strong id="view-odometer"></strong></div>
+                    <div class="metric-item"><span>Oil Pressure</span><strong id="view-oil-pressure"></strong></div>
+                    <div class="metric-item"><span>Oil Temperature</span><strong id="view-oil-temp"></strong></div>
+                    <div class="metric-item"><span>RPM</span><strong id="view-rpm"></strong></div>
+                    <div class="metric-item"><span>Speed</span><strong id="view-speed"></strong></div>
+                  </div>
+                  <div class="metrics-grid" id="performance-dynamic-grid" style="margin-top:12px;"></div>
+                </section>
+
+                <section class="section">
+                  <div class="section-head">
+                    <div>
+                      <div class="section-kicker">GPIO Data State</div>
+                      <h3 class="section-title">Digital Inputs &amp; Outputs</h3>
+                    </div>
+                  </div>
+                  <div class="gps-grid">
+                    <div class="gps-card"><h4>Seatbelt</h4><p id="gpio-seatbelt"></p><span id="gpio-seatbelt-at">N/A No Data</span><br><span class="gps-tag">DIGIN 1</span></div>
+                    <div class="gps-card"><h4>Door</h4><p id="gpio-door"></p><span id="gpio-door-at">N/A No Data</span><br><span class="gps-tag">DIGIN 2</span></div>
+                    <div class="gps-card"><h4>Park Brake</h4><p id="gpio-parkbrake"></p><span id="gpio-parkbrake-at">N/A No Data</span><br><span class="gps-tag">DIGIN 3</span></div>
+                    <div class="gps-card"><h4>Event Button</h4><p id="gpio-eventbtn"></p><span id="gpio-eventbtn-at">N/A No Data</span><br><span class="gps-tag">DIGIN 4</span></div>
+                    <div class="gps-card"><h4>Reverse</h4><p id="gpio-reverse"></p><span id="gpio-reverse-at">N/A No Data</span><br><span class="gps-tag">DIGIN 5</span></div>
+                    <div class="gps-card"><h4>Output 1</h4><p id="gpio-output1"></p><span id="gpio-output1-at">N/A No Data</span><br><span class="gps-tag">DIGOUT 1</span></div>
+                  </div>
+                </section>
+
+                <section class="section" id="sd-section">
+                  <div class="section-head">
+                    <div>
+                      <div class="section-kicker">Storage Diagnostics</div>
+                      <h3 class="section-title">SD Card Status</h3>
+                    </div>
+                  </div>
+                  <div class="sd-grid">
+                    <div class="sd-item"><span>SD Card 1</span><strong id="view-sd1"></strong></div>
+                    <div class="sd-item"><span>SD Card 2</span><strong id="view-sd2"></strong></div>
+                    <div class="sd-item"><span>SD Card 1 Size</span><strong id="view-sd1-size"></strong></div>
+                    <div class="sd-item"><span>SD Card 2 Size</span><strong id="view-sd2-size"></strong></div>
+                  </div>
+                  <strong id="view-sd-overall" style="display:none;"></strong>
+                </section>
+
+                <section class="section" id="camera-section">
+                  <div class="section-head">
+                    <div>
+                      <div class="section-kicker">Evidence</div>
+                      <h3 class="section-title">Camera Snapshots</h3>
+                    </div>
+                  </div>
+                  <div class="camera-grid" id="camera-grid">
+                    <article class="camera-card" data-camera-slot="0">
+                      <div class="camera-frame">
+                        <img id="img-road-facing" style="display:none;" alt="Road Facing" />
+                        <p class="camera-empty" id="img-road-facing-empty">Awaiting search</p>
+                      </div>
+                      <div class="camera-meta">
+                        <strong>Road Facing</strong>
+                        <span id="img-road-facing-status"></span>
+                      </div>
+                    </article>
+                    <article class="camera-card" data-camera-slot="1">
+                      <div class="camera-frame">
+                        <img id="img-driver-facing" style="display:none;" alt="Driver Facing" />
+                        <p class="camera-empty" id="img-driver-facing-empty">Awaiting search</p>
+                      </div>
+                      <div class="camera-meta">
+                        <strong>Driver Facing</strong>
+                        <span id="img-driver-facing-status"></span>
+                      </div>
+                    </article>
+                    <article class="camera-card" data-camera-slot="2">
+                      <div class="camera-frame">
+                        <img id="img-in-cab" style="display:none;" alt="In-Cab Driver" />
+                        <p class="camera-empty" id="img-in-cab-empty">Awaiting search</p>
+                      </div>
+                      <div class="camera-meta">
+                        <strong>In-Cab Driver</strong>
+                        <span id="img-in-cab-status"></span>
+                      </div>
+                    </article>
+                    <article class="camera-card" data-camera-slot="3">
+                      <div class="camera-frame">
+                        <img id="img-driver-external" style="display:none;" alt="Driver External" />
+                        <p class="camera-empty" id="img-driver-external-empty">Awaiting search</p>
+                      </div>
+                      <div class="camera-meta">
+                        <strong>Driver External</strong>
+                        <span id="img-driver-external-status"></span>
+                      </div>
+                    </article>
+                    <article class="camera-card" data-camera-slot="4">
+                      <div class="camera-frame">
+                        <img id="img-left-external" style="display:none;" alt="Left External" />
+                        <p class="camera-empty" id="img-left-external-empty">Awaiting search</p>
+                      </div>
+                      <div class="camera-meta">
+                        <strong>Left External</strong>
+                        <span id="img-left-external-status"></span>
+                      </div>
+                    </article>
+                  </div>
+                </section>
+
+                <section class="section" id="location-section">
+                  <div class="section-head">
+                    <div>
+                      <div class="section-kicker">Location</div>
+                      <h3 class="section-title">Current Position</h3>
+                    </div>
+                  </div>
+                  <div class="location-layout">
+                    <div class="map-panel" id="map-panel">
+                      <div class="map-badge" id="map-badge" style="display:none;">Last Location</div>
+                      <iframe
+                        id="view-map-iframe"
+                        title="Last known location map"
+                        loading="lazy"
+                        referrerpolicy="no-referrer-when-downgrade"
+                        src=""
+                        style="width:100%;height:100%;min-height:280px;border:0;display:block;">
+                      </iframe>
+                    </div>
+                    <div class="location-meta" id="location-meta">
+                      <div class="location-card">
+                        <span>Location</span>
+                        <strong id="view-location"></strong>
+                      </div>
+                      <div class="location-card">
+                        <span>Latitude</span>
+                        <strong id="view-latitude"></strong>
+                      </div>
+                      <div class="location-card">
+                        <span>Longitude</span>
+                        <strong id="view-longitude"></strong>
+                      </div>
+                      <div class="location-card">
+                        <span>Last GPS Time</span>
+                        <strong id="view-gps-time"></strong>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+              </div><!-- /stack -->
+            </div><!-- /asset-shell -->
+          </div><!-- /standard-view -->
+
+          <!-- ASSET TRACK VIEW -->
+          <section class="section" id="asset-track-view" style="display:none;">
+            <div class="section-head">
+              <div>
+                <div class="section-kicker">Asset Track</div>
+                <h3 class="section-title">Multi-Asset Fleet Analysis</h3>
+              </div>
+            </div>
+
+            <div class="asset-track-shell">
+              <div class="asset-track-toolbar">
+                <div class="asset-track-mode-bar">
+                  <button class="action-btn" id="asset-track-user-tab" type="button">User Input</button>
+                  <button class="action-btn" id="asset-track-fleet-tab" type="button">Fleet Mode</button>
+                </div>
+                <div class="asset-track-export-copy">
+                  <button class="action-btn" id="asset-track-export-btn" type="button">Export CSV</button>
+                  <button class="action-btn" id="asset-track-copy-btn" type="button">Copy Selection</button>
+                </div>
+              </div>
+
+              <div class="asset-track-input-panel" id="asset-track-input-panel">
+                <div class="asset-track-panel" id="asset-track-user-panel" style="display:none;">
+                  <div class="field">
+                    <label for="asset-track-fleet-input" style="color:var(--muted);">Add Fleet Numbers (one per line)</label>
+                    <textarea id="asset-track-fleet-input" placeholder="Enter one fleet number per line"></textarea>
+                  </div>
+                </div>
+
+                <div class="asset-track-panel" id="asset-track-fleet-panel" style="display:none;">
+                  <p class="asset-track-helper">Fleet mode checks the active fleet, validates linked hardware, and renders the tracker table only after all matching devices are confirmed.</p>
+                </div>
+
+                <div class="asset-track-run-row">
+                  <button class="action-btn" id="asset-track-run-btn" type="button" style="display:none;">Run</button>
+                </div>
+
+                <p class="message" id="asset-track-message"></p>
+              </div>
+            </div>
+          </section>
+
+          <section class="section asset-track-results-panel" id="asset-track-results-view" style="display:none;">
+            <div class="section-head">
+              <div>
+                <div class="section-kicker">Result Table</div>
+                <h3 class="section-title">Filtered export-ready asset list</h3>
+              </div>
+            </div>
+            <p class="asset-track-summary" id="asset-track-summary">No Asset Track analysis has been run yet.</p>
+            <div class="table-wrap asset-track-table-wrap">
+              <table class="asset-track-table" id="asset-track-table">
+                <thead id="asset-track-results-head"></thead>
+                <tbody id="asset-track-results-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- ADMIN VIEW -->
+          <section class="section" id="admin-view" style="display:none;">
+            <div class="section-head">
+              <div>
+                <div class="section-kicker">Admin</div>
+                <h3 class="section-title">Access Management</h3>
+              </div>
+            </div>
+
+            <p class="section-subcopy">Add or edit approved users, then review the user register and access history below.</p>
+
+            <form id="approved-user-form">
+              <div class="meta-grid">
+                <div class="field dark-field"><label for="approved-first-name">First Name</label><input id="approved-first-name" type="text" required /></div>
+                <div class="field dark-field"><label for="approved-last-name">Last Name</label><input id="approved-last-name" type="text" required /></div>
+                <div class="field dark-field"><label for="approved-username">Username</label><input id="approved-username" type="text" required /></div>
+                <div class="field dark-field"><label for="approved-password">Password</label><input id="approved-password" type="password" placeholder="Set password" /></div>
+                <div class="field dark-field"><label for="approved-role">Role</label>
+                  <select id="approved-role" required>
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
+                    <option value="superuser">Superuser</option>
+                  </select>
+                </div>
+                <div class="field dark-field"><label for="approved-status">Status</label>
+                  <select id="approved-status" required>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+              </div>
+              <div class="admin-form-actions">
+                <button class="action-btn" type="submit">Save User</button>
+                <button class="secondary-btn" id="import-users-btn" type="button">Import Users</button>
+                <input class="utility-input" id="import-users-file" type="file" accept=".xlsx,.xls,.csv" />
+              </div>
+            </form>
+
+            <h3 style="margin-top:28px;margin-bottom:14px;font-size:14px;font-weight:700;">Approved Users</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>First Name</th><th>Last Name</th><th>Username</th>
+                    <th>Role</th><th>Status</th><th>Updated By</th><th>Updated Date</th><th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="approved-users-table-body"></tbody>
+              </table>
+            </div>
+
+            <div style="margin-top:28px;">
+              <h3 style="margin-bottom:14px;font-size:14px;font-weight:700;">Access History</h3>
+              <div class="field dark-field" style="max-width:260px;margin-bottom:14px;">
+                <label for="history-user-filter">Filter by user</label>
+                <select id="history-user-filter">
+                  <option value="">All Users</option>
+                </select>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>User</th><th>Date / Time</th><th>Asset Requested</th></tr>
+                  </thead>
+                  <tbody id="history-table-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- VPM VIEW -->
+          <section class="section" id="vpm-view" style="display:none;">
+            <div class="section-head">
+              <div>
+                <div class="section-kicker">VPM</div>
+                <h3 class="section-title">VPM Analysis</h3>
+              </div>
+            </div>
+
+            <div class="vpm-mode-bar">
+              <button class="action-btn" id="vpm-user-input-tab" type="button">User Input</button>
+              <button class="action-btn" id="vpm-fleet-evaluation-tab" type="button">Fleet Evaluation</button>
+              <button class="action-btn" id="run-vpm-btn" type="button">Run</button>
+              <button class="secondary-btn" id="cancel-vpm-btn" type="button" style="display:none;">Cancel</button>
+              <button class="action-btn" id="vpm-export-btn" type="button">Export Data</button>
+            </div>
+
+            <div class="vpm-panel" id="vpm-user-input-panel" style="display:none;">
+              <div class="field">
+                <label for="vpm-imei-input" style="color:var(--muted);">Add IMEI (up to 2000 IMEI)</label>
+                <textarea id="vpm-imei-input" placeholder="Enter one IMEI per line"></textarea>
+              </div>
+            </div>
+
+            <section class="section" style="margin-top:16px;">
+              <div class="section-head">
+                <div>
+                  <div class="section-kicker">Results</div>
+                  <h3 class="section-title">VPM Results</h3>
+                </div>
+              </div>
+              <p class="table-summary" id="vpm-summary">No VPM analysis has been run yet.</p>
+              <div class="table-wrap">
+                <table id="vpm-results-table">
+                  <thead id="vpm-results-head"></thead>
+                  <tbody id="vpm-results-body"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+
+        </div><!-- /stack -->
+      </div><!-- /page / app-shell -->
+
+    </main><!-- /main -->
+  </div><!-- /shell -->
+
+  <!-- DEBUG WINDOW -->
+  <aside class="debug-window" id="debug-window" aria-hidden="true">
+    <div class="debug-window-header" id="debug-window-handle">
+      <div class="debug-window-title">
+        <strong>Debug</strong>
+        <span>Live admin inspector &amp; snapshot</span>
+      </div>
+      <div class="debug-window-actions">
+        <button class="debug-close-btn" id="debug-close-btn" type="button">✕</button>
+      </div>
+    </div>
+    <div class="debug-window-body">
+      <section class="debug-window-panel">
+        <div>
+          <div class="section-kicker">Debug</div>
+          <h3 id="debug-window-panel-title">Live Admin Inspector</h3>
+          <p id="debug-window-panel-subcopy">Open the debug panel to inspect the latest request payloads and lookup results.</p>
+        </div>
+        <div class="debug-preview">
+          <div class="mini-metric">
+            <span>Last Event</span>
+            <strong id="debug-window-event-title">No debug entries.</strong>
+          </div>
+          <div class="debug-log-panel">
+            <span style="font-size:11px;color:var(--muted);">Latest Output</span>
+            <pre id="debug-window-event-output">No debug entries.</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="debug-snapshot">
+        <div>
+          <div class="section-kicker">Current Snapshot</div>
+          <h3 id="hero-current-asset">No asset loaded</h3>
+        </div>
+        <div class="debug-snapshot-grid">
+          <div class="mini-metric"><span>Request Time</span><strong id="hero-request-time">--</strong></div>
+          <div class="mini-metric"><span>Lookup Status</span><strong id="hero-lookup-status">Awaiting search</strong></div>
+          <div class="mini-metric"><span>Fleet Number</span><strong id="hero-fleet-number">--</strong></div>
+          <div class="mini-metric"><span>Vehicle ID</span><strong id="hero-vehicle-id">--</strong></div>
+          <div class="mini-metric"><span>Render Time</span><strong id="hero-render-time">--</strong></div>
+        </div>
+      </section>
+
+      <pre id="debug-output" style="display:none;">No debug entries.</pre>
+    </div>
+  </aside>
+
+  <!-- LIGHTBOX -->
+  <div class="lightbox-overlay" id="lightbox-overlay" style="display:none;">
+    <div class="lightbox-content">
+      <button class="lightbox-close" id="lightbox-close" type="button">✕</button>
+      <button class="lightbox-nav lightbox-prev" id="lightbox-prev" type="button">‹</button>
+      <img class="lightbox-img" id="lightbox-img" alt="Camera snapshot" />
+      <button class="lightbox-nav lightbox-next" id="lightbox-next" type="button">›</button>
+      <div class="lightbox-caption" id="lightbox-caption"></div>
+    </div>
+  </div>
+
+  <script src="./lib/html2canvas.min.js" defer></script>
+  <script src="./lib/jspdf.umd.min.js" defer></script>
+  <script src="./app.js?v=8" defer></script>
+
+  <script>
+    // Show sidebar + topbar actions after login; wire nav active states
+    // These complement app.js without replacing it.
+    (function() {
+      var sidebarShown = false;
+
+      function showSidebar(user) {
+        if (sidebarShown) return;
+        sidebarShown = true;
+        var sb = document.getElementById('sidebar');
+        var su = document.getElementById('sidebar-user');
+        var av = document.getElementById('user-avatar');
+        var dn = document.getElementById('user-display-name');
+        var rl = document.getElementById('user-role-label');
+        if (sb) sb.style.display = 'flex';
+        if (su) su.style.display = 'flex';
+        if (user) {
+          var initials = ((user.firstName||'?')[0] + (user.lastName||'?')[0]).toUpperCase();
+          if (av) av.textContent = initials;
+          if (dn) dn.textContent = (user.firstName||'') + ' ' + (user.lastName||'');
+          if (rl) rl.textContent = user.role || 'user';
+        }
       }
-      const command = `BT /F1 ${fontSize} Tf 40 ${y} Td (${escapePdfText(line)}) Tj ET`;
-      y -= fontSize + 6;
-      return command;
-    })
-    .filter(Boolean)
-    .join("\n");
 
-  const objects = [];
-  objects.push("1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj");
-  objects.push("2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj");
-  objects.push("3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj");
-  objects.push("4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj");
-  objects.push(`5 0 obj << /Length ${content.length} >> stream\n${content}\nendstream endobj`);
-
-  let pdf = "%PDF-1.4\n";
-  const offsets = [0];
-
-  for (const object of objects) {
-    offsets.push(pdf.length);
-    pdf += `${object}\n`;
-  }
-
-  const xrefStart = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n`;
-  pdf += "0000000000 65535 f \n";
-
-  for (let i = 1; i < offsets.length; i += 1) {
-    pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
-  }
-
-  pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\n`;
-  pdf += `startxref\n${xrefStart}\n%%EOF`;
-
-  return new TextEncoder().encode(pdf);
-}
-
-async function fetchJsonFromTn360(url) {
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`TN360 request failed. HTTP ${response.status}. ${body}`);
-  }
-
-  return response.json();
-}
-
-function isDriverUser(tnUser) {
-  const roles = Array.isArray(tnUser.roles) ? tnUser.roles : [];
-
-  return roles.some((role) => {
-    const roleName = String(role.name || "").toLowerCase();
-    const features = Array.isArray(role.features) ? role.features : [];
-    return roleName === "driver" || features.includes("DRIVER");
-  });
-}
-
-function buildVehicleIdentity(vehicle, hermesDevice) {
-  return {
-    fleetNumber: vehicle?.name || "N/A",
-    registration: vehicle?.registration || "N/A",
-    make: vehicle?.operationalVehicleModel?.make || vehicle?.make || "N/A",
-    model: vehicle?.operationalVehicleModel?.model || vehicle?.model || "N/A",
-    yearOfManufacture:
-      vehicle?.operationalVehicleModel?.yearOfManufacture ?? vehicle?.yearOfManufacture ?? "N/A",
-    vehicleId: vehicle?.id ?? "N/A",
-    hermesImei: hermesDevice?.imei || hermesDevice?.serialNumber || "N/A",
-  };
-}
-
-function buildVpmRow(vehicle, hermesDevice, lastVpmRaw, status = "Matched", errorMessage = "") {
-  return {
-    ...buildVehicleIdentity(vehicle, hermesDevice),
-    status,
-    errorMessage: errorMessage || "",
-    vpm: extractAllowedVpmFields(lastVpmRaw),
-  };
-}
-  
-async function handleLogin(request, env) {
-  const body = await safeJson(request);
-  const username = String(body.username || "").trim();
-  const password = String(body.password || "").trim();
-
-  if (!username || !password) {
-    return jsonResponse({ error: "Username and password are required." }, 400);
-  }
-
-  const approvedUser = approvedUsers.find(
-    (user) => user.username.toLowerCase() === username.toLowerCase(),
-  );
-
-  if (!approvedUser || approvedUser.status !== "active") {
-    return jsonResponse({ error: "Access denied. Please contact Telematics." }, 401);
-  }
-
-  let sessionUser;
-
-  if (isDemoMode(env)) {
-    if (approvedUser.password !== password) {
-      return jsonResponse({ error: "Access denied. Invalid username or password." }, 401);
-    }
-
-    sessionUser = {
-      username: approvedUser.username,
-      role: approvedUser.role,
-      firstName: approvedUser.firstName,
-      lastName: approvedUser.lastName,
-      mode: "demo",
-    };
-  } else {
-    const usersUrl = `https://api-au.telematics.com/v1/users/?key=${env.TN360_API_KEY}&pruning=B2B`;
-    const users = await fetchJsonFromTn360(usersUrl);
-
-    const matchedUser = users.find(
-      (user) => String(user.username || "").toLowerCase() === username.toLowerCase(),
-    );
-
-    if (!matchedUser || matchedUser.status !== "ENABLED" || !isDriverUser(matchedUser)) {
-      return jsonResponse({ error: "Access denied. Please contact Telematics." }, 401);
-    }
-
-    if (String(matchedUser.externalPin || "") !== password) {
-      return jsonResponse({ error: "Access denied. Invalid username or password." }, 401);
-    }
-
-    sessionUser = {
-      username: approvedUser.username,
-      role: approvedUser.role,
-      firstName: matchedUser.firstName,
-      lastName: matchedUser.lastName,
-      mode: "tn360",
-    };
-  }
-
-  const token = await createSessionToken(sessionUser, env);
-  addAccessHistory(sessionUser.username, "Login only");
-
-  return jsonResponse({ user: sessionUser }, 200, sessionCookieHeader(token));
-}
-
-async function handleSession(request, env) {
-  const sessionCheck = await requireSession(request, env);
-  if (!sessionCheck.ok) return sessionCheck.response;
-
-  return jsonResponse({ user: sessionCheck.user });
-}
-
-async function handleLogout() {
-  return jsonResponse({ ok: true }, 200, clearSessionCookie());
-}
-
-async function handleApprovedUsersGet(request, env) {
-  const adminCheck = await requireAdmin(request, env);
-  if (!adminCheck.ok) return adminCheck.response;
-
-  return jsonResponse(approvedUsers.map(publicUser));
-}
-
-async function handleApprovedUsersUpsert(request, env) {
-  const adminCheck = await requireAdmin(request, env);
-  if (!adminCheck.ok) return adminCheck.response;
-
-  const body = await safeJson(request);
-  const username = String(body.username || "").trim();
-
-  if (!username) {
-    return jsonResponse({ error: "Username is required." }, 400);
-  }
-
-  const existingUser = approvedUsers.find(
-    (user) => user.username.toLowerCase() === username.toLowerCase(),
-  );
-
-  const now = new Date().toISOString();
-  const currentUsername = adminCheck.user.username;
-
-  if (existingUser) {
-    existingUser.firstName = String(body.firstName || existingUser.firstName || "").trim();
-    existingUser.lastName = String(body.lastName || existingUser.lastName || "").trim();
-    existingUser.role = String(body.role || existingUser.role || "user").trim();
-    existingUser.status = String(body.status || existingUser.status || "active").trim();
-    existingUser.updatedBy = currentUsername;
-    existingUser.updatedDate = now;
-
-    if (String(body.password || "").trim()) {
-      existingUser.password = String(body.password).trim();
-    }
-  } else {
-    approvedUsers.push({
-      firstName: String(body.firstName || "").trim(),
-      lastName: String(body.lastName || "").trim(),
-      username,
-      role: String(body.role || "user").trim(),
-      status: String(body.status || "active").trim(),
-      createdBy: currentUsername,
-      createdDate: now,
-      updatedBy: currentUsername,
-      updatedDate: now,
-      password: String(body.password || "").trim(),
-    });
-  }
-
-  return jsonResponse({ ok: true });
-}
-
-async function handleApprovedUsersDeactivate(request, env) {
-  const adminCheck = await requireAdmin(request, env);
-  if (!adminCheck.ok) return adminCheck.response;
-
-  const body = await safeJson(request);
-  const username = String(body.username || "").trim();
-
-  const user = approvedUsers.find(
-    (item) => item.username.toLowerCase() === username.toLowerCase(),
-  );
-
-  if (!user) {
-    return jsonResponse({ error: "Approved user not found." }, 404);
-  }
-
-  user.status = "inactive";
-  user.updatedBy = adminCheck.user.username;
-  user.updatedDate = new Date().toISOString();
-
-  return jsonResponse({ ok: true });
-}
-
-async function handleAccessHistoryGet(request, env) {
-  const adminCheck = await requireAdmin(request, env);
-  if (!adminCheck.ok) return adminCheck.response;
-
-  return jsonResponse(accessHistory);
-}
-
-async function handleAccessHistoryPost(request, env) {
-  const sessionCheck = await requireSession(request, env);
-  if (!sessionCheck.ok) return sessionCheck.response;
-
-  const body = await safeJson(request);
-  const assetRequested = String(body.assetRequested || "").trim();
-
-  if (!assetRequested) {
-    return jsonResponse({ error: "Asset requested is required." }, 400);
-  }
-
-  addAccessHistory(sessionCheck.user.username, assetRequested);
-  return jsonResponse({ ok: true });
-}
-
-async function handleTn360Users(request, env) {
-  const sessionCheck = await requireSession(request, env);
-  if (!sessionCheck.ok) return sessionCheck.response;
-
-  if (isDemoMode(env)) {
-    return jsonResponse({
-      username: "bare1234",
-      status: "ENABLED",
-      firstName: "Barend",
-      lastName: "Blignaut",
-      roles: [{ name: "driver", features: ["DRIVER"] }],
-      externalPin: "1234",
-    });
-  }
-
-  const url = new URL(request.url);
-  const username = String(url.searchParams.get("username") || "").trim();
-
-  if (!username) {
-    return jsonResponse({ error: "Username is required." }, 400);
-  }
-
-  const usersUrl = `https://api-au.telematics.com/v1/users/?key=${env.TN360_API_KEY}&pruning=B2B`;
-  const users = await fetchJsonFromTn360(usersUrl);
-
-  const matchedUser = users.find(
-    (user) => String(user.username || "").toLowerCase() === username.toLowerCase(),
-  );
-
-  if (!matchedUser) {
-    return jsonResponse({ error: "TN360 user not found." }, 404);
-  }
-
-  return jsonResponse(matchedUser);
-}
-
-async function handleVehicleLookup(request, env) {
-  const sessionCheck = await requireSession(request, env);
-  if (!sessionCheck.ok) return sessionCheck.response;
-
-  const body = await safeJson(request);
-  const assetNumber = String(body.assetNumber || "").trim();
-  const searchValue = assetNumber.replace(/\s+/g, "").toLowerCase();
-
-  if (!assetNumber) {
-    return jsonResponse({ error: "Asset number is required." }, 400);
-  }
-
-  if (isDemoMode(env)) {
-    const demoValue = DEMO_VEHICLE.name.replace(/\s+/g, "").toLowerCase();
-    if (demoValue !== searchValue) {
-      return jsonResponse({ error: "Asset not found." }, 404);
-    }
-    return jsonResponse(DEMO_VEHICLE);
-  }
-
-  const vehiclesUrl = `https://api-au.telematics.com/v1/vehicles/?key=${env.TN360_API_KEY}&pruning=B2B`;
-  const vehicles = await fetchJsonFromTn360(vehiclesUrl);
-
-  const matchedVehicle = vehicles.find((vehicle) => {
-    const vehicleName = String(vehicle.name || "").replace(/\s+/g, "").toLowerCase();
-    return vehicleName === searchValue;
-  });
-
-  if (!matchedVehicle) {
-    return jsonResponse({ error: "Asset not found." }, 404);
-  }
-
-  return jsonResponse(matchedVehicle);
-}
-
-async function handleVehicleDevices(request, env) {
-  const sessionCheck = await requireSession(request, env);
-  if (!sessionCheck.ok) return sessionCheck.response;
-
-  const body = await safeJson(request);
-  const vehicleId = String(body.vehicleId || "").trim();
-
-  if (!vehicleId) {
-    return jsonResponse({ error: "Vehicle ID is required." }, 400);
-  }
-
-  if (isDemoMode(env)) {
-    return jsonResponse(DEMO_DEVICES);
-  }
-
-  const devicesUrl = `https://api-au.telematics.com/v1/vehicles/${vehicleId}/devices?key=${env.TN360_API_KEY}&pruning=B2B`;
-  return jsonResponse(await fetchJsonFromTn360(devicesUrl));
-}
-
-async function handleVehicleMeters(request, env) {
-  const sessionCheck = await requireSession(request, env);
-  if (!sessionCheck.ok) return sessionCheck.response;
-
-  const body = await safeJson(request);
-  const vehicleId = String(body.vehicleId || "").trim();
-
-  if (!vehicleId) {
-    return jsonResponse({ error: "Vehicle ID is required." }, 400);
-  }
-
-  if (isDemoMode(env)) {
-    return jsonResponse(DEMO_METERS);
-  }
-
-  const metersUrl = `https://api-au.telematics.com/v1/vehicles/${vehicleId}/meters?key=${env.TN360_API_KEY}&pruning=B2B`;
-  return jsonResponse(await fetchJsonFromTn360(metersUrl));
-}
-
-async function handleHermesDeviceStats(request, env) {
-  const sessionCheck = await requireSession(request, env);
-  if (!sessionCheck.ok) return sessionCheck.response;
-
-  const body = await safeJson(request);
-  const trackerId = String(body.trackerId || "").trim();
-
-  if (!trackerId) {
-    return jsonResponse({ error: "Tracker ID is required." }, 400);
-  }
-
-  if (isDemoMode(env)) {
-    return jsonResponse(DEMO_HERMES_DEVICE);
-  }
-
-  const deviceUrl =
-    `https://api-au.telematics.com/v1/devices/${encodeURIComponent(trackerId)}` +
-    `?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
-
-  const response = await fetch(deviceUrl);
-
-  if (!response.ok) {
-    const responseText = await response.text().catch(() => "");
-    return jsonResponse(
-      {
-        error: `HERMES device stats lookup failed. HTTP ${response.status}`,
-        detail: responseText || "No response body returned from HERMES device endpoint.",
-        request: {
-          trackerId,
-          deviceUrl,
-        },
-      },
-      502,
-    );
-  }
-
-  const device = await response.json();
-  return jsonResponse(device);
-}
-
-async function handleImageProxy(request, env) {
-  const sessionCheck = await requireSession(request, env);
-  if (!sessionCheck.ok) return sessionCheck.response;
-
-  const body = await safeJson(request);
-  const imageUrl = String(body.url || "").trim();
-
-  if (!imageUrl) {
-    return jsonResponse({ error: "url is required." }, 400);
-  }
-
-  let parsedUrl;
-  try {
-    parsedUrl = new URL(imageUrl);
-  } catch {
-    return jsonResponse({ error: "Invalid URL." }, 400);
-  }
-
-  // Allow any S3 bucket in any region, any CloudFront, telematics domains, OSM tiles
-  // Using a broader match so presigned S3 URLs with bucket-name prefixes work
-  const allowedSuffixes = [
-    ".amazonaws.com",
-    ".cloudfront.net",
-    "telematics.com",
-    "tn360.com",
-    "mixtelematics.com",
-    "mixtelematics.com.au",
-    "openstreetmap.org",
-    "openstreetmap.de",
-  ];
-
-  const allowedExact = [
-    "tile.openstreetmap.org",
-    "a.tile.openstreetmap.org",
-    "b.tile.openstreetmap.org",
-    "c.tile.openstreetmap.org",
-    "staticmap.openstreetmap.de",
-    "s3.amazonaws.com",
-  ];
-
-  const hostAllowed =
-    allowedExact.includes(parsedUrl.hostname) ||
-    allowedSuffixes.some((s) => parsedUrl.hostname.endsWith(s));
-
-  if (!hostAllowed) {
-    // Return the blocked hostname so the client can report it for debugging
-    return jsonResponse({ error: "URL host not permitted.", blockedHost: parsedUrl.hostname }, 403);
-  }
-
-  try {
-    const upstream = await fetch(imageUrl, {
-      headers: {
-        "User-Agent": "TGE-Asset-Snapshot/1.0",
-        // Include API key in Authorization header for telematics domains
-        ...(env.TN360_API_KEY && parsedUrl.hostname.includes("telematics.com")
-          ? { "Authorization": `Bearer ${env.TN360_API_KEY}`, "X-Api-Key": env.TN360_API_KEY }
-          : {}),
-      },
-    });
-    if (!upstream.ok) {
-      return jsonResponse({ error: `Upstream fetch failed: HTTP ${upstream.status}`, url: imageUrl }, 502);
-    }
-    const contentType = upstream.headers.get("content-type") || "image/jpeg";
-    const imageBuffer = await upstream.arrayBuffer();
-    return new Response(imageBuffer, {
-      status: 200,
-      headers: {
-        "Content-Type": contentType,
-        "Cache-Control": "private, max-age=300",
-        "Access-Control-Allow-Origin": "*",
-      },
-    });
-  } catch (err) {
-    return jsonResponse(
-      { error: "Image proxy failed.", detail: err instanceof Error ? err.message : String(err) },
-      502
-    );
-  }
-}
-
-async function handleCameraDeviceStats(request, env) {
-  const sessionCheck = await requireSession(request, env);
-  if (!sessionCheck.ok) return sessionCheck.response;
-
-  const body = await safeJson(request);
-  const cameraId = String(body.cameraId || "").trim();
-
-  if (!cameraId) {
-    return jsonResponse({ error: "Camera ID is required." }, 400);
-  }
-
-  if (isDemoMode(env)) {
-    return jsonResponse(DEMO_CAMERA_DEVICE);
-  }
-
-  const deviceUrl =
-  `https://api-au.telematics.com/v1/devices/${encodeURIComponent(cameraId)}` +
-  `?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
-
-const response = await fetch(deviceUrl);
-
-if (!response.ok) {
-  const responseText = await response.text().catch(() => "");
-  return jsonResponse(
-    {
-      error: `Camera device stats lookup failed. HTTP ${response.status}`,
-      detail: responseText || "No response body returned from camera device endpoint.",
-      request: {
-        cameraId,
-        deviceUrl,
-      },
-    },
-    502,
-  );
-}
-
-const device = await response.json();
-return jsonResponse(device);
-}
-
-async function handleCameraSnapshots(request, env) {
-  const sessionCheck = await requireSession(request, env);
-  if (!sessionCheck.ok) return sessionCheck.response;
-
-  const body = await safeJson(request);
-  const vehicleId = String(body.vehicleId || "").trim();
-
-  if (!vehicleId) {
-    return jsonResponse({ error: "Vehicle ID is required." }, 400);
-  }
-
-  if (isDemoMode(env)) {
-    return jsonResponse(demoSnapshotEvents());
-  }
-
-  const eventsUrl =
-    `https://api-au.telematics.com/v1/events?types=camera&pruning=B2B&key=${env.TN360_API_KEY}`;
-
-  const response = await fetch(eventsUrl);
-
-  if (!response.ok) {
-    const responseText = await response.text().catch(() => "");
-    return jsonResponse(
-      {
-        error: `Camera snapshot lookup failed. HTTP ${response.status}`,
-        detail: responseText || "No response body returned from TN360 events endpoint.",
-        request: {
-          vehicleId,
-          eventsUrl,
-        },
-      },
-      502,
-    );
-  }
-
-  const events = await response.json();
-
-  const matchedEvents = Array.isArray(events)
-    ? events.filter((event) => String(event.vehicleId || "") === vehicleId)
-    : [];
-
-  return jsonResponse(matchedEvents);
-}
-
-function isAllowedAssetTrackModel(device) {
-  const modelName = String(device?.model?.name || "").trim().toUpperCase();
-  return ASSET_TRACK_ALLOWED_MODELS.has(modelName);
-}
-
-function buildAssetTrackVehicleMap(vehicles) {
-  return new Map(
-    (Array.isArray(vehicles) ? vehicles : []).map((vehicle) => [String(vehicle?.id ?? ""), vehicle]),
-  );
-}
-
-function buildAssetTrackRow(device, vehicle, status) {
-  const operationalModel = vehicle?.operationalVehicleModel || {};
-  const deviceStats = device?.deviceStats || {};
-  const trackerModel = String(device?.model?.name || "").trim().toUpperCase();
-  const batteryStatus = trackerModel === "FLEX SOLAR TRACKER"
-    ? "ST"
-    : (deviceStats.batteryStatus ?? "");
-
-  return {
-    fleetNumber: vehicle?.name || "",
-    vehicleSystemId: vehicle?.id ?? device?.vehicleId ?? "",
-    make: operationalModel.make || vehicle?.make || "",
-    model: operationalModel.model || vehicle?.model || "",
-    yearManufacture: operationalModel.yearOfManufacture ?? vehicle?.yearOfManufacture ?? "",
-    odometer: deviceStats.odometer ?? "",
-    shutdownOdo: deviceStats.shutdownOdo ?? "",
-    ignition: deviceStats.ignition ?? "",
-    movement: deviceStats.movement ?? "",
-    batteryStatus,
-    batteryStatusAt: deviceStats.batteryStatusAt ?? "",
-    imei: device?.imei || device?.serialNumber || "",
-    status,
-  };
-}
-
-function buildAssetTrackErrorRow(imei, status) {
-  return buildAssetTrackRow({ imei, deviceStats: {} }, null, status);
-}
-
-async function fetchAssetTrackVehiclesAndDevices(env) {
-  if (isDemoMode(env)) {
-    return {
-      vehicles: DEMO_ASSET_TRACK_VEHICLES,
-      devices: DEMO_ASSET_TRACK_DEVICES,
-    };
-  }
-
-  const vehiclesUrl = `https://api-au.telematics.com/v1/vehicles?key=${env.TN360_API_KEY}&pruning=B2B`;
-  const devicesUrl =
-    `https://api-au.telematics.com/v1/devices/?key=${env.TN360_API_KEY}` +
-    `&pruning=B2B&embed=devicestats`;
-
-  const [vehicles, devices] = await Promise.all([
-    fetchJsonFromTn360(vehiclesUrl),
-    fetchJsonFromTn360(devicesUrl),
-  ]);
-
-  return {
-    vehicles: Array.isArray(vehicles) ? vehicles : [],
-    devices: Array.isArray(devices) ? devices : [],
-  };
-}
-
-async function fetchSingleAssetTrackDevice(env, trackerSerialOrImei) {
-  if (isDemoMode(env)) {
-    return DEMO_ASSET_TRACK_DEVICES.find((device) =>
-      String(device?.imei || "").trim() === String(trackerSerialOrImei || "").trim() ||
-      String(device?.serialNumber || "").trim() === String(trackerSerialOrImei || "").trim(),
-    ) || null;
-  }
-
-  const deviceUrl =
-    `https://api-au.telematics.com/v1/devices/${encodeURIComponent(trackerSerialOrImei)}` +
-    `?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
-
-  return fetchJsonFromTn360(deviceUrl);
-}
-
-async function handleAssetTrackUser(request, env) {
-  const sessionCheck = await requireSession(request, env);
-  if (!sessionCheck.ok) return sessionCheck.response;
-
-  const body = await safeJson(request);
-  const imeis = [...new Set(
-    (Array.isArray(body.imeis) ? body.imeis : [])
-      .map((item) => String(item || "").trim())
-      .filter(Boolean),
-  )];
-
-  if (!imeis.length) {
-    return jsonResponse({ error: "At least one IMEI is required." }, 400);
-  }
-
-  const limit = sessionCheck.user.role === "admin" ? 2000 : 20;
-  if (imeis.length > limit) {
-    return jsonResponse({ error: `This user can run up to ${limit} IMEIs at a time.` }, 400);
-  }
-
-  const { vehicles, devices } = await fetchAssetTrackVehiclesAndDevices(env);
-  const vehicleMap = buildAssetTrackVehicleMap(vehicles);
-  const bulkDeviceMap = new Map(
-    devices.flatMap((device) => {
-      const entries = [];
-      const imei = String(device?.imei || "").trim();
-      const serialNumber = String(device?.serialNumber || "").trim();
-      if (imei) entries.push([imei, device]);
-      if (serialNumber) entries.push([serialNumber, device]);
-      return entries;
-    }),
-  );
-
-  const rows = [];
-  for (const imei of imeis) {
-    const bulkDevice = bulkDeviceMap.get(imei);
-
-    if (!bulkDevice) {
-      rows.push(buildAssetTrackErrorRow(imei, "IMEI not found"));
-      continue;
-    }
-
-    if (String(bulkDevice?.status || "").toUpperCase() !== "ENABLED") {
-      rows.push(buildAssetTrackErrorRow(imei, "Inactive hardware"));
-      continue;
-    }
-
-    if (!isAllowedAssetTrackModel(bulkDevice)) {
-      rows.push(buildAssetTrackErrorRow(imei, "Unsupported device model"));
-      continue;
-    }
-
-    if (!bulkDevice?.vehicleId || !vehicleMap.get(String(bulkDevice.vehicleId))) {
-      const row = buildAssetTrackErrorRow(imei, "Not linked to asset");
-      row.fleetNumber = "Not linked to asset";
-      rows.push(row);
-      continue;
-    }
-
-    try {
-      const fullDevice = await fetchSingleAssetTrackDevice(
-        env,
-        bulkDevice.imei || bulkDevice.serialNumber || imei,
-      );
-
-      if (!fullDevice) {
-        rows.push(buildAssetTrackErrorRow(imei, "Device detail not found"));
-        continue;
+      // Watch for app-shell to become visible (login success)
+      var appShell = document.getElementById('app-shell');
+      if (appShell) {
+        var obs = new MutationObserver(function() {
+          var style = window.getComputedStyle(appShell);
+          if (style.display !== 'none') {
+            // Try to get user from app state
+            var user = window.state && window.state.currentSessionUser;
+            showSidebar(user || {});
+            obs.disconnect();
+          }
+        });
+        obs.observe(appShell, { attributes: true, attributeFilter: ['style'] });
       }
 
-      const vehicle = vehicleMap.get(String(fullDevice.vehicleId || bulkDevice.vehicleId));
-      if (!vehicle) {
-        const row = buildAssetTrackErrorRow(imei, "Not linked to asset");
-        row.fleetNumber = "Not linked to asset";
-        rows.push(row);
-        continue;
-      }
+      // Nav active state wiring — keeps sidebar in sync with app.js tab switching
+      var navMap = {
+        'standard-tab':    'Asset Snapshot',
+        'asset-track-tab': 'Asset Track',
+        'admin-tab':       'Admin',
+        'vpm-tab':         'VPM Analysis',
+        'diagnostics-tab': 'Diagnostics',
+      };
 
-      rows.push(buildAssetTrackRow(fullDevice, vehicle, "Matched"));
-    } catch (error) {
-      rows.push(buildAssetTrackErrorRow(imei, "Device detail lookup failed"));
-    }
-  }
-
-  return jsonResponse({
-    rows,
-    summary: `${rows.length} IMEI request${rows.length === 1 ? "" : "s"} processed.`,
-  });
-}
-
-async function handleAssetTrackFleet(request, env) {
-  const sessionCheck = await requireSession(request, env);
-  if (!sessionCheck.ok) return sessionCheck.response;
-
-  const { vehicles, devices } = await fetchAssetTrackVehiclesAndDevices(env);
-  const vehicleMap = buildAssetTrackVehicleMap(vehicles);
-  const eligibleDevices = devices.filter((device) =>
-    String(device?.status || "").toUpperCase() === "ENABLED" &&
-    Boolean(device?.vehicleId) &&
-    isAllowedAssetTrackModel(device) &&
-    Boolean(vehicleMap.get(String(device.vehicleId))),
-  );
-
-  const rows = [];
-  for (const device of eligibleDevices) {
-    try {
-      const fullDevice = await fetchSingleAssetTrackDevice(
-        env,
-        device.imei || device.serialNumber || device.id,
-      );
-      const vehicle = vehicleMap.get(String(fullDevice?.vehicleId || device.vehicleId));
-      if (!fullDevice || !vehicle) {
-        continue;
-      }
-      rows.push(buildAssetTrackRow(fullDevice, vehicle, "Matched"));
-    } catch (_) {
-      const fallbackVehicle = vehicleMap.get(String(device.vehicleId));
-      if (fallbackVehicle) {
-        rows.push(buildAssetTrackRow(device, fallbackVehicle, "Matched"));
-      }
-    }
-  }
-
-  return jsonResponse({
-    rows,
-    summary: `${rows.length} fleet-linked asset tracker${rows.length === 1 ? "" : "s"} returned.`,
-  });
-}
-  
-async function handleVpmUserInput(request, env) {
-  const sessionCheck = await requireSession(request, env);
-  if (!sessionCheck.ok) return sessionCheck.response;
-
-  const body = await safeJson(request);
-  const imeis = Array.isArray(body.imeis) ? body.imeis : [];
-
-  const cleanedImeis = [...new Set(
-    imeis.map((item) => String(item || "").trim()).filter(Boolean),
-  )];
-
-  if (!cleanedImeis.length) {
-    return jsonResponse({ error: "At least one IMEI is required." }, 400);
-  }
-
-  if (isDemoMode(env)) {
-    return handleVpmUserInputDemo(cleanedImeis);
-  }
-
-  const vehiclesUrl = `https://api-au.telematics.com/v1/vehicles?key=${env.TN360_API_KEY}&pruning=B2B`;
-  const vehicles = await fetchJsonFromTn360(vehiclesUrl);
-  const vehicleList = Array.isArray(vehicles) ? vehicles : [];
-
-  const rows = [];
-  const discoveredKeys = new Set();
-  let apiCallCount = 0;
-
-  for (const imei of cleanedImeis) {
-    try {
-      const deviceUrl =
-        `https://api-au.telematics.com/v1/devices/${encodeURIComponent(imei)}` +
-        `?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
-
-      const device = await fetchJsonFromTn360(deviceUrl);
-      apiCallCount++;
-
-      if (String(device?.type?.code || "").toUpperCase() !== "HERMES") {
-        rows.push(buildEmptyVpmRow(imei, "Not HERMES", "Device is not a HERMES type."));
-        continue;
-      }
-
-      if (!device?.vehicleId) {
-        rows.push(buildEmptyVpmRow(imei, "No Vehicle", "HERMES device is not assigned to a vehicle."));
-        continue;
-      }
-
-      const vehicle = vehicleList.find(
-        (v) => String(v?.id ?? "") === String(device.vehicleId ?? ""),
-      );
-
-      if (!vehicle) {
-        rows.push(buildEmptyVpmRow(imei, "No Vehicle Match", "Vehicle ID not found in fleet list."));
-        continue;
-      }
-
-      const lastVpmRaw = device?.deviceStats?.lastVpm || null;
-      const row = buildVpmRow(vehicle, device, lastVpmRaw, "Matched", "");
-
-      Object.keys(row.vpm).forEach((key) => discoveredKeys.add(key));
-      rows.push(row);
-    } catch (error) {
-      apiCallCount++;
-      rows.push(buildEmptyVpmRow(imei, "API Failed", error instanceof Error ? error.message : String(error)));
-    }
-  }
-
-  const dynamicColumns = [...discoveredKeys].sort((a, b) => a.localeCompare(b));
-
-  return jsonResponse({
-    mode: "user-input",
-    summary: {
-      queriesSelected: cleanedImeis.length,
-      queriesRun: rows.length,
-      dynamicFieldCount: dynamicColumns.length,
-    },
-    columns: dynamicColumns,
-    rows,
-  });
-}
-
-function handleVpmUserInputDemo(cleanedImeis) {
-  const demoImei = DEMO_DEVICES.find((d) => d.type?.code === "HERMES")?.imei || "";
-  const rows = [];
-  const discoveredKeys = new Set();
-
-  for (const imei of cleanedImeis) {
-    if (imei === demoImei) {
-      const row = buildVpmRow(DEMO_VEHICLE, DEMO_DEVICES[0], DEMO_HERMES_DEVICE.deviceStats.lastVpm, "Matched", "");
-      Object.keys(row.vpm).forEach((key) => discoveredKeys.add(key));
-      rows.push(row);
-    } else {
-      rows.push({
-        fleetNumber: "N/A",
-        registration: "N/A",
-        make: "N/A",
-        model: "N/A",
-        yearOfManufacture: "N/A",
-        vehicleId: "N/A",
-        hermesImei: imei,
-        status: "No HERMES Match",
-        errorMessage: "No active HERMES device matched the supplied IMEI.",
-        vpm: {},
+      document.addEventListener('click', function(e) {
+        var btn = e.target.closest('[id$="-tab"]');
+        if (!btn) return;
+        var id = btn.id;
+        if (!navMap[id]) return;
+        document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+        var sidebarBtn = document.getElementById(id);
+        if (sidebarBtn) sidebarBtn.classList.add('active');
+        var title = document.getElementById('topbar-page-title');
+        if (title) title.textContent = navMap[id];
       });
-    }
-  }
+    })();
+  </script>
 
-  const dynamicColumns = [...discoveredKeys].sort((a, b) => a.localeCompare(b));
+  <script>
+    (function() {
+      var shell = document.querySelector('.shell');
+      var toggle = document.getElementById('sidebar-toggle');
+      var PREF_KEY = 'tge_sidebar_collapsed';
 
-  return jsonResponse({
-    mode: "user-input",
-    summary: {
-      queriesSelected: cleanedImeis.length,
-      queriesRun: rows.length,
-      dynamicFieldCount: dynamicColumns.length,
-    },
-    columns: dynamicColumns,
-    rows,
-  });
-}
+      function applyState(collapsed) {
+        if (collapsed) {
+          shell.classList.add('sidebar-collapsed');
+        } else {
+          shell.classList.remove('sidebar-collapsed');
+        }
+      }
 
-async function handleVpmFleetImeis(request, env) {
-  const sessionCheck = await requireSession(request, env);
-  if (!sessionCheck.ok) return sessionCheck.response;
+      // Restore preference
+      try {
+        var saved = localStorage.getItem(PREF_KEY);
+        if (saved === '1') applyState(true);
+      } catch(e) {}
 
-  if (isDemoMode(env)) {
-    const demoImei = DEMO_DEVICES.find((d) => d.type?.code === "HERMES")?.imei || "";
-    return jsonResponse({ imeis: demoImei ? [demoImei] : [] });
-  }
-
-  const devicesUrl = `https://api-au.telematics.com/v1/devices?key=${env.TN360_API_KEY}&pruning=B2B`;
-  const devices = await fetchJsonFromTn360(devicesUrl);
-
-  const hermesImeis = Array.isArray(devices)
-    ? devices
-        .filter((d) => String(d?.type?.code || "").toUpperCase() === "HERMES" && d?.vehicleId)
-        .map((d) => String(d.imei || "").trim())
-        .filter(Boolean)
-    : [];
-
-  return jsonResponse({ imeis: hermesImeis });
-}
-  
-async function handleExportPdf(request, env) {
-  const sessionCheck = await requireSession(request, env);
-  if (!sessionCheck.ok) return sessionCheck.response;
-
-  const body = await safeJson(request);
-  const snapshot = body.snapshot;
-
-  if (!snapshot || !snapshot.vehicle) {
-    return jsonResponse({ error: "Snapshot data is required." }, 400);
-  }
-
-  const pdfBytes = buildSimplePdf(snapshot);
-  const filename = `tge-asset-snapshot-${snapshot.vehicle.assetNumber || "snapshot"}.pdf`;
-
-  return pdfResponse(pdfBytes, filename);
-}
-
-export default {
-  async fetch(request, env) {
-    try {
-      const url = new URL(request.url);
-
-      if (request.method === "GET" && url.pathname === "/api/ping") {
-        return jsonResponse({
-          ok: true,
-          mode: isDemoMode(env) ? "demo" : "tn360",
-          hasKey: Boolean(env.TN360_API_KEY),
+      if (toggle) {
+        toggle.addEventListener('click', function() {
+          var isCollapsed = shell.classList.contains('sidebar-collapsed');
+          applyState(!isCollapsed);
+          try { localStorage.setItem(PREF_KEY, isCollapsed ? '0' : '1'); } catch(e) {}
         });
       }
-
-      if (request.method === "POST" && url.pathname === "/api/login") {
-        return handleLogin(request, env);
-      }
-
-      if (request.method === "GET" && url.pathname === "/api/session") {
-        return handleSession(request, env);
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/logout") {
-        return handleLogout();
-      }
-
-      if (request.method === "GET" && url.pathname === "/api/approved-users") {
-        return handleApprovedUsersGet(request, env);
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/approved-users") {
-        return handleApprovedUsersUpsert(request, env);
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/approved-users/deactivate") {
-        return handleApprovedUsersDeactivate(request, env);
-      }
-
-      if (request.method === "GET" && url.pathname === "/api/access-history") {
-        return handleAccessHistoryGet(request, env);
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/access-history") {
-        return handleAccessHistoryPost(request, env);
-      }
-
-      if (request.method === "GET" && url.pathname === "/api/tn360-users") {
-        return handleTn360Users(request, env);
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/vehicle-lookup") {
-        return handleVehicleLookup(request, env);
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/vehicle-devices") {
-        return handleVehicleDevices(request, env);
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/vehicle-meters") {
-        return handleVehicleMeters(request, env);
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/hermes-device-stats") {
-        return handleHermesDeviceStats(request, env);
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/camera-device-stats") {
-        return handleCameraDeviceStats(request, env);
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/camera-snapshots") {
-        return handleCameraSnapshots(request, env);
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/image-proxy") {
-        return handleImageProxy(request, env);
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/asset-track-user") {
-        return handleAssetTrackUser(request, env);
-      }
-
-      if (request.method === "GET" && url.pathname === "/api/asset-track-fleet") {
-        return handleAssetTrackFleet(request, env);
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/vpm-user-input") {
-        return handleVpmUserInput(request, env);
-      }
-
-      if (request.method === "GET" && url.pathname === "/api/vpm-fleet-imeis") {
-        return handleVpmFleetImeis(request, env);
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/export-pdf") {
-        return handleExportPdf(request, env);
-      }
-
-      return env.ASSETS.fetch(request);
-    } catch (error) {
-      return jsonResponse(
-        {
-          error: "Worker runtime failure",
-          detail: error instanceof Error ? error.message : String(error),
-        },
-        500,
-      );
-    }
-  },
-};
+    })();
+  </script>
+</body>
+</html>
