@@ -2055,36 +2055,6 @@
   <script>
     // ── Diagnostics tab wiring ─────────────────────────────────────────────────
     (function() {
-      // ── View switcher — show/hide main views ──────────────────────────────
-      const views = {
-        'standard-tab':    'standard-view',
-        'asset-track-tab': 'asset-track-view',
-        'admin-tab':       'admin-view',
-        'vpm-tab':         'vpm-view',
-        'diagnostics-tab': 'diagnostics-view',
-      };
-
-      // Intercept tab clicks and show correct view
-      document.addEventListener('click', function(e) {
-        var btn = e.target.closest('button[id$="-tab"]');
-        if (!btn || !views[btn.id]) return;
-
-        // Hide all views
-        Object.values(views).forEach(function(vid) {
-          var v = document.getElementById(vid);
-          if (v) v.style.display = 'none';
-        });
-
-        // Show target view
-        var target = document.getElementById(views[btn.id]);
-        if (target) target.style.display = '';
-
-        // If switching to diagnostics, populate from current lookup
-        if (btn.id === 'diagnostics-tab') {
-          populateDiagnostics();
-        }
-      });
-
       // ── Camera tool button ────────────────────────────────────────────────
       var cameraBtn = document.getElementById('diag-camera-btn');
       if (cameraBtn) {
@@ -2557,6 +2527,9 @@
         populateDiagSD();
       }
 
+      // Expose globally so app.js can call it after tab switch
+      window.__populateDiagnostics = populateDiagnostics;
+
     })();
 
     // Show sidebar + topbar actions after login; wire nav active states
@@ -2616,6 +2589,12 @@
         if (sidebarBtn) sidebarBtn.classList.add('active');
         var title = document.getElementById('topbar-page-title');
         if (title) title.textContent = navMap[id];
+        // Show diagnostics view and populate when tab clicked
+        if (id === 'diagnostics-tab') {
+          var diagView = document.getElementById('diagnostics-view');
+          if (diagView) diagView.style.display = '';
+          if (typeof populateDiagnostics === 'function') populateDiagnostics();
+        }
       });
     })();
   </script>
