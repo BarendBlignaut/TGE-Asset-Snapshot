@@ -2507,6 +2507,190 @@ function handleRefreshAsset() {
   writeDebug("Page refreshed", "Ready for new search.");
 }
 
+// ── Email PDF modal state ────────────────────────────────────────────────────
+let _emailPdfBlob = null;
+let _emailPdfFilename = null;
+
+function showEmailModal() {
+  const existing = document.getElementById("email-pdf-modal");
+  if (existing) existing.remove();
+
+  const vehicle = state.activeAssetLookup?.vehicle || {};
+  const defaultSubject = `TGE Asset Snapshot - Fleet ${vehicle.assetNumber || "Asset"} - ${vehicle.registration || ""}`.trim();
+  const defaultBody = [
+    `Please find the TGE Asset Snapshot attached.`,
+    ``,
+    `Fleet: ${vehicle.assetNumber || "N/A"}`,
+    `Registration: ${vehicle.registration || "N/A"}`,
+    `VIN: ${vehicle.vin || "N/A"}`,
+    `Make/Model: ${vehicle.make || ""} ${vehicle.model || ""}`.trim(),
+    `Generated: ${new Date().toLocaleString("en-AU", { hour12: false })}`,
+  ].join("\n");
+
+  const modal = document.createElement("div");
+  modal.id = "email-pdf-modal";
+  modal.style.cssText = `
+    position:fixed;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;
+    padding:24px;background:rgba(10,30,18,0.55);backdrop-filter:blur(8px);
+  `;
+
+  modal.innerHTML = `
+    <div style="
+      width:min(560px,100%);background:var(--surface);border:1px solid var(--line);
+      border-radius:14px;box-shadow:0 24px 56px rgba(10,40,20,0.18);padding:28px;
+      display:grid;gap:18px;
+    ">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--green-600);margin-bottom:4px;">Email PDF</div>
+          <h2 style="margin:0;font-size:16px;font-weight:700;color:var(--ink);">Send Asset Snapshot</h2>
+          <p style="margin:4px 0 0;font-size:12px;color:var(--muted);">The PDF will download first — then attach it to the email that opens.</p>
+        </div>
+        <button id="email-modal-close" style="
+          width:32px;height:32px;border-radius:8px;border:1px solid var(--line);
+          background:var(--surface-2);color:var(--muted);cursor:pointer;font-size:16px;
+          display:flex;align-items:center;justify-content:center;flex-shrink:0;
+        ">✕</button>
+      </div>
+
+      <div style="display:grid;gap:12px;">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);margin-bottom:6px;">
+            To (recipient email)
+          </label>
+          <input id="email-modal-to" type="email" multiple placeholder="recipient@example.com"
+            style="width:100%;height:42px;border:1px solid var(--line);border-radius:8px;padding:0 12px;font:inherit;color:var(--ink);background:var(--surface);" />
+          <p style="margin:4px 0 0;font-size:11px;color:var(--muted-2);">Separate multiple recipients with commas</p>
+        </div>
+
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);margin-bottom:6px;">
+            CC (optional)
+          </label>
+          <input id="email-modal-cc" type="email" multiple placeholder="cc@example.com"
+            style="width:100%;height:42px;border:1px solid var(--line);border-radius:8px;padding:0 12px;font:inherit;color:var(--ink);background:var(--surface);" />
+        </div>
+
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);margin-bottom:6px;">
+            Subject
+          </label>
+          <input id="email-modal-subject" type="text" value="${defaultSubject.replace(/"/g, '&quot;')}"
+            style="width:100%;height:42px;border:1px solid var(--line);border-radius:8px;padding:0 12px;font:inherit;color:var(--ink);background:var(--surface);" />
+        </div>
+
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);margin-bottom:6px;">
+            Message body
+          </label>
+          <textarea id="email-modal-body" rows="5"
+            style="width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;color:var(--ink);background:var(--surface);resize:vertical;"
+          >${defaultBody}</textarea>
+        </div>
+      </div>
+
+      <div style="
+        background:var(--warning-bg,#fef9ec);border:1px solid rgba(180,83,9,0.2);
+        border-radius:8px;padding:12px 14px;display:flex;gap:10px;align-items:flex-start;
+      ">
+        <span style="font-size:16px;flex-shrink:0;">📎</span>
+        <div>
+          <strong style="display:block;font-size:12px;color:var(--warning,#b45309);">Attachment step required</strong>
+          <span style="font-size:12px;color:var(--warning,#b45309);">
+            Browsers can't auto-attach files to emails. When you click Send, the PDF downloads first —
+            then drag it into the email that opens in your email client.
+          </span>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button id="email-modal-cancel" style="
+          height:42px;border-radius:8px;padding:0 18px;font:inherit;font-weight:600;font-size:13px;
+          cursor:pointer;border:1px solid var(--line);background:var(--surface-2);color:var(--ink-2);
+        ">Cancel</button>
+        <button id="email-modal-send" style="
+          height:42px;border-radius:8px;padding:0 20px;font:inherit;font-weight:700;font-size:13px;
+          cursor:pointer;border:none;background:var(--green-700,#007a3b);color:#d4f026;
+          box-shadow:0 2px 8px rgba(0,100,50,0.18);
+        ">Download PDF &amp; Open Email</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Close handlers
+  function closeModal() { modal.remove(); _emailPdfBlob = null; }
+  document.getElementById("email-modal-close").addEventListener("click", closeModal);
+  document.getElementById("email-modal-cancel").addEventListener("click", closeModal);
+  modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+
+  // Send handler
+  document.getElementById("email-modal-send").addEventListener("click", async () => {
+    const to      = document.getElementById("email-modal-to").value.trim();
+    const cc      = document.getElementById("email-modal-cc").value.trim();
+    const subject = document.getElementById("email-modal-subject").value.trim();
+    const body    = document.getElementById("email-modal-body").value.trim();
+
+    if (!to) {
+      document.getElementById("email-modal-to").style.borderColor = "var(--danger)";
+      document.getElementById("email-modal-to").focus();
+      return;
+    }
+
+    const btn = document.getElementById("email-modal-send");
+    btn.textContent = "Downloading PDF...";
+    btn.disabled = true;
+
+    try {
+      // Step 1 — download the PDF
+      if (_emailPdfBlob && _emailPdfFilename) {
+        // Already built — reuse
+        triggerDownload(_emailPdfBlob, _emailPdfFilename);
+      } else {
+        btn.textContent = "Building PDF...";
+        const pdf = await buildSnapshotPdf();
+        _emailPdfFilename = `tge-asset-snapshot-${state.activeAssetLookup?.vehicle?.assetNumber || "snapshot"}.pdf`;
+        _emailPdfBlob = pdf.output("blob");
+        triggerDownload(_emailPdfBlob, _emailPdfFilename);
+      }
+
+      // Step 2 — open email client with pre-filled fields
+      const params = [
+        to ? `to=${encodeURIComponent(to)}` : "",
+        cc ? `cc=${encodeURIComponent(cc)}` : "",
+        `subject=${encodeURIComponent(subject)}`,
+        `body=${encodeURIComponent(body + "\n\n[Attach the downloaded PDF: " + _emailPdfFilename + "]")}`,
+      ].filter(Boolean).join("&");
+
+      setTimeout(() => {
+        window.location.href = `mailto:?${params}`;
+        closeModal();
+        showAssetSearchMessage(
+          `PDF downloaded as "${_emailPdfFilename}". Attach it to the email that just opened in your email client.`,
+          false
+        );
+        writeDebug("Email PDF", `PDF downloaded, mailto opened for ${to}`);
+      }, 800);
+
+    } catch (err) {
+      btn.textContent = "Download PDF & Open Email";
+      btn.disabled = false;
+      showAssetSearchMessage(err.message || "Email PDF failed.");
+      writeDebug("Email PDF failed", err.message);
+    }
+  });
+}
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+
 async function handleEmailPdf() {
   if (!state.activeAssetLookup) {
     showAssetSearchMessage("Load an asset before preparing the email.");
@@ -2516,39 +2700,21 @@ async function handleEmailPdf() {
     showAssetSearchMessage("PDF library is still loading. Please try again.");
     return;
   }
+  // Pre-build the PDF in the background while modal is open
+  _emailPdfBlob = null;
+  _emailPdfFilename = null;
+  showEmailModal();
+  // Build PDF in background so it's ready when user clicks send
   try {
-    showAssetSearchMessage("Building PDF for email...", false);
-    writeDebug("Email PDF started", "Building structured PDF...");
     const pdf = await buildSnapshotPdf();
-    const vehicleLabel = state.activeAssetLookup.vehicle?.assetNumber || "snapshot";
-    const filename = `tge-asset-snapshot-${vehicleLabel}.pdf`;
-    const pdfBlob = pdf.output("blob");
-    const objectUrl = URL.createObjectURL(pdfBlob);
-    const anchor = document.createElement("a");
-    anchor.href = objectUrl;
-    anchor.download = filename;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(objectUrl);
-    const vehicle = state.activeAssetLookup.vehicle || {};
-    const subject = encodeURIComponent(`TGE Asset Snapshot - ${vehicle.assetNumber || "Asset"}`);
-    const body = encodeURIComponent(
-      [
-        `Asset: ${safeText(vehicle.assetNumber, "N/A")}`,
-        `Registration: ${safeText(vehicle.registration, "N/A")}`,
-        `Vehicle ID: ${safeText(vehicle.vehicleId, "N/A")}`,
-        `Requested At: ${formatDisplayDate(state.activeAssetLookup.requestedAt)}`,
-        "",
-        `Please find the attached PDF snapshot: ${filename}`,
-      ].join("\n"),
-    );
-    window.location.href = `mailto:?subject=${subject}&body=${body}`;
-    showAssetSearchMessage(`PDF "${filename}" downloaded. Attach it to the email that just opened.`, false);
-    writeDebug("Email PDF completed", `PDF downloaded as ${filename}.`);
-  } catch (error) {
-    showAssetSearchMessage(error.message || "Email PDF failed.");
-    writeDebug("Email PDF failed", error.message);
+    _emailPdfFilename = `tge-asset-snapshot-${state.activeAssetLookup?.vehicle?.assetNumber || "snapshot"}.pdf`;
+    _emailPdfBlob = pdf.output("blob");
+    // Update button text if modal still open
+    const btn = document.getElementById("email-modal-send");
+    if (btn) btn.textContent = "Download PDF & Open Email";
+  } catch(e) {
+    const btn = document.getElementById("email-modal-send");
+    if (btn) { btn.textContent = "Download PDF & Open Email"; btn.disabled = false; }
   }
 }
 
