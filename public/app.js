@@ -2803,6 +2803,15 @@ if (el.vpmTab) {
   });
 }
 
+if (el.diagnosticsTab) {
+  el.diagnosticsTab.addEventListener("click", () => {
+    showDiagnosticsView();
+    if (typeof window.__populateDiagnostics === "function") {
+      window.__populateDiagnostics();
+    }
+  });
+}
+
 if (el.vpmUserInputTab) {
   el.vpmUserInputTab.addEventListener("click", () => {
     showVpmPanel("user-input");
