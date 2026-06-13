@@ -1929,33 +1929,45 @@ async function prepareImagesForPdf(imgIds) {
     if (!img || img.style.display === "none" || !img.src) continue;
 
     const originalSrc = img.src;
+    const originalCrossOrigin = img.crossOrigin;
 
     try {
       let dataUrl;
 
       if (originalSrc.startsWith("data:image/svg")) {
-        // SVG data URL — draw through an Image onto a canvas to get a raster JPEG
+        // SVG data: URL — convert via Blob URL to avoid canvas taint
         dataUrl = await svgDataUrlToJpeg(originalSrc);
       } else if (originalSrc.startsWith("data:")) {
-        // Already a raster data URL — use as-is
-        dataUrl = originalSrc;
+        // Already a raster data URL — html2canvas can handle this fine, skip swap
+        continue;
       } else {
-        // External URL — fetch via worker proxy to avoid CORS, get back as data URL
+        // External http(s) URL — proxy through Worker to get a same-origin data URL
         dataUrl = await fetchImageViaProxy(originalSrc);
       }
 
-      if (dataUrl) {
-        // Swap src and wait for load
-        await new Promise((resolve) => {
-          img.onload = resolve;
-          img.onerror = resolve;
-          img.src = dataUrl;
-        });
-        const captured = dataUrl;
-        restoreFns.push(() => { img.src = originalSrc; });
-      }
+      if (!dataUrl) continue;
+
+      // Swap src to the safe data URL and wait for the browser to load it
+      await new Promise((resolve) => {
+        img.onload = resolve;
+        img.onerror = resolve;
+        // Remove crossOrigin so data URL loads without CORS check
+        img.removeAttribute("crossorigin");
+        img.src = dataUrl;
+        // If already complete (cached), resolve immediately
+        if (img.complete) resolve();
+      });
+
+      restoreFns.push(() => {
+        img.src = originalSrc;
+        if (originalCrossOrigin) {
+          img.crossOrigin = originalCrossOrigin;
+        } else {
+          img.removeAttribute("crossorigin");
+        }
+      });
+
     } catch (e) {
-      // Non-fatal — image will be blank in PDF but export continues
       console.warn("prepareImagesForPdf: failed for", id, e);
     }
   }
@@ -1966,22 +1978,44 @@ async function prepareImagesForPdf(imgIds) {
 }
 
 function svgDataUrlToJpeg(svgDataUrl) {
+  // Drawing an SVG data: URL directly onto a canvas taints it and blocks toDataURL().
+  // Fix: decode the base64 SVG bytes -> Blob -> object URL -> draw -> revoke.
+  // The browser treats blob: URLs as same-origin, so no taint.
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const w = img.naturalWidth || 1280;
-      const h = img.naturalHeight || 720;
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "#1f2a24";
-      ctx.fillRect(0, 0, w, h);
-      ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL("image/jpeg", 0.88));
-    };
-    img.onerror = reject;
-    img.src = svgDataUrl;
+    try {
+      // Strip the data URL header and decode base64 to raw SVG string
+      const base64 = svgDataUrl.split(",")[1];
+      const svgStr = decodeURIComponent(escape(atob(base64)));
+      const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+      const blobUrl = URL.createObjectURL(blob);
+
+      const img = new Image();
+      img.onload = () => {
+        const W = 640, H = 360;
+        const canvas = document.createElement("canvas");
+        canvas.width = W;
+        canvas.height = H;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#1a2e20";
+        ctx.fillRect(0, 0, W, H);
+        ctx.drawImage(img, 0, 0, W, H);
+        URL.revokeObjectURL(blobUrl);
+        try {
+          resolve(canvas.toDataURL("image/jpeg", 0.88));
+        } catch (e) {
+          // Still tainted somehow — resolve with null so export continues without image
+          console.warn("svgDataUrlToJpeg: canvas still tainted", e);
+          resolve(null);
+        }
+      };
+      img.onerror = (e) => {
+        URL.revokeObjectURL(blobUrl);
+        reject(e);
+      };
+      img.src = blobUrl;
+    } catch (e) {
+      reject(e);
+    }
   });
 }
 
