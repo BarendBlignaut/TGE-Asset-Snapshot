@@ -2590,18 +2590,22 @@ function showEmailModal() {
       </div>
 
       <div style="
-        background:var(--warning-bg,#fef9ec);border:1px solid rgba(180,83,9,0.2);
+        background:var(--green-50,#f0faf4);border:1px solid rgba(0,122,59,0.2);
         border-radius:8px;padding:12px 14px;display:flex;gap:10px;align-items:flex-start;
       ">
-        <span style="font-size:16px;flex-shrink:0;">📎</span>
+        <span style="font-size:16px;flex-shrink:0;">📧</span>
         <div>
-          <strong style="display:block;font-size:12px;color:var(--warning,#b45309);">Attachment step required</strong>
-          <span style="font-size:12px;color:var(--warning,#b45309);">
-            Browsers can't auto-attach files to emails. When you click Send, the PDF downloads first —
-            then drag it into the email that opens in your email client.
+          <strong style="display:block;font-size:12px;color:var(--green-700,#007a3b);">Sent automatically with PDF attached</strong>
+          <span style="font-size:12px;color:var(--muted);">
+            The PDF will be built and sent directly to the recipient — no manual steps required.
           </span>
         </div>
       </div>
+
+      <p id="email-modal-error" style="
+        display:none;margin:0;padding:10px 14px;background:#fdf0ee;border:1px solid rgba(192,57,43,0.25);
+        border-radius:8px;color:var(--danger,#c0392b);font-size:12px;font-weight:600;
+      "></p>
 
       <div style="display:flex;gap:10px;justify-content:flex-end;">
         <button id="email-modal-cancel" style="
@@ -2612,7 +2616,7 @@ function showEmailModal() {
           height:42px;border-radius:8px;padding:0 20px;font:inherit;font-weight:700;font-size:13px;
           cursor:pointer;border:none;background:var(--green-700,#007a3b);color:#d4f026;
           box-shadow:0 2px 8px rgba(0,100,50,0.18);
-        ">Download PDF &amp; Open Email</button>
+        ">Send Email with PDF</button>
       </div>
     </div>
   `;
@@ -2633,50 +2637,60 @@ function showEmailModal() {
     const body    = document.getElementById("email-modal-body").value.trim();
 
     if (!to) {
-      document.getElementById("email-modal-to").style.borderColor = "var(--danger)";
+      document.getElementById("email-modal-to").style.borderColor = "var(--danger,#c0392b)";
       document.getElementById("email-modal-to").focus();
       return;
     }
 
     const btn = document.getElementById("email-modal-send");
-    btn.textContent = "Downloading PDF...";
+    btn.textContent = "Building PDF...";
     btn.disabled = true;
 
     try {
-      // Step 1 — download the PDF
-      if (_emailPdfBlob && _emailPdfFilename) {
-        // Already built — reuse
-        triggerDownload(_emailPdfBlob, _emailPdfFilename);
-      } else {
-        btn.textContent = "Building PDF...";
+      // Build PDF if not already ready
+      if (!_emailPdfBlob || !_emailPdfFilename) {
         const pdf = await buildSnapshotPdf();
         _emailPdfFilename = `tge-asset-snapshot-${state.activeAssetLookup?.vehicle?.assetNumber || "snapshot"}.pdf`;
         _emailPdfBlob = pdf.output("blob");
-        triggerDownload(_emailPdfBlob, _emailPdfFilename);
       }
 
-      // Step 2 — open email client with pre-filled fields
-      const params = [
-        to ? `to=${encodeURIComponent(to)}` : "",
-        cc ? `cc=${encodeURIComponent(cc)}` : "",
-        `subject=${encodeURIComponent(subject)}`,
-        `body=${encodeURIComponent(body + "\n\n[Attach the downloaded PDF: " + _emailPdfFilename + "]")}`,
-      ].filter(Boolean).join("&");
+      btn.textContent = "Sending...";
 
-      setTimeout(() => {
-        window.location.href = `mailto:?${params}`;
-        closeModal();
-        showAssetSearchMessage(
-          `PDF downloaded as "${_emailPdfFilename}". Attach it to the email that just opened in your email client.`,
-          false
-        );
-        writeDebug("Email PDF", `PDF downloaded, mailto opened for ${to}`);
-      }, 800);
+      // Convert blob to base64 for the API
+      const base64Pdf = await blobToBase64(_emailPdfBlob);
+
+      const res = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to,
+          cc: cc || undefined,
+          subject,
+          body,
+          pdfBase64: base64Pdf,
+          pdfFilename: _emailPdfFilename,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        throw new Error(result.error || `Email send failed (${res.status})`);
+      }
+
+      closeModal();
+      showAssetSearchMessage(`Email sent successfully to ${to}.`, false);
+      writeDebug("Email PDF sent", `Sent to ${to}, message ID: ${result.id || "—"}`);
 
     } catch (err) {
-      btn.textContent = "Download PDF & Open Email";
+      btn.textContent = "Send Email with PDF";
       btn.disabled = false;
-      showAssetSearchMessage(err.message || "Email PDF failed.");
+      // Show error inside modal
+      const errEl = document.getElementById("email-modal-error");
+      if (errEl) {
+        errEl.textContent = err.message || "Failed to send email. Please try again.";
+        errEl.style.display = "block";
+      }
       writeDebug("Email PDF failed", err.message);
     }
   });
@@ -2689,6 +2703,19 @@ function triggerDownload(blob, filename) {
   document.body.appendChild(a);
   a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      // Strip the data URL prefix (e.g. "data:application/pdf;base64,")
+      const base64 = reader.result.split(",")[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
 async function handleEmailPdf() {
