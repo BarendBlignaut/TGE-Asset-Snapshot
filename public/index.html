@@ -183,6 +183,68 @@
       opacity: 1;
     }
 
+
+    /* ── SIDEBAR COLLAPSE ───────────────────────── */
+    .shell {
+      transition: grid-template-columns 0.25s cubic-bezier(0.4,0,0.2,1);
+    }
+    .shell.sidebar-collapsed {
+      grid-template-columns: 60px 1fr;
+    }
+    .sidebar {
+      overflow: hidden;
+      width: var(--sidebar-w, 240px);
+      transition: width 0.25s cubic-bezier(0.4,0,0.2,1);
+    }
+    .shell.sidebar-collapsed .sidebar {
+      width: 60px;
+    }
+    .sidebar-brand-text,
+    .nav-label,
+    .nav-section-label,
+    .user-info {
+      transition: opacity 0.15s ease, max-width 0.25s ease;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .shell.sidebar-collapsed .sidebar-brand-text,
+    .shell.sidebar-collapsed .nav-label,
+    .shell.sidebar-collapsed .nav-section-label,
+    .shell.sidebar-collapsed .user-info {
+      opacity: 0;
+      max-width: 0;
+      pointer-events: none;
+    }
+    .shell.sidebar-collapsed .nav-item {
+      justify-content: center;
+      padding: 9px 0;
+    }
+    .shell.sidebar-collapsed .sidebar-brand {
+      justify-content: center;
+      padding: 12px 0;
+    }
+    .shell.sidebar-collapsed .sidebar-user {
+      justify-content: center;
+      padding: 8px 0;
+    }
+    .sidebar-toggle {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 140ms;
+    }
+    .sidebar-toggle:hover { background: var(--surface-3); color: var(--ink); }
+    .sidebar-toggle svg { width: 16px; height: 16px; transition: transform 0.25s ease; }
+    .shell.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
+
     .sidebar-footer {
       padding: 12px 10px;
       border-top: 1px solid rgba(255,255,255,0.08);
@@ -1044,14 +1106,14 @@
             <rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/>
             <rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/>
           </svg>
-          Snapshot
+          <span class="nav-label">Snapshot</span>
         </button>
 
         <button class="nav-item" id="asset-track-tab" type="button">
           <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
             <path d="M10 2L18 6v8l-8 4-8-4V6l8-4z"/><path d="M10 2v12M2 6l8 4 8-4"/>
           </svg>
-          Asset Track
+          <span class="nav-label">Asset Track</span>
         </button>
 
         <span class="nav-section-label">Management</span>
@@ -1060,14 +1122,14 @@
           <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
             <circle cx="10" cy="7" r="3"/><path d="M3 17c0-3.3 3.1-6 7-6s7 2.7 7 6"/>
           </svg>
-          Admin
+          <span class="nav-label">Admin</span>
         </button>
 
         <button class="nav-item" id="vpm-tab" type="button" style="display:none;">
           <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
             <path d="M3 12l4-4 4 4 6-7"/><path d="M17 5h-4v4"/>
           </svg>
-          VPM Analysis
+          <span class="nav-label">VPM Analysis</span>
         </button>
 
         <span class="nav-section-label">Diagnostics</span>
@@ -1075,7 +1137,7 @@
           <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
             <path d="M10 2v4M10 14v4M2 10h4M14 10h4"/><circle cx="10" cy="10" r="4"/>
           </svg>
-          Diagnostics
+          <span class="nav-label">Diagnostics</span>
         </button>
       </nav>
 
@@ -1093,6 +1155,11 @@
     <!-- ── TOPBAR ── -->
     <header class="topbar" id="topbar">
       <div class="topbar-left">
+        <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar" aria-label="Toggle sidebar">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="10" y2="8"/><line x1="2" y1="12" x2="14" y2="12"/>
+          </svg>
+        </button>
         <span class="topbar-page-title" id="topbar-page-title">Asset Snapshot</span>
       </div>
       <div class="topbar-right" id="header-actions" style="display:none;">
@@ -1278,7 +1345,58 @@
                       <h3 class="section-title">Camera Snapshots</h3>
                     </div>
                   </div>
-                  <div class="camera-grid" id="camera-grid"></div>
+                  <div class="camera-grid" id="camera-grid">
+                    <article class="camera-card" data-camera-slot="0">
+                      <div class="camera-frame">
+                        <img id="img-road-facing" style="display:none;" alt="Road Facing" />
+                        <p class="camera-empty" id="img-road-facing-empty">Awaiting search</p>
+                      </div>
+                      <div class="camera-meta">
+                        <strong>Road Facing</strong>
+                        <span id="img-road-facing-status"></span>
+                      </div>
+                    </article>
+                    <article class="camera-card" data-camera-slot="1">
+                      <div class="camera-frame">
+                        <img id="img-driver-facing" style="display:none;" alt="Driver Facing" />
+                        <p class="camera-empty" id="img-driver-facing-empty">Awaiting search</p>
+                      </div>
+                      <div class="camera-meta">
+                        <strong>Driver Facing</strong>
+                        <span id="img-driver-facing-status"></span>
+                      </div>
+                    </article>
+                    <article class="camera-card" data-camera-slot="2">
+                      <div class="camera-frame">
+                        <img id="img-in-cab" style="display:none;" alt="In-Cab Driver" />
+                        <p class="camera-empty" id="img-in-cab-empty">Awaiting search</p>
+                      </div>
+                      <div class="camera-meta">
+                        <strong>In-Cab Driver</strong>
+                        <span id="img-in-cab-status"></span>
+                      </div>
+                    </article>
+                    <article class="camera-card" data-camera-slot="3">
+                      <div class="camera-frame">
+                        <img id="img-driver-external" style="display:none;" alt="Driver External" />
+                        <p class="camera-empty" id="img-driver-external-empty">Awaiting search</p>
+                      </div>
+                      <div class="camera-meta">
+                        <strong>Driver External</strong>
+                        <span id="img-driver-external-status"></span>
+                      </div>
+                    </article>
+                    <article class="camera-card" data-camera-slot="4">
+                      <div class="camera-frame">
+                        <img id="img-left-external" style="display:none;" alt="Left External" />
+                        <p class="camera-empty" id="img-left-external-empty">Awaiting search</p>
+                      </div>
+                      <div class="camera-meta">
+                        <strong>Left External</strong>
+                        <span id="img-left-external-status"></span>
+                      </div>
+                    </article>
+                  </div>
                 </section>
 
                 <section class="section" id="location-section">
@@ -1598,6 +1716,36 @@
         var title = document.getElementById('topbar-page-title');
         if (title) title.textContent = navMap[id];
       });
+    })();
+  </script>
+
+  <script>
+    (function() {
+      var shell = document.querySelector('.shell');
+      var toggle = document.getElementById('sidebar-toggle');
+      var PREF_KEY = 'tge_sidebar_collapsed';
+
+      function applyState(collapsed) {
+        if (collapsed) {
+          shell.classList.add('sidebar-collapsed');
+        } else {
+          shell.classList.remove('sidebar-collapsed');
+        }
+      }
+
+      // Restore preference
+      try {
+        var saved = localStorage.getItem(PREF_KEY);
+        if (saved === '1') applyState(true);
+      } catch(e) {}
+
+      if (toggle) {
+        toggle.addEventListener('click', function() {
+          var isCollapsed = shell.classList.contains('sidebar-collapsed');
+          applyState(!isCollapsed);
+          try { localStorage.setItem(PREF_KEY, isCollapsed ? '0' : '1'); } catch(e) {}
+        });
+      }
     })();
   </script>
 </body>
