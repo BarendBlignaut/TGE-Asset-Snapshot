@@ -2025,62 +2025,235 @@ async function buildSnapshotPdf() {
   const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
 
   const PW = 595.28, PH = 841.89;
-  const ML = 36, MR = 36, MT = 36;
+  const ML = 32, MR = 32, MT = 32;
   const CW = PW - ML - MR;
   let y = MT;
 
-  const GREEN = [0, 90, 45], INK = [20, 30, 24], MUTED = [90, 105, 98];
-  const LINE  = [215, 226, 219], SURF = [245, 249, 246];
+  // Colours matching the app design system
+  const GREEN     = [0, 90, 45];
+  const GREEN_MID = [0, 122, 59];
+  const INK       = [20, 30, 24];
+  const MUTED     = [90, 108, 98];
+  const LINE      = [215, 226, 219];
+  const SURF      = [245, 249, 246];
+  const SURF2     = [238, 245, 240];
+  const YELLOW    = [180, 220, 30];
+  const GREEN_PILL= [0, 122, 59];
 
   function newPage() { pdf.addPage(); y = MT; }
-  function checkY(n) { if (y + n > PH - 40) newPage(); }
+  function checkY(n) { if (y + n > PH - 36) newPage(); }
 
+  // ── Section header matching .section-kicker + .section-title ──────────────
   function sectionHeader(kicker, title) {
-    checkY(44);
-    pdf.setFontSize(7).setFont(undefined, "bold").setTextColor(...MUTED);
-    pdf.text(kicker.toUpperCase(), ML, y);
-    y += 13;
-    pdf.setFontSize(11).setFont(undefined, "bold").setTextColor(...INK);
-    pdf.text(title, ML, y);
-    y += 10;
-    pdf.setDrawColor(...LINE).setLineWidth(0.5).line(ML, y, ML + CW, y);
-    y += 10;
+    checkY(46);
+    // Card background bar
+    pdf.setFillColor(...SURF2).rect(ML, y - 2, CW, 36, "F");
+    pdf.setDrawColor(...LINE).setLineWidth(0.4).rect(ML, y - 2, CW, 36);
+    pdf.setFontSize(6.5).setFont(undefined, "bold").setTextColor(...GREEN_MID);
+    pdf.text(kicker.toUpperCase(), ML + 10, y + 8);
+    pdf.setFontSize(10).setFont(undefined, "bold").setTextColor(...INK);
+    pdf.text(title, ML + 10, y + 23);
+    y += 42;
   }
 
-  function dataGrid(items, cols) {
-    const filtered = items.filter(i => i.value != null && i.value !== "" && i.value !== "null" && i.value !== "—" || i.showEmpty);
-    if (!filtered.length) return;
+  // ── Data card grid matching .meta-item / .metric-item ──────────────────────
+  function dataGrid(items, cols, opts) {
+    opts = opts || {};
     const colW = CW / cols;
-    const rowH = 34;
+    const rowH = opts.tall ? 42 : 36;
+    const shown = opts.showAll ? items : items.filter(i => i.value != null && String(i.value) !== "");
+    if (!shown.length) return;
+
     let col = 0, rowY = y;
-    for (const item of filtered) {
-      if (col === 0) { checkY(rowH); rowY = y; }
+    for (const item of shown) {
+      if (col === 0) { checkY(rowH + 2); rowY = y; }
       const x = ML + col * colW;
-      pdf.setFontSize(7).setFont(undefined, "bold").setTextColor(...MUTED);
-      pdf.text(String(item.label || "").toUpperCase(), x + 4, rowY + 11);
-      pdf.setFontSize(9.5).setFont(undefined, "bold").setTextColor(...INK);
-      pdf.text(String(item.value ?? "—"), x + 4, rowY + 24);
+      // Card background
+      pdf.setFillColor(255, 255, 255).rect(x + 1, rowY, colW - 2, rowH, "F");
+      pdf.setDrawColor(...LINE).setLineWidth(0.3).rect(x + 1, rowY, colW - 2, rowH);
+      // Label
+      pdf.setFontSize(6.5).setFont(undefined, "bold").setTextColor(...MUTED);
+      pdf.text(String(item.label || "").toUpperCase(), x + 6, rowY + 10);
+      // Value
+      const val = String(item.value ?? "—");
+      if (opts.tall) {
+        // Metric style — large green value
+        pdf.setFontSize(13).setFont(undefined, "bold").setTextColor(...GREEN_MID);
+        pdf.text(val, x + 6, rowY + 32);
+      } else {
+        pdf.setFontSize(9).setFont(undefined, "bold").setTextColor(...INK);
+        pdf.text(val, x + 6, rowY + 24);
+      }
       col++;
-      if (col >= cols) { col = 0; y = rowY + rowH; rowY = y; }
+      if (col >= cols) { col = 0; y = rowY + rowH + 2; rowY = y; }
     }
-    if (col > 0) y = rowY + rowH;
-    y += 4;
+    if (col > 0) y = rowY + rowH + 2;
+    y += 6;
   }
 
-  // ── HEADER ──────────────────────────────────────────────────────────────
-  pdf.setFillColor(...GREEN).rect(0, 0, PW, 54, "F");
-  pdf.setFontSize(15).setFont(undefined, "bold").setTextColor(255, 255, 255);
-  pdf.text("TGE Asset Snapshot", ML, 24);
-  const vehicle = lookup.vehicle || {};
+  // ── GPIO card matching .gps-card ──────────────────────────────────────────
+  function gpioGrid(items, cols) {
+    const colW = CW / cols;
+    const rowH = 52;
+    let col = 0, rowY = y;
+    for (const item of items) {
+      if (col === 0) { checkY(rowH + 2); rowY = y; }
+      const x = ML + col * colW;
+      pdf.setFillColor(255, 255, 255).rect(x + 1, rowY, colW - 2, rowH, "F");
+      pdf.setDrawColor(...LINE).setLineWidth(0.3).rect(x + 1, rowY, colW - 2, rowH);
+      // Label (h4 style)
+      pdf.setFontSize(6.5).setFont(undefined, "bold").setTextColor(...MUTED);
+      pdf.text(String(item.label).toUpperCase(), x + 6, rowY + 10);
+      // Value (p style — bold large)
+      pdf.setFontSize(10).setFont(undefined, "bold").setTextColor(...INK);
+      pdf.text(String(item.value || "N/A No Data"), x + 6, rowY + 23);
+      // Timestamp
+      pdf.setFontSize(7).setFont(undefined, "normal").setTextColor(...MUTED);
+      pdf.text(String(item.at || "N/A No Data"), x + 6, rowY + 34);
+      // Tag pill
+      pdf.setFillColor(...SURF2).roundedRect(x + 6, rowY + 38, 36, 10, 2, 2, "F");
+      pdf.setFontSize(5.5).setFont(undefined, "bold").setTextColor(...GREEN_MID);
+      pdf.text(String(item.tag || ""), x + 8, rowY + 45);
+      col++;
+      if (col >= cols) { col = 0; y = rowY + rowH + 2; rowY = y; }
+    }
+    if (col > 0) y = rowY + rowH + 2;
+    y += 6;
+  }
+
+  // ── Camera cards matching .camera-card (5 across) ─────────────────────────
+  async function cameraSection(camImages) {
+    const cols = 5;
+    const cardW = (CW - (cols - 1) * 4) / cols;
+    const frameH = cardW * (3 / 4); // 4:3 aspect ratio matching .camera-frame
+    const metaH = 22;
+    const totalH = frameH + metaH;
+
+    checkY(totalH + 4);
+    const rowY = y;
+
+    for (let i = 0; i < camImages.length; i++) {
+      const cam = camImages[i];
+      const x = ML + i * (cardW + 4);
+
+      // Card border
+      pdf.setFillColor(255, 255, 255).rect(x, rowY, cardW, totalH, "F");
+      pdf.setDrawColor(...LINE).setLineWidth(0.3).rect(x, rowY, cardW, totalH);
+
+      // Camera frame background
+      pdf.setFillColor(...SURF2).rect(x, rowY, cardW, frameH, "F");
+
+      if (cam.dataUrl) {
+        try {
+          const fmt = cam.dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
+          pdf.addImage(cam.dataUrl, fmt, x, rowY, cardW, frameH);
+        } catch(e) {
+          pdf.setFontSize(7).setTextColor(...MUTED).text("Unavailable", x + cardW / 2, rowY + frameH / 2, { align: "center" });
+        }
+      } else {
+        pdf.setFontSize(7).setFont(undefined, "normal").setTextColor(...MUTED);
+        pdf.text("No image", x + cardW / 2, rowY + frameH / 2, { align: "center" });
+      }
+
+      // Camera meta below frame — matching .camera-meta
+      pdf.setFontSize(7).setFont(undefined, "bold").setTextColor(...INK);
+      pdf.text(cam.label, x + 3, rowY + frameH + 13);
+    }
+    y = rowY + totalH + 8;
+  }
+
+  // ── Location section: map left, meta cards right ──────────────────────────
+  async function locationSection(hStats) {
+    const gps = hStats.gps || {};
+    if (!gps.latitude || !gps.longitude) return;
+
+    checkY(180);
+    const mapW = CW * 0.60;
+    const metaW = CW * 0.38;
+    const mapH = 170;
+    const mapX = ML;
+    const metaX = ML + mapW + CW * 0.02;
+
+    // Try to fetch static map image via proxy
+    let mapDataUrl = null;
+    try {
+      const lat = gps.latitude, lng = gps.longitude;
+      const zoom = 14;
+      // Use tile-based static map — fetch from our proxy
+      const mapUrl = "https://staticmap.openstreetmap.de/staticmap.php?center=" +
+        lat + "," + lng + "&zoom=" + zoom + "&size=600x340&markers=" + lat + "," + lng + ",red";
+      mapDataUrl = await fetchImageViaProxy(mapUrl);
+    } catch(e) { /* not critical */ }
+
+    if (mapDataUrl) {
+      // Map image
+      pdf.setFillColor(...SURF2).rect(mapX, y, mapW, mapH, "F");
+      pdf.setDrawColor(...LINE).setLineWidth(0.4).rect(mapX, y, mapW, mapH);
+      try {
+        const fmt = mapDataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
+        pdf.addImage(mapDataUrl, fmt, mapX, y, mapW, mapH);
+      } catch(e) {
+        pdf.setFontSize(8).setTextColor(...MUTED).text("Map unavailable", mapX + mapW / 2, y + mapH / 2, { align: "center" });
+      }
+      // "Last Location" badge overlay (top-left of map)
+      pdf.setFillColor(0, 90, 45, 0.85).roundedRect(mapX + 8, y + 8, 62, 14, 3, 3, "F");
+      pdf.setFontSize(6.5).setFont(undefined, "bold").setTextColor(255, 255, 255);
+      pdf.text("Last Location", mapX + 12, y + 17);
+    } else {
+      // Fallback placeholder
+      pdf.setFillColor(...SURF2).rect(mapX, y, mapW, mapH, "F");
+      pdf.setDrawColor(...LINE).setLineWidth(0.4).rect(mapX, y, mapW, mapH);
+      pdf.setFontSize(8).setFont(undefined, "normal").setTextColor(...MUTED);
+      pdf.text("Map unavailable", mapX + mapW / 2, y + mapH / 2, { align: "center" });
+    }
+
+    // Location meta cards on the right
+    const metaCards = [
+      { label: "Location",      value: hStats.location || "—" },
+      { label: "Latitude",      value: gps.latitude != null ? String(gps.latitude) : "—" },
+      { label: "Longitude",     value: gps.longitude != null ? String(gps.longitude) : "—" },
+      { label: "Last GPS Time", value: hStats.lastGpsAt ? formatDisplayDate(hStats.lastGpsAt) : "—" },
+    ];
+    const cardH = (mapH - (metaCards.length - 1) * 4) / metaCards.length;
+    for (let i = 0; i < metaCards.length; i++) {
+      const cy = y + i * (cardH + 4);
+      pdf.setFillColor(255, 255, 255).rect(metaX, cy, metaW, cardH, "F");
+      pdf.setDrawColor(...LINE).setLineWidth(0.3).rect(metaX, cy, metaW, cardH);
+      pdf.setFontSize(6.5).setFont(undefined, "bold").setTextColor(...MUTED);
+      pdf.text(String(metaCards[i].label).toUpperCase(), metaX + 6, cy + 12);
+      pdf.setFontSize(9).setFont(undefined, "bold").setTextColor(...INK);
+      pdf.text(String(metaCards[i].value), metaX + 6, cy + cardH - 8);
+    }
+
+    y += mapH + 8;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // BUILD PDF CONTENT
+  // ════════════════════════════════════════════════════════════════════════════
+
+  const vehicle    = lookup.vehicle || {};
+  const devices    = lookup.devices || {};
+  const meters     = lookup.meters || {};
+  const hStats     = lookup.hermesStats || {};
+  const perf       = hStats.performance || {};
+  const gpio       = hStats.gpio || {};
+  const camStats   = lookup.cameraStats || {};
+
+  // ── HEADER ──────────────────────────────────────────────────────────────────
+  pdf.setFillColor(...GREEN).rect(0, 0, PW, 52, "F");
+  pdf.setFontSize(14).setFont(undefined, "bold").setTextColor(255, 255, 255);
+  pdf.text("TGE Asset Snapshot", ML, 22);
   const hdr = [vehicle.assetNumber ? "Fleet " + vehicle.assetNumber : "", vehicle.registration, vehicle.make, vehicle.model].filter(Boolean).join("  ·  ");
   pdf.setFontSize(8).setFont(undefined, "normal").setTextColor(195, 230, 208);
-  pdf.text(hdr, ML, 37);
+  pdf.text(hdr, ML, 35);
   pdf.setFontSize(7).setTextColor(155, 200, 170);
-  pdf.text("Generated: " + new Date().toLocaleString("en-AU", { hour12: false }), ML, 48);
-  y = 68;
+  pdf.text("Generated: " + new Date().toLocaleString("en-AU", { hour12: false }), ML, 46);
+  y = 62;
 
-  // ── VEHICLE DETAILS ──────────────────────────────────────────────────────
+  // ── 1. VEHICLE INFORMATION ──────────────────────────────────────────────────
   sectionHeader("Vehicle Information", "Asset Details");
+  // 4-column meta grid (matching .meta-grid 4 cols)
   dataGrid([
     { label: "Fleet Number",   value: vehicle.assetNumber },
     { label: "Registration",   value: vehicle.registration },
@@ -2089,157 +2262,104 @@ async function buildSnapshotPdf() {
     { label: "Model",          value: vehicle.model },
     { label: "System ID",      value: vehicle.vehicleId },
     { label: "Year",           value: vehicle.yearOfManufacture },
-  ], 4);
+  ], 4, { showAll: true });
 
-  const devices = lookup.devices || {};
+  // Devices — 3 columns (matching .device-list 3 cols)
   dataGrid([
-    { label: "Tracker IMEI",   value: devices.trackingSystem?.imei || "Not fitted" },
-    { label: "Tracker Serial", value: devices.trackingSystem?.serialNumber || "Not fitted" },
-    { label: "Camera IMEI",    value: devices.camera?.imei || "Not fitted" },
-    { label: "Camera Serial",  value: devices.camera?.serialNumber || "Not fitted" },
-    { label: "Tablet IMEI",    value: devices.tablet?.imei || "Not fitted" },
-    { label: "Tablet Serial",  value: devices.tablet?.serialNumber || "Not fitted" },
-  ], 3);
-  y += 4;
+    { label: "Tracking System — IMEI",   value: devices.trackingSystem?.imei || "Not fitted" },
+    { label: "Tracking System — Serial", value: devices.trackingSystem?.serialNumber || "Not fitted" },
+    { label: "Camera System — IMEI",     value: devices.camera?.imei || "Not fitted" },
+    { label: "Camera System — Serial",   value: devices.camera?.serialNumber || "Not fitted" },
+    { label: "Tablet — IMEI",            value: devices.tablet?.imei || "Not fitted" },
+    { label: "Tablet — Serial",          value: devices.tablet?.serialNumber || "Not fitted" },
+  ], 3, { showAll: true });
 
-  // ── PERFORMANCE ──────────────────────────────────────────────────────────
+  // ── 2. PERFORMANCE ──────────────────────────────────────────────────────────
   sectionHeader("Performance", "Vehicle Tracking Metrics");
-  const meters = lookup.meters || {};
-  const hStats = lookup.hermesStats || {};
-  const perf   = hStats.performance || {};
 
-  const ignText = hStats.ignition === true  || hStats.ignition === "true"  || hStats.ignition === 1 ? "On"
-                : hStats.ignition === false || hStats.ignition === "false" || hStats.ignition === 0 ? "Off"
+  const ignText = hStats.ignition === true  || hStats.ignition === "true"  || hStats.ignition === 1  ? "On"
+                : hStats.ignition === false || hStats.ignition === "false" || hStats.ignition === 0  ? "Off"
                 : String(hStats.ignition ?? "—");
   const movText = hStats.movement === true ? "Moving" : hStats.movement === false ? "Stopped" : String(hStats.movement ?? "—");
 
+  // First 8 fixed metrics (matching the static .metrics-grid on screen)
   dataGrid([
-    { label: "Driver",           value: hStats.driverName || "No driver", showEmpty: true },
+    { label: "Driver Logged In", value: hStats.driverName || "No driver" },
     { label: "Engine Hours",     value: meters.engineHours },
-    { label: "Ignition",         value: ignText, showEmpty: true },
+    { label: "Ignition",         value: ignText },
     { label: "Odometer",         value: meters.odometer },
     { label: "Oil Pressure",     value: perf.oilPressure },
     { label: "Oil Temperature",  value: perf.oilTemperature },
     { label: "RPM",              value: perf.rpm },
     { label: "Speed",            value: perf.speed != null ? perf.speed + " km/h" : null },
-    { label: "Movement",         value: movText, showEmpty: true },
+  ], 4, { showAll: true, tall: false });
+
+  // Dynamic grid — matches #performance-dynamic-grid
+  dataGrid([
+    { label: "Movement",         value: movText },
     { label: "Engine Load",      value: perf.engineLoad != null ? perf.engineLoad + "%" : null },
     { label: "Gear",             value: perf.gear },
     { label: "Fuel Level",       value: perf.fuelLevel != null ? perf.fuelLevel + "%" : null },
     { label: "Fuel Consumption", value: perf.fuelConsumption != null ? perf.fuelConsumption + " L/100km" : null },
     { label: "Last GPS Time",    value: hStats.lastGpsAt ? formatDisplayDate(hStats.lastGpsAt) : null },
-  ], 4);
-  y += 4;
+  ].filter(i => i.value != null), 4);
 
-  // ── CAMERA SNAPSHOTS ─────────────────────────────────────────────────────
-  sectionHeader("Evidence", "Camera Snapshots");
-  showAssetSearchMessage("Loading camera images for PDF...", false);
-  const camImages = await fetchAllCameraImages();
-  const hasImages = camImages.some(c => c.dataUrl);
+  // ── 3. GPIO ──────────────────────────────────────────────────────────────────
+  sectionHeader("GPIO Data State", "Digital Inputs And Outputs");
 
-  if (!hasImages) {
-    pdf.setFontSize(9).setFont(undefined, "normal").setTextColor(...MUTED);
-    pdf.text("No camera images available for this asset.", ML, y + 12);
-    y += 28;
-  } else {
-    const imgW = (CW - 12) / 2;
-    const imgH = imgW * (9 / 16);
-    let col = 0, rowY = y;
-    for (const cam of camImages) {
-      if (col === 0) { checkY(imgH + 24); rowY = y; }
-      const x = ML + col * (imgW + 12);
-      if (cam.dataUrl) {
-        try {
-          const fmt = cam.dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
-          pdf.addImage(cam.dataUrl, fmt, x, rowY, imgW, imgH);
-        } catch(e) {
-          pdf.setFillColor(...SURF).rect(x, rowY, imgW, imgH, "F");
-          pdf.setDrawColor(...LINE).rect(x, rowY, imgW, imgH);
-          pdf.setFontSize(8).setTextColor(...MUTED).text("Image unavailable", x + imgW / 2, rowY + imgH / 2, { align: "center" });
-        }
-      } else {
-        pdf.setFillColor(...SURF).rect(x, rowY, imgW, imgH, "F");
-        pdf.setDrawColor(...LINE).setLineWidth(0.4).rect(x, rowY, imgW, imgH);
-        pdf.setFontSize(8).setFont(undefined, "normal").setTextColor(...MUTED);
-        pdf.text("No image", x + imgW / 2, rowY + imgH / 2, { align: "center" });
-      }
-      pdf.setFontSize(7).setFont(undefined, "bold").setTextColor(...MUTED);
-      pdf.text(cam.label.toUpperCase(), x + 2, rowY + imgH + 10);
-      col++;
-      if (col >= 2) { col = 0; y = rowY + imgH + 22; }
-    }
-    if (col > 0) y = rowY + imgH + 22;
-    y += 6;
-  }
-
-  // ── GPIO ─────────────────────────────────────────────────────────────────
-  checkY(50);
-  sectionHeader("GPIO Data State", "Digital Inputs & Outputs");
-  const gpio = hStats.gpio || {};
-  function gpioVal(nouns) {
+  function gpioSignal(nouns) {
     const nounSet = new Set(nouns.map(n => n.toLowerCase()));
     for (const entry of Object.values(gpio)) {
       if (!entry || typeof entry !== "object") continue;
       if (nounSet.has(String(entry.noun || "").toLowerCase())) {
         const v = entry.custom_verb || entry.verb || null;
         const at = entry.eventat || entry.eventAt || null;
-        if (v) return v.charAt(0).toUpperCase() + v.slice(1) + (at ? "  " + formatDisplayDate(at) : "");
+        return {
+          value: v ? v.charAt(0).toUpperCase() + v.slice(1) : "N/A No Data",
+          at: at ? formatDisplayDate(at) : "N/A No Data",
+        };
       }
     }
-    return "N/A";
+    return { value: "N/A No Data", at: "N/A No Data" };
   }
-  dataGrid([
-    { label: "Seatbelt",     value: gpioVal(["seatbelt"]),    showEmpty: true },
-    { label: "Door",         value: gpioVal(["door"]),         showEmpty: true },
-    { label: "Park Brake",   value: gpioVal(["parkbrake"]),   showEmpty: true },
-    { label: "Event Button", value: gpioVal(["driverevent"]), showEmpty: true },
-    { label: "Siren",        value: gpioVal(["siren"]),        showEmpty: true },
-    { label: "LED",          value: gpioVal(["led"]),          showEmpty: true },
+
+  gpioGrid([
+    { label: "Seatbelt",     ...gpioSignal(["seatbelt"]),    tag: "DIGIN 1" },
+    { label: "Door",         ...gpioSignal(["door"]),         tag: "DIGIN 2" },
+    { label: "Park Brake",   ...gpioSignal(["parkbrake"]),   tag: "DIGIN 3" },
+    { label: "Event Button", ...gpioSignal(["driverevent"]), tag: "DIGIN 4" },
+    { label: "Speed Siren",  ...gpioSignal(["siren"]),        tag: "DIGOUT 2" },
+    { label: "Speed LED",    ...gpioSignal(["led"]),          tag: "DIGOUT 3" },
   ], 3);
-  y += 4;
 
-  // ── SD CARDS ──────────────────────────────────────────────────────────────
-  const camStats = lookup.cameraStats || {};
-  checkY(50);
-  sectionHeader("Storage Diagnostics", "SD Card Status");
+  // ── 4. SD CARDS ──────────────────────────────────────────────────────────────
+  sectionHeader("Storage", "SD Card Information");
+  // 4 cards matching the 2x2 .sd-grid (status + size per card)
   dataGrid([
-    { label: "SD Card 1", value: camStats.sdCard1?.present ? "Present" + (camStats.sdCard1.totalSizeDisplay ? " — " + camStats.sdCard1.totalSizeDisplay : "") : "Not present", showEmpty: true },
-    { label: "SD Card 2", value: camStats.sdCard2?.present ? "Present" + (camStats.sdCard2.totalSizeDisplay ? " — " + camStats.sdCard2.totalSizeDisplay : "") : "Not present", showEmpty: true },
-  ], 2);
-  y += 4;
+    { label: "SD Card 1",      value: camStats.sdCard1?.present ? "Present" : "Not present" },
+    { label: "SD Card 2",      value: camStats.sdCard2?.present ? "Present" : "Not present" },
+    { label: "SD Card 1 Size", value: camStats.sdCard1?.totalSizeDisplay || (camStats.sdCard1?.present ? "—" : "") },
+    { label: "SD Card 2 Size", value: camStats.sdCard2?.totalSizeDisplay || (camStats.sdCard2?.present ? "—" : "") },
+  ], 2, { showAll: true });
 
-  // ── LOCATION ──────────────────────────────────────────────────────────────
-  const gps = hStats.gps || {};
-  if (gps.latitude && gps.longitude) {
-    checkY(80);
-    sectionHeader("Location", "Last Known Position");
-    dataGrid([
-      { label: "Latitude",  value: String(gps.latitude),  showEmpty: true },
-      { label: "Longitude", value: String(gps.longitude), showEmpty: true },
-      { label: "Location",  value: hStats.location || "—", showEmpty: true },
-      { label: "GPS Time",  value: hStats.lastGpsAt ? formatDisplayDate(hStats.lastGpsAt) : "—", showEmpty: true },
-    ], 2);
-    try {
-      const lat = encodeURIComponent(gps.latitude);
-      const lng = encodeURIComponent(gps.longitude);
-      const mapUrl = "https://staticmap.openstreetmap.de/staticmap.php?center=" + lat + "," + lng + "&zoom=14&size=520x200&markers=" + lat + "," + lng + ",red";
-      const mapData = await fetchImageViaProxy(mapUrl);
-      if (mapData) {
-        checkY(160);
-        pdf.addImage(mapData, "PNG", ML, y, CW, 150);
-        y += 158;
-      }
-    } catch(e) { /* map not critical */ }
-    y += 4;
-  }
+  // ── 5. CAMERA SNAPSHOTS ───────────────────────────────────────────────────────
+  sectionHeader("Camera Snapshots", "Latest Image Set");
+  showAssetSearchMessage("Loading camera images for PDF...", false);
+  const camImages = await fetchAllCameraImages();
+  await cameraSection(camImages);
 
-  // ── FOOTERS ───────────────────────────────────────────────────────────────
+  // ── 6. LOCATION ───────────────────────────────────────────────────────────────
+  sectionHeader("Last Known Location", "Map View And Coordinates");
+  await locationSection(hStats);
+
+  // ── FOOTERS ───────────────────────────────────────────────────────────────────
   const pageCount = pdf.getNumberOfPages();
   for (let p = 1; p <= pageCount; p++) {
     pdf.setPage(p);
     pdf.setFontSize(7).setFont(undefined, "normal").setTextColor(...MUTED);
-    pdf.text("TGE Asset Snapshot  \xB7  Page " + p + " of " + pageCount, ML, PH - 18);
-    pdf.text("Fleet " + (vehicle.assetNumber || "\u2014") + "  \xB7  " + (vehicle.registration || "\u2014"), PW - MR, PH - 18, { align: "right" });
+    pdf.text("TGE Asset Snapshot  \xB7  Page " + p + " of " + pageCount, ML, PH - 16);
+    pdf.text("Fleet " + (vehicle.assetNumber || "\u2014") + "  \xB7  " + (vehicle.registration || "\u2014"), PW - MR, PH - 16, { align: "right" });
+    pdf.setDrawColor(...LINE).setLineWidth(0.3).line(ML, PH - 24, PW - MR, PH - 24);
   }
 
   return pdf;
