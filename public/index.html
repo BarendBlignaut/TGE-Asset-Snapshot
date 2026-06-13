@@ -5,134 +5,335 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>TGE Asset Snapshot</title>
   <link rel="icon" type="image/png" href="./favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --tge-green: #00a651;
-      --tge-green-dark: #007a3b;
-      --tge-green-soft: #e9f8f0;
-      --tge-yellow: #ffd24a;
-      --ink: #1f2a24;
-      --muted: #64736c;
-      --line: #d7e2db;
-      --surface: #ffffff;
-      --surface-alt: #f5f8f6;
-      --danger: #8a2f2f;
-      --shadow: 0 20px 48px rgba(17, 39, 29, 0.08);
+      --green-900: #0a3d20;
+      --green-800: #0f5c30;
+      --green-700: #007a3b;
+      --green-600: #00a651;
+      --green-100: #e6f5ec;
+      --green-50:  #f0faf4;
+      --yellow:    #d4f026;
+      --yellow-dim:#b8d520;
+      --ink:       #0f1a13;
+      --ink-2:     #2d3d34;
+      --muted:     #5a6e62;
+      --muted-2:   #8a9e92;
+      --line:      #dce8e0;
+      --line-2:    #eaf2ec;
+      --surface:   #ffffff;
+      --surface-2: #f5f9f6;
+      --surface-3: #eef5f0;
+      --danger:    #c0392b;
+      --danger-bg: #fdf0ee;
+      --success:   #007a3b;
+      --warning:   #b45309;
+      --warning-bg:#fef9ec;
+      --sidebar-w: 240px;
+      --topbar-h:  60px;
+      --radius:    10px;
+      --radius-lg: 14px;
+      --shadow-sm: 0 1px 3px rgba(10,40,20,0.08);
+      --shadow:    0 4px 16px rgba(10,40,20,0.10);
+      --shadow-lg: 0 12px 40px rgba(10,40,20,0.14);
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      margin: 0;
-      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font-family: "Inter", "Segoe UI", Arial, sans-serif;
       color: var(--ink);
-      background: linear-gradient(180deg, #eff6f1 0%, #f7faf8 180px, #f4f7f5 100%);
+      background: var(--surface-2);
+      font-size: 14px;
+      line-height: 1.5;
     }
 
-    button,
-    input,
-    select {
-      font: inherit;
-    }
+    button, input, select, textarea { font: inherit; }
 
+    /* ── LAYOUT SHELL ───────────────────────────── */
     .shell {
+      display: grid;
+      grid-template-columns: var(--sidebar-w) 1fr;
+      grid-template-rows: var(--topbar-h) 1fr;
       min-height: 100vh;
     }
 
-    .topbar {
-      position: relative;
-      background: linear-gradient(90deg, #0d5f3a 0%, var(--tge-green-dark) 45%, var(--tge-green) 100%);
-      color: #fff;
-      padding: 16px 24px;
-      border-bottom: 4px solid rgba(255, 255, 255, 0.18);
-      box-shadow: 0 10px 30px rgba(0, 90, 45, 0.18);
+    /* ── SIDEBAR ────────────────────────────────── */
+    .sidebar {
+      grid-row: 1 / -1;
+      background: var(--green-900);
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid rgba(255,255,255,0.06);
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: hidden;
     }
 
-    .topbar-inner {
-      max-width: 1320px;
-      margin: 0 auto;
-      display: grid;
-      grid-template-columns: auto 1fr auto;
-      align-items: center;
-      gap: 18px;
-    }
-
-    .header-actions-spacer {
-      flex: 1;
-    }
-
-    .brand {
+    .sidebar-brand {
+      padding: 16px 18px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
       display: flex;
       align-items: center;
-      gap: 14px;
-      min-width: 0;
-      flex-wrap: wrap;
+      gap: 10px;
+      height: var(--topbar-h);
     }
 
-    .brand-mark {
-      width: 126px;
-      height: 50px;
+    .sidebar-logo {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.10);
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 6px 10px;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.14);
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      flex: 0 0 auto;
+      overflow: hidden;
+      flex-shrink: 0;
     }
 
-    .brand-mark img {
-      max-width: 100%;
-      max-height: 100%;
-      display: block;
+    .sidebar-logo img {
+      width: 28px;
+      height: 28px;
+      object-fit: contain;
     }
 
-    .brand-copy {
+    .sidebar-brand-text {
       min-width: 0;
     }
 
-    .brand-copy h1 {
-      margin: 0;
-      font-size: 1.45rem;
-      font-weight: 700;
+    .sidebar-brand-text strong {
+      display: block;
       color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .sidebar-brand-text span {
+      display: block;
+      font-size: 11px;
+      color: rgba(255,255,255,0.45);
       white-space: nowrap;
     }
 
-    .brand-copy p {
-      margin: 2px 0 0;
-      font-size: 0.9rem;
-      color: rgba(255, 255, 255, 0.82);
+    .sidebar-nav {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
     }
+
+    .nav-section-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.30);
+      padding: 10px 8px 4px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: 8px;
+      color: rgba(255,255,255,0.65);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+      transition: background 140ms, color 140ms;
+      white-space: nowrap;
+    }
+
+    .nav-item:hover {
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+    }
+
+    .nav-item.active {
+      background: var(--yellow);
+      color: var(--green-900);
+    }
+
+    .nav-item.active .nav-icon {
+      opacity: 1;
+    }
+
+    .nav-icon {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      opacity: 0.7;
+    }
+
+    .nav-item.active .nav-icon {
+      opacity: 1;
+    }
+
+    .sidebar-footer {
+      padding: 12px 10px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .sidebar-user {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+    }
+
+    .user-avatar {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: var(--green-700);
+      color: var(--yellow);
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      letter-spacing: 0.03em;
+    }
+
+    .user-info {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .user-info strong {
+      display: block;
+      color: #fff;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .user-info span {
+      display: block;
+      font-size: 11px;
+      color: rgba(255,255,255,0.40);
+    }
+
+    .role-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
+    .role-badge.user     { background: rgba(255,255,255,0.10); color: rgba(255,255,255,0.60); }
+    .role-badge.admin    { background: rgba(212,240,38,0.18);  color: var(--yellow); }
+    .role-badge.superuser{ background: rgba(255,180,0,0.18);   color: #fbbf24; }
+
+    /* ── TOPBAR ─────────────────────────────────── */
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      gap: 16px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .topbar-page-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .version-badge {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      background: var(--surface-3);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 8px;
+    }
+
+    .mode-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: var(--surface-2);
+    }
+
+    .mode-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--muted-2);
+    }
+
+    .mode-indicator.live .mode-dot { background: var(--green-600); box-shadow: 0 0 6px rgba(0,166,81,0.5); }
+    .mode-indicator.demo .mode-dot { background: var(--warning); }
 
     .debug-toggle-wrap {
       display: none;
       align-items: center;
-      gap: 12px;
-      width: fit-content;
-      padding: 8px 12px;
-      border-radius: 12px;
-      background: rgba(0, 0, 0, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.18);
+      gap: 8px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      cursor: pointer;
     }
 
     .debug-toggle-wrap span {
-      color: rgba(255, 255, 255, 0.9);
-      font-size: 0.82rem;
+      font-size: 11px;
       font-weight: 700;
-      letter-spacing: 0.04em;
+      color: var(--muted);
       text-transform: uppercase;
+      letter-spacing: 0.06em;
     }
 
     .debug-switch {
       position: relative;
       display: inline-flex;
       align-items: center;
-      width: 54px;
-      height: 30px;
+      width: 36px;
+      height: 20px;
     }
 
     .debug-switch input {
@@ -147,171 +348,214 @@
       width: 100%;
       height: 100%;
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.16);
-      border: 1px solid rgba(255, 255, 255, 0.26);
-      transition: background 0.2s ease;
+      background: var(--line);
+      transition: background 0.2s;
     }
 
     .debug-switch-thumb {
       position: absolute;
-      top: 4px;
-      left: 4px;
-      width: 20px;
-      height: 20px;
+      top: 3px;
+      left: 3px;
+      width: 14px;
+      height: 14px;
       border-radius: 50%;
       background: #fff;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-      transition: transform 0.2s ease;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+      transition: transform 0.2s;
     }
 
-    .debug-switch input:checked + .debug-switch-track {
-      background: rgba(255, 210, 74, 0.38);
-    }
+    .debug-switch input:checked + .debug-switch-track { background: var(--green-600); }
+    .debug-switch input:checked + .debug-switch-track + .debug-switch-thumb { transform: translateX(16px); }
 
-    .debug-switch input:checked + .debug-switch-track + .debug-switch-thumb {
-      transform: translateX(24px);
-    }
-
-    .header-actions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
-    .header-tab {
-      min-height: 40px;
-      border-radius: 999px;
-      padding: 0 16px;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      background: rgba(255, 255, 255, 0.12);
-      color: var(--tge-yellow);
-      cursor: pointer;
+    .logout-btn {
+      height: 32px;
+      border-radius: 8px;
+      padding: 0 12px;
+      border: 1px solid rgba(192,57,43,0.3);
+      background: var(--danger-bg);
+      color: var(--danger);
+      font-size: 12px;
       font-weight: 700;
-      transition: background 160ms ease;
+      cursor: pointer;
+      transition: background 140ms;
     }
 
-    .header-tab:hover {
-      background: rgba(255, 255, 255, 0.25);
-    }
+    .logout-btn:hover { background: rgba(192,57,43,0.12); }
 
-    .header-tab-logout {
-      border-color: rgba(255, 82, 82, 0.5);
-      color: #ff8a80;
-    }
-
-    .header-tab-logout:hover {
-      background: rgba(255, 82, 82, 0.2);
-    }
-
-    .version-ref {
-      justify-self: end;
-      color: rgba(255, 255, 255, 0.84);
-      font-size: 0.82rem;
-      font-weight: 600;
-      white-space: nowrap;
+    /* ── MAIN CONTENT ───────────────────────────── */
+    .main {
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
     }
 
     .page {
-      max-width: 1320px;
+      flex: 1;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      max-width: 1280px;
+      width: 100%;
       margin: 0 auto;
-      padding: 28px 24px 56px;
-      position: relative;
     }
 
+    /* ── LOGIN OVERLAY ──────────────────────────── */
     .login-overlay {
       position: fixed;
       inset: 0;
-      z-index: 50;
+      z-index: 200;
       display: grid;
       place-items: center;
       padding: 24px;
-      background: rgba(16, 31, 22, 0.42);
-      backdrop-filter: blur(8px);
+      background: rgba(10,30,18,0.55);
+      backdrop-filter: blur(10px);
     }
 
     .login-wrap {
-      width: min(520px, 100%);
-      background: rgba(255, 255, 255, 0.97);
-      border: 1px solid rgba(215, 226, 219, 0.95);
-      border-radius: 14px;
-      box-shadow: 0 24px 56px rgba(17, 39, 29, 0.18);
-      padding: 28px;
+      width: min(460px, 100%);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      padding: 32px;
+      animation: fadeUp 0.35s ease both;
     }
 
     .login-brand {
       display: flex;
       align-items: center;
       gap: 14px;
-      margin-bottom: 10px;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--line-2);
     }
 
     .login-brand-mark {
-      width: 116px;
-      height: 46px;
+      width: 48px;
+      height: 48px;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 6px 10px;
-      border-radius: 10px;
-      background: linear-gradient(180deg, #f7fbf8 0%, #eef6f0 100%);
-      border: 1px solid var(--line);
-      flex: 0 0 auto;
+      border-radius: 12px;
+      background: var(--green-900);
+      flex-shrink: 0;
     }
 
     .login-brand-mark img {
-      max-width: 100%;
-      max-height: 100%;
-      display: block;
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
     }
 
     .login-brand-copy h2 {
-      margin: 0;
-      font-size: 1.3rem;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--ink);
     }
 
     .login-brand-copy p {
-      margin: 4px 0 0;
+      font-size: 12px;
       color: var(--muted);
-      font-size: 0.92rem;
+      margin-top: 2px;
     }
 
     .login-grid {
       display: grid;
       gap: 14px;
-      margin-top: 18px;
     }
 
-    .hero {
+    /* ── CARDS / SECTIONS ───────────────────────── */
+    .card {
       background: var(--surface);
       border: 1px solid var(--line);
-      border-radius: 12px;
-      box-shadow: var(--shadow);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      padding: 20px;
+      animation: fadeUp 0.4s ease both;
+    }
+
+    .section { /* keep for backwards compat with app.js class expectations */
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      padding: 20px;
+      animation: fadeUp 0.4s ease both;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .section-kicker {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      color: var(--green-600);
+      margin-bottom: 3px;
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .section-subcopy {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+
+    /* ── HERO SEARCH ────────────────────────────── */
+    .hero {
+      background: linear-gradient(135deg, var(--green-900) 0%, var(--green-800) 60%, #0d6b36 100%);
+      border-radius: var(--radius-lg);
       padding: 28px;
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 24px;
-      animation: rise 0.55s ease both;
+      color: #fff;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: "";
+      position: absolute;
+      top: -60px;
+      right: -60px;
+      width: 260px;
+      height: 260px;
+      border-radius: 50%;
+      background: rgba(212,240,38,0.07);
+      pointer-events: none;
     }
 
     .hero-copy h2 {
-      margin: 0 0 10px;
-      font-size: 1.8rem;
-      line-height: 1.08;
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
     }
 
     .hero-copy p {
-      margin: 0;
+      color: rgba(255,255,255,0.65);
+      font-size: 13px;
       max-width: 58ch;
-      color: var(--muted);
+      margin-bottom: 0;
     }
 
     .lookup {
-      margin-top: 22px;
+      margin-top: 20px;
       display: flex;
       flex-wrap: wrap;
-      gap: 12px;
-      align-items: end;
+      gap: 10px;
+      align-items: flex-end;
     }
 
     .lookup .field {
@@ -319,202 +563,388 @@
       flex-shrink: 0;
     }
 
+    /* ── FORM ELEMENTS ──────────────────────────── */
     .field label {
       display: block;
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--muted);
-      margin-bottom: 8px;
+      font-size: 11px;
       font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: rgba(255,255,255,0.55);
+      margin-bottom: 6px;
     }
+
+    .field.dark-field label { color: var(--muted); }
 
     .field input,
-    .field select {
+    .field select,
+    .field textarea {
       width: 100%;
-      height: 48px;
-      border: 1px solid var(--line);
+      height: 42px;
+      border: 1px solid rgba(255,255,255,0.18);
       border-radius: 8px;
-      padding: 0 14px;
-      font: inherit;
-      color: var(--ink);
-      background: #fff;
+      padding: 0 12px;
+      background: rgba(255,255,255,0.10);
+      color: #fff;
+      font-size: 14px;
+      transition: border-color 140ms, background 140ms;
     }
 
-    .action-btn,
-    .secondary-btn {
-      height: 48px;
+    .field input::placeholder { color: rgba(255,255,255,0.35); }
+
+    .field input:focus,
+    .field select:focus {
+      outline: none;
+      border-color: var(--yellow);
+      background: rgba(255,255,255,0.15);
+    }
+
+    /* Light field (admin form, etc) */
+    .field.dark-field input,
+    .field.dark-field select,
+    .field.dark-field textarea {
+      border-color: var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      height: 42px;
+    }
+
+    .field.dark-field input::placeholder { color: var(--muted-2); }
+    .field.dark-field input:focus,
+    .field.dark-field select:focus {
+      outline: none;
+      border-color: var(--green-600);
+    }
+
+    /* Override for admin/asset sections which use bare .field */
+    #admin-view .field label,
+    #asset-track-view .field label,
+    #vpm-view .field label {
+      color: var(--muted);
+    }
+
+    #admin-view .field input,
+    #admin-view .field select,
+    #asset-track-view .field input,
+    #asset-track-view .field select,
+    #vpm-view .field input,
+    #vpm-view .field select {
+      border-color: var(--line);
+      background: var(--surface);
+      color: var(--ink);
+    }
+
+    /* ── BUTTONS ────────────────────────────────── */
+    .action-btn {
+      height: 42px;
       border-radius: 8px;
       padding: 0 18px;
-      font: inherit;
       font-weight: 700;
+      font-size: 13px;
       cursor: pointer;
       white-space: nowrap;
+      border: none;
+      background: var(--yellow);
+      color: var(--green-900);
+      transition: background 140ms, transform 120ms;
+      box-shadow: 0 2px 8px rgba(212,240,38,0.25);
     }
 
-    .action-btn,
+    .action-btn:hover { background: var(--yellow-dim); transform: translateY(-1px); }
+    .action-btn:active { transform: translateY(0); }
+
     .secondary-btn {
-      border: 0;
-      background: var(--tge-green-dark);
-      color: var(--tge-yellow);
-      box-shadow: 0 12px 28px rgba(0, 166, 81, 0.22);
-      transition: transform 160ms ease, background 160ms ease;
+      height: 42px;
+      border-radius: 8px;
+      padding: 0 16px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(255,255,255,0.10);
+      color: rgba(255,255,255,0.85);
+      transition: background 140ms;
     }
 
-    .action-btn:hover,
-    .secondary-btn:hover {
-      transform: translateY(-1px);
-      background: #005a2b;
+    .secondary-btn:hover { background: rgba(255,255,255,0.18); }
+
+    /* Light secondary for non-hero contexts */
+    #admin-view .secondary-btn,
+    #asset-track-view .secondary-btn,
+    #vpm-view .secondary-btn {
+      background: var(--surface-2);
+      border-color: var(--line);
+      color: var(--ink-2);
     }
+
+    #admin-view .secondary-btn:hover,
+    #asset-track-view .secondary-btn:hover,
+    #vpm-view .secondary-btn:hover {
+      background: var(--surface-3);
+    }
+
+    #admin-view .action-btn,
+    #asset-track-view .action-btn,
+    #vpm-view .action-btn {
+      background: var(--green-700);
+      color: var(--yellow);
+      box-shadow: 0 2px 8px rgba(0,100,50,0.18);
+    }
+
+    #admin-view .action-btn:hover,
+    #asset-track-view .action-btn:hover,
+    #vpm-view .action-btn:hover { background: var(--green-800); }
 
     .message {
-      min-height: 20px;
-      margin: 10px 0 0;
+      min-height: 18px;
+      margin-top: 10px;
       color: var(--danger);
-      font-size: 0.95rem;
+      font-size: 13px;
     }
 
-    .hero-panel {
-      background:
-        linear-gradient(160deg, rgba(0, 166, 81, 0.12), rgba(0, 122, 59, 0.04)),
-        var(--surface-alt);
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 18px;
+    /* ── DATA GRIDS ─────────────────────────────── */
+    .meta-grid,
+    .metrics-grid,
+    .sd-grid {
       display: grid;
-      gap: 16px;
-      align-content: start;
-    }
-
-    .hero-panel h3,
-    .section-title {
-      margin: 0;
-      font-size: 1rem;
-    }
-
-    .hero-panel p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 0.92rem;
-    }
-
-    .hero-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 12px;
     }
 
-    .mini-metric,
-    .debug-panel {
-      background: #fff;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 12px;
+    .meta-grid    { grid-template-columns: repeat(4, minmax(0,1fr)); }
+    .metrics-grid { grid-template-columns: repeat(4, minmax(0,1fr)); }
+    .sd-grid      { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .gps-grid     { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .device-list  { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0,1fr)); margin-top: 14px; }
+    .camera-grid  { display: grid; gap: 14px; grid-template-columns: repeat(5, minmax(0,1fr)); }
+
+    .meta-item,
+    .metric-item,
+    .sd-item {
+      padding: 14px;
+      border: 1px solid var(--line-2);
+      border-radius: var(--radius);
+      background: var(--surface-2);
     }
 
-    .mini-metric span,
-    .debug-panel span {
+    .meta-item span,
+    .metric-item span,
+    .sd-item span {
       display: block;
       color: var(--muted);
-      font-size: 0.75rem;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 5px;
+    }
+
+    .meta-item strong,
+    .metric-item strong,
+    .sd-item strong {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      word-break: break-word;
+    }
+
+    .metric-item strong {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--green-700);
+    }
+
+    /* ── GPS / GPIO CARDS ───────────────────────── */
+    .gps-card {
+      padding: 14px;
+      border: 1px solid var(--line-2);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+    }
+
+    .gps-card h4 {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .gps-card p {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--ink);
       margin-bottom: 4px;
     }
 
-    .mini-metric strong {
-      font-size: 1rem;
+    .gps-tag {
+      display: inline-flex;
+      align-items: center;
+      margin-top: 5px;
+      padding: 3px 8px;
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 999px;
+      background: var(--green-100);
+      color: var(--green-700);
+      letter-spacing: 0.05em;
     }
 
-    .debug-preview {
-      display: grid;
-      gap: 12px;
+    /* ── STATUS PILLS ───────────────────────────── */
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
     }
 
-    .debug-panel {
-      display: none;
+    .status-pill::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
     }
 
-    .debug-panel pre {
-      margin: 8px 0 0;
-      white-space: pre-wrap;
+    .status-pill.on  { background: var(--green-100); color: var(--green-700); }
+    .status-pill.on::before  { background: var(--green-600); }
+    .status-pill.off { background: var(--surface-3); color: var(--muted); }
+    .status-pill.off::before { background: var(--muted-2); }
+    .status-pill.warn{ background: var(--warning-bg); color: var(--warning); }
+    .status-pill.warn::before{ background: var(--warning); }
+
+    /* ── DEVICE CARDS ───────────────────────────── */
+    .device-card {
+      padding: 14px;
+      border: 1px solid var(--line-2);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+    }
+
+    .device-card h4 {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .device-card p {
+      font-size: 12px;
+      color: var(--ink-2);
+      margin-bottom: 3px;
       word-break: break-word;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 0.78rem;
-      color: #5d3028;
     }
 
-    .stack {
-      display: grid;
-      gap: 18px;
-      margin-top: 24px;
-    }
+    /* ── CAMERA ─────────────────────────────────── */
+    .camera-card { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); cursor: pointer; }
+    .camera-frame { aspect-ratio: 4/3; background: var(--surface-3); display: grid; place-items: center; overflow: hidden; position: relative; }
+    .camera-frame img { width: 100%; height: 100%; object-fit: cover; }
+    .camera-empty { color: var(--muted); font-size: 12px; font-weight: 600; }
+    .camera-meta { padding: 10px 12px; }
+    .camera-meta strong { display: block; font-size: 12px; margin-bottom: 2px; }
+    .camera-meta span { font-size: 11px; color: var(--muted); }
 
-    .admin-form-actions,
-    .vpm-mode-bar {
+    /* ── LOCATION ───────────────────────────────── */
+    .location-layout { display: grid; grid-template-columns: 1.3fr 0.7fr; gap: 16px; align-items: stretch; }
+    .map-panel { min-height: 280px; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; position: relative; background: var(--surface-3); }
+    .map-panel iframe { width: 100%; height: 100%; min-height: 280px; border: 0; display: block; }
+    .map-badge { position: absolute; top: 12px; left: 12px; z-index: 1; padding: 5px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #fff; background: rgba(0,90,40,0.85); }
+    .location-meta { display: grid; gap: 10px; }
+    .location-card { padding: 14px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--surface-2); }
+    .location-card span { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; }
+    .location-card strong { display: block; font-size: 13px; font-weight: 600; word-break: break-word; }
+
+    /* ── TABLES ─────────────────────────────────── */
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .asset-track-table-wrap { width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+
+    table { width: 100%; border-collapse: collapse; background: var(--surface); }
+    th, td { border-bottom: 1px solid var(--line-2); text-align: left; padding: 10px 14px; vertical-align: top; font-size: 13px; }
+    th { background: var(--surface-2); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); white-space: nowrap; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--surface-2); }
+
+    /* ── STACK / VIEW CONTAINER ─────────────────── */
+    .stack { display: grid; gap: 16px; }
+
+    /* ── ASSET TRACK ────────────────────────────── */
+    .asset-track-toolbar,
+    .asset-track-mode-bar,
+    .asset-track-run-row,
+    .asset-track-export-copy {
       display: flex;
-      gap: 12px;
+      gap: 10px;
       flex-wrap: wrap;
       align-items: center;
     }
 
-    .section-subcopy {
-      margin: 0 0 18px;
-      color: var(--muted);
-      max-width: 72ch;
-    }
+    .asset-track-toolbar { justify-content: space-between; margin-bottom: 16px; }
+    .asset-track-shell { display: grid; gap: 16px; width: 100%; }
+    .asset-track-input-panel { display: grid; gap: 12px; }
+    .asset-track-panel { padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); }
 
-    .vpm-panel {
-      display: grid;
-      gap: 16px;
-      margin-top: 20px;
-    }
-
-    .vpm-panel textarea {
+    .asset-track-panel textarea {
       width: 100%;
-      min-height: 240px;
+      min-height: 200px;
       border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 14px;
-      font: inherit;
+      padding: 12px;
       color: var(--ink);
       resize: vertical;
+      background: var(--surface);
     }
 
-    .helper-copy {
-      margin: 0;
-      color: var(--muted);
-      font-size: 0.92rem;
+    .asset-track-helper { color: var(--muted); font-size: 13px; }
+    .asset-track-summary { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+    .asset-track-results-panel { overflow: hidden; }
+    .table-summary { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+
+    .asset-track-table th,
+    .asset-track-table td { min-width: 110px; }
+    .asset-track-table th.asset-track-select-cell,
+    .asset-track-table td.asset-track-select-cell { min-width: 46px; width: 46px; padding: 8px 6px; }
+
+    .asset-track-filter-input {
+      width: 100%;
+      height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 8px;
+      color: var(--ink);
+      background: var(--surface);
+      font-size: 12px;
     }
 
-    .table-summary {
-      margin: 0 0 14px;
-      color: var(--muted);
-    }
+    /* ── VPM ────────────────────────────────────── */
+    .vpm-mode-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+    .vpm-panel { display: grid; gap: 14px; margin-top: 16px; }
+    .vpm-panel textarea { width: 100%; min-height: 220px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; color: var(--ink); resize: vertical; background: var(--surface); }
 
-    .utility-input {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      margin: -1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      border: 0;
-    }
+    /* ── ADMIN ──────────────────────────────────── */
+    .admin-form-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+    .helper-copy { color: var(--muted); font-size: 13px; }
+    .utility-input { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
+    /* ── DEBUG WINDOW ───────────────────────────── */
     .debug-window {
       position: fixed;
-      top: 92px;
-      left: 24px;
-      width: min(60vw, 760px);
-      min-width: 420px;
-      height: min(68vh, 640px);
+      top: 80px;
+      left: 260px;
+      width: min(60vw, 720px);
+      min-width: 400px;
+      height: min(65vh, 600px);
       display: none;
       flex-direction: column;
-      background: rgba(255, 255, 255, 0.98);
-      border: 1px solid rgba(12, 34, 24, 0.18);
-      border-radius: 12px;
-      box-shadow: 0 28px 60px rgba(17, 39, 29, 0.22);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
       overflow: hidden;
       z-index: 120;
       resize: both;
@@ -525,717 +955,180 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      padding: 14px 16px;
-      background: linear-gradient(90deg, #f6fbf8 0%, #eef7f1 100%);
+      padding: 12px 14px;
+      background: var(--surface-2);
       border-bottom: 1px solid var(--line);
       cursor: move;
     }
 
-    .debug-window-title {
-      display: grid;
-      gap: 2px;
-    }
-
-    .debug-window-title strong {
-      font-size: 0.96rem;
-    }
-
-    .debug-window-title span {
-      color: var(--muted);
-      font-size: 0.8rem;
-    }
-
-    .debug-window-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .debug-close-btn {
-      min-width: 34px;
-      height: 34px;
-      border-radius: 8px;
-      border: 1px solid var(--line);
-      background: #fff;
-      color: var(--ink);
-      cursor: pointer;
-      font-weight: 700;
-    }
-
-    .debug-window-body {
-      flex: 1;
-      overflow: auto;
-      padding: 16px;
-      background: #fff;
-      display: grid;
-      gap: 16px;
-      align-content: start;
-    }
-
-    .debug-window-body pre {
-      margin: 0;
-      white-space: pre-wrap;
-      word-break: break-word;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 0.8rem;
-      line-height: 1.55;
-      color: #4b3028;
-    }
-
-    .debug-window-panel {
-      display: grid;
-      gap: 14px;
-      padding: 16px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background:
-        linear-gradient(160deg, rgba(0, 166, 81, 0.08), rgba(0, 122, 59, 0.03)),
-        var(--surface-alt);
-    }
-
-    .debug-window-panel p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 0.92rem;
-    }
-
-    .debug-snapshot {
-      display: grid;
-      gap: 14px;
-      padding: 16px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background:
-        linear-gradient(160deg, rgba(0, 166, 81, 0.08), rgba(0, 122, 59, 0.03)),
-        var(--surface-alt);
-    }
-
-    .debug-snapshot-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
-    }
-
-    .debug-log-panel {
-      display: grid;
-      gap: 10px;
-      padding: 16px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: #fff;
-    }
-
-    .debug-log-panel pre {
-      margin: 0;
-      white-space: pre-wrap;
-      max-height: 400px;
-      overflow: auto;
-      word-break: break-word;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 0.78rem;
-      line-height: 1.5;
-      color: #4b3028;
-      max-height: 220px;
-      overflow: auto;
-    }
-
-    .section {
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      box-shadow: var(--shadow);
-      padding: 22px;
-      animation: rise 0.6s ease both;
-    }
-
-    .section-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 18px;
-      flex-wrap: wrap;
-    }
-
-    .section-kicker {
-      font-size: 0.82rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--tge-green-dark);
-      font-weight: 700;
-    }
-
-    .meta-grid,
-    .metrics-grid,
-    .sd-grid {
-      display: grid;
-      gap: 14px;
-    }
-
-    .meta-grid {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-
-    .metrics-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .sd-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .meta-item,
-    .metric-item,
-    .sd-item {
-      padding: 14px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: linear-gradient(180deg, #fff 0%, #fbfdfc 100%);
-    }
-
-    .meta-item span,
-    .metric-item span,
-    .sd-item span {
-      display: block;
-      color: var(--muted);
-      font-size: 0.78rem;
-      margin-bottom: 6px;
-    }
-
-    .meta-item strong,
-    .metric-item strong,
-    .sd-item strong {
-      display: block;
-      font-size: 1rem;
-      word-break: break-word;
-    }
-
-
-    .gps-grid {
-      display: grid;
-      gap: 14px;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .device-list {
-      display: grid;
-      gap: 14px;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      margin-top: 14px;
-    }
-
-    .device-card {
-      padding: 14px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: linear-gradient(180deg, #fff 0%, #fbfdfc 100%);
-    }
-
-    .device-card h4 {
-      margin: 0 0 6px;
-      font-size: 0.78rem;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--muted);
-      font-weight: 700;
-    }
-
-    .device-card p {
-      margin: 0 0 6px;
-      font-size: 0.88rem;
-      color: var(--ink);
-      word-break: break-word;
-    }
-
-    .gps-card {
-      padding: 14px;
-      border-radius: 8px;
-      border: 1px solid var(--line);
-      background: linear-gradient(180deg, #fff 0%, #fbfdfc 100%);
-    }
-
-    .gps-card h4 {
-      margin: 0 0 6px;
-      font-size: 0.78rem;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--muted);
-      font-weight: 700;
-    }
-
-    .gps-card p {
-      margin: 0 0 6px;
-      font-size: 1rem;
-      font-weight: 700;
-      color: var(--ink);
-    }
-
-    .gps-tag {
-      display: inline-block;
-      margin-top: 4px;
-      padding: 5px 8px;
-      font-size: 0.74rem;
-      border-radius: 999px;
-      background: rgba(0, 122, 59, 0.1);
-      color: var(--tge-green-dark);
-      font-weight: 700;
-    }
-
-    .camera-grid {
-      display: grid;
-      gap: 16px;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-    }
-
-    .camera-card {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      overflow: hidden;
-      background: #fff;
-    }
-
-    .camera-frame {
-      aspect-ratio: 4 / 3;
-      background:
-        linear-gradient(155deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.02)),
-        linear-gradient(135deg, #d8e6de 0%, #bccfc5 45%, #edf5f0 100%);
-      position: relative;
-      display: grid;
-      place-items: center;
-      overflow: hidden;
-    }
-
-    .camera-frame::before {
-      content: "";
-      position: absolute;
-      inset: 14px;
-      border: 1px solid rgba(255, 255, 255, 0.38);
-      border-radius: 6px;
-      pointer-events: none;
-    }
-
-    .camera-frame img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      position: relative;
-      z-index: 1;
-    }
-
-    .camera-empty {
-      position: relative;
-      z-index: 1;
-      color: var(--muted);
-      font-weight: 700;
-      font-size: 0.9rem;
-    }
-
-    .camera-meta {
-      padding: 12px;
-    }
-
-    .camera-meta strong {
-      display: block;
-      margin-bottom: 4px;
-      font-size: 0.95rem;
-    }
-
-    .camera-meta span {
-      color: var(--muted);
-      font-size: 0.82rem;
-    }
-
-    .location-layout {
-      display: grid;
-      grid-template-columns: 1.2fr 0.8fr;
-      gap: 18px;
-      align-items: stretch;
-    }
-
-    .map-panel {
-      min-height: 320px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      overflow: hidden;
-      background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0)),
-        linear-gradient(135deg, #d6efe1 0%, #bfe0cc 46%, #eaf7f0 100%);
-      position: relative;
-    }
-
-    .map-panel iframe {
-      width: 100%;
-      height: 100%;
-      min-height: 320px;
-      border: 0;
-      display: block;
-      filter: saturate(0.85) hue-rotate(-8deg);
-    }
-
-    .map-badge {
-      position: absolute;
-      top: 14px;
-      left: 14px;
-      z-index: 1;
-      padding: 8px 10px;
-      border-radius: 999px;
-      font-size: 0.75rem;
-      font-weight: 700;
-      color: #fff;
-      background: rgba(0, 122, 59, 0.86);
-      box-shadow: 0 8px 16px rgba(0, 90, 45, 0.2);
-    }
-
-    .location-meta {
-      display: grid;
-      gap: 14px;
-    }
-
-    .location-card {
-      padding: 16px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: linear-gradient(180deg, #fff 0%, #fbfdfc 100%);
-    }
-
-    .location-card span {
-      display: block;
-      color: var(--muted);
-      font-size: 0.78rem;
-      margin-bottom: 6px;
-    }
-
-    .location-card strong {
-      display: block;
-      font-size: 1rem;
-      word-break: break-word;
-    }
-
-    .table-wrap {
-      overflow-x: auto;
-    }
-
-    .asset-track-toolbar,
-    .asset-track-mode-bar,
-    .asset-track-run-row,
-    .asset-track-export-copy {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
-    .asset-track-toolbar {
-      justify-content: space-between;
-      margin-bottom: 18px;
-    }
-
-    .asset-track-shell {
-      display: grid;
-      gap: 18px;
-      width: 100%;
-      justify-items: center;
-    }
-
-    .asset-track-input-panel {
-      display: grid;
-      gap: 14px;
-      width: min(1320px, 100%);
-    }
-
-    .asset-track-panel {
-      padding: 18px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: linear-gradient(180deg, #fff 0%, #fbfdfc 100%);
-    }
-
-    .asset-track-panel textarea {
-      width: 100%;
-      min-height: 220px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 14px;
-      font: inherit;
-      color: var(--ink);
-      resize: vertical;
-    }
-
-    .asset-track-helper {
-      margin: 0;
-      color: var(--muted);
-      font-size: 0.92rem;
-    }
-
-    .asset-track-table th,
-    .asset-track-table td {
-      min-width: 120px;
-    }
-
-    .asset-track-table th.asset-track-select-cell,
-    .asset-track-table td.asset-track-select-cell {
-      min-width: 54px;
-      width: 54px;
-      padding: 10px 8px;
-    }
-
-    .asset-track-filter-input {
-      width: 100%;
-      height: 36px;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 0 10px;
-      font: inherit;
-      color: var(--ink);
-      background: #fff;
-    }
-
-    .asset-track-summary {
-      margin: 0 0 14px;
-      color: var(--muted);
-    }
-
-    .asset-track-results-panel {
-      width: min(1320px, 100%);
-      margin: 0 auto;
-      overflow: hidden;
-    }
-
-    .asset-track-table-wrap {
-      width: 100%;
-      overflow-x: auto;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: #fff;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      background: #fff;
-      margin: 0 auto;
-    }
-
-    th,
-    td {
-      border: 1px solid var(--line);
-      text-align: center;
-      padding: 10px 12px;
-      vertical-align: top;
-    }
-
-    th {
-      background: var(--surface-alt);
-    }
-
-    .lightbox-overlay {
-      position: fixed;
-      inset: 0;
-      z-index: 200;
-      background: rgba(0, 0, 0, 0.85);
-      display: grid;
-      place-items: center;
-      padding: 24px;
-    }
-
-    .lightbox-content {
-      position: relative;
-      width: 70vw;
-      max-height: 80vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .lightbox-img {
-      max-width: 100%;
-      max-height: 80vh;
-      object-fit: contain;
-      border-radius: 8px;
-    }
-
-    .lightbox-close {
-      position: absolute;
-      top: -40px;
-      right: 0;
-      background: none;
-      border: none;
-      color: #fff;
-      font-size: 2rem;
-      cursor: pointer;
-    }
-
-    .lightbox-nav {
-      position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-      background: rgba(255, 255, 255, 0.15);
-      border: none;
-      color: #fff;
-      font-size: 2.5rem;
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      cursor: pointer;
-      display: grid;
-      place-items: center;
-    }
-
-    .lightbox-nav:hover {
-      background: rgba(255, 255, 255, 0.3);
-    }
-
-    .lightbox-prev { left: -60px; }
-    .lightbox-next { right: -60px; }
-
-    .lightbox-caption {
-      position: absolute;
-      bottom: -36px;
-      left: 0;
-      right: 0;
-      text-align: center;
-      color: rgba(255, 255, 255, 0.8);
-      font-size: 0.9rem;
-    }
-
-    .camera-card { cursor: pointer; }
-
-    @keyframes rise {
-      from {
-        opacity: 0;
-        transform: translateY(12px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    @media (max-width: 1180px) {
-      .hero {
-        grid-template-columns: 1fr;
-      }
-
-      .lookup {
-        grid-template-columns: 1fr 1fr;
-      }
-
-      .meta-grid,
-      .gps-grid,
-      .camera-grid,
-      .device-list,
-      .location-layout {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-
-      .metrics-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-    }
-
-    @media (max-width: 760px) {
-      .topbar {
-        padding: 14px;
-      }
-
-      .topbar-inner {
-        grid-template-columns: 1fr;
-      }
-
-      .header-actions {
-        justify-content: flex-start;
-      }
-
-      .header-actions-spacer {
-        display: none;
-      }
-
-      .version-ref {
-        justify-self: start;
-      }
-
-      .page {
-        padding: 18px 14px 40px;
-      }
-
-      .hero-grid,
-      .meta-grid,
-      .metrics-grid,
-      .gps-grid,
-      .sd-grid,
-      .camera-grid,
-      .device-list,
-      .location-layout,
-      .debug-snapshot-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .action-btn,
-      .secondary-btn,
-      .header-tab {
-        width: 100%;
-      }
-
-      .debug-window {
-        left: 12px;
-        right: 12px;
-        width: auto;
-        min-width: 0;
-      }
+    .debug-window-title strong { font-size: 13px; display: block; }
+    .debug-window-title span { color: var(--muted); font-size: 11px; display: block; }
+    .debug-window-actions { display: flex; gap: 8px; }
+    .debug-close-btn { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; font-weight: 700; font-size: 12px; }
+
+    .debug-window-body { flex: 1; overflow: auto; padding: 14px; background: var(--surface); display: grid; gap: 14px; align-content: start; }
+    .debug-window-body pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+    .debug-window-panel, .debug-snapshot { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); }
+    .debug-window-panel p, .debug-snapshot p { margin: 0; color: var(--muted); font-size: 12px; }
+    .debug-snapshot-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+    .debug-preview { display: grid; gap: 10px; }
+    .debug-log-panel { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .debug-log-panel pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.5; color: var(--ink-2); max-height: 200px; overflow: auto; }
+    .mini-metric { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+    .mini-metric span { display: block; color: var(--muted); font-size: 11px; margin-bottom: 3px; }
+    .mini-metric strong { font-size: 13px; font-weight: 600; }
+    .debug-panel { display: none; }
+
+    /* ── LIGHTBOX ───────────────────────────────── */
+    .lightbox-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.88); display: grid; place-items: center; padding: 24px; }
+    .lightbox-content { position: relative; width: 70vw; max-height: 80vh; display: flex; align-items: center; justify-content: center; }
+    .lightbox-img { max-width: 100%; max-height: 80vh; object-fit: contain; border-radius: 8px; }
+    .lightbox-close { position: absolute; top: -40px; right: 0; background: none; border: none; color: #fff; font-size: 2rem; cursor: pointer; }
+    .lightbox-nav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.12); border: none; color: #fff; font-size: 2.5rem; width: 46px; height: 46px; border-radius: 50%; cursor: pointer; display: grid; place-items: center; }
+    .lightbox-nav:hover { background: rgba(255,255,255,0.25); }
+    .lightbox-prev { left: -58px; }
+    .lightbox-next { right: -58px; }
+    .lightbox-caption { position: absolute; bottom: -34px; left: 0; right: 0; text-align: center; color: rgba(255,255,255,0.7); font-size: 12px; }
+
+    /* ── HERO PANEL (snapshot side stats) ──────── */
+    .hero-panel { display: none; } /* legacy, kept for JS compat */
+
+    /* ── ANIMATIONS ─────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── RESPONSIVE ─────────────────────────────── */
+    @media (max-width: 1100px) {
+      .meta-grid   { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .metrics-grid{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .camera-grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
+      .location-layout { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 800px) {
+      :root { --sidebar-w: 0px; }
+      .sidebar { display: none; }
+      .shell { grid-template-columns: 1fr; }
+      .meta-grid, .gps-grid, .device-list { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .camera-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .page { padding: 16px; }
+    }
+
+    @media (max-width: 500px) {
+      .meta-grid, .metrics-grid, .gps-grid, .sd-grid, .device-list { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
   <div class="shell">
-    <header class="topbar">
-      <div class="topbar-inner">
-        <div class="brand">
-          <div class="brand-mark">
-            <img
-              alt="TGE logo"
-              src="data:image/png;base64,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"
-            />
-          </div>
-          <div class="brand-copy">
-            <h1>TGE Asset Snapshot</h1>
-            <p>Complete asset status, location, diagnostics and evidence snapshot</p>
+
+    <!-- ── SIDEBAR ── -->
+    <aside class="sidebar" id="sidebar" style="display:none;">
+      <div class="sidebar-brand">
+        <div class="sidebar-logo">
+          <img alt="TGE" src="data:image/png;base64,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" />
+        </div>
+        <div class="sidebar-brand-text">
+          <strong>TGE Asset Snapshot</strong>
+          <span>Fleet Operations</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav" id="sidebar-nav">
+        <span class="nav-section-label">Operations</span>
+
+        <button class="nav-item active" id="standard-tab" type="button">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+            <rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/>
+            <rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/>
+          </svg>
+          Snapshot
+        </button>
+
+        <button class="nav-item" id="asset-track-tab" type="button">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M10 2L18 6v8l-8 4-8-4V6l8-4z"/><path d="M10 2v12M2 6l8 4 8-4"/>
+          </svg>
+          Asset Track
+        </button>
+
+        <span class="nav-section-label">Management</span>
+
+        <button class="nav-item" id="admin-tab" type="button" style="display:none;">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+            <circle cx="10" cy="7" r="3"/><path d="M3 17c0-3.3 3.1-6 7-6s7 2.7 7 6"/>
+          </svg>
+          Admin
+        </button>
+
+        <button class="nav-item" id="vpm-tab" type="button" style="display:none;">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M3 12l4-4 4 4 6-7"/><path d="M17 5h-4v4"/>
+          </svg>
+          VPM Analysis
+        </button>
+
+        <span class="nav-section-label">Diagnostics</span>
+        <button class="nav-item" id="diagnostics-tab" type="button" style="display:none;">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M10 2v4M10 14v4M2 10h4M14 10h4"/><circle cx="10" cy="10" r="4"/>
+          </svg>
+          Diagnostics
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-user" id="sidebar-user" style="display:none;">
+          <div class="user-avatar" id="user-avatar">--</div>
+          <div class="user-info">
+            <strong id="user-display-name">--</strong>
+            <span id="user-role-label">user</span>
           </div>
         </div>
+      </div>
+    </aside>
 
-        <div class="header-actions" id="header-actions" style="display: none;">
-          <label class="debug-toggle-wrap" id="debug-toggle-wrap">
-            <span>Debug</span>
-            <span class="debug-switch">
-              <input id="debug-toggle" type="checkbox" />
-              <span class="debug-switch-track"></span>
-              <span class="debug-switch-thumb"></span>
-            </span>
-          </label>
-          <span class="header-actions-spacer"></span>
-          <button class="header-tab" id="standard-tab" type="button">Snapshot</button>
-          <button class="header-tab" id="asset-track-tab" type="button">Asset Track</button>
-          <button class="header-tab" id="admin-tab" type="button" style="display: none;">Admin</button>
-          <button class="header-tab" id="vpm-tab" type="button" style="display: none;">VPM</button>
-          <button class="header-tab header-tab-logout" id="logout-btn" type="button">Logout</button>
+    <!-- ── TOPBAR ── -->
+    <header class="topbar" id="topbar">
+      <div class="topbar-left">
+        <span class="topbar-page-title" id="topbar-page-title">Asset Snapshot</span>
+      </div>
+      <div class="topbar-right" id="header-actions" style="display:none;">
+        <div class="mode-indicator demo" id="mode-indicator">
+          <span class="mode-dot"></span>
+          <span id="mode-label">Demo</span>
         </div>
 
-        <div class="version-ref">v1.5</div>
+        <label class="debug-toggle-wrap" id="debug-toggle-wrap">
+          <span>Debug</span>
+          <span class="debug-switch">
+            <input id="debug-toggle" type="checkbox" />
+            <span class="debug-switch-track"></span>
+            <span class="debug-switch-thumb"></span>
+          </span>
+        </label>
+
+        <span class="version-badge">v1.5</span>
+
+        <button class="logout-btn" id="logout-btn" type="button">Sign out</button>
       </div>
     </header>
 
-    <main class="page">
+    <!-- ── MAIN ── -->
+    <main class="main">
+
+      <!-- LOGIN -->
       <section class="login-overlay" id="login-screen">
         <div class="login-wrap">
           <div class="login-brand">
             <div class="login-brand-mark">
-              <img
-                alt="TGE logo"
-                src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHsAAAAxCAYAAAD6BNZ1AAAHrklEQVR4Xu2aTYgeRRCG15veFBQUPSh68BfUeHBzyp7cHNQI/gtqBCU5GBWMKEYEI0o8uLloRCXBHBJFTDyYeEkUjChG8BcSFIwo/gtGPbg57cgz8A41Nd0z0/Ptt5vszAtF8nVPd0/3W1VdVTsT2YDeYMI3DFi6GMjuEQaye4SB7B5hILtHGMjuEQaye4SB7B5hILtHGAvZn375cbZr785s0wtPFrJn/27/WCf8/uev2YcH3882v/psaf6//z1aeu6+R27Lrl+9IiiPb3own2fVPVOVPua1YC88d/Oa6Wx29r9Sn8bvfHtbqZ3fmm9ubq7Ut5iYF7I5aMi9d/2t2fmTp2anXzpRkfs33N15418f/jzbOPNoNnnthZV5JT/8dKQ0Ztn0eZVnJJDA82dcdlKlz7/nXQ/cUPRtee15s0JWjL94xZklRVh+3UXFmK57Hgc6k41lbHtjS3bnulWVAwuJP8Qm7D/wbvbwU2uyK685tzJXSDzZWCQeACUUKQc+eS9vQ3l+/Pn7Sjvy7ZHDxRzs8ZyrTineAWWze7DKsvX1F/M2PJhtT9nzuJFEtixsxY2XVw67SZrI5mBxf3iHs5edXBnfJJ5swZJq17ftMTfO9UD/zCvPFEr9zr5dRb8llTNh/lvWriy9V92eFxpRso8dm801HeuFKFyVP+AU8WRjQVgvBzp9+9WV51NlFLKt6D3Z/yVTZ+Vtv/3xS2GxkK55rLLwr5TDGsNxSzYBh998inBfY5lYB4qCtQpYbehwU4RD5EBxzbjpNmhDdogQ6/69fPPdofwZ9WPt9tkdu7fWzr1YGJlsLJ67tSna7ko2UTDeBXK6IEZqkxtfecdk3ofXUZ/ubqJ55tJ4vIoCORTSBn8nPNkEKmyYO7wt2pLNfY13wLJ8OtUFbci2ghtnX/T5KFvtvCPtlmyuJH5j1bE1FxutyUbDX9o+U4pWU1BHdlvvMGA0lMje8NxDhctCw7kf/d3bFip+SLa/+XLJXTI3CpDiHSyUWkkIqEJgflwzYu95vAbj6u5+LJQrRHGC9TTMa9dHQp5I5+DX0frIQiEajafC5t2h1MlH46lQ3h0rrISi8XVPrK48x5169J+/8kPG03APh96LvZBjew908IuP8v6YFyRNs7BFma8OfVa0a33aQ+uPAyORjUvHtbfJu1PJxlKxJsbFqnJWPNlYMofJWJQE8nhPyMWj1JGN1UK04gf2qPQQwlEWkU1VjbmoP/CbMfQDFWX0jgrswAlBNu6Il45ZWEzakJ1albPiyZ666Yq8HRJC69aRrXzZ1rZRPhFHqqXcWted3tnO9/Tmx/I2+lE6qwjHJdncLQROoxZWYmTrTm3jHerEky1i9n2wN/9t3S6EUCKNkS337xVF6RiuWmR7kRv3RRm8C/9XfX3RybYBGtLGfXpBIciNFdQoCPEBWldyGcvBqXAj8QGaLFuuE9etA8cr1ZGtKwDXrT6UPmTZzAO40i5YflrehuIp+8CaeVaeUOstOtmxoKNJ2uTddalXnejeZHwo2o3Brsd4W5aFdB02Ck2fhPuZKFzEKnOwfwwhx9ZZyY2zfwWmWLKULSQoiyXbrz8udCYby0zJu1PInq+8m8PzmYGPxv3asjyif7lhCcqiiDp2VigWcU3Ia3BetOP5mtYfB5LIJgghgOqSdzeRLe/g89FRgZVCHO8dyrO9hJ6BJP61COXZ8mysyW9vCPrjEtJm/flGlGw0TC6Mu9ffianwZDM3LjDFOyw1YDR1e2/qT0VjNJ4C5d24KZ+axaLxtlDejXtHUbx79tE4VhLyJLyH7aOWDeR6aSNiVvplRSVj4L2gYgtdPbEvZRQs2gCVuMHm4Hghe370+8+lumBksnFdbfLuLmTrg4Y2eXcd2TYL0KGJTA6SsfqUSH+vVj/xg8Zqrbf27Ch+s2+bXUA684ls2u36xAt6LxSX9E5ZD4Gb/SMKfZyt+pVGdkUnstFeXjQl725LtrxD6gcNdWTHPjtSKVOHqUgbiGz73us3rs3bIEBkyzMAKQzriWxV2OxdrcCPNfAoEKw4SFU3lAbF1CdUKZlIDK3IZiEsrOsnQ0gd2V2rclbqyLZi34N9KTdG9FECENn6YALlllLwvZnIxhPQz9loHqy3zo1zHdlIH6PBikU4ym5rHMRPED8q4SWyIdTmfGyka/GDcToIRPegRNbRpXDDGMZyQJrPH4Ql265r0zn/cSD9UgT+79eFFN7b5tlWMARVyES28nCJVXjO29b+OTP1E6P4fvYcM5g2iEbjqdJUWPHReIp0Kaw0uXFb8aLEKY+le1FkKyf2KZHOCoVT/owFqvZd58a5DnhWObuUTvc9BEO8PA0BG/2QvmhkpxRWUsnGith018JKnRvHMmMBmQI2/Y5dPzor3dm6/zVfnRunLO3bERSa/tCfZhEbsXdBEtloHpuBuNTCShuyUR4sJeYdUkBQY92ndeNYqX5rH7hN+wzKov+HoCtP78o8Gs/aGIFfGxFZ+rIW14xCMZ+tZbAuZ0E/8QL3/KhoJFuL8XKjIEQ2rkxVua4fFA5ojxLZtgQ434fvP1MasPBolXoNWBoYyO4RBrJ7hIHsHmEgu0cYyO4RBrJ7hIHsHmEgu0cYyO4R/gdaBXWMxGPCMAAAAABJRU5ErkJggg=="
-              />
+              <img alt="TGE logo" src="data:image/png;base64,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" />
             </div>
             <div class="login-brand-copy">
               <h2>TGE Asset Snapshot</h2>
-              <p>Sign in to access the full asset snapshot workspace.</p>
+              <p>Sign in to access the fleet workspace</p>
             </div>
           </div>
 
@@ -1243,37 +1136,40 @@
             <div class="login-grid">
               <div class="field">
                 <label for="username">Username</label>
-                <input id="username" name="username" type="text" autocomplete="username" required />
+                <input id="username" name="username" type="text" autocomplete="username" required
+                  style="border-color:var(--line);background:var(--surface);color:var(--ink);" />
               </div>
-
               <div class="field">
                 <label for="password">Password</label>
-                <input id="password" name="password" type="password" autocomplete="current-password" required />
+                <input id="password" name="password" type="password" autocomplete="current-password" required
+                  style="border-color:var(--line);background:var(--surface);color:var(--ink);" />
               </div>
             </div>
-
-            <div style="margin-top: 16px;">
-              <button class="action-btn" type="submit">Log In</button>
+            <div style="margin-top:18px;">
+              <button class="action-btn" type="submit"
+                style="background:var(--green-700);color:var(--yellow);">Sign In</button>
             </div>
-
             <p class="message" id="login-message"></p>
           </form>
         </div>
       </section>
 
-      <div id="app-shell">
+      <!-- APP SHELL -->
+      <div class="page" id="app-shell">
+
+        <!-- HERO SEARCH -->
         <section class="hero" id="snapshot-hero">
           <div class="hero-copy">
-            <div class="section-kicker">Asset Search</div>
-            <h2>Track one vehicle, inspect one full operational snapshot.</h2>
-            <p>Enter a fleet number to load the current asset snapshot and review the grouped operational information without leaving the page.</p>
+            <div class="section-kicker" style="color:rgba(212,240,38,0.8);">Asset Search</div>
+            <h2>Track one vehicle — full operational snapshot</h2>
+            <p>Enter a fleet number to load the current asset snapshot: location, metrics, diagnostics, and camera evidence.</p>
 
             <form class="lookup" id="asset-search-form">
               <div class="field">
                 <label for="asset-number">Fleet Number</label>
-                <input id="asset-number" name="assetNumber" type="text" placeholder="Enter fleet number" required />
+                <input id="asset-number" name="assetNumber" type="text" placeholder="e.g. 1001" required />
               </div>
-              <button class="action-btn" type="submit">Load Asset Snapshot</button>
+              <button class="action-btn" type="submit">Load Snapshot</button>
               <button class="secondary-btn" id="refresh-asset-btn" type="button">Refresh</button>
               <button class="secondary-btn" id="export-pdf-btn" type="button">Export PDF</button>
               <button class="secondary-btn" id="email-pdf-btn" type="button">Email PDF</button>
@@ -1281,315 +1177,165 @@
 
             <p class="message" id="asset-search-message"></p>
           </div>
-
+          <div class="hero-panel" id="hero-panel"></div>
         </section>
 
         <div class="stack">
+          <!-- STANDARD VIEW -->
           <div id="standard-view">
             <div id="asset-shell">
-              <section class="section">
-                <div class="section-head">
-                  <div>
-                    <div class="section-kicker">Vehicle Information</div>
-                    <h3 class="section-title">Asset Details</h3>
-                  </div>
-                </div>
+              <div class="stack">
 
-                <div class="meta-grid">
-                  <div class="meta-item"><span>Fleet Number</span><strong id="view-asset-number"></strong></div>
-                  <div class="meta-item"><span>Registration</span><strong id="view-registration"></strong></div>
-                  <div class="meta-item"><span>VIN</span><strong id="view-vin"></strong></div>
-                  <div class="meta-item"><span>Make</span><strong id="view-make"></strong></div>
-                  <div class="meta-item"><span>Model</span><strong id="view-model"></strong></div>
-                  <div class="meta-item"><span>System ID</span><strong id="view-system-id"></strong></div>
-                  <div class="meta-item"><span>Year of Manufacture</span><strong id="view-year"></strong></div>
-                </div>
-
-                <div class="device-list">
-                  <div class="device-card">
-                    <h4>Tracking System</h4>
-                    <p>IMEI: <strong id="view-tracker-imei"></strong></p>
-                    <p>Serial: <strong id="view-tracker-serial"></strong></p>
-                  </div>
-                  <div class="device-card">
-                    <h4>Camera System</h4>
-                    <p>IMEI: <strong id="view-camera-imei"></strong></p>
-                    <p>Serial: <strong id="view-camera-serial"></strong></p>
-                  </div>
-                  <div class="device-card">
-                    <h4>Tablet</h4>
-                    <p>IMEI: <strong id="view-tablet-imei"></strong></p>
-                    <p>Serial: <strong id="view-tablet-serial"></strong></p>
-                  </div>
-                </div>
-              </section>
-
-              <section class="section">
-                <div class="section-head">
-                  <div>
-                    <div class="section-kicker">Performance</div>
-                    <h3 class="section-title">Vehicle Tracking Metrics</h3>
-                  </div>
-                </div>
-
-                <div class="metrics-grid">
-                  <div class="metric-item">
-                    <span>Driver Logged In</span>
-                    <strong id="view-driver"></strong>
-                  </div>
-                  <div class="metric-item">
-                    <span>Engine Hours</span>
-                    <strong id="view-engine-hours"></strong>
-                  </div>
-                  <div class="metric-item">
-                    <span>Ignition</span>
-                    <strong id="view-ignition-status"></strong>
-                  </div>
-                  <div class="metric-item">
-                    <span>Odometer</span>
-                    <strong id="view-odometer"></strong>
-                  </div>
-                  <div class="metric-item">
-                    <span>Oil Pressure</span>
-                    <strong id="view-oil-pressure"></strong>
-                  </div>
-                  <div class="metric-item">
-                    <span>Oil Temperature</span>
-                    <strong id="view-oil-temp"></strong>
-                  </div>
-                  <div class="metric-item">
-                    <span>RPM</span>
-                    <strong id="view-rpm"></strong>
-                  </div>
-                  <div class="metric-item">
-                    <span>Speed</span>
-                    <strong id="view-speed"></strong>
-                  </div>
-                </div>
-                <div class="metrics-grid" id="performance-dynamic-grid"></div>
-              </section>
-
-         <section class="section">
-  <div class="section-head">
-    <div>
-      <div class="section-kicker">GPIO Data State</div>
-      <h3 class="section-title">Digital Inputs And Outputs</h3>
-    </div>
-  </div>
-
-  <div class="gps-grid">
-    <div class="gps-card">
-      <h4>Seatbelt</h4>
-      <p id="gpio-seatbelt"></p>
-      <span id="gpio-seatbelt-at">N/A No Data</span>
-      <span class="gps-tag">DIGIN 1</span>
-    </div>
-    <div class="gps-card">
-      <h4>Door</h4>
-      <p id="gpio-door"></p>
-      <span id="gpio-door-at">N/A No Data</span>
-      <span class="gps-tag">DIGIN 2</span>
-    </div>
-    <div class="gps-card">
-      <h4>Park Brake</h4>
-      <p id="gpio-parkbrake"></p>
-      <span id="gpio-parkbrake-at">N/A No Data</span>
-      <span class="gps-tag">DIGIN 3</span>
-    </div>
-    <div class="gps-card">
-      <h4>Event Button</h4>
-      <p id="gpio-driverevent"></p>
-      <span id="gpio-driverevent-at">N/A No Data</span>
-      <span class="gps-tag">DIGIN 4</span>
-    </div>
-    <div class="gps-card">
-      <h4>Speed Siren</h4>
-      <p id="gpio-siren"></p>
-      <span id="gpio-siren-at">N/A No Data</span>
-      <span class="gps-tag">DIGOUT 2</span>
-    </div>
-    <div class="gps-card">
-      <h4>Speed LED</h4>
-      <p id="gpio-led"></p>
-      <span id="gpio-led-at">N/A No Data</span>
-      <span class="gps-tag">DIGOUT 3</span>
-    </div>
-  </div>
-</section>
-
-              <section class="section">
-                <div class="section-head">
-                  <div>
-                    <div class="section-kicker">Storage</div>
-                    <h3 class="section-title">SD Card Information</h3>
-                  </div>
-                </div>
-
-                <div class="sd-grid">
-                  <div class="sd-item"><span>SD Card 1</span><strong id="view-sd1"></strong></div>
-                  <div class="sd-item"><span>SD Card 2</span><strong id="view-sd2"></strong></div>
-                  <div class="sd-item"><span>SD Card 1 Size</span><strong id="view-sd1-size"></strong></div>
-                  <div class="sd-item"><span>SD Card 2 Size</span><strong id="view-sd2-size"></strong></div>
-                </div>
-
-                <strong id="view-sd-overall" style="display:none;"></strong>
-              </section>
-
-              <section class="section">
-                <div class="section-head">
-                  <div>
-                    <div class="section-kicker">Camera Snapshots</div>
-                    <h3 class="section-title">Latest Image Set</h3>
-                  </div>
-                </div>
-
-                <div class="camera-grid">
-                  <article class="camera-card" data-camera-slot="0">
-                    <div class="camera-frame">
-                      <img id="img-road-facing" style="display:none;" alt="Road Facing" />
-                      <p class="camera-empty" id="img-road-facing-empty">Awaiting search</p>
-                    </div>
-                    <div class="camera-meta">
-                      <strong>Road Facing</strong>
-                      <span id="img-road-facing-status"></span>
-                    </div>
-                  </article>
-
-                  <article class="camera-card" data-camera-slot="1">
-                    <div class="camera-frame">
-                      <img id="img-driver-facing" style="display:none;" alt="Driver Facing" />
-                      <p class="camera-empty" id="img-driver-facing-empty">Awaiting search</p>
-                    </div>
-                    <div class="camera-meta">
-                      <strong>Driver Facing</strong>
-                      <span id="img-driver-facing-status"></span>
-                    </div>
-                  </article>
-
-                  <article class="camera-card" data-camera-slot="2">
-                    <div class="camera-frame">
-                      <img id="img-in-cab" style="display:none;" alt="In-Cab Driver" />
-                      <p class="camera-empty" id="img-in-cab-empty">Awaiting search</p>
-                    </div>
-                    <div class="camera-meta">
-                      <strong>In-Cab Driver</strong>
-                      <span id="img-in-cab-status"></span>
-                    </div>
-                  </article>
-
-                  <article class="camera-card" data-camera-slot="3">
-                    <div class="camera-frame">
-                      <img id="img-driver-external" style="display:none;" alt="Driver External" />
-                      <p class="camera-empty" id="img-driver-external-empty">Awaiting search</p>
-                    </div>
-                    <div class="camera-meta">
-                      <strong>Driver External</strong>
-                      <span id="img-driver-external-status"></span>
-                    </div>
-                  </article>
-
-                  <article class="camera-card" data-camera-slot="4">
-                    <div class="camera-frame">
-                      <img id="img-left-external" style="display:none;" alt="Left External" />
-                      <p class="camera-empty" id="img-left-external-empty">Awaiting search</p>
-                    </div>
-                    <div class="camera-meta">
-                      <strong>Left External</strong>
-                      <span id="img-left-external-status"></span>
-                    </div>
-                  </article>
-                </div>
-              </section>
-
-              <section class="section">
-                <div class="section-head">
-                  <div>
-                    <div class="section-kicker">Last Known Location</div>
-                    <h3 class="section-title">Map View And Coordinates</h3>
-                  </div>
-                </div>
-
-                <div class="location-layout">
-                  <div class="map-panel">
-                    <div class="map-badge">Last Location</div>
-                    <iframe
-                      id="view-map-iframe"
-                      title="Last known location map"
-                      loading="lazy"
-                      referrerpolicy="no-referrer-when-downgrade"
-                      src="">
-                    </iframe>
-                  </div>
-
-                  <div class="location-meta">
-                    <div class="location-card">
-                      <span>Location</span>
-                      <strong id="view-location"></strong>
-                    </div>
-                    <div class="location-card">
-                      <span>Latitude</span>
-                      <strong id="view-latitude"></strong>
-                    </div>
-                    <div class="location-card">
-                      <span>Longitude</span>
-                      <strong id="view-longitude"></strong>
-                    </div>
-                    <div class="location-card">
-                      <span>Last GPS Time</span>
-                      <strong id="view-gps-time"></strong>
+                <section class="section">
+                  <div class="section-head">
+                    <div>
+                      <div class="section-kicker">Vehicle Information</div>
+                      <h3 class="section-title">Asset Details</h3>
                     </div>
                   </div>
-                </div>
-              </section>
-            </div>
-          </div>
+                  <div class="meta-grid">
+                    <div class="meta-item"><span>Fleet Number</span><strong id="view-asset-number"></strong></div>
+                    <div class="meta-item"><span>Registration</span><strong id="view-registration"></strong></div>
+                    <div class="meta-item"><span>VIN</span><strong id="view-vin"></strong></div>
+                    <div class="meta-item"><span>Make</span><strong id="view-make"></strong></div>
+                    <div class="meta-item"><span>Model</span><strong id="view-model"></strong></div>
+                    <div class="meta-item"><span>System ID</span><strong id="view-system-id"></strong></div>
+                    <div class="meta-item"><span>Year</span><strong id="view-year"></strong></div>
+                  </div>
+                  <div class="device-list">
+                    <div class="device-card">
+                      <h4>Tracking System</h4>
+                      <p>IMEI: <strong id="view-tracker-imei"></strong></p>
+                      <p>Serial: <strong id="view-tracker-serial"></strong></p>
+                    </div>
+                    <div class="device-card">
+                      <h4>Camera System</h4>
+                      <p>IMEI: <strong id="view-camera-imei"></strong></p>
+                      <p>Serial: <strong id="view-camera-serial"></strong></p>
+                    </div>
+                    <div class="device-card">
+                      <h4>Tablet</h4>
+                      <p>IMEI: <strong id="view-tablet-imei"></strong></p>
+                      <p>Serial: <strong id="view-tablet-serial"></strong></p>
+                    </div>
+                  </div>
+                </section>
 
-          <section class="section" id="asset-track-view" style="display: none;">
+                <section class="section">
+                  <div class="section-head">
+                    <div>
+                      <div class="section-kicker">Performance</div>
+                      <h3 class="section-title">Vehicle Tracking Metrics</h3>
+                    </div>
+                  </div>
+                  <div class="metrics-grid">
+                    <div class="metric-item"><span>Driver Logged In</span><strong id="view-driver"></strong></div>
+                    <div class="metric-item"><span>Engine Hours</span><strong id="view-engine-hours"></strong></div>
+                    <div class="metric-item"><span>Ignition</span><strong id="view-ignition-status"></strong></div>
+                    <div class="metric-item"><span>Odometer</span><strong id="view-odometer"></strong></div>
+                    <div class="metric-item"><span>Oil Pressure</span><strong id="view-oil-pressure"></strong></div>
+                    <div class="metric-item"><span>Oil Temperature</span><strong id="view-oil-temp"></strong></div>
+                    <div class="metric-item"><span>RPM</span><strong id="view-rpm"></strong></div>
+                    <div class="metric-item"><span>Speed</span><strong id="view-speed"></strong></div>
+                  </div>
+                  <div class="metrics-grid" id="performance-dynamic-grid" style="margin-top:12px;"></div>
+                </section>
+
+                <section class="section">
+                  <div class="section-head">
+                    <div>
+                      <div class="section-kicker">GPIO Data State</div>
+                      <h3 class="section-title">Digital Inputs &amp; Outputs</h3>
+                    </div>
+                  </div>
+                  <div class="gps-grid">
+                    <div class="gps-card"><h4>Seatbelt</h4><p id="gpio-seatbelt"></p><span id="gpio-seatbelt-at">N/A No Data</span><br><span class="gps-tag">DIGIN 1</span></div>
+                    <div class="gps-card"><h4>Door</h4><p id="gpio-door"></p><span id="gpio-door-at">N/A No Data</span><br><span class="gps-tag">DIGIN 2</span></div>
+                    <div class="gps-card"><h4>Park Brake</h4><p id="gpio-parkbrake"></p><span id="gpio-parkbrake-at">N/A No Data</span><br><span class="gps-tag">DIGIN 3</span></div>
+                    <div class="gps-card"><h4>Event Button</h4><p id="gpio-eventbtn"></p><span id="gpio-eventbtn-at">N/A No Data</span><br><span class="gps-tag">DIGIN 4</span></div>
+                    <div class="gps-card"><h4>Reverse</h4><p id="gpio-reverse"></p><span id="gpio-reverse-at">N/A No Data</span><br><span class="gps-tag">DIGIN 5</span></div>
+                    <div class="gps-card"><h4>Output 1</h4><p id="gpio-output1"></p><span id="gpio-output1-at">N/A No Data</span><br><span class="gps-tag">DIGOUT 1</span></div>
+                  </div>
+                </section>
+
+                <section class="section" id="sd-section">
+                  <div class="section-head">
+                    <div>
+                      <div class="section-kicker">Storage Diagnostics</div>
+                      <h3 class="section-title">SD Card Status</h3>
+                    </div>
+                  </div>
+                  <div class="sd-grid">
+                    <div class="sd-item"><span>SD Card 1</span><strong id="view-sd1"></strong></div>
+                    <div class="sd-item"><span>SD Card 2</span><strong id="view-sd2"></strong></div>
+                  </div>
+                </section>
+
+                <section class="section" id="camera-section">
+                  <div class="section-head">
+                    <div>
+                      <div class="section-kicker">Evidence</div>
+                      <h3 class="section-title">Camera Snapshots</h3>
+                    </div>
+                  </div>
+                  <div class="camera-grid" id="camera-grid"></div>
+                </section>
+
+                <section class="section" id="location-section">
+                  <div class="section-head">
+                    <div>
+                      <div class="section-kicker">Location</div>
+                      <h3 class="section-title">Current Position</h3>
+                    </div>
+                  </div>
+                  <div class="location-layout">
+                    <div class="map-panel" id="map-panel">
+                      <div class="map-badge" id="map-badge" style="display:none;"></div>
+                      <iframe id="map-iframe" title="Asset Location" style="display:none;"></iframe>
+                    </div>
+                    <div class="location-meta" id="location-meta"></div>
+                  </div>
+                </section>
+
+              </div><!-- /stack -->
+            </div><!-- /asset-shell -->
+          </div><!-- /standard-view -->
+
+          <!-- ASSET TRACK VIEW -->
+          <section class="section" id="asset-track-view" style="display:none;">
             <div class="section-head">
               <div>
                 <div class="section-kicker">Asset Track</div>
-                <h3 class="section-title">Fleet-linked tracker health snapshot</h3>
+                <h3 class="section-title">Multi-Asset Fleet Analysis</h3>
               </div>
             </div>
 
             <div class="asset-track-shell">
-              <p class="section-subcopy">
-                Run asset tracker checks by specific IMEI input or across the active fleet, then filter and export only the rows that need action.
-              </p>
+              <div class="asset-track-toolbar">
+                <div class="asset-track-mode-bar">
+                  <button class="action-btn" id="asset-track-user-tab" type="button">User Input</button>
+                  <button class="action-btn" id="asset-track-fleet-tab" type="button">Fleet Mode</button>
+                </div>
+                <div class="asset-track-export-copy">
+                  <button class="action-btn" id="asset-track-export-btn" type="button">Export CSV</button>
+                  <button class="action-btn" id="asset-track-copy-btn" type="button">Copy Selection</button>
+                </div>
+              </div>
 
-              <div class="asset-track-input-panel">
-                <div class="asset-track-toolbar">
-                  <div class="asset-track-mode-bar">
-                    <button class="action-btn" id="asset-track-user-tab" type="button">User</button>
-                    <button class="secondary-btn" id="asset-track-fleet-tab" type="button">Fleet</button>
-                    <button class="secondary-btn" id="asset-track-refresh-btn" type="button">Refresh</button>
-                  </div>
-                  <div class="asset-track-export-copy">
-                    <button class="secondary-btn" id="asset-track-export-pdf-btn" type="button">Export PDF</button>
-                    <button class="secondary-btn" id="asset-track-export-excel-btn" type="button">Export Excel</button>
-                    <button class="secondary-btn" id="asset-track-email-btn" type="button">Export to Email</button>
+              <div class="asset-track-input-panel" id="asset-track-input-panel">
+                <div class="asset-track-panel" id="asset-track-user-panel" style="display:none;">
+                  <div class="field">
+                    <label for="asset-track-fleet-input" style="color:var(--muted);">Add Fleet Numbers (one per line)</label>
+                    <textarea id="asset-track-fleet-input" placeholder="Enter one fleet number per line"></textarea>
                   </div>
                 </div>
 
-                <div class="asset-track-panel" id="asset-track-user-panel">
-                  <label for="asset-track-imei-input">IMEI Input</label>
-                  <textarea
-                    id="asset-track-imei-input"
-                    placeholder="Enter one IMEI per line, or separate entries with commas."
-                  ></textarea>
-                  <p class="asset-track-helper" id="asset-track-imei-helper">
-                    Enter up to 20 IMEIs per run. Admin users can enter up to 2000.
-                  </p>
-                </div>
-
-                <div class="asset-track-panel" id="asset-track-fleet-panel" style="display: none;">
-                  <p class="asset-track-helper">
-                    Fleet mode checks the active fleet, validates linked hardware, and renders the tracker table only after all matching devices are confirmed.
-                  </p>
+                <div class="asset-track-panel" id="asset-track-fleet-panel" style="display:none;">
+                  <p class="asset-track-helper">Fleet mode checks the active fleet, validates linked hardware, and renders the tracker table only after all matching devices are confirmed.</p>
                 </div>
 
                 <div class="asset-track-run-row">
-                  <button class="action-btn" id="asset-track-run-btn" type="button" style="display: none;">Run</button>
+                  <button class="action-btn" id="asset-track-run-btn" type="button" style="display:none;">Run</button>
                 </div>
 
                 <p class="message" id="asset-track-message"></p>
@@ -1597,16 +1343,14 @@
             </div>
           </section>
 
-          <section class="section asset-track-results-panel" id="asset-track-results-view" style="display: none;">
+          <section class="section asset-track-results-panel" id="asset-track-results-view" style="display:none;">
             <div class="section-head">
               <div>
                 <div class="section-kicker">Result Table</div>
                 <h3 class="section-title">Filtered export-ready asset list</h3>
               </div>
             </div>
-
             <p class="asset-track-summary" id="asset-track-summary">No Asset Track analysis has been run yet.</p>
-
             <div class="table-wrap asset-track-table-wrap">
               <table class="asset-track-table" id="asset-track-table">
                 <thead id="asset-track-results-head"></thead>
@@ -1615,7 +1359,8 @@
             </div>
           </section>
 
-          <section class="section" id="admin-view" style="display: none;">
+          <!-- ADMIN VIEW -->
+          <section class="section" id="admin-view" style="display:none;">
             <div class="section-head">
               <div>
                 <div class="section-kicker">Admin</div>
@@ -1623,99 +1368,69 @@
               </div>
             </div>
 
-            <div>
-              <p class="section-subcopy">
-                Add or edit approved users first, then review the approved user register and access history below.
-              </p>
+            <p class="section-subcopy">Add or edit approved users, then review the user register and access history below.</p>
 
-              <form id="approved-user-form">
-                <div class="meta-grid">
-                  <div class="field">
-                    <label for="approved-first-name">First Name</label>
-                    <input id="approved-first-name" type="text" required />
-                  </div>
-                  <div class="field">
-                    <label for="approved-last-name">Last Name</label>
-                    <input id="approved-last-name" type="text" required />
-                  </div>
-                  <div class="field">
-                    <label for="approved-username">Username</label>
-                    <input id="approved-username" type="text" required />
-                  </div>
-                  <div class="field">
-                    <label for="approved-password">Password</label>
-                    <input id="approved-password" type="password" placeholder="Set password" />
-                  </div>
-                  <div class="field">
-                    <label for="approved-role">Role</label>
-                    <select id="approved-role" required>
-                      <option value="user">User</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </div>
-                  <div class="field">
-                    <label for="approved-status">Status</label>
-                    <select id="approved-status" required>
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                    </select>
-                  </div>
+            <form id="approved-user-form">
+              <div class="meta-grid">
+                <div class="field dark-field"><label for="approved-first-name">First Name</label><input id="approved-first-name" type="text" required /></div>
+                <div class="field dark-field"><label for="approved-last-name">Last Name</label><input id="approved-last-name" type="text" required /></div>
+                <div class="field dark-field"><label for="approved-username">Username</label><input id="approved-username" type="text" required /></div>
+                <div class="field dark-field"><label for="approved-password">Password</label><input id="approved-password" type="password" placeholder="Set password" /></div>
+                <div class="field dark-field"><label for="approved-role">Role</label>
+                  <select id="approved-role" required>
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
+                    <option value="superuser">Superuser</option>
+                  </select>
                 </div>
-
-                <div class="admin-form-actions" style="margin-top: 14px;">
-                  <button class="secondary-btn" id="import-users-btn" type="button">Import Users</button>
-                  <button class="action-btn" type="submit">Save User</button>
-                  <input class="utility-input" id="import-users-file" type="file" accept=".xlsx,.xls,.csv" />
+                <div class="field dark-field"><label for="approved-status">Status</label>
+                  <select id="approved-status" required>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
                 </div>
-              </form>
-
-              <h3 style="margin-top: 24px;">Approved Users</h3>
-              <div class="table-wrap" style="margin-top: 18px;">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>First Name</th>
-                      <th>Last Name</th>
-                      <th>Username</th>
-                      <th>Role</th>
-                      <th>Status</th>
-                      <th>Updated By</th>
-                      <th>Updated Date</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody id="approved-users-table-body"></tbody>
-                </table>
               </div>
+              <div class="admin-form-actions">
+                <button class="action-btn" type="submit">Save User</button>
+                <button class="secondary-btn" id="import-users-btn" type="button">Import Users</button>
+                <input class="utility-input" id="import-users-file" type="file" accept=".xlsx,.xls,.csv" />
+              </div>
+            </form>
+
+            <h3 style="margin-top:28px;margin-bottom:14px;font-size:14px;font-weight:700;">Approved Users</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>First Name</th><th>Last Name</th><th>Username</th>
+                    <th>Role</th><th>Status</th><th>Updated By</th><th>Updated Date</th><th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="approved-users-table-body"></tbody>
+              </table>
             </div>
 
-            <div style="margin-top: 24px;">
-              <h3>Access History</h3>
-
-              <div class="field" style="max-width: 280px;">
+            <div style="margin-top:28px;">
+              <h3 style="margin-bottom:14px;font-size:14px;font-weight:700;">Access History</h3>
+              <div class="field dark-field" style="max-width:260px;margin-bottom:14px;">
                 <label for="history-user-filter">Filter by user</label>
                 <select id="history-user-filter">
                   <option value="">All Users</option>
                 </select>
               </div>
-
-              <div class="table-wrap" style="margin-top: 18px;">
+              <div class="table-wrap">
                 <table>
                   <thead>
-                    <tr>
-                      <th>User</th>
-                      <th>Date / Time</th>
-                      <th>Asset Requested</th>
-                    </tr>
+                    <tr><th>User</th><th>Date / Time</th><th>Asset Requested</th></tr>
                   </thead>
                   <tbody id="history-table-body"></tbody>
                 </table>
               </div>
             </div>
-
           </section>
 
-          <section class="section" id="vpm-view" style="display: none;">
+          <!-- VPM VIEW -->
+          <section class="section" id="vpm-view" style="display:none;">
             <div class="section-head">
               <div>
                 <div class="section-kicker">VPM</div>
@@ -1727,18 +1442,18 @@
               <button class="action-btn" id="vpm-user-input-tab" type="button">User Input</button>
               <button class="action-btn" id="vpm-fleet-evaluation-tab" type="button">Fleet Evaluation</button>
               <button class="action-btn" id="run-vpm-btn" type="button">Run</button>
-              <button class="secondary-btn" id="cancel-vpm-btn" type="button" style="display: none;">Cancel</button>
+              <button class="secondary-btn" id="cancel-vpm-btn" type="button" style="display:none;">Cancel</button>
               <button class="action-btn" id="vpm-export-btn" type="button">Export Data</button>
             </div>
 
-            <div class="vpm-panel" id="vpm-user-input-panel" style="display: none;">
+            <div class="vpm-panel" id="vpm-user-input-panel" style="display:none;">
               <div class="field">
-                <label for="vpm-imei-input">Add IMEI (up to 2000 IMEI)</label>
+                <label for="vpm-imei-input" style="color:var(--muted);">Add IMEI (up to 2000 IMEI)</label>
                 <textarea id="vpm-imei-input" placeholder="Enter one IMEI per line"></textarea>
               </div>
             </div>
 
-            <section class="section" style="margin-top: 24px;">
+            <section class="section" style="margin-top:16px;">
               <div class="section-head">
                 <div>
                   <div class="section-kicker">Results</div>
@@ -1754,19 +1469,22 @@
               </div>
             </section>
           </section>
-        </div>
-      </div>
-    </main>
-  </div>
 
+        </div><!-- /stack -->
+      </div><!-- /page / app-shell -->
+
+    </main><!-- /main -->
+  </div><!-- /shell -->
+
+  <!-- DEBUG WINDOW -->
   <aside class="debug-window" id="debug-window" aria-hidden="true">
     <div class="debug-window-header" id="debug-window-handle">
       <div class="debug-window-title">
         <strong>Debug</strong>
-        <span>Live admin inspector and current snapshot</span>
+        <span>Live admin inspector &amp; snapshot</span>
       </div>
       <div class="debug-window-actions">
-        <button class="debug-close-btn" id="debug-close-btn" type="button">X</button>
+        <button class="debug-close-btn" id="debug-close-btn" type="button">✕</button>
       </div>
     </div>
     <div class="debug-window-body">
@@ -1776,14 +1494,13 @@
           <h3 id="debug-window-panel-title">Live Admin Inspector</h3>
           <p id="debug-window-panel-subcopy">Open the debug panel to inspect the latest request payloads and lookup results.</p>
         </div>
-
         <div class="debug-preview">
           <div class="mini-metric">
             <span>Last Event</span>
             <strong id="debug-window-event-title">No debug entries.</strong>
           </div>
           <div class="debug-log-panel">
-            <span>Latest Output</span>
+            <span style="font-size:11px;color:var(--muted);">Latest Output</span>
             <pre id="debug-window-event-output">No debug entries.</pre>
           </div>
         </div>
@@ -1794,28 +1511,12 @@
           <div class="section-kicker">Current Snapshot</div>
           <h3 id="hero-current-asset">No asset loaded</h3>
         </div>
-
         <div class="debug-snapshot-grid">
-          <div class="mini-metric">
-            <span>Request Time</span>
-            <strong id="hero-request-time">--</strong>
-          </div>
-          <div class="mini-metric">
-            <span>Lookup Status</span>
-            <strong id="hero-lookup-status">Awaiting search</strong>
-          </div>
-          <div class="mini-metric">
-            <span>Fleet Number</span>
-            <strong id="hero-fleet-number">--</strong>
-          </div>
-          <div class="mini-metric">
-            <span>Vehicle ID</span>
-            <strong id="hero-vehicle-id">--</strong>
-          </div>
-          <div class="mini-metric">
-            <span>Render Time</span>
-            <strong id="hero-render-time">--</strong>
-          </div>
+          <div class="mini-metric"><span>Request Time</span><strong id="hero-request-time">--</strong></div>
+          <div class="mini-metric"><span>Lookup Status</span><strong id="hero-lookup-status">Awaiting search</strong></div>
+          <div class="mini-metric"><span>Fleet Number</span><strong id="hero-fleet-number">--</strong></div>
+          <div class="mini-metric"><span>Vehicle ID</span><strong id="hero-vehicle-id">--</strong></div>
+          <div class="mini-metric"><span>Render Time</span><strong id="hero-render-time">--</strong></div>
         </div>
       </section>
 
@@ -1823,6 +1524,7 @@
     </div>
   </aside>
 
+  <!-- LIGHTBOX -->
   <div class="lightbox-overlay" id="lightbox-overlay" style="display:none;">
     <div class="lightbox-content">
       <button class="lightbox-close" id="lightbox-close" type="button">✕</button>
@@ -1833,8 +1535,70 @@
     </div>
   </div>
 
- <script src="./lib/html2canvas.min.js" defer></script>
- <script src="./lib/jspdf.umd.min.js" defer></script>
- <script src="./app.js?v=7" defer></script>
+  <script src="./lib/html2canvas.min.js" defer></script>
+  <script src="./lib/jspdf.umd.min.js" defer></script>
+  <script src="./app.js?v=8" defer></script>
+
+  <script>
+    // Show sidebar + topbar actions after login; wire nav active states
+    // These complement app.js without replacing it.
+    (function() {
+      var sidebarShown = false;
+
+      function showSidebar(user) {
+        if (sidebarShown) return;
+        sidebarShown = true;
+        var sb = document.getElementById('sidebar');
+        var su = document.getElementById('sidebar-user');
+        var av = document.getElementById('user-avatar');
+        var dn = document.getElementById('user-display-name');
+        var rl = document.getElementById('user-role-label');
+        if (sb) sb.style.display = 'flex';
+        if (su) su.style.display = 'flex';
+        if (user) {
+          var initials = ((user.firstName||'?')[0] + (user.lastName||'?')[0]).toUpperCase();
+          if (av) av.textContent = initials;
+          if (dn) dn.textContent = (user.firstName||'') + ' ' + (user.lastName||'');
+          if (rl) rl.textContent = user.role || 'user';
+        }
+      }
+
+      // Watch for app-shell to become visible (login success)
+      var appShell = document.getElementById('app-shell');
+      if (appShell) {
+        var obs = new MutationObserver(function() {
+          var style = window.getComputedStyle(appShell);
+          if (style.display !== 'none') {
+            // Try to get user from app state
+            var user = window.state && window.state.currentSessionUser;
+            showSidebar(user || {});
+            obs.disconnect();
+          }
+        });
+        obs.observe(appShell, { attributes: true, attributeFilter: ['style'] });
+      }
+
+      // Nav active state wiring — keeps sidebar in sync with app.js tab switching
+      var navMap = {
+        'standard-tab':    'Asset Snapshot',
+        'asset-track-tab': 'Asset Track',
+        'admin-tab':       'Admin',
+        'vpm-tab':         'VPM Analysis',
+        'diagnostics-tab': 'Diagnostics',
+      };
+
+      document.addEventListener('click', function(e) {
+        var btn = e.target.closest('[id$="-tab"]');
+        if (!btn) return;
+        var id = btn.id;
+        if (!navMap[id]) return;
+        document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+        var sidebarBtn = document.getElementById(id);
+        if (sidebarBtn) sidebarBtn.classList.add('active');
+        var title = document.getElementById('topbar-page-title');
+        if (title) title.textContent = navMap[id];
+      });
+    })();
+  </script>
 </body>
 </html>
