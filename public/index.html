@@ -1335,7 +1335,10 @@
                   <div class="sd-grid">
                     <div class="sd-item"><span>SD Card 1</span><strong id="view-sd1"></strong></div>
                     <div class="sd-item"><span>SD Card 2</span><strong id="view-sd2"></strong></div>
+                    <div class="sd-item"><span>SD Card 1 Size</span><strong id="view-sd1-size"></strong></div>
+                    <div class="sd-item"><span>SD Card 2 Size</span><strong id="view-sd2-size"></strong></div>
                   </div>
+                  <strong id="view-sd-overall" style="display:none;"></strong>
                 </section>
 
                 <section class="section" id="camera-section">
@@ -1408,10 +1411,34 @@
                   </div>
                   <div class="location-layout">
                     <div class="map-panel" id="map-panel">
-                      <div class="map-badge" id="map-badge" style="display:none;"></div>
-                      <iframe id="map-iframe" title="Asset Location" style="display:none;"></iframe>
+                      <div class="map-badge" id="map-badge" style="display:none;">Last Location</div>
+                      <iframe
+                        id="view-map-iframe"
+                        title="Last known location map"
+                        loading="lazy"
+                        referrerpolicy="no-referrer-when-downgrade"
+                        src=""
+                        style="width:100%;height:100%;min-height:280px;border:0;display:block;">
+                      </iframe>
                     </div>
-                    <div class="location-meta" id="location-meta"></div>
+                    <div class="location-meta" id="location-meta">
+                      <div class="location-card">
+                        <span>Location</span>
+                        <strong id="view-location"></strong>
+                      </div>
+                      <div class="location-card">
+                        <span>Latitude</span>
+                        <strong id="view-latitude"></strong>
+                      </div>
+                      <div class="location-card">
+                        <span>Longitude</span>
+                        <strong id="view-longitude"></strong>
+                      </div>
+                      <div class="location-card">
+                        <span>Last GPS Time</span>
+                        <strong id="view-gps-time"></strong>
+                      </div>
+                    </div>
                   </div>
                 </section>
 
