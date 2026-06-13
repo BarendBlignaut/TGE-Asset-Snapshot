@@ -1921,121 +1921,8 @@ function handleAssetSearchError(assetNumber, error) {
  * We fetch each image through the worker proxy (or directly for data URLs),
  * draw it to an offscreen canvas, and swap the src before capturing.
  */
-async function prepareImagesForPdf(imgIds) {
-  const restoreFns = [];
 
-  for (const id of imgIds) {
-    const img = document.getElementById(id);
-    const src = img ? img.getAttribute("src") : null;
-
-    console.log("[PDF] checking", id, "display:", img ? img.style.display : "no element", "src prefix:", src ? src.substring(0, 30) : "none");
-
-    if (!img || img.style.display === "none" || !src) {
-      console.log("[PDF] skipping", id);
-      continue;
-    }
-
-    try {
-      let dataUrl;
-
-      if (src.startsWith("data:image/svg")) {
-        console.log("[PDF] converting SVG->JPEG for", id);
-        dataUrl = await svgDataUrlToJpeg(src);
-        console.log("[PDF]", id, "SVG converted:", dataUrl ? "OK (" + dataUrl.substring(0,30) + "...)" : "FAILED");
-      } else if (src.startsWith("data:")) {
-        console.log("[PDF]", id, "already raster data URL, no swap needed");
-        continue;
-      } else {
-        console.log("[PDF] fetching via proxy for", id, src.substring(0, 60));
-        dataUrl = await fetchImageViaProxy(src);
-        console.log("[PDF]", id, "proxy result:", dataUrl ? "OK" : "FAILED");
-      }
-
-      if (!dataUrl) {
-        console.warn("[PDF]", id, "dataUrl is null, skipping");
-        continue;
-      }
-
-      // Set src BEFORE attaching onload to avoid race condition
-      const originalSrc = src;
-      img.removeAttribute("crossorigin");
-
-      await new Promise((resolve) => {
-        if (img.complete && img.src === dataUrl) {
-          resolve();
-          return;
-        }
-        img.onload = () => { img.onload = null; img.onerror = null; resolve(); };
-        img.onerror = () => { img.onload = null; img.onerror = null; resolve(); };
-        img.src = dataUrl;
-      });
-
-      console.log("[PDF]", id, "src swapped successfully");
-      restoreFns.push(() => { img.src = originalSrc; });
-
-    } catch (e) {
-      console.error("[PDF] error for", id, e);
-    }
-  }
-
-  console.log("[PDF] prepareImagesForPdf done,", restoreFns.length, "images converted");
-  return function restoreImages() {
-    restoreFns.forEach((fn) => fn());
-  };
-}
-
-function svgDataUrlToJpeg(svgDataUrl) {
-  return new Promise((resolve, reject) => {
-    try {
-      const base64 = svgDataUrl.split(",")[1];
-      if (!base64) { reject(new Error("no base64 data")); return; }
-
-      const svgStr = decodeURIComponent(escape(atob(base64)));
-      const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
-      const blobUrl = URL.createObjectURL(blob);
-      console.log("[PDF] svgDataUrlToJpeg: blobUrl created", blobUrl.substring(0,40));
-
-      const tmp = new Image();
-
-      tmp.onload = () => {
-        console.log("[PDF] SVG image loaded, natural size:", tmp.naturalWidth, "x", tmp.naturalHeight);
-        const W = Math.max(tmp.naturalWidth, 320) || 640;
-        const H = Math.max(tmp.naturalHeight, 180) || 360;
-        const canvas = document.createElement("canvas");
-        canvas.width = W;
-        canvas.height = H;
-        const ctx = canvas.getContext("2d");
-        ctx.fillStyle = "#1a2e20";
-        ctx.fillRect(0, 0, W, H);
-        try {
-          ctx.drawImage(tmp, 0, 0, W, H);
-        } catch(drawErr) {
-          console.warn("[PDF] drawImage error:", drawErr);
-        }
-        URL.revokeObjectURL(blobUrl);
-        try {
-          const result = canvas.toDataURL("image/jpeg", 0.88);
-          console.log("[PDF] toDataURL OK, length:", result.length);
-          resolve(result);
-        } catch (taintErr) {
-          console.error("[PDF] canvas tainted:", taintErr);
-          resolve(null);
-        }
-      };
-
-      tmp.onerror = (e) => {
-        console.error("[PDF] SVG image load error:", e);
-        URL.revokeObjectURL(blobUrl);
-        reject(new Error("SVG image failed to load"));
-      };
-
-      tmp.src = blobUrl;
-    } catch (e) {
-      reject(e);
-    }
-  });
-}
-
+// ── PDF IMAGE HELPERS ────────────────────────────────────────────────────────
 async function fetchImageViaProxy(url) {
   try {
     const res = await fetch("/api/image-proxy", {
@@ -2056,84 +1943,325 @@ async function fetchImageViaProxy(url) {
   }
 }
 
+function svgDataUrlToJpeg(svgDataUrl) {
+  return new Promise((resolve, reject) => {
+    try {
+      const base64 = svgDataUrl.split(",")[1];
+      if (!base64) { resolve(null); return; }
+      const svgStr = decodeURIComponent(escape(atob(base64)));
+      const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+      const blobUrl = URL.createObjectURL(blob);
+      const tmp = new Image();
+      tmp.onload = () => {
+        const W = Math.max(tmp.naturalWidth || 0, 320);
+        const H = Math.max(tmp.naturalHeight || 0, 180);
+        const canvas = document.createElement("canvas");
+        canvas.width = W; canvas.height = H;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#1a2e20";
+        ctx.fillRect(0, 0, W, H);
+        try { ctx.drawImage(tmp, 0, 0, W, H); } catch(e) {}
+        URL.revokeObjectURL(blobUrl);
+        try { resolve(canvas.toDataURL("image/jpeg", 0.88)); }
+        catch(e) { resolve(null); }
+      };
+      tmp.onerror = () => { URL.revokeObjectURL(blobUrl); resolve(null); };
+      tmp.src = blobUrl;
+    } catch(e) { reject(e); }
+  });
+}
+
+
+
+async function cameraImageToDataUrl(src) {
+  if (!src) return null;
+
+  // External URL — fetch via worker proxy
+  if (src.startsWith("http://") || src.startsWith("https://")) {
+    return await fetchImageViaProxy(src);
+  }
+
+  // SVG data URL — rasterise via Blob URL (avoids canvas taint)
+  if (src.startsWith("data:image/svg")) {
+    return await svgDataUrlToJpeg(src);
+  }
+
+  // Already a raster data URL
+  if (src.startsWith("data:image/jpeg") || src.startsWith("data:image/png") || src.startsWith("data:image/webp")) {
+    return src;
+  }
+
+  return null;
+}
+
+async function fetchAllCameraImages() {
+  const results = [];
+  for (let i = 0; i < cameraSlotIds.length; i++) {
+    const img = document.getElementById(cameraSlotIds[i]);
+    const src = img && img.style.display !== "none" ? img.getAttribute("src") : null;
+    const dataUrl = src ? await cameraImageToDataUrl(src) : null;
+    results.push({ label: cameraSlotNames[i], dataUrl });
+  }
+  return results;
+}
+
+// Build a clean structured PDF using jsPDF directly — no html2canvas
+async function buildSnapshotPdf() {
+  const lookup = state.activeAssetLookup;
+  if (!lookup) throw new Error("No asset loaded.");
+  if (typeof jspdf === "undefined") throw new Error("PDF library not loaded.");
+
+  const { jsPDF } = jspdf;
+  const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+
+  const PW = 595.28;
+  const PH = 841.89;
+  const ML = 36, MR = 36, MT = 36;
+  const CW = PW - ML - MR;
+  let y = MT;
+
+  const GREEN  = [0, 90, 45];
+  const YELLOW = [180, 220, 30];
+  const INK    = [20, 30, 24];
+  const MUTED  = [100, 110, 105];
+  const LINE   = [215, 226, 219];
+  const SURF   = [245, 249, 246];
+
+  function newPage() {
+    pdf.addPage();
+    y = MT;
+  }
+
+  function checkY(needed) {
+    if (y + needed > PH - 36) newPage();
+  }
+
+  function sectionHeader(kicker, title) {
+    checkY(40);
+    pdf.setFontSize(7).setFont(undefined, "bold").setTextColor(...MUTED);
+    pdf.text(kicker.toUpperCase(), ML, y);
+    y += 12;
+    pdf.setFontSize(11).setFont(undefined, "bold").setTextColor(...INK);
+    pdf.text(title, ML, y);
+    y += 14;
+    pdf.setDrawColor(...LINE).setLineWidth(0.5);
+    pdf.line(ML, y, ML + CW, y);
+    y += 10;
+  }
+
+  function dataGrid(items, cols) {
+    const colW = CW / cols;
+    let col = 0;
+    const rowH = 32;
+    let rowStartY = y;
+
+    for (const item of items) {
+      const x = ML + col * colW;
+      checkY(rowH);
+      if (col === 0 && items.indexOf(item) > 0) rowStartY = y;
+
+      pdf.setFontSize(7).setFont(undefined, "bold").setTextColor(...MUTED);
+      pdf.text(String(item.label || "").toUpperCase(), x + 6, rowStartY + 10);
+      pdf.setFontSize(10).setFont(undefined, "bold").setTextColor(...INK);
+      pdf.text(String(item.value || "—"), x + 6, rowStartY + 24);
+
+      col++;
+      if (col >= cols) {
+        col = 0;
+        y = rowStartY + rowH + 6;
+        rowStartY = y;
+      }
+    }
+    if (col > 0) y = rowStartY + rowH + 6;
+    y += 4;
+  }
+
+  function pill(text, x, py, bgR, bgG, bgB) {
+    const w = pdf.getStringUnitWidth(text) * 8 + 10;
+    pdf.setFillColor(bgR, bgG, bgB).roundedRect(x, py - 8, w, 12, 3, 3, "F");
+    pdf.setFontSize(7).setFont(undefined, "bold").setTextColor(255, 255, 255);
+    pdf.text(text, x + 5, py);
+    return w + 6;
+  }
+
+  // ── HEADER ───────────────────────────────────────────────────────────────
+  pdf.setFillColor(...GREEN).rect(0, 0, PW, 52, "F");
+  pdf.setFontSize(15).setFont(undefined, "bold").setTextColor(255, 255, 255);
+  pdf.text("TGE Asset Snapshot", ML, 24);
+  pdf.setFontSize(8).setFont(undefined, "normal").setTextColor(200, 230, 210);
+  const vehicle = lookup.vehicle || {};
+  const headerLine = [
+    vehicle.assetNumber ? `Fleet ${vehicle.assetNumber}` : "",
+    vehicle.registration || "",
+    vehicle.make || "",
+    vehicle.model || "",
+  ].filter(Boolean).join("  ·  ");
+  pdf.text(headerLine, ML, 36);
+  pdf.setFontSize(7).setTextColor(160, 200, 175);
+  pdf.text(`Generated: ${new Date().toLocaleString("en-AU", { hour12: false })}`, ML, 47);
+  y = 68;
+
+  // ── VEHICLE DETAILS ──────────────────────────────────────────────────────
+  sectionHeader("Vehicle Information", "Asset Details");
+  dataGrid([
+    { label: "Fleet Number",   value: vehicle.assetNumber },
+    { label: "Registration",   value: vehicle.registration },
+    { label: "VIN",            value: vehicle.vin },
+    { label: "Make",           value: vehicle.make },
+    { label: "Model",          value: vehicle.model },
+    { label: "System ID",      value: vehicle.vehicleId },
+    { label: "Year",           value: vehicle.yearOfManufacture },
+  ], 4);
+
+  // Devices
+  const devices = lookup.devices || {};
+  const devRows = [
+    { label: "Tracker IMEI",   value: devices.tracker?.imei },
+    { label: "Tracker Serial", value: devices.tracker?.serialNumber },
+    { label: "Camera IMEI",    value: devices.camera?.imei },
+    { label: "Camera Serial",  value: devices.camera?.serialNumber },
+    { label: "Tablet IMEI",    value: devices.tablet?.imei },
+    { label: "Tablet Serial",  value: devices.tablet?.serialNumber },
+  ];
+  dataGrid(devRows, 3);
+  y += 6;
+
+  // ── METRICS ──────────────────────────────────────────────────────────────
+  sectionHeader("Performance", "Vehicle Tracking Metrics");
+  const meters = lookup.meters || {};
+  const hermesStats = lookup.hermesStats || {};
+  const metricItems = [
+    { label: "Driver",        value: hermesStats.driver },
+    { label: "Engine Hours",  value: meters.engineHours },
+    { label: "Ignition",      value: hermesStats.ignition },
+    { label: "Odometer",      value: meters.odometer },
+    { label: "Oil Pressure",  value: hermesStats.oilPressure },
+    { label: "Oil Temp",      value: hermesStats.oilTemp },
+    { label: "RPM",           value: hermesStats.rpm },
+    { label: "Speed",         value: hermesStats.speed },
+    { label: "Movement",      value: hermesStats.movement },
+    { label: "Engine Load",   value: hermesStats.engineLoad },
+    { label: "Gear",          value: hermesStats.gear },
+    { label: "Fuel Level",    value: hermesStats.fuelLevel },
+  ].filter(i => i.value !== undefined && i.value !== null && i.value !== "");
+  dataGrid(metricItems, 4);
+  y += 6;
+
+  // ── CAMERA SNAPSHOTS ─────────────────────────────────────────────────────
+  sectionHeader("Evidence", "Camera Snapshots");
+  showAssetSearchMessage("Loading camera images for PDF...", false);
+
+  const camImages = await fetchAllCameraImages();
+  const hasImages = camImages.some(c => c.dataUrl);
+
+  if (!hasImages) {
+    pdf.setFontSize(9).setFont(undefined, "normal").setTextColor(...MUTED);
+    pdf.text("No camera images available for this asset.", ML, y + 10);
+    y += 24;
+  } else {
+    // 2 images per row
+    const imgW = (CW - 10) / 2;
+    const imgH = imgW * (9 / 16);
+    let col = 0;
+    let rowY = y;
+
+    for (const cam of camImages) {
+      checkY(imgH + 22);
+      if (col === 0) rowY = y;
+
+      const x = ML + col * (imgW + 10);
+
+      if (cam.dataUrl) {
+        try {
+          const fmt = cam.dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
+          pdf.addImage(cam.dataUrl, fmt, x, rowY, imgW, imgH);
+        } catch (e) {
+          pdf.setFillColor(...SURF).rect(x, rowY, imgW, imgH, "F");
+          pdf.setDrawColor(...LINE).rect(x, rowY, imgW, imgH);
+          pdf.setFontSize(8).setTextColor(...MUTED).text("Image unavailable", x + imgW / 2, rowY + imgH / 2, { align: "center" });
+        }
+      } else {
+        pdf.setFillColor(...SURF).rect(x, rowY, imgW, imgH, "F");
+        pdf.setDrawColor(...LINE).setLineWidth(0.4).rect(x, rowY, imgW, imgH);
+        pdf.setFontSize(8).setFont(undefined, "normal").setTextColor(...MUTED);
+        pdf.text("No image", x + imgW / 2, rowY + imgH / 2, { align: "center" });
+      }
+
+      // Label below image
+      pdf.setFontSize(7).setFont(undefined, "bold").setTextColor(...MUTED);
+      pdf.text(cam.label.toUpperCase(), x + 2, rowY + imgH + 9);
+
+      col++;
+      if (col >= 2) {
+        col = 0;
+        y = rowY + imgH + 20;
+      }
+    }
+    if (col > 0) y = rowY + imgH + 20;
+    y += 6;
+  }
+
+  // ── GPIO ─────────────────────────────────────────────────────────────────
+  checkY(60);
+  sectionHeader("GPIO Data State", "Digital Inputs & Outputs");
+  const gpio = lookup.gpio || {};
+  const gpioItems = [
+    { label: "Seatbelt",     value: gpio.seatbelt },
+    { label: "Door",         value: gpio.door },
+    { label: "Park Brake",   value: gpio.parkBrake },
+    { label: "Event Button", value: gpio.eventButton },
+    { label: "Reverse",      value: gpio.reverse },
+    { label: "Output 1",     value: gpio.output1 },
+  ].filter(i => i.value !== undefined && i.value !== null);
+  if (gpioItems.length) dataGrid(gpioItems, 3);
+  else {
+    pdf.setFontSize(9).setTextColor(...MUTED).text("No GPIO data available.", ML, y + 10);
+    y += 24;
+  }
+  y += 4;
+
+  // ── SD CARD ──────────────────────────────────────────────────────────────
+  const cameraStats = lookup.cameraStats || {};
+  if (cameraStats.sdCard1 || cameraStats.sdCard2) {
+    checkY(50);
+    sectionHeader("Storage Diagnostics", "SD Card Status");
+    dataGrid([
+      { label: "SD Card 1", value: cameraStats.sdCard1?.present ? `Present — ${cameraStats.sdCard1?.totalSizeDisplay || ""}` : "Not present" },
+      { label: "SD Card 2", value: cameraStats.sdCard2?.present ? `Present — ${cameraStats.sdCard2?.totalSizeDisplay || ""}` : "Not present" },
+    ], 2);
+    y += 4;
+  }
+
+  // ── FOOTER ───────────────────────────────────────────────────────────────
+  const pageCount = pdf.getNumberOfPages();
+  for (let p = 1; p <= pageCount; p++) {
+    pdf.setPage(p);
+    pdf.setFontSize(7).setFont(undefined, "normal").setTextColor(...MUTED);
+    pdf.text(`TGE Asset Snapshot  ·  Page ${p} of ${pageCount}`, ML, PH - 18);
+    pdf.text(`Fleet ${vehicle.assetNumber || "—"}  ·  ${vehicle.registration || "—"}`, PW - MR, PH - 18, { align: "right" });
+  }
+
+  return pdf;
+}
+
+
 async function handleExportPdf() {
   if (!state.activeAssetLookup) {
     showAssetSearchMessage("Load an asset before exporting the PDF.");
     return;
   }
-
-  if (typeof html2canvas === "undefined" || typeof jspdf === "undefined") {
-    showAssetSearchMessage("PDF libraries are still loading. Please try again.");
+  if (typeof jspdf === "undefined") {
+    showAssetSearchMessage("PDF library is still loading. Please try again.");
     return;
   }
-
   try {
-    showAssetSearchMessage("Generating PDF...", false);
-    writeDebug("PDF export started", "Capturing snapshot...");
-
-    const assetShell = getNode("asset-shell");
-    if (!assetShell) {
-      showAssetSearchMessage("No asset content to export.");
-      return;
-    }
-
-    // Convert camera images to canvas-safe data URLs before capture
-    showAssetSearchMessage("Preparing camera images...", false);
-    const restoreImages = await prepareImagesForPdf(cameraSlotIds);
-
-    const canvas = await html2canvas(assetShell, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: "#f5f8f6",
-      logging: false,
-    });
-
-    restoreImages();
-
-    const imgData = canvas.toDataURL("image/jpeg", 0.92);
-    const imgWidth = canvas.width;
-    const imgHeight = canvas.height;
-
-    const pdfWidth = 595.28;
-    const pdfPadding = 20;
-    const contentWidth = pdfWidth - (pdfPadding * 2);
-    const scaleFactor = contentWidth / imgWidth;
-    const scaledHeight = imgHeight * scaleFactor;
-    const pageHeight = 841.89;
-    const contentPageHeight = pageHeight - (pdfPadding * 2);
-
-    const { jsPDF } = jspdf;
-    const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-
-    let yOffset = 0;
-    let pageNum = 0;
-
-    while (yOffset < scaledHeight) {
-      if (pageNum > 0) pdf.addPage();
-
-      const sourceY = yOffset / scaleFactor;
-      const sourceH = Math.min(contentPageHeight / scaleFactor, imgHeight - sourceY);
-      const drawH = sourceH * scaleFactor;
-
-      const sliceCanvas = document.createElement("canvas");
-      sliceCanvas.width = imgWidth;
-      sliceCanvas.height = sourceH;
-      const ctx = sliceCanvas.getContext("2d");
-      ctx.drawImage(canvas, 0, sourceY, imgWidth, sourceH, 0, 0, imgWidth, sourceH);
-
-      const sliceData = sliceCanvas.toDataURL("image/jpeg", 0.92);
-      pdf.addImage(sliceData, "JPEG", pdfPadding, pdfPadding, contentWidth, drawH);
-
-      yOffset += contentPageHeight;
-      pageNum++;
-    }
-
+    showAssetSearchMessage("Building PDF...", false);
+    writeDebug("PDF export started", "Building structured PDF...");
+    const pdf = await buildSnapshotPdf();
     const vehicleLabel = state.activeAssetLookup.vehicle?.assetNumber || "snapshot";
     pdf.save(`tge-asset-snapshot-${vehicleLabel}.pdf`);
-
     showAssetSearchMessage("PDF exported successfully.", false);
-    writeDebug("PDF export completed", `${pageNum} page(s) generated.`);
+    writeDebug("PDF export completed", "Done.");
   } catch (error) {
     showAssetSearchMessage(error.message || "PDF export failed.");
     writeDebug("PDF export failed", error.message);
@@ -2155,75 +2283,16 @@ async function handleEmailPdf() {
     showAssetSearchMessage("Load an asset before preparing the email.");
     return;
   }
-
-  if (typeof html2canvas === "undefined" || typeof jspdf === "undefined") {
-    showAssetSearchMessage("PDF libraries are still loading. Please try again.");
+  if (typeof jspdf === "undefined") {
+    showAssetSearchMessage("PDF library is still loading. Please try again.");
     return;
   }
-
   try {
-    showAssetSearchMessage("Generating PDF for email...", false);
-    writeDebug("Email PDF started", "Generating PDF attachment...");
-
-    const assetShell = getNode("asset-shell");
-    if (!assetShell) {
-      showAssetSearchMessage("No asset content to export.");
-      return;
-    }
-
-    // Convert camera images to canvas-safe data URLs before capture
-    showAssetSearchMessage("Preparing camera images for email...", false);
-    const restoreImages = await prepareImagesForPdf(cameraSlotIds);
-
-    const canvas = await html2canvas(assetShell, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: "#f5f8f6",
-      logging: false,
-    });
-
-    restoreImages();
-
-    const imgWidth = canvas.width;
-    const imgHeight = canvas.height;
-    const pdfWidth = 595.28;
-    const pdfPadding = 20;
-    const contentWidth = pdfWidth - (pdfPadding * 2);
-    const scaleFactor = contentWidth / imgWidth;
-    const scaledHeight = imgHeight * scaleFactor;
-    const pageHeight = 841.89;
-    const contentPageHeight = pageHeight - (pdfPadding * 2);
-
-    const { jsPDF } = jspdf;
-    const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-
-    let yOffset = 0;
-    let pageNum = 0;
-
-    while (yOffset < scaledHeight) {
-      if (pageNum > 0) pdf.addPage();
-
-      const sourceY = yOffset / scaleFactor;
-      const sourceH = Math.min(contentPageHeight / scaleFactor, imgHeight - sourceY);
-      const drawH = sourceH * scaleFactor;
-
-      const sliceCanvas = document.createElement("canvas");
-      sliceCanvas.width = imgWidth;
-      sliceCanvas.height = sourceH;
-      const ctx = sliceCanvas.getContext("2d");
-      ctx.drawImage(canvas, 0, sourceY, imgWidth, sourceH, 0, 0, imgWidth, sourceH);
-
-      const sliceData = sliceCanvas.toDataURL("image/jpeg", 0.92);
-      pdf.addImage(sliceData, "JPEG", pdfPadding, pdfPadding, contentWidth, drawH);
-
-      yOffset += contentPageHeight;
-      pageNum++;
-    }
-
+    showAssetSearchMessage("Building PDF for email...", false);
+    writeDebug("Email PDF started", "Building structured PDF...");
+    const pdf = await buildSnapshotPdf();
     const vehicleLabel = state.activeAssetLookup.vehicle?.assetNumber || "snapshot";
     const filename = `tge-asset-snapshot-${vehicleLabel}.pdf`;
-
     const pdfBlob = pdf.output("blob");
     const objectUrl = URL.createObjectURL(pdfBlob);
     const anchor = document.createElement("a");
@@ -2233,7 +2302,6 @@ async function handleEmailPdf() {
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(objectUrl);
-
     const vehicle = state.activeAssetLookup.vehicle || {};
     const subject = encodeURIComponent(`TGE Asset Snapshot - ${vehicle.assetNumber || "Asset"}`);
     const body = encodeURIComponent(
@@ -2246,11 +2314,9 @@ async function handleEmailPdf() {
         `Please find the attached PDF snapshot: ${filename}`,
       ].join("\n"),
     );
-
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
-
     showAssetSearchMessage(`PDF "${filename}" downloaded. Attach it to the email that just opened.`, false);
-    writeDebug("Email PDF completed", `${pageNum} page(s) generated, PDF downloaded as ${filename}.`);
+    writeDebug("Email PDF completed", `PDF downloaded as ${filename}.`);
   } catch (error) {
     showAssetSearchMessage(error.message || "Email PDF failed.");
     writeDebug("Email PDF failed", error.message);
