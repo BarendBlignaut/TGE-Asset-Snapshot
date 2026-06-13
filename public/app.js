@@ -1911,6 +1911,100 @@ function handleAssetSearchError(assetNumber, error) {
   });
 }
 
+
+/**
+ * Converts all camera snapshot <img> elements to canvas-safe data:image/jpeg URLs.
+ * Returns a restore function that puts the original src values back.
+ * This is needed because:
+ *  - SVG data URLs are not rendered by html2canvas
+ *  - External URLs (telematics CDN) are blocked by CORS when html2canvas tries to read pixels
+ * We fetch each image through the worker proxy (or directly for data URLs),
+ * draw it to an offscreen canvas, and swap the src before capturing.
+ */
+async function prepareImagesForPdf(imgIds) {
+  const restoreFns = [];
+
+  for (const id of imgIds) {
+    const img = document.getElementById(id);
+    if (!img || img.style.display === "none" || !img.src) continue;
+
+    const originalSrc = img.src;
+
+    try {
+      let dataUrl;
+
+      if (originalSrc.startsWith("data:image/svg")) {
+        // SVG data URL — draw through an Image onto a canvas to get a raster JPEG
+        dataUrl = await svgDataUrlToJpeg(originalSrc);
+      } else if (originalSrc.startsWith("data:")) {
+        // Already a raster data URL — use as-is
+        dataUrl = originalSrc;
+      } else {
+        // External URL — fetch via worker proxy to avoid CORS, get back as data URL
+        dataUrl = await fetchImageViaProxy(originalSrc);
+      }
+
+      if (dataUrl) {
+        // Swap src and wait for load
+        await new Promise((resolve) => {
+          img.onload = resolve;
+          img.onerror = resolve;
+          img.src = dataUrl;
+        });
+        const captured = dataUrl;
+        restoreFns.push(() => { img.src = originalSrc; });
+      }
+    } catch (e) {
+      // Non-fatal — image will be blank in PDF but export continues
+      console.warn("prepareImagesForPdf: failed for", id, e);
+    }
+  }
+
+  return function restoreImages() {
+    restoreFns.forEach((fn) => fn());
+  };
+}
+
+function svgDataUrlToJpeg(svgDataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const w = img.naturalWidth || 1280;
+      const h = img.naturalHeight || 720;
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#1f2a24";
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL("image/jpeg", 0.88));
+    };
+    img.onerror = reject;
+    img.src = svgDataUrl;
+  });
+}
+
+async function fetchImageViaProxy(url) {
+  try {
+    const res = await fetch("/api/image-proxy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
 async function handleExportPdf() {
   if (!state.activeAssetLookup) {
     showAssetSearchMessage("Load an asset before exporting the PDF.");
@@ -1932,6 +2026,10 @@ async function handleExportPdf() {
       return;
     }
 
+    // Convert camera images to canvas-safe data URLs before capture
+    showAssetSearchMessage("Preparing camera images...", false);
+    const restoreImages = await prepareImagesForPdf(cameraSlotIds);
+
     const canvas = await html2canvas(assetShell, {
       scale: 2,
       useCORS: true,
@@ -1939,6 +2037,8 @@ async function handleExportPdf() {
       backgroundColor: "#f5f8f6",
       logging: false,
     });
+
+    restoreImages();
 
     const imgData = canvas.toDataURL("image/jpeg", 0.92);
     const imgWidth = canvas.width;
@@ -2020,6 +2120,10 @@ async function handleEmailPdf() {
       return;
     }
 
+    // Convert camera images to canvas-safe data URLs before capture
+    showAssetSearchMessage("Preparing camera images for email...", false);
+    const restoreImages = await prepareImagesForPdf(cameraSlotIds);
+
     const canvas = await html2canvas(assetShell, {
       scale: 2,
       useCORS: true,
@@ -2027,6 +2131,8 @@ async function handleEmailPdf() {
       backgroundColor: "#f5f8f6",
       logging: false,
     });
+
+    restoreImages();
 
     const imgWidth = canvas.width;
     const imgHeight = canvas.height;
