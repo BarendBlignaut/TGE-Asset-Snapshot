@@ -984,12 +984,24 @@ async function handleImageProxy(request, env) {
   }
 
   const allowedHosts = [
+    // Telematics vendor domains
     "api-au.telematics.com",
+    "api-au2.telematics.com",
     "telematics.com",
     "tn360.com",
     "media.tn360.com",
     "assets.tn360.com",
     "cdn.telematics.com",
+    "mixtelematics.com",
+    "mixtelematics.com.au",
+    "s3.amazonaws.com",
+    "s3.ap-southeast-2.amazonaws.com",
+    "cloudfront.net",
+    // Map tiles
+    "staticmap.openstreetmap.de",
+    "openstreetmap.de",
+    "openstreetmap.org",
+    "tile.openstreetmap.org",
   ];
 
   const hostAllowed = allowedHosts.some(
@@ -997,13 +1009,22 @@ async function handleImageProxy(request, env) {
   );
 
   if (!hostAllowed) {
-    return jsonResponse({ error: "URL host not permitted." }, 403);
+    // Return the blocked hostname so the client can report it for debugging
+    return jsonResponse({ error: "URL host not permitted.", blockedHost: parsedUrl.hostname }, 403);
   }
 
   try {
-    const upstream = await fetch(imageUrl);
+    const upstream = await fetch(imageUrl, {
+      headers: {
+        "User-Agent": "TGE-Asset-Snapshot/1.0",
+        // Include API key in Authorization header for telematics domains
+        ...(env.TN360_API_KEY && parsedUrl.hostname.includes("telematics.com")
+          ? { "Authorization": `Bearer ${env.TN360_API_KEY}`, "X-Api-Key": env.TN360_API_KEY }
+          : {}),
+      },
+    });
     if (!upstream.ok) {
-      return jsonResponse({ error: `Upstream fetch failed: HTTP ${upstream.status}` }, 502);
+      return jsonResponse({ error: `Upstream fetch failed: HTTP ${upstream.status}`, url: imageUrl }, 502);
     }
     const contentType = upstream.headers.get("content-type") || "image/jpeg";
     const imageBuffer = await upstream.arrayBuffer();
