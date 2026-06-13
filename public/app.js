@@ -2015,6 +2015,75 @@ async function fetchAllCameraImages() {
   return results;
 }
 
+// Fetch OSM map tiles via proxy and stitch into a single JPEG data URL
+// Tiles are 256x256 PNG images from tile.openstreetmap.org
+async function buildOsmMapImage(lat, lng, zoom) {
+  // Convert lat/lng to tile XY at given zoom
+  function latLngToTile(lat, lng, z) {
+    const n = Math.pow(2, z);
+    const x = Math.floor((lng + 180) / 360 * n);
+    const latRad = lat * Math.PI / 180;
+    const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+    return { x, y };
+  }
+
+  const center = latLngToTile(lat, lng, zoom);
+  const cols = 3, rows = 2;
+  const tileSize = 256;
+  const offsetX = Math.floor(cols / 2), offsetY = Math.floor(rows / 2);
+
+  // Collect tile promises
+  const tilePromises = [];
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const tx = center.x + col - offsetX;
+      const ty = center.y + row - offsetY;
+      const tileUrl = "https://tile.openstreetmap.org/" + zoom + "/" + tx + "/" + ty + ".png";
+      tilePromises.push(
+        fetchImageViaProxy(tileUrl).then(dataUrl => ({ col, row, dataUrl }))
+      );
+    }
+  }
+
+  const tiles = await Promise.all(tilePromises);
+  const canvasW = cols * tileSize, canvasH = rows * tileSize;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvasW; canvas.height = canvasH;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#e8f4e8";
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  // Draw each tile
+  for (const tile of tiles) {
+    if (!tile.dataUrl) continue;
+    await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, tile.col * tileSize, tile.row * tileSize, tileSize, tileSize);
+        resolve();
+      };
+      img.onerror = resolve;
+      img.src = tile.dataUrl;
+    });
+  }
+
+  // Draw a marker at center (red circle with dot)
+  const markerX = canvasW / 2, markerY = canvasH / 2;
+  ctx.beginPath();
+  ctx.arc(markerX, markerY, 10, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(192,0,0,0.85)";
+  ctx.fill();
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(markerX, markerY, 3, 0, Math.PI * 2);
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+
+  return canvas.toDataURL("image/jpeg", 0.88);
+}
+
 // Build a clean structured PDF using jsPDF directly — no html2canvas
 async function buildSnapshotPdf() {
   const lookup = state.activeAssetLookup;
@@ -2177,13 +2246,11 @@ async function buildSnapshotPdf() {
     // Try to fetch static map image via proxy
     let mapDataUrl = null;
     try {
-      const lat = gps.latitude, lng = gps.longitude;
-      const zoom = 14;
-      // Use tile-based static map — fetch from our proxy
-      const mapUrl = "https://staticmap.openstreetmap.de/staticmap.php?center=" +
-        lat + "," + lng + "&zoom=" + zoom + "&size=600x340&markers=" + lat + "," + lng + ",red";
-      mapDataUrl = await fetchImageViaProxy(mapUrl);
-    } catch(e) { /* not critical */ }
+      // Stitch a 3x2 grid of OSM tiles into a single map image using canvas
+      mapDataUrl = await buildOsmMapImage(gps.latitude, gps.longitude, 14);
+    } catch(e) {
+      console.warn("[PDF] map tile stitch failed:", e);
+    }
 
     if (mapDataUrl) {
       // Map image
@@ -2334,12 +2401,12 @@ async function buildSnapshotPdf() {
 
   // ── 4. SD CARDS ──────────────────────────────────────────────────────────────
   sectionHeader("Storage", "SD Card Information");
-  // 4 cards matching the 2x2 .sd-grid (status + size per card)
+  // 4 cards matching the 2x2 .sd-grid (status + size per card) — always show all 4
   dataGrid([
     { label: "SD Card 1",      value: camStats.sdCard1?.present ? "Present" : "Not present" },
     { label: "SD Card 2",      value: camStats.sdCard2?.present ? "Present" : "Not present" },
-    { label: "SD Card 1 Size", value: camStats.sdCard1?.totalSizeDisplay || (camStats.sdCard1?.present ? "—" : "") },
-    { label: "SD Card 2 Size", value: camStats.sdCard2?.totalSizeDisplay || (camStats.sdCard2?.present ? "—" : "") },
+    { label: "SD Card 1 Size", value: camStats.sdCard1?.totalSizeDisplay || "—" },
+    { label: "SD Card 2 Size", value: camStats.sdCard2?.totalSizeDisplay || "—" },
   ], 2, { showAll: true });
 
   // ── 5. CAMERA SNAPSHOTS ───────────────────────────────────────────────────────
