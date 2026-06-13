@@ -1233,6 +1233,90 @@
       .sd-health-grid   { grid-template-columns: 1fr; }
     }
 
+    /* ── API Reference ──────────────────────────── */
+    .api-ref-tab {
+      height: 30px;
+      padding: 0 12px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink-2);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 140ms, border-color 140ms, color 140ms;
+    }
+    .api-ref-tab:hover { background: var(--surface-3); border-color: var(--green-600); }
+    .api-ref-tab.active { background: var(--green-700); border-color: var(--green-700); color: var(--yellow); }
+
+    .api-ref-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      overflow: hidden;
+    }
+    .api-ref-card-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--line-2);
+      flex-wrap: wrap;
+    }
+    .api-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      flex-shrink: 0;
+    }
+    .api-badge.get    { background: var(--green-100,#e6f5ec); color: var(--green-700,#007a3b); }
+    .api-badge.post   { background: rgba(99,124,246,0.12);    color: #3b4fd8; }
+    .api-id-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      background: var(--ink);
+      color: var(--surface);
+      flex-shrink: 0;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+    }
+    .api-ref-card-url {
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: var(--ink);
+      font-weight: 600;
+    }
+    .api-ref-card-body {
+      padding: 10px 14px;
+      display: grid;
+      gap: 6px;
+    }
+    .api-ref-card-body p { margin: 0; font-size: 12px; color: var(--muted); }
+    .api-ref-card-body strong { font-size: 12px; color: var(--ink); font-weight: 600; }
+    .api-ref-used {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+    .api-used-pill {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+      background: var(--surface-3);
+      color: var(--muted);
+      border: 1px solid var(--line-2);
+    }
+
     /* ── Camera tool selector cards ─────────────── */
     .cam-tool-card {
       display: flex;
@@ -1887,6 +1971,23 @@
                 </table>
               </div>
             </div>
+
+            <!-- API Reference section -->
+            <div style="margin-top:28px;">
+              <h3 style="margin-bottom:6px;font-size:14px;font-weight:700;">API Reference</h3>
+              <p style="margin:0 0 16px;font-size:13px;color:var(--muted);">Telematics API endpoints used by this application — all calls are proxied through the Cloudflare Worker. The API key is never exposed to the browser.</p>
+
+              <div id="api-ref-tabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+                <button class="api-ref-tab active" data-group="all" type="button">All</button>
+                <button class="api-ref-tab" data-group="vehicle" type="button">Vehicle / Fleet</button>
+                <button class="api-ref-tab" data-group="device" type="button">Device</button>
+                <button class="api-ref-tab" data-group="camera" type="button">Camera / Events</button>
+                <button class="api-ref-tab" data-group="metrics" type="button">Location / Metrics</button>
+              </div>
+
+              <div id="api-ref-list" style="display:grid;gap:10px;"></div>
+            </div>
+
           </section>
 
           <!-- VPM VIEW -->
