@@ -2160,7 +2160,38 @@ async function buildSnapshotPdf() {
     y += 6;
   }
 
-  // ── GPIO card matching .gps-card ──────────────────────────────────────────
+  // ── SD Card grid — 2 columns, status + size stacked per card ──────────────
+  function sdGrid(cards) {
+    const colW = CW / cards.length;
+    // Row 1: status
+    checkY(36);
+    const row1Y = y;
+    for (let i = 0; i < cards.length; i++) {
+      const x = ML + i * colW;
+      pdf.setFillColor(255, 255, 255).rect(x + 1, row1Y, colW - 2, 34, "F");
+      pdf.setDrawColor(...LINE).setLineWidth(0.3).rect(x + 1, row1Y, colW - 2, 34);
+      pdf.setFontSize(6.5).setFont(undefined, "bold").setTextColor(...MUTED);
+      pdf.text(cards[i].label1.toUpperCase(), x + 6, row1Y + 11);
+      pdf.setFontSize(9).setFont(undefined, "bold").setTextColor(...INK);
+      pdf.text(String(cards[i].status), x + 6, row1Y + 25);
+    }
+    y = row1Y + 36;
+    // Row 2: size
+    checkY(34);
+    const row2Y = y;
+    for (let i = 0; i < cards.length; i++) {
+      const x = ML + i * colW;
+      pdf.setFillColor(255, 255, 255).rect(x + 1, row2Y, colW - 2, 34, "F");
+      pdf.setDrawColor(...LINE).setLineWidth(0.3).rect(x + 1, row2Y, colW - 2, 34);
+      pdf.setFontSize(6.5).setFont(undefined, "bold").setTextColor(...MUTED);
+      pdf.text(cards[i].label2.toUpperCase(), x + 6, row2Y + 11);
+      pdf.setFontSize(9).setFont(undefined, "bold").setTextColor(...INK);
+      pdf.text(String(cards[i].size), x + 6, row2Y + 25);
+    }
+    y = row2Y + 38;
+  }
+
+    // ── GPIO card matching .gps-card ──────────────────────────────────────────
   function gpioGrid(items, cols) {
     const colW = CW / cols;
     const rowH = 52;
@@ -2344,10 +2375,15 @@ async function buildSnapshotPdf() {
   // ── 2. PERFORMANCE ──────────────────────────────────────────────────────────
   sectionHeader("Performance", "Vehicle Tracking Metrics");
 
-  const ignText = hStats.ignition === true  || hStats.ignition === "true"  || hStats.ignition === 1  ? "On"
-                : hStats.ignition === false || hStats.ignition === "false" || hStats.ignition === 0  ? "Off"
+  // API returns "ON"/"OFF" strings or booleans — normalise both
+  const ignRaw = String(hStats.ignition ?? "").toUpperCase();
+  const ignText = ignRaw === "ON" || ignRaw === "TRUE" || hStats.ignition === true || hStats.ignition === 1 ? "On"
+                : ignRaw === "OFF" || ignRaw === "FALSE" || hStats.ignition === false || hStats.ignition === 0 ? "Off"
                 : String(hStats.ignition ?? "—");
-  const movText = hStats.movement === true ? "Moving" : hStats.movement === false ? "Stopped" : String(hStats.movement ?? "—");
+  const movRaw = String(hStats.movement ?? "").toLowerCase();
+  const movText = movRaw === "moving" || hStats.movement === true ? "Moving"
+                : movRaw === "stopped" || hStats.movement === false ? "Stopped"
+                : String(hStats.movement ?? "—");
 
   // First 8 fixed metrics (matching the static .metrics-grid on screen)
   dataGrid([
@@ -2401,13 +2437,20 @@ async function buildSnapshotPdf() {
 
   // ── 4. SD CARDS ──────────────────────────────────────────────────────────────
   sectionHeader("Storage", "SD Card Information");
-  // 4 cards matching the 2x2 .sd-grid (status + size per card) — always show all 4
-  dataGrid([
-    { label: "SD Card 1",      value: camStats.sdCard1?.present ? "Present" : "Not present" },
-    { label: "SD Card 2",      value: camStats.sdCard2?.present ? "Present" : "Not present" },
-    { label: "SD Card 1 Size", value: camStats.sdCard1?.totalSizeDisplay || "—" },
-    { label: "SD Card 2 Size", value: camStats.sdCard2?.totalSizeDisplay || "—" },
-  ], 2, { showAll: true });
+  // SD grid — 2 columns, 2 rows matching the screen .sd-grid exactly
+  // Row 1: status cards, Row 2: size cards underneath each
+  sdGrid([
+    {
+      status: camStats.sdCard1?.present ? "Present" : "Not present",
+      size: camStats.sdCard1?.totalSizeDisplay || "—",
+      label1: "SD Card 1", label2: "SD Card 1 Size",
+    },
+    {
+      status: camStats.sdCard2?.present ? "Present" : "Not present",
+      size: camStats.sdCard2?.totalSizeDisplay || "—",
+      label1: "SD Card 2", label2: "SD Card 2 Size",
+    },
+  ]);
 
   // ── 5. CAMERA SNAPSHOTS ───────────────────────────────────────────────────────
   sectionHeader("Camera Snapshots", "Latest Image Set");
