@@ -1233,6 +1233,31 @@
       .sd-health-grid   { grid-template-columns: 1fr; }
     }
 
+    /* ── Diagnostics snapshot thumbnails ────────── */
+    .snap-thumb {
+      width: 64px;
+      height: 48px;
+      object-fit: cover;
+      border-radius: 4px;
+      cursor: pointer;
+      border: 1px solid var(--line);
+      display: block;
+    }
+    .snap-thumb-empty {
+      width: 64px;
+      height: 48px;
+      background: var(--surface-3);
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      color: var(--muted-2);
+    }
+    #diag-snap-table td { vertical-align: middle; padding: 8px 10px; }
+    #diag-snap-table th { white-space: nowrap; }
+
     /* ── ANIMATIONS ─────────────────────────────── */
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(10px); }
@@ -1821,73 +1846,79 @@
 
             <!-- Camera Snapshots panel -->
             <div class="diag-panel active" id="diag-snap-panel">
-              <div class="section-head" style="margin-bottom:14px;">
-                <div>
-                  <div class="section-kicker">Evidence</div>
-                  <h3 class="section-title">Camera Snapshots</h3>
+
+              <!-- Mode bar -->
+              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
+                <button class="action-btn" id="diag-snap-user-tab" type="button">User Input</button>
+                <button class="action-btn" id="diag-snap-fleet-tab" type="button">Fleet Mode</button>
+                <button class="action-btn" id="diag-snap-run-btn" type="button" style="display:none;">Run</button>
+                <button class="secondary-btn" id="diag-snap-cancel-btn" type="button" style="display:none;background:var(--surface-2);border-color:var(--line);color:var(--ink-2);">Cancel</button>
+                <div style="flex:1;"></div>
+                <button class="secondary-btn" id="diag-snap-export-pdf-btn" type="button" style="display:none;background:var(--surface-2);border-color:var(--line);color:var(--ink-2);">Export PDF</button>
+                <button class="secondary-btn" id="diag-snap-export-csv-btn" type="button" style="display:none;background:var(--surface-2);border-color:var(--line);color:var(--ink-2);">Export CSV</button>
+                <button class="secondary-btn" id="diag-snap-export-zip-btn" type="button" style="display:none;background:var(--surface-2);border-color:var(--line);color:var(--ink-2);">Download ZIP</button>
+              </div>
+
+              <!-- User input panel -->
+              <div id="diag-snap-user-panel" style="display:none;margin-bottom:16px;">
+                <div class="field dark-field">
+                  <label for="diag-snap-imei-input">IMEI Numbers (one per line, up to 500)</label>
+                  <textarea id="diag-snap-imei-input" rows="6"
+                    style="width:100%;border:1px solid var(--line);border-radius:8px;padding:12px;font:inherit;color:var(--ink);resize:vertical;background:var(--surface);"
+                    placeholder="Enter one IMEI per line&#10;015678004545626&#10;867734081081313"></textarea>
                 </div>
-                <button class="action-btn" id="diag-snap-refresh" type="button"
-                  style="background:var(--green-700);color:var(--yellow);height:36px;font-size:12px;">
-                  Refresh Snapshots
-                </button>
               </div>
 
-              <div id="diag-snap-status" style="margin-bottom:12px;font-size:13px;color:var(--muted);"></div>
-
-              <div id="diag-camera-grid">
-                <article class="camera-card">
-                  <div class="camera-frame">
-                    <img id="diag-img-road-facing" style="display:none;" alt="Road Facing" />
-                    <p class="camera-empty" id="diag-img-road-facing-empty">Load an asset first</p>
-                  </div>
-                  <div class="camera-meta">
-                    <strong>Road Facing</strong>
-                    <span id="diag-img-road-facing-status"></span>
-                  </div>
-                </article>
-                <article class="camera-card">
-                  <div class="camera-frame">
-                    <img id="diag-img-driver-facing" style="display:none;" alt="Driver Facing" />
-                    <p class="camera-empty" id="diag-img-driver-facing-empty">Load an asset first</p>
-                  </div>
-                  <div class="camera-meta">
-                    <strong>Driver Facing</strong>
-                    <span id="diag-img-driver-facing-status"></span>
-                  </div>
-                </article>
-                <article class="camera-card">
-                  <div class="camera-frame">
-                    <img id="diag-img-in-cab" style="display:none;" alt="In-Cab Driver" />
-                    <p class="camera-empty" id="diag-img-in-cab-empty">Load an asset first</p>
-                  </div>
-                  <div class="camera-meta">
-                    <strong>In-Cab Driver</strong>
-                    <span id="diag-img-in-cab-status"></span>
-                  </div>
-                </article>
-                <article class="camera-card">
-                  <div class="camera-frame">
-                    <img id="diag-img-driver-external" style="display:none;" alt="Driver External" />
-                    <p class="camera-empty" id="diag-img-driver-external-empty">Load an asset first</p>
-                  </div>
-                  <div class="camera-meta">
-                    <strong>Driver External</strong>
-                    <span id="diag-img-driver-external-status"></span>
-                  </div>
-                </article>
-                <article class="camera-card">
-                  <div class="camera-frame">
-                    <img id="diag-img-left-external" style="display:none;" alt="Left External" />
-                    <p class="camera-empty" id="diag-img-left-external-empty">Load an asset first</p>
-                  </div>
-                  <div class="camera-meta">
-                    <strong>Left External</strong>
-                    <span id="diag-img-left-external-status"></span>
-                  </div>
-                </article>
+              <!-- Fleet mode panel -->
+              <div id="diag-snap-fleet-panel" style="display:none;margin-bottom:16px;">
+                <div style="padding:14px 16px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;">
+                  <p style="margin:0;font-size:13px;color:var(--muted);">
+                    Fleet mode retrieves the latest camera snapshot for every active vehicle in your fleet.
+                    All available camera angles are fetched per vehicle.
+                  </p>
+                </div>
               </div>
 
-              <div id="diag-snap-meta" style="margin-top:14px;font-size:12px;color:var(--muted);"></div>
+              <!-- Message -->
+              <p class="message" id="diag-snap-message" style="margin-bottom:12px;"></p>
+
+              <!-- Summary -->
+              <p id="diag-snap-summary" style="margin:0 0 14px;font-size:13px;color:var(--muted);">No camera snapshot analysis has been run yet.</p>
+
+              <!-- Results table -->
+              <div id="diag-snap-results" style="display:none;">
+                <!-- Selection toolbar -->
+                <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+                  <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                    <input type="checkbox" id="diag-snap-select-all" />
+                    Select all
+                  </label>
+                  <span id="diag-snap-selected-count" style="font-size:12px;color:var(--muted);"></span>
+                </div>
+
+                <div class="table-wrap">
+                  <table id="diag-snap-table">
+                    <thead>
+                      <tr>
+                        <th style="width:40px;"></th>
+                        <th>Fleet No.</th>
+                        <th>Registration</th>
+                        <th>Make / Model</th>
+                        <th>IMEI</th>
+                        <th>Snapshot Time</th>
+                        <th>Road</th>
+                        <th>Driver</th>
+                        <th>In-Cab</th>
+                        <th>Ext. Driver</th>
+                        <th>Ext. Left</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody id="diag-snap-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+
             </div>
 
             <!-- SD Card Health panel -->
@@ -2140,6 +2171,346 @@
           meta.textContent = 'Fleet ' + (vehicle.assetNumber || '—') + '  ·  ' + (vehicle.registration || '—');
         }
       }
+
+      // ── Camera Snapshot Tool ─────────────────────────────────────────────────
+      var diagSnapState = {
+        mode: null,         // 'user' | 'fleet'
+        running: false,
+        results: [],        // [{imei, fleetNumber, registration, make, model, snapshotTime, slots, error, selected}]
+        cancelToken: false,
+      };
+
+      var snapUserTab    = document.getElementById('diag-snap-user-tab');
+      var snapFleetTab   = document.getElementById('diag-snap-fleet-tab');
+      var snapRunBtn     = document.getElementById('diag-snap-run-btn');
+      var snapCancelBtn  = document.getElementById('diag-snap-cancel-btn');
+      var snapUserPanel  = document.getElementById('diag-snap-user-panel');
+      var snapFleetPanel = document.getElementById('diag-snap-fleet-panel');
+      var snapSummary    = document.getElementById('diag-snap-summary');
+      var snapResults    = document.getElementById('diag-snap-results');
+      var snapTbody      = document.getElementById('diag-snap-tbody');
+      var snapMessage    = document.getElementById('diag-snap-message');
+      var snapSelectAll  = document.getElementById('diag-snap-select-all');
+      var snapCount      = document.getElementById('diag-snap-selected-count');
+
+      var exportPdfBtn   = document.getElementById('diag-snap-export-pdf-btn');
+      var exportCsvBtn   = document.getElementById('diag-snap-export-csv-btn');
+      var exportZipBtn   = document.getElementById('diag-snap-export-zip-btn');
+
+      function setSnapMode(mode) {
+        diagSnapState.mode = mode;
+        snapUserPanel.style.display  = mode === 'user'  ? '' : 'none';
+        snapFleetPanel.style.display = mode === 'fleet' ? '' : 'none';
+        snapRunBtn.style.display     = '';
+        snapUserTab.style.background  = mode === 'user'  ? 'var(--green-700)' : '';
+        snapUserTab.style.color       = mode === 'user'  ? 'var(--yellow)'    : '';
+        snapFleetTab.style.background = mode === 'fleet' ? 'var(--green-700)' : '';
+        snapFleetTab.style.color      = mode === 'fleet' ? 'var(--yellow)'    : '';
+      }
+
+      if (snapUserTab)  snapUserTab.addEventListener('click',  function() { setSnapMode('user'); });
+      if (snapFleetTab) snapFleetTab.addEventListener('click', function() { setSnapMode('fleet'); });
+
+      if (snapCancelBtn) snapCancelBtn.addEventListener('click', function() {
+        diagSnapState.cancelToken = true;
+      });
+
+      if (snapRunBtn) snapRunBtn.addEventListener('click', async function() {
+        if (!diagSnapState.mode) { snapMessage.textContent = 'Select User Input or Fleet Mode first.'; return; }
+        if (diagSnapState.running) return;
+
+        snapMessage.textContent = '';
+        diagSnapState.running = true;
+        diagSnapState.cancelToken = false;
+        diagSnapState.results = [];
+        snapRunBtn.style.display    = 'none';
+        snapCancelBtn.style.display = '';
+        snapResults.style.display   = 'none';
+        exportPdfBtn.style.display  = 'none';
+        exportCsvBtn.style.display  = 'none';
+        exportZipBtn.style.display  = 'none';
+        snapSummary.textContent     = 'Running...';
+
+        try {
+          var data;
+          if (diagSnapState.mode === 'user') {
+            var raw = document.getElementById('diag-snap-imei-input').value;
+            var imeis = raw.split(/
+/).map(function(l){ return l.trim(); }).filter(Boolean);
+            if (!imeis.length) { snapMessage.textContent = 'Enter at least one IMEI.'; return; }
+            snapSummary.textContent = 'Fetching snapshots for ' + imeis.length + ' IMEI(s)...';
+            var res = await fetch('/api/camera-snapshot-imei', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ imeis }),
+            });
+            data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Request failed');
+          } else {
+            snapSummary.textContent = 'Fetching fleet snapshot data...';
+            var res = await fetch('/api/camera-snapshot-fleet');
+            data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Request failed');
+          }
+
+          if (diagSnapState.cancelToken) { snapSummary.textContent = 'Cancelled.'; return; }
+
+          diagSnapState.results = (data.results || []).map(function(r) {
+            return Object.assign({ selected: false }, r);
+          });
+
+          renderSnapTable();
+          var total = diagSnapState.results.length;
+          var withImages = diagSnapState.results.filter(function(r) {
+            return r.slots && Object.values(r.slots).some(function(v){ return !!v; });
+          }).length;
+          snapSummary.textContent = total + ' vehicle(s) returned, ' + withImages + ' with snapshot images.';
+          snapResults.style.display   = '';
+          exportPdfBtn.style.display  = '';
+          exportCsvBtn.style.display  = '';
+          exportZipBtn.style.display  = '';
+        } catch(e) {
+          snapMessage.textContent = e.message || 'Failed to fetch snapshots.';
+          snapSummary.textContent = 'Error — see message above.';
+        } finally {
+          diagSnapState.running = false;
+          snapRunBtn.style.display    = '';
+          snapCancelBtn.style.display = 'none';
+        }
+      });
+
+      function formatSnapDate(iso) {
+        if (!iso) return '—';
+        try { return new Date(iso).toLocaleString('en-AU', { hour12: false }); } catch(e) { return iso; }
+      }
+
+      function thumbCell(url, label) {
+        if (!url) return '<td><div class="snap-thumb-empty">None</div></td>';
+        return '<td><img class="snap-thumb" src="' + url + '" alt="' + label + '" title="' + label + '" onclick="window.__diagLightbox('' + url + '','' + label + '')" /></td>';
+      }
+
+      function renderSnapTable() {
+        if (!snapTbody) return;
+        snapTbody.innerHTML = diagSnapState.results.map(function(r, idx) {
+          var slots = r.slots || {};
+          var chk = '<input type="checkbox" data-idx="' + idx + '" class="diag-snap-chk"' + (r.selected ? ' checked' : '') + ' />';
+          var info = (r.error ? '<span style="color:var(--danger);font-size:11px;">' + r.error + '</span>' : '<span style="color:var(--green-600);font-size:11px;">OK</span>');
+          return '<tr>' +
+            '<td>' + chk + '</td>' +
+            '<td><strong>' + (r.fleetNumber || '—') + '</strong></td>' +
+            '<td>' + (r.registration || '—') + '</td>' +
+            '<td>' + [r.make, r.model].filter(Boolean).join(' ') + '</td>' +
+            '<td style="font-size:11px;font-family:monospace;">' + (r.imei || '—') + '</td>' +
+            '<td style="font-size:11px;">' + formatSnapDate(r.snapshotTime) + '</td>' +
+            thumbCell(slots.roadFacing,              'Road Facing') +
+            thumbCell(slots.driverFacing,            'Driver Facing') +
+            thumbCell(slots.inCabDriverFacingCamera, 'In-Cab Driver') +
+            thumbCell(slots.driverExternal,          'Driver External') +
+            thumbCell(slots.leftExternal,            'Left External') +
+            '<td>' + info + '</td>' +
+            '</tr>';
+        }).join('');
+
+        // Wire checkboxes
+        snapTbody.querySelectorAll('.diag-snap-chk').forEach(function(chk) {
+          chk.addEventListener('change', function() {
+            var idx = parseInt(this.dataset.idx);
+            diagSnapState.results[idx].selected = this.checked;
+            updateSnapCount();
+          });
+        });
+        updateSnapCount();
+      }
+
+      function updateSnapCount() {
+        var sel = diagSnapState.results.filter(function(r){ return r.selected; }).length;
+        if (snapCount) snapCount.textContent = sel + ' selected';
+        if (snapSelectAll) snapSelectAll.indeterminate = sel > 0 && sel < diagSnapState.results.length;
+        if (snapSelectAll) snapSelectAll.checked = sel === diagSnapState.results.length && sel > 0;
+      }
+
+      if (snapSelectAll) snapSelectAll.addEventListener('change', function() {
+        var checked = this.checked;
+        diagSnapState.results.forEach(function(r){ r.selected = checked; });
+        renderSnapTable();
+      });
+
+      // Lightbox for thumbnail clicks
+      window.__diagLightbox = function(url, label) {
+        var overlay = document.getElementById('lightbox-overlay');
+        var img     = document.getElementById('lightbox-img');
+        var cap     = document.getElementById('lightbox-caption');
+        if (overlay && img) {
+          img.src = url;
+          if (cap) cap.textContent = label;
+          overlay.style.display = 'grid';
+        }
+      };
+
+      // ── Export CSV ──────────────────────────────────────────────────────────
+      if (exportCsvBtn) exportCsvBtn.addEventListener('click', function() {
+        var rows = diagSnapState.results.filter(function(r){ return r.selected; });
+        if (!rows.length) rows = diagSnapState.results;
+        var headers = ['Fleet Number','Registration','Make','Model','IMEI','Snapshot Time','Road Facing','Driver Facing','In-Cab Driver','Driver External','Left External','Status'];
+        var csv = [headers.join(',')].concat(rows.map(function(r) {
+          var s = r.slots || {};
+          return [
+            r.fleetNumber, r.registration, r.make, r.model, r.imei,
+            r.snapshotTime || '',
+            s.roadFacing ? 'Yes' : 'No',
+            s.driverFacing ? 'Yes' : 'No',
+            s.inCabDriverFacingCamera ? 'Yes' : 'No',
+            s.driverExternal ? 'Yes' : 'No',
+            s.leftExternal ? 'Yes' : 'No',
+            r.error || 'OK',
+          ].map(function(v){ return '"' + String(v||'').replace(/"/g,'""') + '"'; }).join(',');
+        })).join('
+');
+        var blob = new Blob([csv], { type: 'text/csv' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'camera-snapshots-' + new Date().toISOString().slice(0,10) + '.csv';
+        document.body.appendChild(a); a.click(); a.remove();
+      });
+
+      // ── Export ZIP ─────────────────────────────────────────────────────────
+      if (exportZipBtn) exportZipBtn.addEventListener('click', async function() {
+        var rows = diagSnapState.results.filter(function(r){ return r.selected; });
+        if (!rows.length) rows = diagSnapState.results;
+        exportZipBtn.textContent = 'Preparing...';
+        exportZipBtn.disabled = true;
+
+        // Collect all image URLs
+        var downloads = [];
+        rows.forEach(function(r) {
+          var s = r.slots || {};
+          var prefix = (r.fleetNumber || r.imei || 'vehicle').replace(/[^a-z0-9]/gi, '_');
+          [
+            ['road_facing', s.roadFacing],
+            ['driver_facing', s.driverFacing],
+            ['in_cab_driver', s.inCabDriverFacingCamera],
+            ['driver_external', s.driverExternal],
+            ['left_external', s.leftExternal],
+          ].forEach(function(pair) {
+            if (pair[1]) downloads.push({ filename: prefix + '_' + pair[0] + '.jpg', url: pair[1] });
+          });
+        });
+
+        // Download each image as a blob and trigger individual downloads
+        // (true ZIP requires a library — we download each image separately for now)
+        var count = 0;
+        for (var i = 0; i < downloads.length; i++) {
+          try {
+            var res = await fetch('/api/image-proxy', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url: downloads[i].url }),
+            });
+            if (res.ok) {
+              var blob = await res.blob();
+              var a = document.createElement('a');
+              a.href = URL.createObjectURL(blob);
+              a.download = downloads[i].filename;
+              document.body.appendChild(a); a.click(); a.remove();
+              count++;
+              await new Promise(function(r){ setTimeout(r, 200); });
+            }
+          } catch(e) {}
+        }
+        exportZipBtn.textContent = 'Download ZIP';
+        exportZipBtn.disabled = false;
+        snapMessage.textContent = count + ' image(s) downloaded.';
+      });
+
+      // ── Export PDF ─────────────────────────────────────────────────────────
+      if (exportPdfBtn) exportPdfBtn.addEventListener('click', async function() {
+        if (typeof jspdf === 'undefined') { snapMessage.textContent = 'PDF library not loaded.'; return; }
+        var rows = diagSnapState.results.filter(function(r){ return r.selected; });
+        if (!rows.length) rows = diagSnapState.results;
+        exportPdfBtn.textContent = 'Building PDF...';
+        exportPdfBtn.disabled = true;
+
+        try {
+          var { jsPDF } = jspdf;
+          var pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+          var PW = 595.28, PH = 841.89, ML = 32, MR = 32, MT = 36, CW = PW - ML - MR;
+          var y = MT;
+          var GREEN = [0, 90, 45], INK = [20, 30, 24], MUTED = [90, 108, 98], LINE = [215, 226, 219];
+
+          // Header
+          pdf.setFillColor(...GREEN).rect(0, 0, PW, 48, 'F');
+          pdf.setFontSize(14).setFont(undefined, 'bold').setTextColor(255, 255, 255);
+          pdf.text('TGE Camera Snapshot Report', ML, 22);
+          pdf.setFontSize(8).setFont(undefined, 'normal').setTextColor(195, 230, 208);
+          pdf.text('Generated: ' + new Date().toLocaleString('en-AU', { hour12: false }) + '  ·  ' + rows.length + ' vehicle(s)', ML, 38);
+          y = 62;
+
+          for (var vi = 0; vi < rows.length; vi++) {
+            var r = rows[vi];
+            var s = r.slots || {};
+            if (y > PH - 220) { pdf.addPage(); y = MT; }
+
+            // Vehicle header
+            pdf.setFillColor(245, 249, 246).rect(ML, y, CW, 28, 'F');
+            pdf.setDrawColor(...LINE).setLineWidth(0.4).rect(ML, y, CW, 28);
+            pdf.setFontSize(9).setFont(undefined, 'bold').setTextColor(...INK);
+            pdf.text('Fleet ' + (r.fleetNumber || '—') + '  ·  ' + (r.registration || '—') + '  ·  ' + [r.make, r.model].filter(Boolean).join(' '), ML + 8, y + 17);
+            pdf.setFontSize(7).setFont(undefined, 'normal').setTextColor(...MUTED);
+            pdf.text('Snapshot: ' + formatSnapDate(r.snapshotTime), PW - MR, y + 17, { align: 'right' });
+            y += 32;
+
+            // Images — 5 across
+            var slots5 = [
+              { label: 'Road Facing',     url: s.roadFacing },
+              { label: 'Driver Facing',   url: s.driverFacing },
+              { label: 'In-Cab Driver',   url: s.inCabDriverFacingCamera },
+              { label: 'Driver External', url: s.driverExternal },
+              { label: 'Left External',   url: s.leftExternal },
+            ];
+            var imgW = (CW - 4 * 4) / 5, imgH = imgW * 0.75;
+            for (var si = 0; si < slots5.length; si++) {
+              var sx = ML + si * (imgW + 4);
+              if (slots5[si].url) {
+                try {
+                  var imgData = await fetch('/api/image-proxy', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: slots5[si].url }),
+                  }).then(function(r){ return r.blob(); }).then(function(b) {
+                    return new Promise(function(res) {
+                      var fr = new FileReader(); fr.onload = function(){ res(fr.result); }; fr.readAsDataURL(b);
+                    });
+                  });
+                  pdf.addImage(imgData, 'JPEG', sx, y, imgW, imgH);
+                } catch(e) {
+                  pdf.setFillColor(245, 249, 246).rect(sx, y, imgW, imgH, 'F');
+                }
+              } else {
+                pdf.setFillColor(245, 249, 246).rect(sx, y, imgW, imgH, 'F');
+                pdf.setDrawColor(...LINE).setLineWidth(0.3).rect(sx, y, imgW, imgH);
+              }
+              pdf.setFontSize(6).setFont(undefined, 'bold').setTextColor(...MUTED);
+              pdf.text(slots5[si].label.toUpperCase(), sx + 2, y + imgH + 9);
+            }
+            y += imgH + 20;
+          }
+
+          // Footers
+          var pc = pdf.getNumberOfPages();
+          for (var p = 1; p <= pc; p++) {
+            pdf.setPage(p);
+            pdf.setFontSize(7).setFont(undefined, 'normal').setTextColor(...MUTED);
+            pdf.text('TGE Camera Snapshot Report  ·  Page ' + p + ' of ' + pc, ML, PH - 16);
+          }
+
+          pdf.save('camera-snapshot-report-' + new Date().toISOString().slice(0, 10) + '.pdf');
+          snapMessage.textContent = 'PDF exported successfully.';
+        } catch(e) {
+          snapMessage.textContent = 'PDF export failed: ' + e.message;
+        } finally {
+          exportPdfBtn.textContent = 'Export PDF';
+          exportPdfBtn.disabled = false;
+        }
+      });
 
       function populateDiagSD() {
         var lookup    = window.state && window.state.activeAssetLookup;
