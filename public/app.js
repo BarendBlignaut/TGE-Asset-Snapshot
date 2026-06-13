@@ -55,6 +55,8 @@ const el = {
   assetTrackResultsView: document.getElementById("asset-track-results-view"),
   adminView: document.getElementById("admin-view"),
   vpmView: document.getElementById("vpm-view"),
+  diagnosticsView: document.getElementById("diagnostics-view"),
+  diagnosticsTab: document.getElementById("diagnostics-tab"),
   approvedUserForm: document.getElementById("approved-user-form"),
   approvedUsersTableBody: document.getElementById("approved-users-table-body"),
   importUsersButton: document.getElementById("import-users-btn"),
@@ -324,6 +326,7 @@ function showStandardView() {
   setVisible(el.assetTrackResultsView, false);
   setVisible(el.adminView, false);
   setVisible(el.vpmView, false);
+  setVisible(el.diagnosticsView, false);
 }
 
 function showAssetTrackView() {
@@ -333,6 +336,7 @@ function showAssetTrackView() {
   setVisible(el.assetTrackResultsView, state.assetTrack.rows.length > 0, "block");
   setVisible(el.adminView, false);
   setVisible(el.vpmView, false);
+  setVisible(el.diagnosticsView, false);
 }
 
 function showAdminView() {
@@ -342,6 +346,7 @@ function showAdminView() {
   setVisible(el.assetTrackResultsView, false);
   setVisible(el.adminView, true, "block");
   setVisible(el.vpmView, false);
+  setVisible(el.diagnosticsView, false);
 }
 
 function showVpmView() {
@@ -351,6 +356,17 @@ function showVpmView() {
   setVisible(el.assetTrackResultsView, false);
   setVisible(el.adminView, false);
   setVisible(el.vpmView, true, "block");
+  setVisible(el.diagnosticsView, false);
+}
+
+function showDiagnosticsView() {
+  setVisible(el.heroSection, false);
+  setVisible(el.standardView, false);
+  setVisible(el.assetTrackView, false);
+  setVisible(el.assetTrackResultsView, false);
+  setVisible(el.adminView, false);
+  setVisible(el.vpmView, false);
+  setVisible(el.diagnosticsView, true, "block");
 }
 
 function clearSessionUi() {
