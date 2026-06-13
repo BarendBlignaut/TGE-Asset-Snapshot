@@ -2205,8 +2205,7 @@
           var data;
           if (diagSnapState.mode === 'user') {
             var raw = document.getElementById('diag-snap-imei-input').value;
-            var imeis = raw.split(/
-/).map(function(l){ return l.trim(); }).filter(Boolean);
+            var imeis = raw.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
             if (!imeis.length) { snapMessage.textContent = 'Enter at least one IMEI.'; return; }
             snapSummary.textContent = 'Fetching snapshots for ' + imeis.length + ' IMEI(s)...';
             var res = await fetch('/api/camera-snapshot-imei', {
@@ -2256,7 +2255,7 @@
 
       function thumbCell(url, label) {
         if (!url) return '<td><div class="snap-thumb-empty">None</div></td>';
-        return '<td><img class="snap-thumb" src="' + url + '" alt="' + label + '" title="' + label + '" onclick="window.__diagLightbox('' + url + '','' + label + '')" /></td>';
+        return '<td><img class="snap-thumb" src="' + url + '" alt="' + label + '" title="' + label + '" onclick="window.__diagLightbox(this.src,\'' + label + '\')" /></td>';
       }
 
       function renderSnapTable() {
@@ -2334,8 +2333,7 @@
             s.leftExternal ? 'Yes' : 'No',
             r.error || 'OK',
           ].map(function(v){ return '"' + String(v||'').replace(/"/g,'""') + '"'; }).join(',');
-        })).join('
-');
+        })).join('\n');
         var blob = new Blob([csv], { type: 'text/csv' });
         var a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
