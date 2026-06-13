@@ -1,3 +1,4 @@
+document.addEventListener('DOMContentLoaded', function() {
 (function() {
 
   // ── Sidebar show on login ───────────────────────────────────────────────
@@ -65,12 +66,18 @@
     document.getElementById('cam-sd-panel').style.display      = 'block';
   }
 
-  document.getElementById('cam-snap-select-btn').addEventListener('click', showSnapPanel);
-  document.getElementById('cam-sd-select-btn').addEventListener('click', showSdPanel);
-  document.getElementById('cam-snap-back').addEventListener('click', showToolSelector);
-  document.getElementById('cam-sd-back').addEventListener('click', showToolSelector);
+  on('cam-snap-select-btn', 'click', showSnapPanel);
+  on('cam-sd-select-btn',   'click', showSdPanel);
+  on('cam-snap-back',       'click', showToolSelector);
+  on('cam-sd-back',         'click', showToolSelector);
 
   // ── Generic mode switcher factory ───────────────────────────────────────
+  // Safe event binding helper — does nothing if element not found
+  function on(id, evt, fn) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener(evt, fn);
+  }
+
   function wireModeBar(userTabId, fleetTabId, userPanelId, fleetPanelId, runBtnId) {
     var userTab    = document.getElementById(userTabId);
     var fleetTab   = document.getElementById(fleetTabId);
@@ -118,7 +125,7 @@
   // ── CAMERA SNAPSHOTS ────────────────────────────────────────────────────
   var snapState = { results: [], running: false };
 
-  document.getElementById('snap-run-btn').addEventListener('click', async function() {
+  on('snap-run-btn', 'click', async function() {
     var mode = snapMode.getMode();
     if (!mode) { document.getElementById('snap-message').textContent = 'Select a mode first.'; return; }
     if (snapState.running) return;
@@ -166,7 +173,7 @@
     }
   });
 
-  document.getElementById('snap-cancel-btn').addEventListener('click', function() { snapState.running = false; });
+  on('snap-cancel-btn', 'click', function() { snapState.running = false; });
 
   function thumbCell(url, label) {
     if (!url) return '<td><div class="snap-thumb-empty">None</div></td>';
@@ -222,12 +229,12 @@
     if (sa) { sa.checked = sel === snapState.results.length && sel > 0; sa.indeterminate = sel > 0 && sel < snapState.results.length; }
   }
 
-  document.getElementById('snap-select-all').addEventListener('change', function() {
+  on('snap-select-all', 'change', function() {
     snapState.results.forEach(function(r) { r.selected = this.checked; }.bind(this));
     renderSnapTable();
   });
 
-  document.getElementById('snap-export-csv-btn').addEventListener('click', function() {
+  on('snap-export-csv-btn', 'click', function() {
     var rows = snapState.results.filter(function(r) { return r.selected; });
     if (!rows.length) rows = snapState.results;
     var hdr = ['Fleet No', 'Registration', 'Make', 'Model', 'IMEI', 'Snapshot Time', 'Road', 'Driver', 'In-Cab', 'Ext Driver', 'Ext Left', 'Status'];
@@ -243,7 +250,7 @@
     triggerDl(new Blob([csv], { type: 'text/csv' }), 'camera-snapshots-' + new Date().toISOString().slice(0, 10) + '.csv');
   });
 
-  document.getElementById('snap-export-pdf-btn').addEventListener('click', async function() {
+  on('snap-export-pdf-btn', 'click', async function() {
     if (typeof jspdf === 'undefined') { document.getElementById('snap-message').textContent = 'PDF library not loaded.'; return; }
     var rows = snapState.results.filter(function(r) { return r.selected; });
     if (!rows.length) rows = snapState.results;
@@ -256,7 +263,7 @@
     finally { btn.textContent = 'Export PDF'; btn.disabled = false; }
   });
 
-  document.getElementById('snap-export-email-btn').addEventListener('click', async function() {
+  on('snap-export-email-btn', 'click', async function() {
     if (typeof jspdf === 'undefined') { document.getElementById('snap-message').textContent = 'PDF library not loaded.'; return; }
     var rows = snapState.results.filter(function(r) { return r.selected; });
     if (!rows.length) rows = snapState.results;
@@ -277,7 +284,7 @@
   // ── SD CARD HEALTH ──────────────────────────────────────────────────────
   var sdState = { results: [], running: false };
 
-  document.getElementById('sd-run-btn').addEventListener('click', async function() {
+  on('sd-run-btn', 'click', async function() {
     var mode = sdMode.getMode();
     if (!mode) { document.getElementById('sd-message').textContent = 'Select a mode first.'; return; }
     if (sdState.running) return;
@@ -323,7 +330,7 @@
     }
   });
 
-  document.getElementById('sd-cancel-btn').addEventListener('click', function() { sdState.running = false; });
+  on('sd-cancel-btn', 'click', function() { sdState.running = false; });
 
   function sdBadge(present) {
     return present
@@ -365,12 +372,12 @@
     if (sa) { sa.checked = sel === sdState.results.length && sel > 0; sa.indeterminate = sel > 0 && sel < sdState.results.length; }
   }
 
-  document.getElementById('sd-select-all').addEventListener('change', function() {
+  on('sd-select-all', 'change', function() {
     sdState.results.forEach(function(r) { r.selected = this.checked; }.bind(this));
     renderSdTable();
   });
 
-  document.getElementById('sd-export-csv-btn').addEventListener('click', function() {
+  on('sd-export-csv-btn', 'click', function() {
     var rows = sdState.results.filter(function(r) { return r.selected; });
     if (!rows.length) rows = sdState.results;
     var hdr   = ['Fleet No', 'Registration', 'Camera IMEI', 'Overall Status', 'SD1 Present', 'SD1 Size', 'SD2 Present', 'SD2 Size'];
@@ -384,7 +391,7 @@
     triggerDl(new Blob([lines.join('\n')], { type: 'text/csv' }), 'sd-health-' + new Date().toISOString().slice(0, 10) + '.csv');
   });
 
-  document.getElementById('sd-export-pdf-btn').addEventListener('click', function() {
+  on('sd-export-pdf-btn', 'click', function() {
     if (typeof jspdf === 'undefined') { document.getElementById('sd-message').textContent = 'PDF library not loaded.'; return; }
     var rows = sdState.results.filter(function(r) { return r.selected; });
     if (!rows.length) rows = sdState.results;
@@ -397,7 +404,7 @@
     finally { btn.textContent = 'Export PDF'; btn.disabled = false; }
   });
 
-  document.getElementById('sd-export-email-btn').addEventListener('click', function() {
+  on('sd-export-email-btn', 'click', function() {
     if (typeof jspdf === 'undefined') { document.getElementById('sd-message').textContent = 'PDF library not loaded.'; return; }
     var rows = sdState.results.filter(function(r) { return r.selected; });
     if (!rows.length) rows = sdState.results;
@@ -528,7 +535,105 @@
     return pdf;
   }
 
+
+  // ── API Reference ────────────────────────────────────────────────────────
+  var API_REFS = [
+    {
+      id: 'API-1', method: 'GET', group: 'vehicle',
+      url: '/v1/vehicles',
+      returns: 'All vehicles — vehicleId, name (fleet no.), registration, make, model, year',
+      usedBy: ['Asset Track fleet mode', 'Camera Snapshot fleet', 'SD Health fleet', 'VPM fleet'],
+    },
+    {
+      id: 'API-2', method: 'GET', group: 'device',
+      url: '/v1/devices',
+      returns: 'All devices — imei, serialNumber, vehicleId, type (CAMERA / TRACKER / TABLET)',
+      usedBy: ['IMEI to vehicleId lookup', 'Asset Track', 'VPM', 'Camera Snapshot user input'],
+    },
+    {
+      id: 'API-3', method: 'GET', group: 'device',
+      url: '/v1/devices/{imei}?embed=devicestats',
+      returns: 'Single device stats — sdCard1, sdCard2 presence + size, overallStatus',
+      usedBy: ['SD Card Health user input'],
+    },
+    {
+      id: 'API-4', method: 'GET', group: 'camera',
+      url: '/v1/events?types=camera&pruning=B2B',
+      returns: 'Camera snapshot events — vehicleId, timeAt, attributes.context (mediaFiles + image URLs)',
+      usedBy: ['Camera Snapshot user input', 'Camera Snapshot fleet', 'Asset Snapshot view'],
+    },
+    {
+      id: 'API-5', method: 'GET', group: 'camera',
+      url: '/v1/devices/{cameraId}/camera-device-stats',
+      returns: 'Camera device stats — sdCard1/2 status, firmware, connection state',
+      usedBy: ['Asset Snapshot SD card section'],
+    },
+    {
+      id: 'API-6', method: 'GET', group: 'metrics',
+      url: '/v1/vehicles/{vehicleId}/hermes-stats',
+      returns: 'Live metrics — ignition, speed, rpm, gpio, gps coordinates, driverName, performance fields',
+      usedBy: ['Asset Snapshot metrics', 'Asset Snapshot GPIO', 'Asset Snapshot location'],
+    },
+    {
+      id: 'API-7', method: 'GET', group: 'metrics',
+      url: '/v1/vehicles/{vehicleId}/meters',
+      returns: 'Odometer reading, engine hours',
+      usedBy: ['Asset Snapshot performance section'],
+    },
+    {
+      id: 'API-8', method: 'GET', group: 'vehicle',
+      url: '/v1/vehicles/{vehicleId}/devices',
+      returns: 'Devices linked to a specific vehicle — imei, serialNumber, type',
+      usedBy: ['Asset Snapshot device section', 'SD Health fleet mode'],
+    },
+  ];
+
+  var apiRefList = document.getElementById('api-ref-list');
+  var apiRefTabs = document.getElementById('api-ref-tabs');
+
+  function renderApiRef(group) {
+    if (!apiRefList) return;
+    var filtered = group === 'all' ? API_REFS : API_REFS.filter(function(a) { return a.group === group; });
+    apiRefList.innerHTML = filtered.map(function(api) {
+      var pills = api.usedBy.map(function(u) {
+        return '<span class="api-used-pill">' + u + '</span>';
+      }).join('');
+      return '<div class="api-ref-card">' +
+        '<div class="api-ref-card-head">' +
+          '<span class="api-id-badge">' + api.id + '</span>' +
+          '<span class="api-badge ' + api.method.toLowerCase() + '">' + api.method + '</span>' +
+          '<span class="api-ref-card-url">' + api.url + '</span>' +
+        '</div>' +
+        '<div class="api-ref-card-body">' +
+          '<p><strong>Returns:</strong> ' + api.returns + '</p>' +
+          '<div class="api-ref-used">' + pills + '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  if (apiRefTabs) {
+    apiRefTabs.addEventListener('click', function(e) {
+      var btn = e.target.closest('.api-ref-tab');
+      if (!btn) return;
+      apiRefTabs.querySelectorAll('.api-ref-tab').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      renderApiRef(btn.dataset.group);
+    });
+  }
+
+  // Render on load
+  renderApiRef('all');
+
   // ── Expose for app.js ──────────────────────────────────────────────────
   window.__populateDiagnostics = function() { showToolSelector(); };
 
 })();
+}); // DOMContentLoaded
+
+// Suppress errors from missing elements gracefully
+window.addEventListener('error', function(e) {
+  if (e.message && e.message.includes('addEventListener')) {
+    e.preventDefault();
+  }
+});
