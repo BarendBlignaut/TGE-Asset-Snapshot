@@ -1233,6 +1233,106 @@ async function handleCameraSnapshotFleet(request, env) {
   return jsonResponse({ results });
 }
 
+
+// ── SD Card Health: by IMEI ──────────────────────────────────────────────────
+async function handleSdHealthByImei(request, env) {
+  const sessionCheck = await requireSession(request, env);
+  if (!sessionCheck.ok) return sessionCheck.response;
+
+  const body = await safeJson(request);
+  const imeis = Array.isArray(body.imeis) ? body.imeis.map(i => String(i).trim()).filter(Boolean) : [];
+
+  if (!imeis.length) return jsonResponse({ error: "At least one IMEI is required." }, 400);
+
+  if (isDemoMode(env)) {
+    const results = imeis.map((imei) => ({
+      imei,
+      fleetNumber: "Demo",
+      registration: "DEMO-001",
+      overallStatus: "ok",
+      sdCard1: { present: true,  rawStatus: "sdCardPresent", totalSizeBytes: "495075360768", totalSizeDisplay: "461.07 GB" },
+      sdCard2: { present: false, rawStatus: "sdCardBroken",  totalSizeBytes: "0",            totalSizeDisplay: null },
+    }));
+    return jsonResponse({ results });
+  }
+
+  // Fetch device stats for each camera IMEI
+  const results = [];
+  for (const imei of imeis) {
+    try {
+      const url = `https://api-au.telematics.com/v1/devices/${encodeURIComponent(imei)}?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
+      const res = await fetch(url);
+      if (!res.ok) { results.push({ imei, error: `HTTP ${res.status}` }); continue; }
+      const device = await res.json();
+      const stats  = extractCameraStats(device);
+      results.push({
+        imei,
+        fleetNumber: null,
+        registration: null,
+        overallStatus: stats.overallStatus,
+        sdCard1: stats.sdCard1,
+        sdCard2: stats.sdCard2,
+      });
+    } catch(e) {
+      results.push({ imei, error: e.message });
+    }
+  }
+  return jsonResponse({ results });
+}
+
+// ── SD Card Health: Fleet Mode ───────────────────────────────────────────────
+async function handleSdHealthFleet(request, env) {
+  const sessionCheck = await requireSession(request, env);
+  if (!sessionCheck.ok) return sessionCheck.response;
+
+  if (isDemoMode(env)) {
+    const results = DEMO_ASSET_TRACK_VEHICLES.map((v, i) => ({
+      imei: "86773408108131" + i,
+      fleetNumber: v.name,
+      registration: v.registration,
+      overallStatus: "ok",
+      sdCard1: { present: true,  rawStatus: "sdCardPresent", totalSizeBytes: "495075360768", totalSizeDisplay: "461.07 GB" },
+      sdCard2: { present: false, rawStatus: "sdCardBroken",  totalSizeBytes: "0",            totalSizeDisplay: null },
+    }));
+    return jsonResponse({ results });
+  }
+
+  // Get all vehicles, find camera devices, fetch stats
+  const vehiclesUrl = `https://api-au.telematics.com/v1/vehicles?key=${env.TN360_API_KEY}&pruning=B2B`;
+  const vehiclesRes = await fetch(vehiclesUrl);
+  if (!vehiclesRes.ok) return jsonResponse({ error: `Vehicles fetch failed: HTTP ${vehiclesRes.status}` }, 502);
+  const allVehicles = await vehiclesRes.json().catch(() => []);
+
+  const results = [];
+  for (const vehicle of (Array.isArray(allVehicles) ? allVehicles : [])) {
+    try {
+      const devUrl = `https://api-au.telematics.com/v1/vehicles/${vehicle.id}/devices?key=${env.TN360_API_KEY}&pruning=B2B`;
+      const devRes = await fetch(devUrl);
+      if (!devRes.ok) continue;
+      const devices = await devRes.json().catch(() => []);
+      const camera  = Array.isArray(devices)
+        ? devices.find(d => String(d.type?.code || "").toUpperCase() === "CAMERA")
+        : null;
+      if (!camera) continue;
+
+      const statsUrl = `https://api-au.telematics.com/v1/devices/${encodeURIComponent(camera.imei)}?key=${env.TN360_API_KEY}&pruning=B2B&embed=devicestats`;
+      const statsRes = await fetch(statsUrl);
+      if (!statsRes.ok) continue;
+      const device = await statsRes.json();
+      const stats  = extractCameraStats(device);
+      results.push({
+        imei: camera.imei,
+        fleetNumber: vehicle.name,
+        registration: vehicle.registration,
+        overallStatus: stats.overallStatus,
+        sdCard1: stats.sdCard1,
+        sdCard2: stats.sdCard2,
+      });
+    } catch(e) { /* skip vehicle on error */ }
+  }
+  return jsonResponse({ results });
+}
+
 async function handleImageProxy(request, env) {
   const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
@@ -1835,6 +1935,14 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/api/camera-snapshots") {
         return handleCameraSnapshots(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/sd-health-imei") {
+        return handleSdHealthByImei(request, env);
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/sd-health-fleet") {
+        return handleSdHealthFleet(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/camera-snapshot-imei") {
