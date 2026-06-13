@@ -1002,6 +1002,9 @@ async function handleImageProxy(request, env) {
     "openstreetmap.de",
     "openstreetmap.org",
     "tile.openstreetmap.org",
+    "a.tile.openstreetmap.org",
+    "b.tile.openstreetmap.org",
+    "c.tile.openstreetmap.org",
   ];
 
   const hostAllowed = allowedHosts.some(
