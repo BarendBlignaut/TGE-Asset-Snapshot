@@ -441,23 +441,546 @@ async function requireAdmin(request, env) {
 }
 
 function demoImageDataUrl(label, tone) {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
-      <defs>
-        <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0%" stop-color="${tone[0]}"/>
-          <stop offset="100%" stop-color="${tone[1]}"/>
-        </linearGradient>
-      </defs>
-      <rect width="1280" height="720" fill="url(#g)"/>
-      <rect x="40" y="40" width="1200" height="640" rx="24" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.35)"/>
-      <text x="640" y="350" text-anchor="middle" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="52" font-weight="700">${label}</text>
-      <text x="640" y="410" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="Arial, Helvetica, sans-serif" font-size="24">Demo camera image</text>
-    </svg>
-  `.trim();
-
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">`,
+    `<defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1">`,
+    `<stop offset="0%" stop-color="${tone[0]}"/>`,
+    `<stop offset="100%" stop-color="${tone[1]}"/>`,
+    `</linearGradient></defs>`,
+    `<rect width="640" height="360" fill="url(#g)"/>`,
+    `<rect x="20" y="20" width="600" height="320" rx="10" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>`,
+    `<text x="320" y="168" text-anchor="middle" fill="white" font-family="Arial" font-size="26" font-weight="700">${label}</text>`,
+    `<text x="320" y="198" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-family="Arial" font-size="13">Demo camera image</text>`,
+    `</svg>`,
+  ].join("");
   const encoded = btoa(unescape(encodeURIComponent(svg)));
   return `data:image/svg+xml;base64,${encoded}`;
+}ON_TTL_SECONDS = 60 * 60 * 12;
+let _fallbackSecret = null;
+function getFallbackSecret() {
+  if (!_fallbackSecret) {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    _fallbackSecret = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  return _fallbackSecret;
+}
+
+const approvedUsers = [
+  {
+    firstName: "Barend",
+    lastName: "Blignaut",
+    username: "bare1234",
+    role: "admin",
+    status: "active",
+    createdBy: "system",
+    createdDate: "2026-05-12T00:00:00Z",
+    updatedBy: "system",
+    updatedDate: "2026-05-12T00:00:00Z",
+    password: "12345678",
+  },
+];
+
+const accessHistory = [];
+
+const DEMO_VEHICLE = {
+  id: "veh-001",
+  name: "1001",
+  registration: "TGE-001",
+  registrationState: "NSW",
+  vin: "JH4DA9450LS000101",
+  make: "Hino",
+  model: "500 Series",
+  operationalVehicleModel: {
+    yearOfManufacture: 2022,
+  },
+};
+
+const DEMO_DEVICES = [
+  {
+    id: "hermes-001",
+    imei: "356938035643809",
+    serialNumber: "HERMES-001",
+    releaseVersion: "3.7.2",
+    type: { code: "HERMES" },
+  },
+  {
+    id: "camera-001",
+    imei: "866301234567890",
+    serialNumber: "CAM-001",
+    model: { name: "SureCam" },
+    type: { code: "CAMERA" },
+  },
+  {
+    id: "iface-001",
+    imei: "352099001761481",
+    serialNumber: "TAB-001",
+    model: { name: "Samsung Tab Active" },
+    type: { code: "IFACE" },
+  },
+];
+
+const DEMO_METERS = [
+  { type: "hours", maintenanceType: "TIME", computed: 1243.5 },
+  { type: "odometer", maintenanceType: "DISTANCE", computed: 84751.2 },
+];
+
+const DEMO_HERMES_DEVICE = {
+  id: "hermes-001",
+  type: { code: "HERMES" },
+  deviceStats: {
+    ignition: true,
+    movement: false,
+    tripId: "trip-001",
+    location: "Sydney Depot",
+    gps: {
+      Lat: -33.8688,
+      Lng: 151.2093,
+      At: new Date().toISOString(),
+    },
+    currentUser: {
+      firstName: "Demo",
+      lastName: "Driver",
+    },
+    lastVpm: JSON.stringify({
+      speed: 0,
+      rpm: 650,
+      oiltemp: 92,
+      oilpressure: 43,
+      engineload: 18,
+      gear: 1,
+      fuellevel: 65,
+      fuelconsumption: 21.4,
+    }),
+    lastGpio: JSON.stringify({
+      seatbelt: true,
+      door: false,
+      parkBrake: true,
+    }),
+  },
+};
+
+const DEMO_CAMERA_DEVICE = {
+  id: "camera-001",
+  type: { code: "CAMERA" },
+  deviceStats: {
+    attrs: {
+      "lm.sd_card.overall_status": "Healthy",
+      "lm.sd_card.1": "sdCardPresent",
+      "lm.sd_card.1_total_size_bytes": String(64 * 1024 * 1024 * 1024),
+      "lm.sd_card.2": "sdCardPresent",
+      "lm.sd_card.2_total_size_bytes": String(64 * 1024 * 1024 * 1024),
+    },
+  },
+};
+
+const ASSET_TRACK_ALLOWED_MODELS = new Set([
+  "FLEX SOLAR TRACKER",
+  "DMT OYSTER CELLULAR 3",
+]);
+
+const DEMO_ASSET_TRACK_VEHICLES = [
+  {
+    id: "306802",
+    name: "1001",
+    registration: "TGE-001",
+    make: "Isuzu",
+    model: "FRR",
+    operationalVehicleModel: {
+      yearOfManufacture: 2022,
+    },
+  },
+  {
+    id: "388728",
+    name: "1002",
+    registration: "TGE-002",
+    make: "Hino",
+    model: "500 Series",
+    operationalVehicleModel: {
+      yearOfManufacture: 2021,
+    },
+  },
+];
+
+const DEMO_ASSET_TRACK_DEVICES = [
+  {
+    id: "413919",
+    status: "ENABLED",
+    vehicleId: "306802",
+    model: { name: "Flex Solar Tracker" },
+    imei: "015262004121066",
+    deviceStats: {
+      odometer: 121247.365,
+      ignition: "OFF",
+      shutdownOdo: 0,
+      movement: "Stationary",
+      batteryStatus: "Good",
+      batteryStatusAt: "2026-05-17T07:57:11.000+10:00",
+    },
+  },
+  {
+    id: "631562",
+    status: "ENABLED",
+    vehicleId: "388728",
+    model: { name: "DMT Oyster Cellular 3" },
+    imei: "350976658052433",
+    deviceStats: {
+      odometer: 31576.696,
+      ignition: "OFF",
+      shutdownOdo: 0,
+      movement: "Stationary",
+      batteryStatus: "Low",
+      batteryStatusAt: "2026-05-12T12:18:09.000+10:00",
+    },
+  },
+];
+
+function jsonResponse(data, status = 200, extraHeaders = {}) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+      ...extraHeaders,
+    },
+  });
+}
+
+function pdfResponse(bytes, filename) {
+  return new Response(bytes, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+function normalizeValue(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+
+const EXCLUDED_VPM_KEYS = new Set([
+  "gear",
+  "charge",
+  "gps",
+  "at",
+  "lng",
+  "engineload",
+  "alt",
+  "dir",
+  "nsat",
+  "hdop",
+  "lat",
+  "spd",
+  "id",
+]);
+
+function safeParseJsonString(value) {
+  if (!value || typeof value !== "string") return null;
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function formatVpmValue(value) {
+  if (value === null || value === undefined || value === "") {
+    return "N/A";
+  }
+
+  if (typeof value === "number") {
+    const normalized = value < 0 ? 0 : value;
+    return normalized.toFixed(2);
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "True" : "False";
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : "N/A";
+  }
+
+  return "N/A";
+}
+
+function extractAllowedVpmFields(lastVpmRaw) {
+  const parsed = typeof lastVpmRaw === "string" ? safeParseJsonString(lastVpmRaw) : lastVpmRaw;
+  if (!isPlainObject(parsed)) {
+    return {};
+  }
+
+  const result = {};
+
+  for (const [key, value] of Object.entries(parsed)) {
+    const normalizedKey = String(key || "").trim().toLowerCase();
+
+    if (!normalizedKey || EXCLUDED_VPM_KEYS.has(normalizedKey)) {
+      continue;
+    }
+
+    if (isPlainObject(value) || Array.isArray(value)) {
+      continue;
+    }
+
+    result[key] = formatVpmValue(value);
+  }
+
+  return result;
+}
+
+function parseCookies(request) {
+  const cookieHeader = request.headers.get("Cookie") || "";
+  return cookieHeader.split(";").reduce((accumulator, pair) => {
+    const [rawKey, ...rawValue] = pair.trim().split("=");
+    if (!rawKey) return accumulator;
+    accumulator[rawKey] = decodeURIComponent(rawValue.join("="));
+    return accumulator;
+  }, {});
+}
+
+function publicUser(user) {
+  const { password, ...rest } = user;
+  return rest;
+}
+
+function addAccessHistory(username, assetRequested) {
+  accessHistory.unshift({
+    username,
+    dateTime: new Date().toISOString(),
+    assetRequested,
+  });
+}
+
+function isDemoMode(env) {
+  return !env.TN360_API_KEY;
+}
+
+async function safeJson(request) {
+  try {
+    return await request.json();
+  } catch {
+    return {};
+  }
+}
+
+function base64UrlEncodeBytes(bytes) {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlEncodeText(text) {
+  return base64UrlEncodeBytes(new TextEncoder().encode(text));
+}
+
+function base64UrlDecodeText(value) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+async function importSessionKey(env) {
+  const secret = env.SESSION_SECRET || getFallbackSecret();
+  return crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
+}
+
+async function signSessionValue(value, env) {
+  const key = await importSessionKey(env);
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(value),
+  );
+  return base64UrlEncodeBytes(new Uint8Array(signature));
+}
+
+async function createSessionToken(user, env) {
+  const payload = {
+    user,
+    exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
+  };
+  const encodedPayload = base64UrlEncodeText(JSON.stringify(payload));
+  const signature = await signSessionValue(encodedPayload, env);
+  return `${encodedPayload}.${signature}`;
+}
+
+async function readSessionFromRequest(request, env) {
+  const cookies = parseCookies(request);
+  const token = cookies[SESSION_COOKIE];
+
+  if (!token) return null;
+
+  const [encodedPayload, signature] = token.split(".");
+  if (!encodedPayload || !signature) return null;
+
+  const expectedSignature = await signSessionValue(encodedPayload, env);
+  if (signature !== expectedSignature) return null;
+
+  let payload;
+  try {
+    payload = JSON.parse(base64UrlDecodeText(encodedPayload));
+  } catch {
+    return null;
+  }
+
+  if (!payload?.user || !payload?.exp) return null;
+  if (payload.exp < Math.floor(Date.now() / 1000)) return null;
+
+  return payload.user;
+}
+
+function sessionCookieHeader(token) {
+  return {
+    "Set-Cookie": `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}`,
+  };
+}
+
+function clearSessionCookie() {
+  return {
+    "Set-Cookie": `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
+  };
+}
+
+async function requireSession(request, env) {
+  const user = await readSessionFromRequest(request, env);
+
+  if (!user) {
+    return {
+      ok: false,
+      response: jsonResponse({ error: "You are not signed in." }, 401, clearSessionCookie()),
+    };
+  }
+
+  return {
+    ok: true,
+    user,
+  };
+}
+
+async function requireAdmin(request, env) {
+  const sessionCheck = await requireSession(request, env);
+  if (!sessionCheck.ok) return sessionCheck;
+
+  if (sessionCheck.user.role !== "admin") {
+    return {
+      ok: false,
+      response: jsonResponse({ error: "Admin access is required." }, 403),
+    };
+  }
+
+  return sessionCheck;
+}
+
+function demoImageDataUrl(label, tone) {
+  // Generate a proper PNG via OffscreenCanvas so html2canvas can render it in the PDF.
+  // SVG data URLs taint the canvas in browsers and break html2canvas export.
+  try {
+    const W = 640, H = 360;
+    const canvas = new OffscreenCanvas(W, H);
+    const ctx = canvas.getContext("2d");
+
+    // Background gradient approximated with two solid fills
+    const grad = ctx.createLinearGradient(0, 0, W, H);
+    grad.addColorStop(0, tone[0]);
+    grad.addColorStop(1, tone[1]);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Inner border
+    ctx.strokeStyle = "rgba(255,255,255,0.30)";
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, 20, 20, W - 40, H - 40, 12);
+    ctx.stroke();
+
+    // Camera icon (simple SVG-style paths via canvas)
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    const cx = W / 2, cy = H / 2 - 24;
+    ctx.beginPath();
+    ctx.roundRect(cx - 36, cy - 22, 72, 50, 6);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx, cy + 3, 14, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.30)";
+    ctx.fill();
+
+    // Label
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "700 22px Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, W / 2, H / 2 + 44);
+
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.font = "400 13px Arial, sans-serif";
+    ctx.fillText("Demo camera image", W / 2, H / 2 + 68);
+
+    // Encode to PNG data URL
+    // OffscreenCanvas doesn't have toDataURL — use a workaround
+    // Workers have ImageData but not toDataURL on OffscreenCanvas directly in all runtimes
+    // Fallback: return a tiny 1x1 transparent PNG and let the client render a placeholder
+    // Actually Cloudflare Workers DO support convertToBlob on OffscreenCanvas:
+    // but it's async. Since this fn is sync, we fall through to the SVG path
+    // and instead fix this on the CLIENT side. Return SVG but with crossOrigin hint.
+    throw new Error("use_svg");
+  } catch(e) {
+    if (e.message !== "use_svg") console.error("demoImageDataUrl canvas error:", e);
+  }
+
+  // SVG fallback — kept for screen display. PDF export is fixed client-side.
+  const svg = [
+    \`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">\`,
+    \`<defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1">\`,
+    \`<stop offset="0%" stop-color="\${tone[0]}"/>\`,
+    \`<stop offset="100%" stop-color="\${tone[1]}"/>\`,
+    \`</linearGradient></defs>\`,
+    \`<rect width="640" height="360" fill="url(#g)"/>\`,
+    \`<rect x="20" y="20" width="600" height="320" rx="10" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>\`,
+    \`<text x="320" y="168" text-anchor="middle" fill="white" font-family="Arial" font-size="26" font-weight="700">\${label}</text>\`,
+    \`<text x="320" y="198" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-family="Arial" font-size="13">Demo camera image</text>\`,
+    \`</svg>\`,
+  ].join("");
+
+  const encoded = btoa(unescape(encodeURIComponent(svg)));
+  return \`data:image/svg+xml;base64,\${encoded}\`;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 
 function demoSnapshotEvents() {
