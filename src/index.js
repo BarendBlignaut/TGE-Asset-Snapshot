@@ -965,6 +965,92 @@ async function handleHermesDeviceStats(request, env) {
   return jsonResponse(device);
 }
 
+async function handleSendEmail(request, env) {
+  const sessionCheck = await requireSession(request, env);
+  if (!sessionCheck.ok) return sessionCheck.response;
+
+  if (!env.RESEND_API_KEY) {
+    return jsonResponse({
+      error: "Email sending is not configured. Add RESEND_API_KEY and RESEND_FROM to your Worker environment variables.",
+    }, 503);
+  }
+
+  const body = await safeJson(request);
+  const to         = String(body.to || "").trim();
+  const cc         = body.cc ? String(body.cc).trim() : null;
+  const subject    = String(body.subject || "TGE Asset Snapshot").trim();
+  const text       = String(body.body || "").trim();
+  const pdfBase64  = String(body.pdfBase64 || "").trim();
+  const pdfFilename= String(body.pdfFilename || "snapshot.pdf").trim();
+
+  if (!to) {
+    return jsonResponse({ error: "Recipient email (to) is required." }, 400);
+  }
+  if (!pdfBase64) {
+    return jsonResponse({ error: "PDF attachment data is required." }, 400);
+  }
+
+  const fromAddress = env.RESEND_FROM || "TGE Asset Snapshot <onboarding@resend.dev>";
+
+  // Build HTML version of the body
+  const htmlBody = `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+      <div style="background:#005a2d;padding:20px 24px;border-radius:8px 8px 0 0;">
+        <h1 style="margin:0;color:#ffffff;font-size:18px;">TGE Asset Snapshot</h1>
+      </div>
+      <div style="padding:24px;background:#f5f9f6;border:1px solid #dce8e0;border-top:none;border-radius:0 0 8px 8px;">
+        <p style="margin:0 0 16px;white-space:pre-line;color:#1f2a24;">${text.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
+        <p style="margin:16px 0 0;font-size:12px;color:#5a6e62;">
+          This email was sent from the TGE Asset Snapshot system. The PDF snapshot is attached.
+        </p>
+      </div>
+    </div>
+  `.trim();
+
+  const resendPayload = {
+    from: fromAddress,
+    to: to.split(",").map(e => e.trim()).filter(Boolean),
+    ...(cc ? { cc: cc.split(",").map(e => e.trim()).filter(Boolean) } : {}),
+    subject,
+    text,
+    html: htmlBody,
+    attachments: [
+      {
+        filename: pdfFilename,
+        content: pdfBase64,
+      },
+    ],
+  };
+
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${env.RESEND_API_KEY}`,
+      },
+      body: JSON.stringify(resendPayload),
+    });
+
+    const result = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      return jsonResponse({
+        error: result.message || `Resend API error: HTTP ${res.status}`,
+        detail: result,
+      }, 502);
+    }
+
+    return jsonResponse({ ok: true, id: result.id });
+
+  } catch (err) {
+    return jsonResponse({
+      error: "Failed to reach email provider.",
+      detail: err instanceof Error ? err.message : String(err),
+    }, 502);
+  }
+}
+
 async function handleImageProxy(request, env) {
   const sessionCheck = await requireSession(request, env);
   if (!sessionCheck.ok) return sessionCheck.response;
@@ -1567,6 +1653,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/api/camera-snapshots") {
         return handleCameraSnapshots(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/send-email") {
+        return handleSendEmail(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/image-proxy") {
