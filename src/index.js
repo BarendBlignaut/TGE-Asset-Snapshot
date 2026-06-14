@@ -268,7 +268,10 @@ async function handleUpdateUser(request, env, userId) {
   const existing = await env.DB.prepare(
     "SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND id != ?"
   ).bind(username, userId).first();
-  if (existing) return jsonResponse({ error: "Username already taken by another user." }, 409);
+  if (existing) return jsonResponse({ error: "Username '" + username + "' is already taken by another user." }, 409);
+
+  // Debug — return what we are about to update
+  const debugInfo = { userId, firstName, lastName, username, email, roleId, status };
 
   let sql    = "UPDATE users SET first_name=?, last_name=?, username=?, email=?, role_id=?, status=?, updated_at=?";
   let params = [firstName, lastName, username, email || null, roleId, status, nowIso()];
@@ -290,7 +293,7 @@ async function handleUpdateUser(request, env, userId) {
     "SELECT id, username, first_name, last_name, role_id, status, updated_at FROM users WHERE id = ?"
   ).bind(userId).first();
 
-  return jsonResponse({ ok: true, user: updated });
+  return jsonResponse({ ok: true, user: updated, debug: debugInfo });
 }
 
 // DELETE /api/admin/users/:id
@@ -482,11 +485,11 @@ export default {
       if (method === "GET"    && path === "/api/admin/users")       return handleGetUsers(request, env);
       if (method === "POST"   && path === "/api/admin/users")       return handleCreateUser(request, env);
       if (method === "PUT"    && path.match(/^\/api\/admin\/users\/\d+$/)) {
-        const id = path.split("/").pop();
+        const id = parseInt(path.split("/").pop(), 10);
         return handleUpdateUser(request, env, id);
       }
       if (method === "DELETE" && path.match(/^\/api\/admin\/users\/\d+$/)) {
-        const id = path.split("/").pop();
+        const id = parseInt(path.split("/").pop(), 10);
         return handleDeleteUser(request, env, id);
       }
 
@@ -496,11 +499,11 @@ export default {
 
       // Admin — permissions
       if (method === "GET" && path.match(/^\/api\/admin\/permissions\/\d+$/)) {
-        const roleId = path.split("/").pop();
+        const roleId = parseInt(path.split("/").pop(), 10);
         return handleGetPermissions(request, env, roleId);
       }
       if (method === "PUT" && path.match(/^\/api\/admin\/permissions\/\d+$/)) {
-        const roleId = path.split("/").pop();
+        const roleId = parseInt(path.split("/").pop(), 10);
         return handleUpdatePermissions(request, env, roleId);
       }
 
