@@ -1,15 +1,16 @@
 {
+  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "tge-asset-snapshot",
-  "version": "2.0.0",
-  "description": "TGE Asset Snapshot — Fleet telematics dashboard on Cloudflare Workers + D1",
   "main": "src/index.js",
-  "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "db:init": "wrangler d1 execute tge-asset-snapshot-db --file=src/schema.sql",
-    "db:init:local": "wrangler d1 execute tge-asset-snapshot-db --local --file=src/schema.sql"
+  "compatibility_date": "2026-06-14",
+  "assets": {
+    "directory": "./public"
   },
-  "devDependencies": {
-    "wrangler": "^4.0.0"
-  }
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tge-asset-snapshot-db",
+      "database_id": "c816090b-24c2-4ee0-8765-dce000b1d83d"
+    }
+  ]
 }
