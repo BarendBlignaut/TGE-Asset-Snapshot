@@ -187,8 +187,10 @@
     var username  = TGE.el('user-username').value.trim();
     var email     = TGE.el('user-email').value.trim();
     var password  = TGE.el('user-password').value.trim();
-    var roleSel   = TGE.el('user-role');
-    var roleId    = roleSel ? parseInt(roleSel.options[roleSel.selectedIndex].value, 10) : 3;
+    var roleSel   = document.getElementById('user-role');
+    var roleId    = roleSel ? parseInt(roleSel.value, 10) : 3;
+    if (isNaN(roleId) || roleId < 1) roleId = 3;
+    console.log('[Admin] role select value:', roleSel ? roleSel.value : 'no select', 'parsed roleId:', roleId);
     var status    = TGE.el('user-status').value;
     var isEdit    = !!state.editingUser;
 
@@ -200,6 +202,8 @@
 
     if (isNaN(roleId) || roleId < 1) roleId = 3;
 
+    // Lowercase username before sending to match server behaviour
+    username = username.toLowerCase();
     var body = { firstName: firstName, lastName: lastName, username: username, email: email, roleId: roleId, status: status };
     if (password) body.password = password;
 
