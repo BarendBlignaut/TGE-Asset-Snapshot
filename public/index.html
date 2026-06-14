@@ -131,120 +131,84 @@
       gap: 2px;
     }
 
-    /* ── NAV GROUP (collapsible) ────────────────── */
+    /* ── NAV GROUPS ─────────────────────────────── */
     .nav-group-btn {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      width: 100%;
-      padding: 8px 10px;
-      border-radius: 8px;
-      border: none;
-      background: none;
-      cursor: pointer;
-      color: rgba(255,255,255,0.42);
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.09em;
-      margin-top: 8px;
-      transition: background 140ms, color 140ms;
+      display: flex; align-items: center; justify-content: space-between;
+      width: 100%; padding: 8px 10px; border-radius: 8px;
+      border: none; background: none; cursor: pointer;
+      color: rgba(255,255,255,0.42); font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.09em;
+      margin-top: 8px; transition: background 140ms, color 140ms;
     }
-
     .nav-group-btn:first-child { margin-top: 0; }
-
-    .nav-group-btn:hover {
-      background: rgba(255,255,255,0.06);
-      color: rgba(255,255,255,0.7);
-    }
-
+    .nav-group-btn:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.7); }
     .nav-group-btn.open { color: rgba(255,255,255,0.72); }
-
     .nav-group-btn.has-active { color: var(--yellow); }
-
-    .nav-group-chevron {
-      width: 13px;
-      height: 13px;
-      flex-shrink: 0;
-      transition: transform 220ms cubic-bezier(0.4,0,0.2,1);
-      opacity: 0.6;
-    }
-
+    .nav-group-chevron { width: 13px; height: 13px; flex-shrink: 0; transition: transform 220ms cubic-bezier(0.4,0,0.2,1); opacity: 0.6; }
     .nav-group-btn.open .nav-group-chevron { transform: rotate(180deg); }
-
-    .nav-group-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--yellow);
-      flex-shrink: 0;
-      display: none;
-      margin-right: 2px;
-    }
-
+    .nav-group-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--yellow); flex-shrink: 0; display: none; margin-right: 2px; }
     .nav-group-btn.has-active .nav-group-dot { display: block; }
     .nav-group-btn.has-active.open .nav-group-dot { display: none; }
-
-    /* ── NAV CHILDREN (slide) ───────────────────── */
-    .nav-children {
-      overflow: hidden;
-      max-height: 0;
-      transition: max-height 220ms cubic-bezier(0.4,0,0.2,1);
-    }
-
+    .nav-children { overflow: hidden; max-height: 0; transition: max-height 220ms cubic-bezier(0.4,0,0.2,1); }
     .nav-children.open { max-height: 300px; }
-
-    /* ── NAV ITEM (child) ───────────────────────── */
     .nav-item {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      padding: 7px 10px 7px 22px;
-      border-radius: 8px;
-      color: rgba(255,255,255,0.55);
-      font-size: 12px;
-      font-weight: 500;
-      cursor: pointer;
-      border: none;
-      background: none;
-      width: 100%;
-      text-align: left;
-      transition: background 140ms, color 140ms;
-      white-space: nowrap;
-      margin-top: 2px;
+      display: flex; align-items: center; gap: 9px;
+      padding: 7px 10px 7px 22px; border-radius: 8px;
+      color: rgba(255,255,255,0.55); font-size: 12px; font-weight: 500;
+      cursor: pointer; border: none; background: none; width: 100%;
+      text-align: left; transition: background 140ms, color 140ms;
+      white-space: nowrap; margin-top: 2px;
     }
-
-    .nav-item:hover {
-      background: rgba(255,255,255,0.07);
-      color: rgba(255,255,255,0.85);
-    }
-
-    .nav-item.active {
-      background: var(--yellow);
-      color: var(--green-900);
-    }
-
-    .nav-icon {
-      width: 14px;
-      height: 14px;
-      flex-shrink: 0;
-      opacity: 0.8;
-    }
-
+    .nav-item:hover { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.85); }
+    .nav-item.active { background: var(--yellow); color: var(--green-900); }
+    .nav-icon { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.8; }
     .nav-item.active .nav-icon { opacity: 1; }
-
-    /* Collapsed sidebar — centre group buttons */
-    .shell.sidebar-collapsed .nav-group-btn {
-      justify-content: center;
-      padding: 8px 0;
-      font-size: 0;
-      letter-spacing: 0;
-    }
-
-    .shell.sidebar-collapsed .nav-group-chevron,
-    .shell.sidebar-collapsed .nav-group-dot { display: none; }
-
+    .shell.sidebar-collapsed .nav-group-btn { justify-content: center; padding: 8px 0; font-size: 0; letter-spacing: 0; }
+    .shell.sidebar-collapsed .nav-group-chevron, .shell.sidebar-collapsed .nav-group-dot { display: none; }
     .shell.sidebar-collapsed .nav-children { max-height: 0 !important; }
+
+    /* ── HERO ACTION BAR ────────────────────────── */
+    .hero-action-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap; margin-top: 16px;
+    }
+    .hero-action-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .hero-action-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .hero-mode-btn {
+      height: 36px; padding: 0 16px; border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.10);
+      color: rgba(255,255,255,0.75); font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: background 140ms, border-color 140ms;
+    }
+    .hero-mode-btn:hover { background: rgba(255,255,255,0.18); }
+    .hero-mode-btn.active { background: var(--yellow); border-color: var(--yellow); color: var(--green-900); }
+    .hero-mode-divider { width: 1px; height: 24px; background: rgba(255,255,255,0.2); margin: 0 4px; }
+    .hero-run-btn {
+      height: 36px; padding: 0 20px; border-radius: 8px; border: none;
+      background: var(--yellow); color: var(--green-900); font-size: 13px;
+      font-weight: 700; cursor: pointer; transition: background 140ms;
+    }
+    .hero-run-btn:hover { background: var(--yellow-dim); }
+    .hero-cancel-btn, .hero-refresh-btn {
+      height: 36px; padding: 0 14px; border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.10);
+      color: rgba(255,255,255,0.8); font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: background 140ms;
+    }
+    .hero-cancel-btn:hover, .hero-refresh-btn:hover { background: rgba(255,255,255,0.18); }
+    .hero-export-btn {
+      height: 36px; padding: 0 14px; border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.07);
+      color: rgba(255,255,255,0.45); font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: background 140ms, color 140ms, border-color 140ms;
+      pointer-events: none;
+    }
+    .hero-export-btn.ready {
+      color: rgba(255,255,255,0.85); border-color: rgba(255,255,255,0.28);
+      background: rgba(255,255,255,0.12); pointer-events: auto;
+    }
+    .hero-export-btn.ready:hover { background: rgba(255,255,255,0.20); }
+    .hero-export-divider { width: 1px; height: 24px; background: rgba(255,255,255,0.15); margin: 0 2px; }
 
 
     /* ── SIDEBAR COLLAPSE ───────────────────────── */
@@ -1561,7 +1525,7 @@
 
       <nav class="sidebar-nav" id="sidebar-nav">
 
-        <!-- ── OPERATIONS ── -->
+        <!-- OPERATIONS -->
         <button class="nav-group-btn open has-active" id="grp-operations" type="button">
           <span>Operations</span>
           <span class="nav-group-dot"></span>
@@ -1569,33 +1533,24 @@
         </button>
         <div class="nav-children open" id="children-operations">
           <button class="nav-item" id="new-request-tab" type="button">
-            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-              <circle cx="10" cy="10" r="8"/><path d="M10 6v8M6 10h8"/>
-            </svg>
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="8"/><path d="M10 6v8M6 10h8"/></svg>
             <span class="nav-label">New Request</span>
           </button>
           <button class="nav-item active" id="standard-tab" type="button">
-            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-              <rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/>
-              <rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/>
-            </svg>
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/></svg>
             <span class="nav-label">Snapshot</span>
           </button>
           <button class="nav-item" id="asset-track-tab" type="button">
-            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-              <path d="M10 2L18 6v8l-8 4-8-4V6l8-4z"/><path d="M10 2v12M2 6l8 4 8-4"/>
-            </svg>
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2L18 6v8l-8 4-8-4V6l8-4z"/><path d="M10 2v12M2 6l8 4 8-4"/></svg>
             <span class="nav-label">Asset Track</span>
           </button>
           <button class="nav-item" id="vpm-tab" type="button" style="display:none;">
-            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-              <path d="M3 12l4-4 4 4 6-7"/><path d="M17 5h-4v4"/>
-            </svg>
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12l4-4 4 4 6-7"/><path d="M17 5h-4v4"/></svg>
             <span class="nav-label">VPM Analysis</span>
           </button>
         </div>
 
-        <!-- ── CAMERA ── -->
+        <!-- CAMERA -->
         <button class="nav-group-btn" id="grp-camera" type="button">
           <span>Camera</span>
           <span class="nav-group-dot"></span>
@@ -1603,22 +1558,16 @@
         </button>
         <div class="nav-children" id="children-camera">
           <button class="nav-item" id="diagnostics-tab" type="button">
-            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-              <path d="M2 7a2 2 0 012-2h1l1.5-2h5L13 5h1a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V7z"/>
-              <circle cx="10" cy="10.5" r="2.5"/>
-            </svg>
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 7a2 2 0 012-2h1l1.5-2h5L13 5h1a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V7z"/><circle cx="10" cy="10.5" r="2.5"/></svg>
             <span class="nav-label">Camera Snapshots</span>
           </button>
           <button class="nav-item" id="sd-health-tab" type="button">
-            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-              <rect x="2" y="2" width="16" height="16" rx="3"/><path d="M6 2v8M10 2v8M14 2v8"/>
-              <circle cx="6" cy="14" r="1" fill="currentColor"/><circle cx="10" cy="14" r="1" fill="currentColor"/>
-            </svg>
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="16" height="16" rx="3"/><path d="M6 2v8M10 2v8M14 2v8"/><circle cx="6" cy="14" r="1" fill="currentColor"/><circle cx="10" cy="14" r="1" fill="currentColor"/></svg>
             <span class="nav-label">SD Card Health</span>
           </button>
         </div>
 
-        <!-- ── MANAGEMENT ── -->
+        <!-- MANAGEMENT -->
         <button class="nav-group-btn" id="grp-management" type="button">
           <span>Management</span>
           <span class="nav-group-dot"></span>
@@ -1626,9 +1575,7 @@
         </button>
         <div class="nav-children" id="children-management">
           <button class="nav-item" id="admin-tab" type="button" style="display:none;">
-            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-              <circle cx="10" cy="7" r="3"/><path d="M3 17c0-3.3 3.1-6 7-6s7 2.7 7 6"/>
-            </svg>
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="7" r="3"/><path d="M3 17c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>
             <span class="nav-label">Admin</span>
           </button>
         </div>
@@ -1724,20 +1671,27 @@
             <div class="section-kicker" style="color:rgba(212,240,38,0.8);">Asset Search</div>
             <h2>Track one vehicle — full operational snapshot</h2>
             <p>Enter a fleet number to load the current asset snapshot: location, metrics, diagnostics, and camera evidence.</p>
-
-            <form class="lookup" id="asset-search-form">
-              <div class="field">
-                <label for="asset-number">Fleet Number</label>
-                <input id="asset-number" name="assetNumber" type="text" placeholder="e.g. 1001" required />
-              </div>
-              <button class="action-btn" type="submit">Load Snapshot</button>
-              <button class="secondary-btn" id="refresh-asset-btn" type="button">Refresh</button>
-              <button class="secondary-btn" id="export-pdf-btn" type="button">Export PDF</button>
-              <button class="secondary-btn" id="email-pdf-btn" type="button">Email PDF</button>
-            </form>
-
-            <p class="message" id="asset-search-message"></p>
           </div>
+
+          <form class="hero-action-bar" id="asset-search-form">
+            <div class="hero-action-left">
+              <div class="field" style="margin:0;">
+                <input id="asset-number" name="assetNumber" type="text" placeholder="e.g. Fleet 1001" required style="height:36px;min-width:160px;" />
+              </div>
+              <button class="hero-run-btn" type="submit">Run</button>
+              <button class="hero-cancel-btn" id="refresh-asset-btn" type="button">Refresh</button>
+            </div>
+            <div class="hero-action-right">
+              <div class="hero-export-divider"></div>
+              <button class="hero-export-btn" id="export-pdf-btn" type="button">PDF</button>
+              <button class="hero-export-btn" id="email-pdf-btn" type="button">Email PDF</button>
+              <button class="hero-export-btn" id="snapshot-csv-btn" type="button">CSV</button>
+              <button class="hero-export-btn" id="snapshot-xlsx-btn" type="button">XLSX</button>
+              <button class="hero-export-btn" id="snapshot-json-btn" type="button">JSON</button>
+            </div>
+          </form>
+
+          <p class="message" id="asset-search-message" style="margin-top:8px;"></p>
           <div class="hero-panel" id="hero-panel"></div>
         </section>
 
@@ -1941,43 +1895,42 @@
           </div><!-- /standard-view -->
 
           <!-- ASSET TRACK VIEW -->
-          <section class="section" id="asset-track-view" style="display:none;">
-            <div class="section-head">
-              <div>
-                <div class="section-kicker">Asset Track</div>
-                <h3 class="section-title">Multi-Asset Fleet Analysis</h3>
+          <section class="hero" id="asset-track-view" style="display:none;">
+            <div class="hero-copy" style="margin-bottom:12px;">
+              <div class="section-kicker" style="color:rgba(212,240,38,0.8);">Asset Track</div>
+              <h2>Multi-Asset Fleet Analysis</h2>
+            </div>
+
+            <div class="hero-action-bar">
+              <div class="hero-action-left">
+                <button class="hero-mode-btn" id="asset-track-user-tab" type="button">User</button>
+                <button class="hero-mode-btn" id="asset-track-fleet-tab" type="button">Fleet</button>
+                <div class="hero-mode-divider"></div>
+                <button class="hero-run-btn" id="asset-track-run-btn" type="button">Run</button>
+                <button class="hero-cancel-btn" id="asset-track-cancel-btn" type="button">Cancel</button>
+                <button class="hero-refresh-btn" id="asset-track-refresh-btn" type="button">Refresh</button>
+              </div>
+              <div class="hero-action-right">
+                <div class="hero-export-divider"></div>
+                <button class="hero-export-btn" id="asset-track-pdf-btn" type="button">PDF</button>
+                <button class="hero-export-btn" id="asset-track-email-pdf-btn" type="button">Email PDF</button>
+                <button class="hero-export-btn" id="asset-track-export-btn" type="button">CSV</button>
+                <button class="hero-export-btn" id="asset-track-xlsx-btn" type="button">XLSX</button>
+                <button class="hero-export-btn" id="asset-track-json-btn" type="button">JSON</button>
               </div>
             </div>
 
-            <div class="asset-track-shell">
-              <div class="asset-track-toolbar">
-                <div class="asset-track-mode-bar">
-                  <button class="action-btn" id="asset-track-user-tab" type="button">User Input</button>
-                  <button class="action-btn" id="asset-track-fleet-tab" type="button">Fleet Mode</button>
-                </div>
-                <div class="asset-track-export-copy">
-                  <button class="action-btn" id="asset-track-export-btn" type="button">Export CSV</button>
-                  <button class="action-btn" id="asset-track-copy-btn" type="button">Copy Selection</button>
+            <p class="message" id="asset-track-message" style="margin-top:8px;"></p>
+
+            <div class="asset-track-input-panel" id="asset-track-input-panel" style="margin-top:0;">
+              <div class="asset-track-panel" id="asset-track-user-panel" style="display:none;">
+                <div class="field" style="margin-top:0;">
+                  <label for="asset-track-fleet-input" style="color:rgba(255,255,255,0.6);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;display:block;margin-bottom:6px;">Fleet numbers — one per line</label>
+                  <textarea id="asset-track-fleet-input" placeholder="Enter one fleet number per line" style="width:100%;min-height:100px;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:10px 12px;background:rgba(255,255,255,0.08);color:#fff;font:inherit;resize:vertical;"></textarea>
                 </div>
               </div>
-
-              <div class="asset-track-input-panel" id="asset-track-input-panel">
-                <div class="asset-track-panel" id="asset-track-user-panel" style="display:none;">
-                  <div class="field">
-                    <label for="asset-track-fleet-input" style="color:var(--muted);">Add Fleet Numbers (one per line)</label>
-                    <textarea id="asset-track-fleet-input" placeholder="Enter one fleet number per line"></textarea>
-                  </div>
-                </div>
-
-                <div class="asset-track-panel" id="asset-track-fleet-panel" style="display:none;">
-                  <p class="asset-track-helper">Fleet mode checks the active fleet, validates linked hardware, and renders the tracker table only after all matching devices are confirmed.</p>
-                </div>
-
-                <div class="asset-track-run-row">
-                  <button class="action-btn" id="asset-track-run-btn" type="button" style="display:none;">Run</button>
-                </div>
-
-                <p class="message" id="asset-track-message"></p>
+              <div class="asset-track-panel" id="asset-track-fleet-panel" style="display:none;">
+                <p style="color:rgba(255,255,255,0.65);font-size:13px;padding:10px 0;">Fleet mode checks all active vehicles, validates linked hardware, and renders the full fleet table.</p>
               </div>
             </div>
           </section>
@@ -2000,14 +1953,24 @@
 
           <!-- ADMIN VIEW -->
           <section class="section" id="admin-view" style="display:none;">
-            <div class="section-head">
-              <div>
-                <div class="section-kicker">Admin</div>
-                <h3 class="section-title">Access Management</h3>
+            <div class="hero" style="border-radius:var(--radius-lg);margin-bottom:20px;">
+              <div class="hero-copy" style="margin-bottom:12px;">
+                <div class="section-kicker" style="color:rgba(212,240,38,0.8);">Management</div>
+                <h2>Admin</h2>
+              </div>
+              <div class="hero-action-bar">
+                <div class="hero-action-left">
+                  <button class="hero-mode-btn active" id="admin-tab-users" type="button">Users</button>
+                  <button class="hero-mode-btn" id="admin-tab-history" type="button">Access History</button>
+                  <button class="hero-mode-btn" id="admin-tab-api" type="button">API Reference</button>
+                </div>
+                <div class="hero-action-right">
+                  <div class="hero-export-divider"></div>
+                  <button class="hero-export-btn ready" id="admin-export-xlsx-btn" type="button">XLSX</button>
+                  <button class="hero-export-btn ready" id="admin-export-csv-btn" type="button">CSV</button>
+                </div>
               </div>
             </div>
-
-            <p class="section-subcopy">Add or edit approved users, then review the user register and access history below.</p>
 
             <form id="approved-user-form">
               <div class="meta-grid">
@@ -2086,20 +2049,29 @@
           </section>
 
           <!-- VPM VIEW -->
-          <section class="section" id="vpm-view" style="display:none;">
-            <div class="section-head">
-              <div>
-                <div class="section-kicker">VPM</div>
-                <h3 class="section-title">VPM Analysis</h3>
-              </div>
+          <section class="hero" id="vpm-view" style="display:none;">
+            <div class="hero-copy" style="margin-bottom:12px;">
+              <div class="section-kicker" style="color:rgba(212,240,38,0.8);">VPM</div>
+              <h2>VPM Analysis</h2>
             </div>
 
-            <div class="vpm-mode-bar">
-              <button class="action-btn" id="vpm-user-input-tab" type="button">User Input</button>
-              <button class="action-btn" id="vpm-fleet-evaluation-tab" type="button">Fleet Evaluation</button>
-              <button class="action-btn" id="run-vpm-btn" type="button">Run</button>
-              <button class="secondary-btn" id="cancel-vpm-btn" type="button" style="display:none;">Cancel</button>
-              <button class="action-btn" id="vpm-export-btn" type="button">Export Data</button>
+            <div class="hero-action-bar">
+              <div class="hero-action-left">
+                <button class="hero-mode-btn" id="vpm-user-input-tab" type="button">User</button>
+                <button class="hero-mode-btn" id="vpm-fleet-evaluation-tab" type="button">Fleet</button>
+                <div class="hero-mode-divider"></div>
+                <button class="hero-run-btn" id="run-vpm-btn" type="button">Run</button>
+                <button class="hero-cancel-btn" id="cancel-vpm-btn" type="button" style="display:none;">Cancel</button>
+                <button class="hero-refresh-btn" id="vpm-refresh-btn" type="button">Refresh</button>
+              </div>
+              <div class="hero-action-right">
+                <div class="hero-export-divider"></div>
+                <button class="hero-export-btn" id="vpm-pdf-btn" type="button">PDF</button>
+                <button class="hero-export-btn" id="vpm-email-pdf-btn" type="button">Email PDF</button>
+                <button class="hero-export-btn" id="vpm-export-btn" type="button">CSV</button>
+                <button class="hero-export-btn" id="vpm-xlsx-btn" type="button">XLSX</button>
+                <button class="hero-export-btn" id="vpm-json-btn" type="button">JSON</button>
+              </div>
             </div>
 
             <div class="vpm-panel" id="vpm-user-input-panel" style="display:none;">
@@ -2393,18 +2365,14 @@
 
   <script>
     (function() {
-      var shell  = document.querySelector('.shell');
-      var toggle = document.getElementById('sidebar-toggle');
-      var PREF_KEY      = 'tge_sidebar_collapsed';
-      var GRP_PREF_KEY  = 'tge_nav_groups';
+      var shell   = document.querySelector('.shell');
+      var toggle  = document.getElementById('sidebar-toggle');
+      var PREF_KEY     = 'tge_sidebar_collapsed';
+      var GRP_PREF_KEY = 'tge_nav_groups';
 
-      // ── Sidebar collapse ──────────────────────────────────────────────────
-      function applyCollapse(collapsed) {
-        shell.classList.toggle('sidebar-collapsed', collapsed);
-      }
-      try {
-        if (localStorage.getItem(PREF_KEY) === '1') applyCollapse(true);
-      } catch(e) {}
+      // ── Sidebar collapse ────────────────────────────────────────────────
+      function applyCollapse(c) { shell.classList.toggle('sidebar-collapsed', c); }
+      try { if (localStorage.getItem(PREF_KEY) === '1') applyCollapse(true); } catch(e) {}
       if (toggle) {
         toggle.addEventListener('click', function() {
           var c = shell.classList.contains('sidebar-collapsed');
@@ -2413,38 +2381,28 @@
         });
       }
 
-      // ── Nav group toggle ──────────────────────────────────────────────────
-      var groups = ['operations', 'camera', 'management'];
-
-      // Restore saved open/closed state
+      // ── Nav group toggle ────────────────────────────────────────────────
+      var groups = ['operations','camera','management'];
       var savedGroups = {};
-      try {
-        savedGroups = JSON.parse(localStorage.getItem(GRP_PREF_KEY) || '{}');
-      } catch(e) {}
+      try { savedGroups = JSON.parse(localStorage.getItem(GRP_PREF_KEY) || '{}'); } catch(e) {}
 
       groups.forEach(function(g) {
-        var btn      = document.getElementById('grp-' + g);
-        var children = document.getElementById('children-' + g);
-        if (!btn || !children) return;
-
-        // Default: operations open, others closed
-        var defaultOpen = (g === 'operations');
-        var isOpen = (savedGroups[g] !== undefined) ? savedGroups[g] : defaultOpen;
-
+        var btn = document.getElementById('grp-' + g);
+        var ch  = document.getElementById('children-' + g);
+        if (!btn || !ch) return;
+        var isOpen = savedGroups[g] !== undefined ? savedGroups[g] : (g === 'operations');
         btn.classList.toggle('open', isOpen);
-        children.classList.toggle('open', isOpen);
-
+        ch.classList.toggle('open', isOpen);
         btn.addEventListener('click', function() {
           var open = btn.classList.contains('open');
           btn.classList.toggle('open', !open);
-          children.classList.toggle('open', !open);
+          ch.classList.toggle('open', !open);
           savedGroups[g] = !open;
           try { localStorage.setItem(GRP_PREF_KEY, JSON.stringify(savedGroups)); } catch(e) {}
         });
       });
 
-      // ── Active child tracking ─────────────────────────────────────────────
-      // Map each nav child button to its parent group
+      // ── Active nav item tracking ────────────────────────────────────────
       var childGroupMap = {
         'new-request-tab':  'operations',
         'standard-tab':     'operations',
@@ -2454,55 +2412,53 @@
         'sd-health-tab':    'camera',
         'admin-tab':        'management',
       };
+      var titleMap = {
+        'new-request-tab':  'New Request',
+        'standard-tab':     'Asset Snapshot',
+        'asset-track-tab':  'Asset Track',
+        'vpm-tab':          'VPM Analysis',
+        'diagnostics-tab':  'Camera Snapshots',
+        'sd-health-tab':    'SD Card Health',
+        'admin-tab':        'Admin',
+      };
 
-      function setActiveChild(tabId) {
-        // Clear all active nav items
-        document.querySelectorAll('.nav-item').forEach(function(n) {
-          n.classList.remove('active');
-        });
-        // Clear has-active on all groups
-        document.querySelectorAll('.nav-group-btn').forEach(function(b) {
-          b.classList.remove('has-active');
-        });
-        // Set active on clicked item
+      function setActiveNav(tabId) {
+        document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+        document.querySelectorAll('.nav-group-btn').forEach(function(b) { b.classList.remove('has-active'); });
         var el = document.getElementById(tabId);
         if (el) el.classList.add('active');
-        // Set has-active on parent group
         var grp = childGroupMap[tabId];
         if (grp) {
-          var grpBtn = document.getElementById('grp-' + grp);
-          if (grpBtn) grpBtn.classList.add('has-active');
+          var gb = document.getElementById('grp-' + grp);
+          if (gb) gb.classList.add('has-active');
         }
-        // Update topbar page title
-        var titleMap = {
-          'new-request-tab': 'New Request',
-          'standard-tab':    'Asset Snapshot',
-          'asset-track-tab': 'Asset Track',
-          'vpm-tab':         'VPM Analysis',
-          'diagnostics-tab': 'Camera Snapshots',
-          'sd-health-tab':   'SD Card Health',
-          'admin-tab':       'Admin',
-        };
         var title = document.getElementById('topbar-page-title');
         if (title && titleMap[tabId]) title.textContent = titleMap[tabId];
       }
 
-      // Wire clicks on all nav child buttons
       Object.keys(childGroupMap).forEach(function(tabId) {
         var btn = document.getElementById(tabId);
-        if (btn) {
-          btn.addEventListener('click', function() {
-            setActiveChild(tabId);
-          });
-        }
+        if (btn) btn.addEventListener('click', function() { setActiveNav(tabId); });
       });
 
-      // Set initial active state
-      setActiveChild('standard-tab');
+      setActiveNav('standard-tab');
+      window.__setActiveNavItem = setActiveNav;
 
-      // Expose for camera.js / app.js
-      window.__setActiveNavItem = setActiveChild;
+      // ── Admin sub-tabs ──────────────────────────────────────────────────
+      var adminSubTabs = ['admin-tab-users','admin-tab-history','admin-tab-api'];
+      adminSubTabs.forEach(function(tabId) {
+        var btn = document.getElementById(tabId);
+        if (!btn) return;
+        btn.addEventListener('click', function() {
+          adminSubTabs.forEach(function(t) {
+            var b = document.getElementById(t);
+            if (b) b.classList.remove('active');
+          });
+          btn.classList.add('active');
+        });
+      });
 
+    })();
     })();
   </script>
 </body>
