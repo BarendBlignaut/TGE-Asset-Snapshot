@@ -209,9 +209,11 @@
 
     var result;
     if (state.editingUser) {
+      // Username and password both updatable on edit
       result = await api('PUT', '/api/admin/users/' + state.editingUser, body);
     } else {
       if (!password) { msgEl.textContent = 'Password is required for new users.'; msgEl.style.color = 'var(--danger)'; return; }
+      if (!username) { msgEl.textContent = 'Username is required.'; msgEl.style.color = 'var(--danger)'; return; }
       result = await api('POST', '/api/admin/users', body);
     }
 
@@ -238,11 +240,16 @@
     TGE.el('user-email').value      = user.email      || '';
     TGE.el('user-password').value   = '';
     TGE.el('user-status').value     = user.status     || 'active';
+    // Set role by id
+    var roleSel = TGE.el('user-role');
+    if (roleSel) roleSel.value = String(user.role_id || 3);
     TGE.el('user-form-title').textContent = 'Edit User — ' + user.username;
     TGE.show('user-cancel-btn');
     TGE.el('user-save-btn').textContent = 'Update User';
     TGE.el('user-form-message').textContent = '';
-    TGE.el('view-admin').scrollIntoView({ behavior: 'smooth' });
+    // Scroll to form
+    var formEl = TGE.el('user-form-title');
+    if (formEl) formEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   TGE.adminDeleteUser = async function (id) {
