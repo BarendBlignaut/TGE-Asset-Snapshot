@@ -220,18 +220,8 @@
       msgEl.textContent = isEdit ? 'User updated successfully.' : 'User created successfully.';
       msgEl.style.color = 'var(--green-600)';
 
-      // Optimistic update for edits
-      if (isEdit && result.data.user) {
-        var updated = result.data.user;
-        // Find role_name from our roles list
-        var role = state.roles.find(function(r) { return r.id === updated.role_id; });
-        updated.role_name = role ? role.name : '';
-        var idx = state.users.findIndex(function(u) { return u.id === updated.id; });
-        if (idx !== -1) state.users[idx] = updated;
-        renderUsersTable();
-      } else {
-        await loadUsers();
-      }
+      // Always reload from DB to ensure table shows latest data
+      await loadUsers();
 
       cancelEdit();
       setTimeout(function() {
