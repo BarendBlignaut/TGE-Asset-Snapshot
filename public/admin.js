@@ -198,6 +198,9 @@
     var status    = TGE.el('user-status').value;
     var msgEl     = TGE.el('user-form-message');
 
+    console.log('[Admin] saveUser called, editingUser:', state.editingUser);
+    console.log('[Admin] data:', { firstName, lastName, username, email, roleId, status });
+
     if (!firstName || !lastName || !username) {
       msgEl.textContent = 'First name, last name and username are required.';
       msgEl.style.color = 'var(--danger)';
@@ -216,6 +219,8 @@
       if (!username) { msgEl.textContent = 'Username is required.'; msgEl.style.color = 'var(--danger)'; return; }
       result = await api('POST', '/api/admin/users', body);
     }
+
+    console.log('[Admin] API result:', result.ok, result.status, result.data);
 
     if (!result.ok) {
       msgEl.textContent = result.data.error || 'Save failed.';
