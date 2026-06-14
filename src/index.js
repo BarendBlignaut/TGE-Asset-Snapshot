@@ -503,6 +503,16 @@ export default {
     }
 
     // ── Static assets ───────────────────────────────────────────────────────
-    return env.ASSETS.fetch(request);
+    try {
+      if (env.ASSETS) {
+        const assetRes = await env.ASSETS.fetch(request);
+        if (assetRes.status !== 404) return assetRes;
+        // Return 404 for missing assets instead of crashing
+        return new Response('Not found', { status: 404 });
+      }
+      return new Response('Not found', { status: 404 });
+    } catch (e) {
+      return new Response('Asset error: ' + e.message, { status: 500 });
+    }
   },
 };
