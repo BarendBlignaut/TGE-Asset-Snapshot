@@ -253,18 +253,22 @@ async function handleUpdateUser(request, env, userId) {
   const lastName  = String(body.lastName  || "").trim();
   const username  = String(body.username  || "").trim().toLowerCase();
   const email     = String(body.email     || "").trim();
-  const roleId    = parseInt(body.roleId) || 3;
+  const roleId    = parseInt(body.roleId, 10);
   const status    = body.status === "inactive" ? "inactive" : "active";
 
+  // Validate
   if (!firstName || !lastName || !username) {
     return jsonResponse({ error: "First name, last name and username are required." }, 400);
+  }
+  if (isNaN(roleId) || roleId < 1) {
+    return jsonResponse({ error: "Invalid role." }, 400);
   }
 
   // Check username not taken by another user
   const existing = await env.DB.prepare(
-    "SELECT id FROM users WHERE username = ? AND id != ?"
+    "SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND id != ?"
   ).bind(username, userId).first();
-  if (existing) return jsonResponse({ error: "Username already taken." }, 409);
+  if (existing) return jsonResponse({ error: "Username already taken by another user." }, 409);
 
   let sql    = "UPDATE users SET first_name=?, last_name=?, username=?, email=?, role_id=?, status=?, updated_at=?";
   let params = [firstName, lastName, username, email || null, roleId, status, nowIso()];
@@ -281,7 +285,12 @@ async function handleUpdateUser(request, env, userId) {
   await env.DB.prepare(sql).bind(...params).run();
   await logActivity(env, auth.session.user_id, "admin", "update-user", `Updated user id: ${userId} (${username})`, null);
 
-  return jsonResponse({ ok: true });
+  // Return updated user for confirmation
+  const updated = await env.DB.prepare(
+    "SELECT id, username, first_name, last_name, role_id, status, updated_at FROM users WHERE id = ?"
+  ).bind(userId).first();
+
+  return jsonResponse({ ok: true, user: updated });
 }
 
 // DELETE /api/admin/users/:id
