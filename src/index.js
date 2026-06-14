@@ -251,14 +251,25 @@ async function handleUpdateUser(request, env, userId) {
   const body      = await safeJson(request);
   const firstName = String(body.firstName || "").trim();
   const lastName  = String(body.lastName  || "").trim();
+  const username  = String(body.username  || "").trim().toLowerCase();
   const email     = String(body.email     || "").trim();
   const roleId    = parseInt(body.roleId) || 3;
   const status    = body.status === "inactive" ? "inactive" : "active";
 
-  let sql    = "UPDATE users SET first_name=?, last_name=?, email=?, role_id=?, status=?, updated_at=?";
-  let params = [firstName, lastName, email || null, roleId, status, nowIso()];
+  if (!firstName || !lastName || !username) {
+    return jsonResponse({ error: "First name, last name and username are required." }, 400);
+  }
 
-  if (body.password) {
+  // Check username not taken by another user
+  const existing = await env.DB.prepare(
+    "SELECT id FROM users WHERE username = ? AND id != ?"
+  ).bind(username, userId).first();
+  if (existing) return jsonResponse({ error: "Username already taken." }, 409);
+
+  let sql    = "UPDATE users SET first_name=?, last_name=?, username=?, email=?, role_id=?, status=?, updated_at=?";
+  let params = [firstName, lastName, username, email || null, roleId, status, nowIso()];
+
+  if (body.password && String(body.password).trim()) {
     const hash = await sha256(String(body.password).trim());
     sql    += ", password_hash=?";
     params.push(hash);
@@ -268,7 +279,7 @@ async function handleUpdateUser(request, env, userId) {
   params.push(userId);
 
   await env.DB.prepare(sql).bind(...params).run();
-  await logActivity(env, auth.session.user_id, "admin", "update-user", `Updated user id: ${userId}`, null);
+  await logActivity(env, auth.session.user_id, "admin", "update-user", `Updated user id: ${userId} (${username})`, null);
 
   return jsonResponse({ ok: true });
 }
