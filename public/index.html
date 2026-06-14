@@ -131,23 +131,78 @@
       gap: 2px;
     }
 
-    .nav-section-label {
+    /* ── NAV GROUP (collapsible) ────────────────── */
+    .nav-group-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      color: rgba(255,255,255,0.42);
       font-size: 10px;
       font-weight: 700;
-      letter-spacing: 0.1em;
       text-transform: uppercase;
-      color: rgba(255,255,255,0.30);
-      padding: 10px 8px 4px;
+      letter-spacing: 0.09em;
+      margin-top: 8px;
+      transition: background 140ms, color 140ms;
     }
 
+    .nav-group-btn:first-child { margin-top: 0; }
+
+    .nav-group-btn:hover {
+      background: rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.7);
+    }
+
+    .nav-group-btn.open { color: rgba(255,255,255,0.72); }
+
+    .nav-group-btn.has-active { color: var(--yellow); }
+
+    .nav-group-chevron {
+      width: 13px;
+      height: 13px;
+      flex-shrink: 0;
+      transition: transform 220ms cubic-bezier(0.4,0,0.2,1);
+      opacity: 0.6;
+    }
+
+    .nav-group-btn.open .nav-group-chevron { transform: rotate(180deg); }
+
+    .nav-group-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--yellow);
+      flex-shrink: 0;
+      display: none;
+      margin-right: 2px;
+    }
+
+    .nav-group-btn.has-active .nav-group-dot { display: block; }
+    .nav-group-btn.has-active.open .nav-group-dot { display: none; }
+
+    /* ── NAV CHILDREN (slide) ───────────────────── */
+    .nav-children {
+      overflow: hidden;
+      max-height: 0;
+      transition: max-height 220ms cubic-bezier(0.4,0,0.2,1);
+    }
+
+    .nav-children.open { max-height: 300px; }
+
+    /* ── NAV ITEM (child) ───────────────────────── */
     .nav-item {
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 9px 10px;
+      gap: 9px;
+      padding: 7px 10px 7px 22px;
       border-radius: 8px;
-      color: rgba(255,255,255,0.65);
-      font-size: 13px;
+      color: rgba(255,255,255,0.55);
+      font-size: 12px;
       font-weight: 500;
       cursor: pointer;
       border: none;
@@ -156,11 +211,12 @@
       text-align: left;
       transition: background 140ms, color 140ms;
       white-space: nowrap;
+      margin-top: 2px;
     }
 
     .nav-item:hover {
-      background: rgba(255,255,255,0.08);
-      color: #fff;
+      background: rgba(255,255,255,0.07);
+      color: rgba(255,255,255,0.85);
     }
 
     .nav-item.active {
@@ -168,20 +224,27 @@
       color: var(--green-900);
     }
 
-    .nav-item.active .nav-icon {
-      opacity: 1;
-    }
-
     .nav-icon {
-      width: 18px;
-      height: 18px;
+      width: 14px;
+      height: 14px;
       flex-shrink: 0;
-      opacity: 0.7;
+      opacity: 0.8;
     }
 
-    .nav-item.active .nav-icon {
-      opacity: 1;
+    .nav-item.active .nav-icon { opacity: 1; }
+
+    /* Collapsed sidebar — centre group buttons */
+    .shell.sidebar-collapsed .nav-group-btn {
+      justify-content: center;
+      padding: 8px 0;
+      font-size: 0;
+      letter-spacing: 0;
     }
+
+    .shell.sidebar-collapsed .nav-group-chevron,
+    .shell.sidebar-collapsed .nav-group-dot { display: none; }
+
+    .shell.sidebar-collapsed .nav-children { max-height: 0 !important; }
 
 
     /* ── SIDEBAR COLLAPSE ───────────────────────── */
@@ -1497,47 +1560,79 @@
       </div>
 
       <nav class="sidebar-nav" id="sidebar-nav">
-        <span class="nav-section-label">Operations</span>
 
-        <button class="nav-item active" id="standard-tab" type="button">
-          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-            <rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/>
-            <rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/>
-          </svg>
-          <span class="nav-label">Snapshot</span>
+        <!-- ── OPERATIONS ── -->
+        <button class="nav-group-btn open has-active" id="grp-operations" type="button">
+          <span>Operations</span>
+          <span class="nav-group-dot"></span>
+          <svg class="nav-group-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
         </button>
+        <div class="nav-children open" id="children-operations">
+          <button class="nav-item" id="new-request-tab" type="button">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+              <circle cx="10" cy="10" r="8"/><path d="M10 6v8M6 10h8"/>
+            </svg>
+            <span class="nav-label">New Request</span>
+          </button>
+          <button class="nav-item active" id="standard-tab" type="button">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+              <rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/>
+              <rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/>
+            </svg>
+            <span class="nav-label">Snapshot</span>
+          </button>
+          <button class="nav-item" id="asset-track-tab" type="button">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M10 2L18 6v8l-8 4-8-4V6l8-4z"/><path d="M10 2v12M2 6l8 4 8-4"/>
+            </svg>
+            <span class="nav-label">Asset Track</span>
+          </button>
+          <button class="nav-item" id="vpm-tab" type="button" style="display:none;">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M3 12l4-4 4 4 6-7"/><path d="M17 5h-4v4"/>
+            </svg>
+            <span class="nav-label">VPM Analysis</span>
+          </button>
+        </div>
 
-        <button class="nav-item" id="asset-track-tab" type="button">
-          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-            <path d="M10 2L18 6v8l-8 4-8-4V6l8-4z"/><path d="M10 2v12M2 6l8 4 8-4"/>
-          </svg>
-          <span class="nav-label">Asset Track</span>
+        <!-- ── CAMERA ── -->
+        <button class="nav-group-btn" id="grp-camera" type="button">
+          <span>Camera</span>
+          <span class="nav-group-dot"></span>
+          <svg class="nav-group-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
         </button>
+        <div class="nav-children" id="children-camera">
+          <button class="nav-item" id="diagnostics-tab" type="button">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M2 7a2 2 0 012-2h1l1.5-2h5L13 5h1a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V7z"/>
+              <circle cx="10" cy="10.5" r="2.5"/>
+            </svg>
+            <span class="nav-label">Camera Snapshots</span>
+          </button>
+          <button class="nav-item" id="sd-health-tab" type="button">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+              <rect x="2" y="2" width="16" height="16" rx="3"/><path d="M6 2v8M10 2v8M14 2v8"/>
+              <circle cx="6" cy="14" r="1" fill="currentColor"/><circle cx="10" cy="14" r="1" fill="currentColor"/>
+            </svg>
+            <span class="nav-label">SD Card Health</span>
+          </button>
+        </div>
 
-        <span class="nav-section-label">Management</span>
-
-        <button class="nav-item" id="admin-tab" type="button" style="display:none;">
-          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-            <circle cx="10" cy="7" r="3"/><path d="M3 17c0-3.3 3.1-6 7-6s7 2.7 7 6"/>
-          </svg>
-          <span class="nav-label">Admin</span>
+        <!-- ── MANAGEMENT ── -->
+        <button class="nav-group-btn" id="grp-management" type="button">
+          <span>Management</span>
+          <span class="nav-group-dot"></span>
+          <svg class="nav-group-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
         </button>
+        <div class="nav-children" id="children-management">
+          <button class="nav-item" id="admin-tab" type="button" style="display:none;">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+              <circle cx="10" cy="7" r="3"/><path d="M3 17c0-3.3 3.1-6 7-6s7 2.7 7 6"/>
+            </svg>
+            <span class="nav-label">Admin</span>
+          </button>
+        </div>
 
-        <button class="nav-item" id="vpm-tab" type="button" style="display:none;">
-          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-            <path d="M3 12l4-4 4 4 6-7"/><path d="M17 5h-4v4"/>
-          </svg>
-          <span class="nav-label">VPM Analysis</span>
-        </button>
-
-        <span class="nav-section-label">Camera</span>
-        <button class="nav-item" id="diagnostics-tab" type="button">
-          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-            <path d="M2 7a2 2 0 012-2h1l1.5-2h5L13 5h1a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V7z"/>
-            <circle cx="10" cy="10.5" r="2.5"/>
-          </svg>
-          <span class="nav-label">Camera</span>
-        </button>
       </nav>
 
       <div class="sidebar-footer">
@@ -2298,31 +2393,116 @@
 
   <script>
     (function() {
-      var shell = document.querySelector('.shell');
+      var shell  = document.querySelector('.shell');
       var toggle = document.getElementById('sidebar-toggle');
-      var PREF_KEY = 'tge_sidebar_collapsed';
+      var PREF_KEY      = 'tge_sidebar_collapsed';
+      var GRP_PREF_KEY  = 'tge_nav_groups';
 
-      function applyState(collapsed) {
-        if (collapsed) {
-          shell.classList.add('sidebar-collapsed');
-        } else {
-          shell.classList.remove('sidebar-collapsed');
-        }
+      // ── Sidebar collapse ──────────────────────────────────────────────────
+      function applyCollapse(collapsed) {
+        shell.classList.toggle('sidebar-collapsed', collapsed);
       }
-
-      // Restore preference
       try {
-        var saved = localStorage.getItem(PREF_KEY);
-        if (saved === '1') applyState(true);
+        if (localStorage.getItem(PREF_KEY) === '1') applyCollapse(true);
       } catch(e) {}
-
       if (toggle) {
         toggle.addEventListener('click', function() {
-          var isCollapsed = shell.classList.contains('sidebar-collapsed');
-          applyState(!isCollapsed);
-          try { localStorage.setItem(PREF_KEY, isCollapsed ? '0' : '1'); } catch(e) {}
+          var c = shell.classList.contains('sidebar-collapsed');
+          applyCollapse(!c);
+          try { localStorage.setItem(PREF_KEY, c ? '0' : '1'); } catch(e) {}
         });
       }
+
+      // ── Nav group toggle ──────────────────────────────────────────────────
+      var groups = ['operations', 'camera', 'management'];
+
+      // Restore saved open/closed state
+      var savedGroups = {};
+      try {
+        savedGroups = JSON.parse(localStorage.getItem(GRP_PREF_KEY) || '{}');
+      } catch(e) {}
+
+      groups.forEach(function(g) {
+        var btn      = document.getElementById('grp-' + g);
+        var children = document.getElementById('children-' + g);
+        if (!btn || !children) return;
+
+        // Default: operations open, others closed
+        var defaultOpen = (g === 'operations');
+        var isOpen = (savedGroups[g] !== undefined) ? savedGroups[g] : defaultOpen;
+
+        btn.classList.toggle('open', isOpen);
+        children.classList.toggle('open', isOpen);
+
+        btn.addEventListener('click', function() {
+          var open = btn.classList.contains('open');
+          btn.classList.toggle('open', !open);
+          children.classList.toggle('open', !open);
+          savedGroups[g] = !open;
+          try { localStorage.setItem(GRP_PREF_KEY, JSON.stringify(savedGroups)); } catch(e) {}
+        });
+      });
+
+      // ── Active child tracking ─────────────────────────────────────────────
+      // Map each nav child button to its parent group
+      var childGroupMap = {
+        'new-request-tab':  'operations',
+        'standard-tab':     'operations',
+        'asset-track-tab':  'operations',
+        'vpm-tab':          'operations',
+        'diagnostics-tab':  'camera',
+        'sd-health-tab':    'camera',
+        'admin-tab':        'management',
+      };
+
+      function setActiveChild(tabId) {
+        // Clear all active nav items
+        document.querySelectorAll('.nav-item').forEach(function(n) {
+          n.classList.remove('active');
+        });
+        // Clear has-active on all groups
+        document.querySelectorAll('.nav-group-btn').forEach(function(b) {
+          b.classList.remove('has-active');
+        });
+        // Set active on clicked item
+        var el = document.getElementById(tabId);
+        if (el) el.classList.add('active');
+        // Set has-active on parent group
+        var grp = childGroupMap[tabId];
+        if (grp) {
+          var grpBtn = document.getElementById('grp-' + grp);
+          if (grpBtn) grpBtn.classList.add('has-active');
+        }
+        // Update topbar page title
+        var titleMap = {
+          'new-request-tab': 'New Request',
+          'standard-tab':    'Asset Snapshot',
+          'asset-track-tab': 'Asset Track',
+          'vpm-tab':         'VPM Analysis',
+          'diagnostics-tab': 'Camera Snapshots',
+          'sd-health-tab':   'SD Card Health',
+          'admin-tab':       'Admin',
+        };
+        var title = document.getElementById('topbar-page-title');
+        if (title && titleMap[tabId]) title.textContent = titleMap[tabId];
+      }
+
+      // Wire clicks on all nav child buttons
+      Object.keys(childGroupMap).forEach(function(tabId) {
+        var btn = document.getElementById(tabId);
+        if (btn) {
+          btn.addEventListener('click', function() {
+            setActiveChild(tabId);
+          });
+        }
+      });
+
+      // Set initial active state
+      setActiveChild('standard-tab');
+
+      // Expose for camera.js / app.js
+      window.__setActiveNavItem = setActiveChild;
+
     })();
   </script>
 </body>
