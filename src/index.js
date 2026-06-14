@@ -275,6 +275,8 @@ async function handleUpdateUser(request, env, userId) {
 
   let sql    = "UPDATE users SET first_name=?, last_name=?, username=?, email=?, role_id=?, status=?, updated_at=?";
   let params = [firstName, lastName, username, email || null, roleId, status, nowIso()];
+  
+  console.log("[Worker] UPDATE params:", JSON.stringify({ sql, params, userId }));
 
   if (body.password && String(body.password).trim()) {
     const hash = await sha256(String(body.password).trim());
@@ -293,7 +295,7 @@ async function handleUpdateUser(request, env, userId) {
     "SELECT id, username, first_name, last_name, role_id, status, updated_at FROM users WHERE id = ?"
   ).bind(userId).first();
 
-  return jsonResponse({ ok: true, user: updated, debug: debugInfo });
+  return jsonResponse({ ok: true, user: updated, debug: debugInfo, params: params });
 }
 
 // DELETE /api/admin/users/:id
