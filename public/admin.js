@@ -181,18 +181,22 @@
   }
 
   async function saveUser() {
-    var msgEl     = TGE.el('user-form-message');
-    var firstName = TGE.el('user-first-name').value.trim();
-    var lastName  = TGE.el('user-last-name').value.trim();
-    var username  = TGE.el('user-username').value.trim();
-    var email     = TGE.el('user-email').value.trim();
-    var password  = TGE.el('user-password').value.trim();
+    var msgEl = document.getElementById('user-form-message');
+
+    // Read directly from DOM
+    var firstName = document.getElementById('user-first-name').value.trim();
+    var lastName  = document.getElementById('user-last-name').value.trim();
+    var username  = document.getElementById('user-username').value.trim().toLowerCase();
+    var email     = document.getElementById('user-email').value.trim();
+    var password  = document.getElementById('user-password').value.trim();
+    var status    = document.getElementById('user-status').value;
     var roleSel   = document.getElementById('user-role');
     var roleId    = roleSel ? parseInt(roleSel.value, 10) : 3;
-    if (isNaN(roleId) || roleId < 1) roleId = 3;
-    console.log('[Admin] role select value:', roleSel ? roleSel.value : 'no select', 'parsed roleId:', roleId);
-    var status    = TGE.el('user-status').value;
-    var isEdit    = !!state.editingUser;
+    if (!roleId || roleId < 1) roleId = 3;
+
+    var editId = state.editingUser;
+
+    console.log('[saveUser] editId:', editId, 'username:', username, 'roleId:', roleId);
 
     if (!firstName || !lastName || !username) {
       msgEl.textContent = 'First name, last name and username are required.';
@@ -200,45 +204,53 @@
       return;
     }
 
-    if (isNaN(roleId) || roleId < 1) roleId = 3;
-
-    // Lowercase username before sending to match server behaviour
-    username = username.toLowerCase();
-    var body = { firstName: firstName, lastName: lastName, username: username, email: email, roleId: roleId, status: status };
+    var body = {
+      firstName: firstName,
+      lastName:  lastName,
+      username:  username,
+      email:     email,
+      roleId:    roleId,
+      status:    status
+    };
     if (password) body.password = password;
 
-    try {
-      var result;
-      if (isEdit) {
-        result = await api('PUT', '/api/admin/users/' + state.editingUser, body);
-      } else {
-        if (!password) { msgEl.textContent = 'Password is required for new users.'; msgEl.style.color = 'var(--danger)'; return; }
-        result = await api('POST', '/api/admin/users', body);
-      }
+    console.log('[saveUser] body:', JSON.stringify(body));
 
-      if (!result.ok) {
-        msgEl.textContent = result.data.error || (isEdit ? 'Update failed.' : 'Create failed.');
-        msgEl.style.color = 'var(--danger)';
-        return;
-      }
+    var url    = editId ? '/api/admin/users/' + editId : '/api/admin/users';
+    var method = editId ? 'PUT' : 'POST';
 
-      msgEl.textContent = isEdit ? 'User updated successfully.' : 'User created successfully.';
-      msgEl.style.color = 'var(--green-600)';
-
-      // Always reload from DB to ensure table shows latest data
-      await loadUsers();
-
-      cancelEdit();
-      setTimeout(function() {
-        var m = TGE.el('user-form-message');
-        if (m) m.textContent = '';
-      }, 3000);
-
-    } catch (err) {
-      console.error('[Admin] saveUser error:', err);
-      msgEl.textContent = 'Unexpected error. Please try again.';
+    if (!editId && !password) {
+      msgEl.textContent = 'Password is required for new users.';
       msgEl.style.color = 'var(--danger)';
+      return;
     }
+
+    var res  = await fetch(url, {
+      method:  method,
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(body)
+    });
+    var data = await res.json().catch(function() { return {}; });
+
+    console.log('[saveUser] response:', res.status, JSON.stringify(data));
+
+    if (!res.ok) {
+      msgEl.textContent = data.error || (editId ? 'Update failed.' : 'Create failed.');
+      msgEl.style.color = 'var(--danger)';
+      return;
+    }
+
+    msgEl.textContent = editId ? 'User updated successfully.' : 'User created successfully.';
+    msgEl.style.color = 'var(--green-600)';
+
+    cancelEdit();
+    await loadUsers();
+
+    setTimeout(function() {
+      var m = document.getElementById('user-form-message');
+      if (m) m.textContent = '';
+    }, 3000);
   }
 
   TGE.adminEditUser = async function (id) {
