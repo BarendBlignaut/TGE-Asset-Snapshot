@@ -201,18 +201,26 @@
   }
 
   async function saveUser() {
-    var firstName = TGE.el('user-first-name').value.trim();
-    var lastName  = TGE.el('user-last-name').value.trim();
-    var username  = TGE.el('user-username').value.trim();
-    var email     = TGE.el('user-email').value.trim();
-    var password  = TGE.el('user-password').value.trim();
-    var roleEl    = TGE.el('user-role');
-    var roleId    = roleEl ? roleEl.value : (TGE.el('user-role-hidden') ? TGE.el('user-role-hidden').value : '3');
-    var status    = TGE.el('user-status').value;
-    var msgEl     = TGE.el('user-form-message');
+    var msgEl = TGE.el('user-form-message');
 
-    console.log('[Admin] saveUser called, editingUser:', state.editingUser);
-    console.log('[Admin] data:', { firstName, lastName, username, email, roleId, status });
+    // Read all form values fresh
+    var fn = document.getElementById('user-first-name');
+    var ln = document.getElementById('user-last-name');
+    var un = document.getElementById('user-username');
+    var em = document.getElementById('user-email');
+    var pw = document.getElementById('user-password');
+    var rl = document.getElementById('user-role');
+    var st = document.getElementById('user-status');
+
+    var firstName = fn ? fn.value.trim() : '';
+    var lastName  = ln ? ln.value.trim() : '';
+    var username  = un ? un.value.trim() : '';
+    var email     = em ? em.value.trim() : '';
+    var password  = pw ? pw.value.trim() : '';
+    var roleId    = rl ? parseInt(rl.options[rl.selectedIndex].value, 10) : 3;
+    var status    = st ? st.value : 'active';
+
+    console.log('[Admin] saving:', { firstName, lastName, username, email, roleId, status, editingUser: state.editingUser });
 
     if (!firstName || !lastName || !username) {
       msgEl.textContent = 'First name, last name and username are required.';
@@ -220,20 +228,27 @@
       return;
     }
 
-    var body = { firstName: firstName, lastName: lastName, username: username, email: email, roleId: parseInt(roleId), status: status };
+    if (isNaN(roleId) || roleId < 1) roleId = 3;
+
+    var body = {
+      firstName: firstName,
+      lastName:  lastName,
+      username:  username,
+      email:     email,
+      roleId:    roleId,
+      status:    status,
+    };
     if (password) body.password = password;
 
     var result;
     if (state.editingUser) {
-      // Username and password both updatable on edit
       result = await api('PUT', '/api/admin/users/' + state.editingUser, body);
     } else {
       if (!password) { msgEl.textContent = 'Password is required for new users.'; msgEl.style.color = 'var(--danger)'; return; }
-      if (!username) { msgEl.textContent = 'Username is required.'; msgEl.style.color = 'var(--danger)'; return; }
       result = await api('POST', '/api/admin/users', body);
     }
 
-    console.log('[Admin] API result:', result.ok, result.status, result.data);
+    console.log('[Admin] result:', result.ok, result.status, result.data);
 
     if (!result.ok) {
       msgEl.textContent = result.data.error || 'Save failed.';
@@ -241,13 +256,15 @@
       return;
     }
 
+    // Show what was saved
+    if (result.data.user) {
+      console.log('[Admin] saved user:', result.data.user);
+    }
+
     msgEl.textContent = state.editingUser ? 'User updated successfully.' : 'User created successfully.';
     msgEl.style.color = 'var(--green-600)';
-    // Reset form first then reload table
     cancelEdit();
-    // Force reload from database
     await loadUsers();
-    // Clear message after 3 seconds
     setTimeout(function() {
       var m = TGE.el('user-form-message');
       if (m) m.textContent = '';
