@@ -256,7 +256,9 @@
     var navItems = document.querySelectorAll('.nav-item[data-view]');
     navItems.forEach(function (item) {
       var view = item.dataset.view;
-      if (!TGE.can(view, 'view')) {
+      // Roles page uses admin permission
+      var permKey = view === 'roles' ? 'admin' : view;
+      if (!TGE.can(permKey, 'view')) {
         item.style.display = 'none';
       }
     });
