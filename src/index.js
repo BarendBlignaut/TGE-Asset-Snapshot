@@ -1,543 +1,476 @@
-// TGE Asset Snapshot — Cloudflare Worker
-// src/index.js
+// TGE Asset Snapshot — Admin Page
+// public/admin.js
 
-const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12 hours
-const SESSION_COOKIE      = "tge_session";
+(function () {
+  'use strict';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+  var state = {
+    users:       [],
+    roles:       [],
+    activity:    [],
+    activeTab:   'users',
+    editingUser: null,
+  };
 
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
+  var api = TGE.api;
 
-function setCookieHeader(id, maxAge) {
-  return `${SESSION_COOKIE}=${id}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${maxAge}`;
-}
+  // ── Render ───────────────────────────────────────────────────────────────────
+  function render() {
+    var view = TGE.el('view-admin');
+    if (!view) return;
 
-function getCookieValue(request, name) {
-  const header = request.headers.get("Cookie") || "";
-  const match  = header.split(";").map(c => c.trim()).find(c => c.startsWith(name + "="));
-  return match ? match.slice(name.length + 1) : null;
-}
+    view.innerHTML = [
+      '<div class="hero">',
+        '<div class="hero-kicker">Management</div>',
+        '<div class="hero-title">Admin</div>',
+        '<div class="hero-bar" style="margin-top:14px;">',
+          '<div class="hero-bar-left">',
+            '<button class="hero-mode-btn active" id="admin-tab-users" type="button">Users</button>',
+            '<button class="hero-mode-btn" id="admin-tab-history" type="button">Access History</button>',
+            '<button class="hero-mode-btn" id="admin-tab-api" type="button">API Reference</button>',
+          '</div>',
+          '<div class="hero-bar-right">',
+            '<div class="hero-divider"></div>',
+            '<button class="hero-export-btn active" id="admin-export-csv" type="button">CSV</button>',
+            '<button class="hero-export-btn active" id="admin-export-xlsx" type="button">XLSX</button>',
+          '</div>',
+        '</div>',
+      '</div>',
+      '<div id="admin-content-users">',   renderUsersTab(),   '</div>',
+      '<div id="admin-content-history" style="display:none;">', renderHistoryTab(), '</div>',
+      '<div id="admin-content-api" style="display:none;">',     renderApiTab(),     '</div>',
+    ].join('');
 
-async function sha256(text) {
-  const buf    = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
-function randomId() {
-  return crypto.randomUUID().replace(/-/g, "");
-}
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function expiresIso() {
-  return new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
-}
-
-async function safeJson(request) {
-  try { return await request.json(); } catch { return {}; }
-}
-
-// ── Session ───────────────────────────────────────────────────────────────────
-
-async function getSession(request, env) {
-  const id = getCookieValue(request, SESSION_COOKIE);
-  if (!id) return null;
-
-  const row = await env.DB.prepare(
-    "SELECT s.id, s.user_id, s.expires_at, u.username, u.first_name, u.last_name, u.role_id, r.name as role_name, u.status FROM sessions s JOIN users u ON u.id = s.user_id JOIN roles r ON r.id = u.role_id WHERE s.id = ? AND s.expires_at > ?"
-  ).bind(id, nowIso()).first();
-
-  if (!row) return null;
-  if (row.status !== "active") return null;
-  return row;
-}
-
-async function requireSession(request, env) {
-  const session = await getSession(request, env);
-  if (!session) {
-    return { ok: false, response: jsonResponse({ error: "Unauthorised" }, 401) };
-  }
-  return { ok: true, session };
-}
-
-// ── Permission check ──────────────────────────────────────────────────────────
-
-async function hasPermission(env, roleId, feature, action) {
-  const row = await env.DB.prepare(
-    "SELECT enabled, limit_value FROM permissions WHERE role_id = ? AND feature = ? AND action = ?"
-  ).bind(roleId, feature, action).first();
-  if (!row) return { allowed: false, limit: null };
-  return { allowed: row.enabled === 1, limit: row.limit_value };
-}
-
-// ── Activity log ──────────────────────────────────────────────────────────────
-
-async function logActivity(env, userId, feature, action, detail, ip) {
-  await env.DB.prepare(
-    "INSERT INTO activity_log (user_id, feature, action, detail, ip, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-  ).bind(userId, feature, action, detail || null, ip || null, nowIso()).run();
-}
-
-// ── Route handlers ────────────────────────────────────────────────────────────
-
-// POST /api/auth/login
-async function handleLogin(request, env) {
-  const body     = await safeJson(request);
-  const username = String(body.username || "").trim().toLowerCase();
-  const password = String(body.password || "").trim();
-
-  if (!username || !password) {
-    return jsonResponse({ error: "Username and password are required." }, 400);
+    wireAdminTabs();
+    wireUsersTab();
+    wireExportBtns();
+    loadRoles().then(function() { loadUsers(); });
   }
 
-  const hash = await sha256(password);
-
-  const user = await env.DB.prepare(
-    "SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.role_id, u.status, r.name as role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.username = ? AND u.password_hash = ?"
-  ).bind(username, hash).first();
-
-  if (!user) {
-    return jsonResponse({ error: "Invalid username or password." }, 401);
+  // ── Tabs ─────────────────────────────────────────────────────────────────────
+  function wireAdminTabs() {
+    var tabs = [
+      { btn: 'admin-tab-users',   content: 'admin-content-users' },
+      { btn: 'admin-tab-history', content: 'admin-content-history' },
+      { btn: 'admin-tab-api',     content: 'admin-content-api' },
+    ];
+    tabs.forEach(function (t) {
+      TGE.on(t.btn, 'click', function () {
+        tabs.forEach(function (x) {
+          var b = TGE.el(x.btn);
+          var c = TGE.el(x.content);
+          if (b) b.classList.remove('active');
+          if (c) c.style.display = 'none';
+        });
+        var btn = TGE.el(t.btn);
+        var content = TGE.el(t.content);
+        if (btn) btn.classList.add('active');
+        if (content) content.style.display = '';
+        state.activeTab = t.btn.replace('admin-tab-', '');
+        if (state.activeTab === 'history') loadActivity();
+        if (state.activeTab === 'api') wireApiFilters();
+      });
+    });
   }
 
-  if (user.status !== "active") {
-    return jsonResponse({ error: "Account is inactive. Contact your administrator." }, 403);
+  // ── USERS TAB ─────────────────────────────────────────────────────────────────
+  function renderUsersTab() {
+    return [
+      '<div class="card" style="margin-bottom:14px;">',
+        '<div class="card-kicker">User Management</div>',
+        '<div class="card-title" id="user-form-title">Add New User</div>',
+        '<div class="data-grid data-grid-3" style="margin-bottom:12px;">',
+          '<div class="field"><label>First Name</label><input id="user-first-name" type="text" placeholder="First name" /></div>',
+          '<div class="field"><label>Last Name</label><input id="user-last-name" type="text" placeholder="Last name" /></div>',
+          '<div class="field"><label>Username</label><input id="user-username" type="text" placeholder="username" /></div>',
+          '<div class="field"><label>Email</label><input id="user-email" type="email" placeholder="email@example.com" /></div>',
+          '<div class="field"><label>Password</label><input id="user-password" type="password" placeholder="Set password" /></div>',
+          '<div class="field"><label>Role</label><select id="user-role"></select></div>',
+          '<div class="field"><label>Status</label><select id="user-status"><option value="active">Active</option><option value="inactive">Inactive</option></select></div>',
+        '</div>',
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">',
+          '<button class="btn btn-primary" id="user-save-btn" type="button">Save User</button>',
+          '<button class="btn" id="user-cancel-btn" type="button" style="display:none;">Cancel</button>',
+          '<button class="btn" id="user-import-btn" type="button">Import XLSX</button>',
+          '<input type="file" id="user-import-file" accept=".xlsx,.xls,.csv" style="display:none;" />',
+          '<p id="user-form-message" style="margin:0;font-size:12px;"></p>',
+        '</div>',
+      '</div>',
+      '<div class="card">',
+        '<div class="card-kicker">Registered Users</div>',
+        '<div class="card-title">All Users</div>',
+        '<div class="table-wrap">',
+          '<table>',
+            '<thead><tr>',
+              '<th>Name</th><th>Username</th><th>Email</th>',
+              '<th>Role</th><th>Status</th><th>Created</th><th>Actions</th>',
+            '</tr></thead>',
+            '<tbody id="users-table-body"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px;">Loading...</td></tr></tbody>',
+          '</table>',
+        '</div>',
+      '</div>',
+    ].join('');
   }
 
-  // Create session
-  const sessionId = randomId();
-  const ip        = request.headers.get("CF-Connecting-IP") || null;
-
-  await env.DB.prepare(
-    "INSERT INTO sessions (id, user_id, created_at, expires_at, ip) VALUES (?, ?, ?, ?, ?)"
-  ).bind(sessionId, user.id, nowIso(), expiresIso(), ip).run();
-
-  // Log activity
-  await logActivity(env, user.id, "auth", "login", null, ip);
-
-  const response = jsonResponse({
-    ok:        true,
-    user: {
-      id:        user.id,
-      username:  user.username,
-      firstName: user.first_name,
-      lastName:  user.last_name,
-      email:     user.email,
-      role:      user.role_name,
-      roleId:    user.role_id,
-    },
-  });
-
-  return new Response(response.body, {
-    status:  200,
-    headers: {
-      "Content-Type": "application/json",
-      "Set-Cookie":   setCookieHeader(sessionId, SESSION_TTL_SECONDS),
-    },
-  });
-}
-
-// POST /api/auth/logout
-async function handleLogout(request, env) {
-  const id = getCookieValue(request, SESSION_COOKIE);
-  if (id) {
-    await env.DB.prepare("DELETE FROM sessions WHERE id = ?").bind(id).run();
-  }
-  return new Response(JSON.stringify({ ok: true }), {
-    status:  200,
-    headers: {
-      "Content-Type": "application/json",
-      "Set-Cookie":   setCookieHeader("", 0),
-    },
-  });
-}
-
-// GET /api/auth/session
-async function handleSession(request, env) {
-  const session = await getSession(request, env);
-  if (!session) return jsonResponse({ ok: false });
-
-  // Load permissions for this role
-  const perms = await env.DB.prepare(
-    "SELECT feature, action, enabled, limit_value FROM permissions WHERE role_id = ? AND enabled = 1"
-  ).bind(session.role_id).all();
-
-  // Build permission map: { feature: { action: { enabled, limit } } }
-  const permMap = {};
-  for (const p of (perms.results || [])) {
-    if (!permMap[p.feature]) permMap[p.feature] = {};
-    permMap[p.feature][p.action] = { enabled: true, limit: p.limit_value };
+  function wireUsersTab() {
+    TGE.on('user-save-btn',    'click',  saveUser);
+    TGE.on('user-cancel-btn',  'click',  cancelEdit);
+    TGE.on('user-import-btn',  'click',  function () { TGE.el('user-import-file').click(); });
+    TGE.on('user-import-file', 'change', handleImport);
   }
 
-  return jsonResponse({
-    ok: true,
-    user: {
-      id:        session.user_id,
-      username:  session.username,
-      firstName: session.first_name,
-      lastName:  session.last_name,
-      role:      session.role_name,
-      roleId:    session.role_id,
-    },
-    permissions: permMap,
-  });
-}
-
-// GET /api/admin/users
-async function handleGetUsers(request, env) {
-  const auth = await requireSession(request, env);
-  if (!auth.ok) return auth.response;
-
-  const perm = await hasPermission(env, auth.session.role_id, "admin", "view");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  const users = await env.DB.prepare(
-    "SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.status, u.created_at, u.updated_at, r.name as role_name FROM users u JOIN roles r ON r.id = u.role_id ORDER BY u.first_name"
-  ).all();
-
-  return jsonResponse({ users: users.results || [] });
-}
-
-// POST /api/admin/users
-async function handleCreateUser(request, env) {
-  const auth = await requireSession(request, env);
-  if (!auth.ok) return auth.response;
-
-  const perm = await hasPermission(env, auth.session.role_id, "admin", "run");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  const body      = await safeJson(request);
-  const username  = String(body.username  || "").trim().toLowerCase();
-  const password  = String(body.password  || "").trim();
-  const firstName = String(body.firstName || "").trim();
-  const lastName  = String(body.lastName  || "").trim();
-  const email     = String(body.email     || "").trim();
-  const roleId    = parseInt(body.roleId) || 3;
-  const status    = body.status === "inactive" ? "inactive" : "active";
-
-  if (!username || !password || !firstName || !lastName) {
-    return jsonResponse({ error: "Username, password, first name and last name are required." }, 400);
+  async function loadRoles() {
+    var result = await api('GET', '/api/admin/roles');
+    if (!result.ok) return;
+    state.roles = result.data.roles || [];
+    var sel = TGE.el('user-role');
+    if (sel) {
+      var current = sel.value;
+      sel.innerHTML = state.roles.map(function (r) {
+        return '<option value="' + r.id + '">' + r.name.charAt(0).toUpperCase() + r.name.slice(1) + '</option>';
+      }).join('');
+      if (current) sel.value = current;
+    }
   }
 
-  const existing = await env.DB.prepare("SELECT id FROM users WHERE username = ?").bind(username).first();
-  if (existing) return jsonResponse({ error: "Username already exists." }, 409);
-
-  const hash = await sha256(password);
-
-  await env.DB.prepare(
-    "INSERT INTO users (username, password_hash, first_name, last_name, email, role_id, status, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).bind(username, hash, firstName, lastName, email || null, roleId, status, auth.session.user_id, nowIso(), nowIso()).run();
-
-  await logActivity(env, auth.session.user_id, "admin", "create-user", `Created user: ${username}`, null);
-
-  return jsonResponse({ ok: true });
-}
-
-// PUT /api/admin/users/:id
-async function handleUpdateUser(request, env, userId) {
-  const auth = await requireSession(request, env);
-  if (!auth.ok) return auth.response;
-
-  const perm = await hasPermission(env, auth.session.role_id, "admin", "run");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  const body      = await safeJson(request);
-  const firstName = String(body.firstName || "").trim();
-  const lastName  = String(body.lastName  || "").trim();
-  const username  = String(body.username  || "").trim().toLowerCase();
-  const email     = String(body.email     || "").trim();
-  const roleId    = parseInt(body.roleId, 10);
-  const status    = body.status === "inactive" ? "inactive" : "active";
-
-  // Validate
-  if (!firstName || !lastName || !username) {
-    return jsonResponse({ error: "First name, last name and username are required." }, 400);
-  }
-  if (isNaN(roleId) || roleId < 1) {
-    return jsonResponse({ error: "Invalid role." }, 400);
+  async function loadUsers() {
+    var tbody = TGE.el('users-table-body');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px;">Loading...</td></tr>';
+    var result = await api('GET', '/api/admin/users');
+    if (!result.ok) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--danger);padding:24px;">Failed to load users.</td></tr>';
+      return;
+    }
+    state.users = result.data.users || [];
+    renderUsersTable();
   }
 
-  // Check username not taken by another user
-  const existing = await env.DB.prepare(
-    "SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND id != ?"
-  ).bind(username, userId).first();
-  if (existing) return jsonResponse({ error: "Username '" + username + "' is already taken by another user." }, 409);
-
-  // Debug — return what we are about to update
-  const debugInfo = { userId, firstName, lastName, username, email, roleId, status };
-
-  let sql    = "UPDATE users SET first_name=?, last_name=?, username=?, email=?, role_id=?, status=?, updated_at=?";
-  let params = [firstName, lastName, username, email || null, roleId, status, nowIso()];
-  
-  console.log("[Worker] UPDATE params:", JSON.stringify({ sql, params, userId }));
-
-  if (body.password && String(body.password).trim()) {
-    const hash = await sha256(String(body.password).trim());
-    sql    += ", password_hash=?";
-    params.push(hash);
+  function renderUsersTable() {
+    // Always get fresh DOM reference
+    var tbody = document.getElementById('users-table-body');
+    if (!tbody) { console.warn('[Admin] users-table-body not found'); return; }
+    if (!state.users.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px;">No users found.</td></tr>';
+      return;
+    }
+    var html = state.users.map(function (u) {
+      var roleName = u.role_name || (state.roles.find(function(r){ return r.id === u.role_id; }) || {}).name || 'user';
+      var statusBadge = u.status === 'active'
+        ? '<span class="badge badge-green">Active</span>'
+        : '<span class="badge badge-gray">Inactive</span>';
+      var roleBadge = roleName === 'superuser'
+        ? '<span class="badge badge-yellow">' + roleName + '</span>'
+        : roleName === 'admin'
+        ? '<span class="badge badge-green">' + roleName + '</span>'
+        : '<span class="badge badge-gray">' + roleName + '</span>';
+      return '<tr>' +
+        '<td><strong>' + TGE.safeText(u.first_name) + ' ' + TGE.safeText(u.last_name) + '</strong></td>' +
+        '<td>' + TGE.safeText(u.username) + '</td>' +
+        '<td>' + TGE.safeText(u.email, '—') + '</td>' +
+        '<td>' + roleBadge + '</td>' +
+        '<td>' + statusBadge + '</td>' +
+        '<td style="font-size:11px;color:var(--muted);">' + TGE.formatDate(u.created_at) + '</td>' +
+        '<td style="display:flex;gap:6px;">' +
+          '<button class="btn" style="height:28px;font-size:11px;padding:0 10px;" onclick="TGE.adminEditUser(' + u.id + ')">Edit</button>' +
+          '<button class="btn btn-danger" style="height:28px;font-size:11px;padding:0 10px;" onclick="TGE.adminDeleteUser(' + u.id + ')">Deactivate</button>' +
+        '</td>' +
+        '</tr>';
+    }).join('');
+    tbody.innerHTML = html;
+    console.log('[Admin] renderUsersTable: rendered', state.users.length, 'users, tbody rows:', tbody.querySelectorAll('tr').length);
   }
 
-  sql += " WHERE id=?";
-  params.push(userId);
+  async function saveUser() {
+    var msgEl = document.getElementById('user-form-message');
 
-  await env.DB.prepare(sql).bind(...params).run();
-  await logActivity(env, auth.session.user_id, "admin", "update-user", `Updated user id: ${userId} (${username})`, null);
+    // Read directly from DOM
+    var firstName = document.getElementById('user-first-name').value.trim();
+    var lastName  = document.getElementById('user-last-name').value.trim();
+    var username  = document.getElementById('user-username').value.trim().toLowerCase();
+    var email     = document.getElementById('user-email').value.trim();
+    var password  = document.getElementById('user-password').value.trim();
+    var status    = document.getElementById('user-status').value;
+    var roleSel   = document.getElementById('user-role');
+    var roleId    = roleSel ? parseInt(roleSel.value, 10) : 3;
+    if (!roleId || roleId < 1) roleId = 3;
 
-  // Return updated user for confirmation
-  const updated = await env.DB.prepare(
-    "SELECT id, username, first_name, last_name, role_id, status, updated_at FROM users WHERE id = ?"
-  ).bind(userId).first();
+    var editId = state.editingUser;
 
-  return jsonResponse({ ok: true, user: updated, debug: debugInfo, params: params });
-}
+    console.log('[saveUser] editId:', editId, 'username:', username, 'roleId:', roleId);
 
-// DELETE /api/admin/users/:id
-async function handleDeleteUser(request, env, userId) {
-  const auth = await requireSession(request, env);
-  if (!auth.ok) return auth.response;
-
-  // Prevent deleting own account
-  if (String(userId) === String(auth.session.user_id)) {
-    return jsonResponse({ error: "You cannot delete your own account." }, 400);
-  }
-
-  const perm = await hasPermission(env, auth.session.role_id, "admin", "run");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  await env.DB.prepare("UPDATE users SET status='inactive', updated_at=? WHERE id=?").bind(nowIso(), userId).run();
-  await logActivity(env, auth.session.user_id, "admin", "delete-user", `Deactivated user id: ${userId}`, null);
-
-  return jsonResponse({ ok: true });
-}
-
-// GET /api/admin/roles
-async function handleGetRoles(request, env) {
-  const auth = await requireSession(request, env);
-  if (!auth.ok) return auth.response;
-
-  const roles = await env.DB.prepare("SELECT * FROM roles ORDER BY id").all();
-  return jsonResponse({ roles: roles.results || [] });
-}
-
-// GET /api/admin/permissions/:roleId
-async function handleGetPermissions(request, env, roleId) {
-  const auth = await requireSession(request, env);
-  if (!auth.ok) return auth.response;
-
-  const perm = await hasPermission(env, auth.session.role_id, "admin", "view");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  const perms = await env.DB.prepare(
-    "SELECT * FROM permissions WHERE role_id = ? ORDER BY feature, action"
-  ).bind(roleId).all();
-
-  return jsonResponse({ permissions: perms.results || [] });
-}
-
-// PUT /api/admin/permissions/:roleId
-async function handleUpdatePermissions(request, env, roleId) {
-  const auth = await requireSession(request, env);
-  if (!auth.ok) return auth.response;
-
-  const perm = await hasPermission(env, auth.session.role_id, "admin", "run");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  const body = await safeJson(request);
-  const permissions = Array.isArray(body.permissions) ? body.permissions : [];
-
-  for (const p of permissions) {
-    await env.DB.prepare(
-      "INSERT INTO permissions (role_id, feature, action, enabled, limit_value) VALUES (?, ?, ?, ?, ?) ON CONFLICT(role_id, feature, action) DO UPDATE SET enabled=excluded.enabled, limit_value=excluded.limit_value"
-    ).bind(roleId, p.feature, p.action, p.enabled ? 1 : 0, p.limit || null).run();
-  }
-
-  await logActivity(env, auth.session.user_id, "admin", "update-permissions", `Updated permissions for role: ${roleId}`, null);
-  return jsonResponse({ ok: true });
-}
-
-// GET /api/admin/activity
-async function handleGetActivity(request, env) {
-  const auth = await requireSession(request, env);
-  if (!auth.ok) return auth.response;
-
-  const perm = await hasPermission(env, auth.session.role_id, "admin", "view");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  const url      = new URL(request.url);
-  const userId   = url.searchParams.get("userId") || null;
-  const feature  = url.searchParams.get("feature") || null;
-  const limit    = Math.min(parseInt(url.searchParams.get("limit") || "200"), 500);
-
-  let sql    = "SELECT a.*, u.username, u.first_name, u.last_name FROM activity_log a JOIN users u ON u.id = a.user_id WHERE 1=1";
-  let params = [];
-
-  if (userId)  { sql += " AND a.user_id = ?"; params.push(userId); }
-  if (feature) { sql += " AND a.feature = ?"; params.push(feature); }
-
-  sql += " ORDER BY a.created_at DESC LIMIT ?";
-  params.push(limit);
-
-  const rows = await env.DB.prepare(sql).bind(...params).all();
-  return jsonResponse({ activity: rows.results || [] });
-}
-
-// POST /api/admin/roles
-async function handleCreateRole(request, env) {
-  const auth = await requireSession(request, env);
-  if (!auth.ok) return auth.response;
-
-  const perm = await hasPermission(env, auth.session.role_id, "admin", "run");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  const body        = await safeJson(request);
-  const name        = String(body.name        || "").trim().toLowerCase().replace(/\s+/g, "-");
-  const description = String(body.description || "").trim();
-
-  if (!name) return jsonResponse({ error: "Role name is required." }, 400);
-
-  const existing = await env.DB.prepare("SELECT id FROM roles WHERE name = ?").bind(name).first();
-  if (existing) return jsonResponse({ error: "Role name already exists." }, 409);
-
-  const result = await env.DB.prepare(
-    "INSERT INTO roles (name, description, created_at) VALUES (?, ?, ?)"
-  ).bind(name, description || null, nowIso()).run();
-
-  // Copy permissions from user role as default
-  await env.DB.prepare(
-    "INSERT INTO permissions (role_id, feature, action, enabled, limit_value) SELECT ?, feature, action, 0, limit_value FROM permissions WHERE role_id = 3"
-  ).bind(result.meta.last_row_id).run();
-
-  await logActivity(env, auth.session.user_id, "admin", "create-role", `Created role: ${name}`, null);
-  return jsonResponse({ ok: true, roleId: result.meta.last_row_id });
-}
-
-// ── Telematics API proxy ──────────────────────────────────────────────────────
-
-async function handleTelematicsProxy(request, env, path) {
-  const auth = await requireSession(request, env);
-  if (!auth.ok) return auth.response;
-
-  if (!env.TN360_API_KEY) {
-    return jsonResponse({ error: "Telematics API key not configured." }, 503);
-  }
-
-  const url      = new URL(request.url);
-  const upstream = `https://api-au.telematics.com${path}?key=${env.TN360_API_KEY}&${url.searchParams.toString()}`;
-
-  const res = await fetch(upstream, { method: request.method });
-  if (!res.ok) return jsonResponse({ error: `Upstream error: HTTP ${res.status}` }, 502);
-
-  const data = await res.json();
-  return jsonResponse(data);
-}
-
-// ── Image proxy ───────────────────────────────────────────────────────────────
-
-async function handleImageProxy(request, env) {
-  const auth = await requireSession(request, env);
-  if (!auth.ok) return auth.response;
-
-  const body     = await safeJson(request);
-  const imageUrl = String(body.url || "").trim();
-  if (!imageUrl) return jsonResponse({ error: "url is required." }, 400);
-
-  let parsed;
-  try { parsed = new URL(imageUrl); } catch { return jsonResponse({ error: "Invalid URL." }, 400); }
-
-  const allowedSuffixes = [".amazonaws.com", ".cloudfront.net", "telematics.com", "tn360.com", "openstreetmap.org", "openstreetmap.de"];
-  const allowed = allowedSuffixes.some(s => parsed.hostname.endsWith(s));
-  if (!allowed) return jsonResponse({ error: "URL host not permitted.", blockedHost: parsed.hostname }, 403);
-
-  const res = await fetch(imageUrl);
-  if (!res.ok) return jsonResponse({ error: `Upstream error: HTTP ${res.status}` }, 502);
-
-  const contentType = res.headers.get("content-type") || "image/jpeg";
-  const buffer      = await res.arrayBuffer();
-
-  return new Response(buffer, {
-    status:  200,
-    headers: { "Content-Type": contentType, "Cache-Control": "private, max-age=300" },
-  });
-}
-
-// ── Main fetch handler ────────────────────────────────────────────────────────
-
-export default {
-  async fetch(request, env) {
-    const url    = new URL(request.url);
-    const path   = url.pathname;
-    const method = request.method;
-
-    // ── API routes ──────────────────────────────────────────────────────────
-    if (path.startsWith("/api/")) {
-
-      // Auth
-      if (method === "POST" && path === "/api/auth/login")   return handleLogin(request, env);
-      if (method === "POST" && path === "/api/auth/logout")  return handleLogout(request, env);
-      if (method === "GET"  && path === "/api/auth/session") return handleSession(request, env);
-
-      // Admin — users
-      if (method === "GET"    && path === "/api/admin/users")       return handleGetUsers(request, env);
-      if (method === "POST"   && path === "/api/admin/users")       return handleCreateUser(request, env);
-      if (method === "PUT"    && path.match(/^\/api\/admin\/users\/\d+$/)) {
-        const id = parseInt(path.split("/").pop(), 10);
-        return handleUpdateUser(request, env, id);
-      }
-      if (method === "DELETE" && path.match(/^\/api\/admin\/users\/\d+$/)) {
-        const id = parseInt(path.split("/").pop(), 10);
-        return handleDeleteUser(request, env, id);
-      }
-
-      // Admin — roles
-      if (method === "GET"  && path === "/api/admin/roles") return handleGetRoles(request, env);
-      if (method === "POST" && path === "/api/admin/roles") return handleCreateRole(request, env);
-
-      // Admin — permissions
-      if (method === "GET" && path.match(/^\/api\/admin\/permissions\/\d+$/)) {
-        const roleId = parseInt(path.split("/").pop(), 10);
-        return handleGetPermissions(request, env, roleId);
-      }
-      if (method === "PUT" && path.match(/^\/api\/admin\/permissions\/\d+$/)) {
-        const roleId = parseInt(path.split("/").pop(), 10);
-        return handleUpdatePermissions(request, env, roleId);
-      }
-
-      // Admin — activity log
-      if (method === "GET" && path === "/api/admin/activity") return handleGetActivity(request, env);
-
-      // Image proxy
-      if (method === "POST" && path === "/api/image-proxy") return handleImageProxy(request, env);
-
-      // Telematics proxy — forward /api/tn360/* to telematics API
-      if (path.startsWith("/api/tn360/")) {
-        const tnPath = path.replace("/api/tn360", "");
-        return handleTelematicsProxy(request, env, tnPath);
-      }
-
-      // Health check
-      if (path === "/api/ping") return jsonResponse({ ok: true });
-
-      return jsonResponse({ error: "Not found." }, 404);
+    if (!firstName || !lastName || !username) {
+      msgEl.textContent = 'First name, last name and username are required.';
+      msgEl.style.color = 'var(--danger)';
+      return;
     }
 
-    // ── Static assets ───────────────────────────────────────────────────────
-    try {
-      if (env.ASSETS) {
-        const assetRes = await env.ASSETS.fetch(request);
-        if (assetRes.status !== 404) return assetRes;
-        // Return 404 for missing assets instead of crashing
-        return new Response('Not found', { status: 404 });
-      }
-      return new Response('Not found', { status: 404 });
-    } catch (e) {
-      return new Response('Asset error: ' + e.message, { status: 500 });
+    var body = {
+      firstName: firstName,
+      lastName:  lastName,
+      username:  username,
+      email:     email,
+      roleId:    roleId,
+      status:    status
+    };
+    if (password) body.password = password;
+
+    console.log('[saveUser] body:', JSON.stringify(body));
+
+    var url    = editId ? '/api/admin/users/' + editId : '/api/admin/users';
+    var method = editId ? 'PUT' : 'POST';
+
+    if (!editId && !password) {
+      msgEl.textContent = 'Password is required for new users.';
+      msgEl.style.color = 'var(--danger)';
+      return;
     }
-  },
-};
+
+    var res  = await fetch(url, {
+      method:  method,
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(body)
+    });
+    var data = await res.json().catch(function() { return {}; });
+
+    console.log('[saveUser] response:', res.status, JSON.stringify(data));
+
+    if (!res.ok) {
+      msgEl.textContent = data.error || (editId ? 'Update failed.' : 'Create failed.');
+      msgEl.style.color = 'var(--danger)';
+      return;
+    }
+
+    msgEl.textContent = editId ? 'User updated successfully.' : 'User created successfully.';
+    msgEl.style.color = 'var(--green-600)';
+
+    cancelEdit();
+    await loadUsers();
+
+    setTimeout(function() {
+      var m = document.getElementById('user-form-message');
+      if (m) m.textContent = '';
+    }, 3000);
+  }
+
+  TGE.adminEditUser = async function (id) {
+    // Coerce to number — HTML onclick passes strings, DB returns numbers
+    id = parseInt(id, 10);
+    var user = state.users.find(function (u) { return u.id === id; });
+    if (!user) { console.warn('[Admin] user not found for id:', id, 'state.users:', state.users.map(function(u){return u.id;})); return; }
+
+    state.editingUser = id;
+
+    TGE.el('user-first-name').value = user.first_name || '';
+    TGE.el('user-last-name').value  = user.last_name  || '';
+    TGE.el('user-username').value   = user.username   || '';
+    TGE.el('user-email').value      = user.email      || '';
+    TGE.el('user-password').value   = '';
+    TGE.el('user-status').value     = user.status     || 'active';
+
+    // Ensure roles are loaded before setting dropdown
+    var roleSel = TGE.el('user-role');
+    if (roleSel) {
+      if (!state.roles.length || roleSel.options.length < 1) {
+        await loadRoles();
+      }
+      roleSel.value = String(user.role_id || 3);
+    }
+
+    TGE.el('user-form-title').textContent = 'Edit User — ' + user.username;
+    TGE.show('user-cancel-btn');
+    TGE.el('user-save-btn').textContent = 'Update User';
+    TGE.el('user-form-message').textContent = '';
+
+    var formEl = TGE.el('user-form-title');
+    if (formEl) formEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  TGE.adminDeleteUser = async function (id) {
+    id = parseInt(id, 10);
+    if (!confirm('Deactivate this user? They will no longer be able to log in.')) return;
+    var result = await api('DELETE', '/api/admin/users/' + id);
+    if (result.ok) {
+      await loadUsers();
+    } else {
+      alert(result.data.error || 'Failed to deactivate user.');
+    }
+  };
+
+  function cancelEdit() {
+    state.editingUser = null;
+    TGE.el('user-first-name').value = '';
+    TGE.el('user-last-name').value  = '';
+    TGE.el('user-username').value   = '';
+    TGE.el('user-email').value      = '';
+    TGE.el('user-password').value   = '';
+    TGE.el('user-status').value     = 'active';
+    var roleSel = TGE.el('user-role');
+    if (roleSel) roleSel.value = '3';
+    TGE.el('user-form-title').textContent = 'Add New User';
+    TGE.hide('user-cancel-btn');
+    TGE.el('user-save-btn').textContent = 'Save User';
+    TGE.el('user-form-message').textContent = '';
+  }
+
+  function handleImport(e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    alert('XLSX import coming soon.');
+    e.target.value = '';
+  }
+
+  // ── ACCESS HISTORY TAB ────────────────────────────────────────────────────────
+  function renderHistoryTab() {
+    return [
+      '<div class="card">',
+        '<div class="card-kicker">Activity</div>',
+        '<div class="card-title">Access History</div>',
+        '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">',
+          '<select id="history-user-filter" style="height:36px;border:1px solid var(--line);border-radius:8px;padding:0 10px;color:var(--ink);background:var(--surface);">',
+            '<option value="">All users</option>',
+          '</select>',
+          '<select id="history-feature-filter" style="height:36px;border:1px solid var(--line);border-radius:8px;padding:0 10px;color:var(--ink);background:var(--surface);">',
+            '<option value="">All features</option>',
+            '<option value="auth">Auth</option>',
+            '<option value="snapshot">Snapshot</option>',
+            '<option value="asset-track">Asset Track</option>',
+            '<option value="vpm">VPM</option>',
+            '<option value="camera-snapshots">Camera Snapshots</option>',
+            '<option value="sd-health">SD Health</option>',
+            '<option value="admin">Admin</option>',
+          '</select>',
+          '<button class="btn btn-primary" id="history-filter-btn" type="button">Filter</button>',
+        '</div>',
+        '<div class="table-wrap">',
+          '<table>',
+            '<thead><tr><th>User</th><th>Feature</th><th>Action</th><th>Detail</th><th>Date / Time</th></tr></thead>',
+            '<tbody id="history-table-body"><tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px;">Loading...</td></tr></tbody>',
+          '</table>',
+        '</div>',
+      '</div>',
+    ].join('');
+  }
+
+  async function loadActivity() {
+    TGE.on('history-filter-btn', 'click', loadActivity);
+    var userId  = (TGE.el('history-user-filter')   || {}).value || '';
+    var feature = (TGE.el('history-feature-filter') || {}).value || '';
+    var params  = new URLSearchParams();
+    if (userId)  params.set('userId', userId);
+    if (feature) params.set('feature', feature);
+    params.set('limit', '200');
+
+    var result = await api('GET', '/api/admin/activity?' + params.toString());
+    if (!result.ok) return;
+    state.activity = result.data.activity || [];
+
+    // Populate user filter
+    var userSel = TGE.el('history-user-filter');
+    if (userSel && state.users.length) {
+      var cv = userSel.value;
+      userSel.innerHTML = '<option value="">All users</option>' +
+        state.users.map(function (u) {
+          return '<option value="' + u.id + '"' + (String(u.id) === cv ? ' selected' : '') + '>' + u.first_name + ' ' + u.last_name + '</option>';
+        }).join('');
+    }
+
+    var tbody = TGE.el('history-table-body');
+    if (!tbody) return;
+    if (!state.activity.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px;">No activity found.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = state.activity.map(function (a) {
+      return '<tr>' +
+        '<td><strong>' + TGE.safeText(a.first_name) + ' ' + TGE.safeText(a.last_name) + '</strong><br><span style="font-size:11px;color:var(--muted);">' + TGE.safeText(a.username) + '</span></td>' +
+        '<td><span class="badge badge-gray">' + TGE.safeText(a.feature) + '</span></td>' +
+        '<td>' + TGE.safeText(a.action) + '</td>' +
+        '<td style="font-size:12px;color:var(--muted);">' + TGE.safeText(a.detail, '—') + '</td>' +
+        '<td style="font-size:11px;color:var(--muted);">' + TGE.formatDate(a.created_at) + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  // ── API REFERENCE TAB ─────────────────────────────────────────────────────────
+  var API_REFS = [
+    { id: 'API-1', method: 'GET', group: 'vehicle',  url: '/v1/vehicles',                               returns: 'All vehicles — vehicleId, name, registration, make, model',          usedBy: ['Asset Track fleet', 'Camera Snapshot fleet', 'SD Health fleet'] },
+    { id: 'API-2', method: 'GET', group: 'device',   url: '/v1/devices',                                returns: 'All devices — imei, serialNumber, vehicleId, type',                  usedBy: ['IMEI lookup', 'Asset Track', 'VPM', 'Camera Snapshot user'] },
+    { id: 'API-3', method: 'GET', group: 'device',   url: '/v1/devices/{imei}?embed=devicestats',       returns: 'Single device — sdCard1, sdCard2, overallStatus',                    usedBy: ['SD Card Health user input'] },
+    { id: 'API-4', method: 'GET', group: 'camera',   url: '/v1/events?types=camera&pruning=B2B',        returns: 'Camera events — vehicleId, timeAt, mediaFiles with image URLs',       usedBy: ['Camera Snapshot user', 'Camera Snapshot fleet', 'Asset Snapshot'] },
+    { id: 'API-5', method: 'GET', group: 'camera',   url: '/v1/devices/{cameraId}/camera-device-stats', returns: 'Camera stats — sdCard1/2 status, firmware',                          usedBy: ['Asset Snapshot SD card'] },
+    { id: 'API-6', method: 'GET', group: 'metrics',  url: '/v1/vehicles/{vehicleId}/hermes-stats',      returns: 'Live metrics — ignition, speed, rpm, gpio, gps, driverName',         usedBy: ['Asset Snapshot metrics, location'] },
+    { id: 'API-7', method: 'GET', group: 'metrics',  url: '/v1/vehicles/{vehicleId}/meters',            returns: 'Odometer, engine hours',                                             usedBy: ['Asset Snapshot performance'] },
+    { id: 'API-8', method: 'GET', group: 'vehicle',  url: '/v1/vehicles/{vehicleId}/devices',           returns: 'Devices linked to a vehicle — imei, serialNumber, type',             usedBy: ['Asset Snapshot devices', 'SD Health fleet'] },
+  ];
+
+  function renderApiTab() {
+    var filterBar = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">' +
+      ['all','vehicle','device','camera','metrics'].map(function(g) {
+        return '<button class="btn' + (g === 'all' ? ' btn-primary' : '') + ' api-filter-btn" data-group="' + g + '" type="button">' + (g === 'all' ? 'All' : g.charAt(0).toUpperCase() + g.slice(1)) + '</button>';
+      }).join('') + '</div>';
+
+    var cards = API_REFS.map(function (a) {
+      var pills = a.usedBy.map(function(u) {
+        return '<span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:600;background:var(--surface-3);color:var(--muted);margin:2px;">' + u + '</span>';
+      }).join('');
+      return '<div class="card api-ref-card" data-group="' + a.group + '" style="margin-bottom:10px;">' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">' +
+          '<span style="background:var(--ink);color:var(--yellow);padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;font-family:monospace;">' + a.id + '</span>' +
+          '<span class="badge badge-green">' + a.method + '</span>' +
+          '<code style="font-size:12px;color:var(--ink);font-weight:600;">' + a.url + '</code>' +
+        '</div>' +
+        '<p style="font-size:12px;color:var(--muted);margin-bottom:8px;"><strong style="color:var(--ink);">Returns:</strong> ' + a.returns + '</p>' +
+        '<div>' + pills + '</div>' +
+        '</div>';
+    }).join('');
+
+    return '<div class="card"><div class="card-kicker">API Reference</div><div class="card-title">Telematics API Endpoints</div><p style="font-size:12px;color:var(--muted);margin-bottom:14px;">All calls proxied through the Cloudflare Worker. API key never exposed to the browser.</p>' + filterBar + '<div id="api-ref-list">' + cards + '</div></div>';
+  }
+
+  function wireApiFilters() {
+    document.querySelectorAll('.api-filter-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        document.querySelectorAll('.api-filter-btn').forEach(function (b) { b.classList.remove('btn-primary'); });
+        btn.classList.add('btn-primary');
+        var group = btn.dataset.group;
+        document.querySelectorAll('.api-ref-card').forEach(function (card) {
+          card.style.display = (group === 'all' || card.dataset.group === group) ? '' : 'none';
+        });
+      });
+    });
+  }
+
+  // ── Export ────────────────────────────────────────────────────────────────────
+  function wireExportBtns() {
+    TGE.on('admin-export-csv', 'click', exportCsv);
+    TGE.on('admin-export-xlsx', 'click', function () { alert('XLSX export coming soon.'); });
+  }
+
+  function exportCsv() {
+    if (!state.users.length) return;
+    var headers = ['First Name','Last Name','Username','Email','Role','Status','Created'];
+    var rows = state.users.map(function (u) {
+      return [u.first_name, u.last_name, u.username, u.email || '', u.role_name || '', u.status, u.created_at]
+        .map(function (v) { return '"' + String(v || '').replace(/"/g, '""') + '"'; }).join(',');
+    });
+    var csv  = [headers.join(',')].concat(rows).join('\n');
+    var blob = new Blob([csv], { type: 'text/csv' });
+    var a    = document.createElement('a');
+    a.href   = URL.createObjectURL(blob);
+    a.download = 'tge-users-' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  // ── Register ──────────────────────────────────────────────────────────────────
+  var _orig = TGE.onAppReady;
+  TGE.onAppReady = function () {
+    if (typeof _orig === 'function') _orig();
+    render();
+  };
+
+  TGE.onShow['admin'] = function () {
+    wireApiFilters();
+  };
+
+})();
