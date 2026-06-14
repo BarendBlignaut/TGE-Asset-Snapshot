@@ -440,6 +440,55 @@ async function handleTelematicsProxy(request, env, path) {
 
 // ── Image proxy ───────────────────────────────────────────────────────────────
 
+
+// ── Registry: API Definitions ─────────────────────────────────────────────────
+
+async function handleRegistryGetApis(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const rows = await env.DB.prepare("SELECT * FROM registry_apis ORDER BY api_id").all();
+  const apis = (rows.results || []).map(function(r) {
+    return {
+      apiId:          r.api_id,
+      label:          r.label,
+      group:          r.group_name,
+      method:         r.method,
+      url:            r.url,
+      notes:          r.notes,
+      sampleResponse: r.sample_response,
+      fields:         r.fields ? JSON.parse(r.fields) : [],
+    };
+  });
+  return jsonResponse({ apis });
+}
+
+async function handleRegistryCreateApi(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const body = await safeJson(request);
+  await env.DB.prepare(
+    "INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, sample_response, fields, updated_at) VALUES (?,?,?,?,?,?,?,?,?)"
+  ).bind(body.apiId, body.label, body.group, body.method, body.url, body.notes||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), nowIso()).run();
+  return jsonResponse({ ok: true });
+}
+
+async function handleRegistryUpdateApi(request, env, apiId) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const body = await safeJson(request);
+  await env.DB.prepare(
+    "INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, sample_response, fields, updated_at) VALUES (?,?,?,?,?,?,?,?,?)"
+  ).bind(apiId, body.label, body.group, body.method, body.url, body.notes||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), nowIso()).run();
+  return jsonResponse({ ok: true });
+}
+
+async function handleRegistryDeleteApi(request, env, apiId) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  await env.DB.prepare("DELETE FROM registry_apis WHERE api_id = ?").bind(apiId).run();
+  return jsonResponse({ ok: true });
+}
+
 async function handleImageProxy(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
@@ -511,6 +560,12 @@ export default {
 
       // Admin — activity log
       if (method === "GET" && path === "/api/admin/activity") return handleGetActivity(request, env);
+
+      // Registry
+      if (method === "GET"    && path === "/api/registry/apis")                              return handleRegistryGetApis(request, env);
+      if (method === "POST"   && path === "/api/registry/apis")                              return handleRegistryCreateApi(request, env);
+      if (method === "PUT"    && path.match(/^\/api\/registry\/apis\//))                  return handleRegistryUpdateApi(request, env, decodeURIComponent(path.split("/").pop()));
+      if (method === "DELETE" && path.match(/^\/api\/registry\/apis\//))                  return handleRegistryDeleteApi(request, env, decodeURIComponent(path.split("/").pop()));
 
       // Image proxy
       if (method === "POST" && path === "/api/image-proxy") return handleImageProxy(request, env);
