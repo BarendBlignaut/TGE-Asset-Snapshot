@@ -146,13 +146,14 @@
   }
 
   function renderUsersTable() {
-    var tbody = TGE.el('users-table-body');
-    if (!tbody) return;
+    // Always get fresh DOM reference
+    var tbody = document.getElementById('users-table-body');
+    if (!tbody) { console.warn('[Admin] users-table-body not found'); return; }
     if (!state.users.length) {
       tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px;">No users found.</td></tr>';
       return;
     }
-    tbody.innerHTML = state.users.map(function (u) {
+    var html = state.users.map(function (u) {
       var roleName = u.role_name || (state.roles.find(function(r){ return r.id === u.role_id; }) || {}).name || 'user';
       var statusBadge = u.status === 'active'
         ? '<span class="badge badge-green">Active</span>'
@@ -162,21 +163,21 @@
         : roleName === 'admin'
         ? '<span class="badge badge-green">' + roleName + '</span>'
         : '<span class="badge badge-gray">' + roleName + '</span>';
-      return [
-        '<tr>',
-          '<td><strong>' + TGE.safeText(u.first_name) + ' ' + TGE.safeText(u.last_name) + '</strong></td>',
-          '<td>' + TGE.safeText(u.username) + '</td>',
-          '<td>' + TGE.safeText(u.email, '—') + '</td>',
-          '<td>' + roleBadge + '</td>',
-          '<td>' + statusBadge + '</td>',
-          '<td style="font-size:11px;color:var(--muted);">' + TGE.formatDate(u.created_at) + '</td>',
-          '<td style="display:flex;gap:6px;">',
-            '<button class="btn" style="height:28px;font-size:11px;padding:0 10px;" onclick="TGE.adminEditUser(' + u.id + ')">Edit</button>',
-            '<button class="btn btn-danger" style="height:28px;font-size:11px;padding:0 10px;" onclick="TGE.adminDeleteUser(' + u.id + ')">Deactivate</button>',
-          '</td>',
-        '</tr>',
-      ].join('');
+      return '<tr>' +
+        '<td><strong>' + TGE.safeText(u.first_name) + ' ' + TGE.safeText(u.last_name) + '</strong></td>' +
+        '<td>' + TGE.safeText(u.username) + '</td>' +
+        '<td>' + TGE.safeText(u.email, '—') + '</td>' +
+        '<td>' + roleBadge + '</td>' +
+        '<td>' + statusBadge + '</td>' +
+        '<td style="font-size:11px;color:var(--muted);">' + TGE.formatDate(u.created_at) + '</td>' +
+        '<td style="display:flex;gap:6px;">' +
+          '<button class="btn" style="height:28px;font-size:11px;padding:0 10px;" onclick="TGE.adminEditUser(' + u.id + ')">Edit</button>' +
+          '<button class="btn btn-danger" style="height:28px;font-size:11px;padding:0 10px;" onclick="TGE.adminDeleteUser(' + u.id + ')">Deactivate</button>' +
+        '</td>' +
+        '</tr>';
     }).join('');
+    tbody.innerHTML = html;
+    console.log('[Admin] renderUsersTable: rendered', state.users.length, 'users, tbody rows:', tbody.querySelectorAll('tr').length);
   }
 
   async function saveUser() {
@@ -237,8 +238,10 @@
   }
 
   TGE.adminEditUser = async function (id) {
+    // Coerce to number — HTML onclick passes strings, DB returns numbers
+    id = parseInt(id, 10);
     var user = state.users.find(function (u) { return u.id === id; });
-    if (!user) return;
+    if (!user) { console.warn('[Admin] user not found for id:', id, 'state.users:', state.users.map(function(u){return u.id;})); return; }
 
     state.editingUser = id;
 
@@ -268,6 +271,7 @@
   };
 
   TGE.adminDeleteUser = async function (id) {
+    id = parseInt(id, 10);
     if (!confirm('Deactivate this user? They will no longer be able to log in.')) return;
     var result = await api('DELETE', '/api/admin/users/' + id);
     if (result.ok) {
