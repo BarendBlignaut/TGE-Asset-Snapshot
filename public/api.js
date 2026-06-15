@@ -105,39 +105,6 @@
         '</div>',
       '</div>',
 
-      // Tag form panel (nested overlay)
-      '<div id="tag-form-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:300;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;">',
-        '<div style="background:var(--surface);border-radius:14px;padding:24px;width:min(480px,100%);box-shadow:0 8px 32px rgba(0,0,0,0.25);margin:auto;">',
-          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">',
-            '<h3 style="margin:0;font-size:15px;font-weight:700;color:var(--ink);" id="tag-form-title">Add Tag</h3>',
-            '<button onclick="TGE.apiCloseTagForm()" style="width:30px;height:30px;border-radius:6px;border:1px solid var(--line);background:var(--surface-2);color:var(--muted);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;">✕</button>',
-          '</div>',
-          '<div class="field"><label>Field Name</label><input id="tag-name" type="text" placeholder="e.g. username" /></div>',
-          '<div class="field"><label>Description</label><input id="tag-description" type="text" placeholder="e.g. TN360 username for matching" /></div>',
-          '<div class="field">',
-            '<label>Use</label>',
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">',
-              TAG_USES.map(function(u) {
-                return '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);">' +
-                  '<input type="radio" name="tag-use" value="' + u.value + '" style="flex-shrink:0;" />' +
-                  '<span style="font-size:12px;font-weight:600;color:var(--ink);">' + u.label + '</span>' +
-                  '</label>';
-              }).join(''),
-            '</div>',
-          '</div>',
-          '<div class="field">',
-            '<label>Location (field path in JSON)</label>',
-            '<div style="display:flex;gap:8px;">',
-              '<input id="tag-path" type="text" placeholder="e.g. username" style="flex:1;" />',
-              '<button class="btn" style="height:40px;font-size:11px;white-space:nowrap;flex-shrink:0;" onclick="TGE.apiPickFromSample()">Pick from JSON</button>',
-            '</div>',
-          '</div>',
-          '<div style="display:flex;gap:8px;margin-top:8px;">',
-            '<button class="btn btn-primary" style="flex:1;" onclick="TGE.apiSaveTag()">Save Tag</button>',
-            '<button class="btn" onclick="TGE.apiCloseTagForm()">Cancel</button>',
-          '</div>',
-        '</div>',
-      '</div>',
 
       // JSON picker overlay
       '<div id="json-picker-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:400;display:flex;align-items:center;justify-content:center;padding:20px;">',
@@ -172,9 +139,7 @@
     TGE.on('api-add-btn',    'click', function() { openPanel('create', null); });
     TGE.on('api-export-btn', 'click', exportJson);
 
-    // Fix tag form overlay — initially hidden
-    var tfo = TGE.el('tag-form-overlay');
-    if (tfo) tfo.style.display = 'none';
+    // Fix json picker overlay
     var jpo = TGE.el('json-picker-overlay');
     if (jpo) jpo.style.display = 'none';
 
@@ -321,11 +286,11 @@
     document.querySelectorAll('input[name="tag-use"]').forEach(function(r) {
       r.checked = r.value === (tag.use || 'display');
     });
-    TGE.el('tag-form-overlay').style.display = 'flex';
+    var form = TGE.el('tag-inline-form'); var btn = TGE.el('tag-add-btn-wrap'); if (form) form.style.display = ''; if (btn) btn.style.display = 'none'; if (form) form.scrollIntoView({behavior:'smooth',block:'nearest'});
   };
 
   TGE.apiCloseTagForm = function() {
-    TGE.el('tag-form-overlay').style.display = 'none';
+    var form2 = TGE.el('tag-inline-form'); var btn2 = TGE.el('tag-add-btn-wrap'); if (form2) form2.style.display = 'none'; if (btn2) btn2.style.display = '';
   };
 
   TGE.apiSaveTag = function() {
