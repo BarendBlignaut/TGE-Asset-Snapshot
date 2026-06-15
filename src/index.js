@@ -446,8 +446,13 @@ async function handleTelematicsProxy(request, env, path) {
 async function handleRegistryGetApis(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
-  const rows = await env.DB.prepare("SELECT * FROM registry_apis ORDER BY api_id").all();
-  const apis = (rows.results || []).map(function(r) {
+  const url   = new URL(request.url);
+  const all   = url.searchParams.get("all") === "1";
+  const query = all
+    ? "SELECT * FROM registry_apis ORDER BY api_id"
+    : "SELECT * FROM registry_apis WHERE active = 1 ORDER BY api_id";
+  const rows  = await env.DB.prepare(query).all();
+  const apis  = (rows.results || []).map(function(r) {
     return {
       apiId:          r.api_id,
       label:          r.label,
@@ -457,6 +462,7 @@ async function handleRegistryGetApis(request, env) {
       notes:          r.notes,
       sampleResponse: r.sample_response,
       fields:         r.fields ? JSON.parse(r.fields) : [],
+      active:         r.active === 1,
     };
   });
   return jsonResponse({ apis });
@@ -467,8 +473,8 @@ async function handleRegistryCreateApi(request, env) {
   if (!auth.ok) return auth.response;
   const body = await safeJson(request);
   await env.DB.prepare(
-    "INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, sample_response, fields, updated_at) VALUES (?,?,?,?,?,?,?,?,?)"
-  ).bind(body.apiId, body.label, body.group, body.method, body.url, body.notes||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), nowIso()).run();
+    "INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, sample_response, fields, active, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)"
+  ).bind(body.apiId, body.label, body.group, body.method, body.url, body.notes||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), 1, nowIso()).run();
   return jsonResponse({ ok: true });
 }
 
@@ -476,9 +482,10 @@ async function handleRegistryUpdateApi(request, env, apiId) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
   const body = await safeJson(request);
+  const active = body.active === false ? 0 : 1;
   await env.DB.prepare(
-    "INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, sample_response, fields, updated_at) VALUES (?,?,?,?,?,?,?,?,?)"
-  ).bind(apiId, body.label, body.group, body.method, body.url, body.notes||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), nowIso()).run();
+    "INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, sample_response, fields, active, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)"
+  ).bind(apiId, body.label, body.group, body.method, body.url, body.notes||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), active, nowIso()).run();
   return jsonResponse({ ok: true });
 }
 
