@@ -169,6 +169,7 @@
         '<td>' + TGE.safeText(u.email, '—') + '</td>' +
         '<td>' + roleBadge + '</td>' +
         '<td>' + statusBadge + '</td>' +
+        '<td><span class="badge ' + (u.login_type === 'db_vendor' ? 'badge-yellow' : 'badge-gray') + '" style="font-size:10px;">' + (u.login_type === 'db_vendor' ? 'DB + Vendor' : 'DB only') + '</span></td>' +
         '<td style="font-size:11px;color:var(--muted);">' + TGE.formatDate(u.created_at) + '</td>' +
         '<td style="display:flex;gap:6px;">' +
           '<button class="btn" style="height:28px;font-size:11px;padding:0 10px;" onclick="TGE.adminEditUser(' + u.id + ')">Edit</button>' +
