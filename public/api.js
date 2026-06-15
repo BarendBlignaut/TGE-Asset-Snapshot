@@ -106,21 +106,21 @@
       '</div>',
 
       // Tag form panel (nested overlay)
-      '<div id="tag-form-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px;">',
-        '<div style="background:var(--surface);border-radius:14px;padding:24px;width:min(500px,100%);box-shadow:0 8px 32px rgba(0,0,0,0.2);">',
+      '<div id="tag-form-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:300;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;">',
+        '<div style="background:var(--surface);border-radius:14px;padding:24px;width:min(480px,100%);box-shadow:0 8px 32px rgba(0,0,0,0.25);margin:auto;">',
           '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">',
-            '<h3 style="margin:0;font-size:15px;font-weight:700;" id="tag-form-title">Add Tag</h3>',
-            '<button onclick="TGE.apiCloseTagForm()" style="border:none;background:none;font-size:18px;cursor:pointer;color:var(--muted);">✕</button>',
+            '<h3 style="margin:0;font-size:15px;font-weight:700;color:var(--ink);" id="tag-form-title">Add Tag</h3>',
+            '<button onclick="TGE.apiCloseTagForm()" style="width:30px;height:30px;border-radius:6px;border:1px solid var(--line);background:var(--surface-2);color:var(--muted);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;">✕</button>',
           '</div>',
-          '<div class="field"><label>Field Name</label><input id="tag-name" type="text" placeholder="e.g. vehicleId" /></div>',
-          '<div class="field"><label>Description</label><input id="tag-description" type="text" placeholder="e.g. Links device to vehicle" /></div>',
-          '<div class="field"><label>Use</label>',
-            '<div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;" id="tag-use-options">',
+          '<div class="field"><label>Field Name</label><input id="tag-name" type="text" placeholder="e.g. username" /></div>',
+          '<div class="field"><label>Description</label><input id="tag-description" type="text" placeholder="e.g. TN360 username for matching" /></div>',
+          '<div class="field">',
+            '<label>Use</label>',
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">',
               TAG_USES.map(function(u) {
-                return '<label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:8px 10px;border:1px solid var(--line);border-radius:8px;">' +
-                  '<input type="radio" name="tag-use" value="' + u.value + '" style="margin-top:2px;flex-shrink:0;" />' +
-                  '<div><strong style="display:block;font-size:12px;">' + u.label + '</strong>' +
-                  '<span style="font-size:11px;color:var(--muted);">' + u.desc + '</span></div>' +
+                return '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);">' +
+                  '<input type="radio" name="tag-use" value="' + u.value + '" style="flex-shrink:0;" />' +
+                  '<span style="font-size:12px;font-weight:600;color:var(--ink);">' + u.label + '</span>' +
                   '</label>';
               }).join(''),
             '</div>',
@@ -128,13 +128,12 @@
           '<div class="field">',
             '<label>Location (field path in JSON)</label>',
             '<div style="display:flex;gap:8px;">',
-              '<input id="tag-path" type="text" placeholder="e.g. attributes.context.vehicleId" style="flex:1;" />',
-              '<button class="btn" style="height:40px;font-size:12px;white-space:nowrap;" onclick="TGE.apiPickFromSample()">Pick from JSON</button>',
+              '<input id="tag-path" type="text" placeholder="e.g. username" style="flex:1;" />',
+              '<button class="btn" style="height:40px;font-size:11px;white-space:nowrap;flex-shrink:0;" onclick="TGE.apiPickFromSample()">Pick from JSON</button>',
             '</div>',
-            '<p style="font-size:11px;color:var(--muted);margin-top:4px;">Or click "Pick from JSON" to select the field directly from your sample response.</p>',
           '</div>',
-          '<div style="display:flex;gap:8px;margin-top:4px;">',
-            '<button class="btn btn-primary" onclick="TGE.apiSaveTag()">Add Tag</button>',
+          '<div style="display:flex;gap:8px;margin-top:8px;">',
+            '<button class="btn btn-primary" style="flex:1;" onclick="TGE.apiSaveTag()">Save Tag</button>',
             '<button class="btn" onclick="TGE.apiCloseTagForm()">Cancel</button>',
           '</div>',
         '</div>',
