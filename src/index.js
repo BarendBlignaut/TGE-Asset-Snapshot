@@ -99,8 +99,9 @@ async function handleLogin(request, env) {
 
   const hash = await sha256(password);
 
+  // Step 1 — find user by username + password hash
   const user = await env.DB.prepare(
-    "SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.role_id, u.status, r.name as role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.username = ? AND u.password_hash = ?"
+    "SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.role_id, u.status, u.login_type, r.name as role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.username = ? AND u.password_hash = ?"
   ).bind(username, hash).first();
 
   if (!user) {
@@ -111,7 +112,43 @@ async function handleLogin(request, env) {
     return jsonResponse({ error: "Account is inactive. Contact your administrator." }, 403);
   }
 
-  // Create session
+  // Step 2 — if login_type is db_vendor, run TN360 hard checks
+  if (user.login_type === "db_vendor" && env.TN360_API_KEY) {
+    try {
+      const tn360Res = await fetch(
+        `https://api-au.telematics.com/v1/users/?key=${env.TN360_API_KEY}&pruning=B2B`
+      );
+      if (!tn360Res.ok) {
+        return jsonResponse({ error: "Vendor verification service unavailable. Please try again." }, 503);
+      }
+      const tn360Users = await tn360Res.json();
+
+      // Hard Check 1 — find matching username in TN360
+      const tn360User = Array.isArray(tn360Users)
+        ? tn360Users.find(u => String(u.username || "").toLowerCase() === username)
+        : null;
+      if (!tn360User) {
+        return jsonResponse({ error: "Vendor verification failed — user not found in vendor system." }, 401);
+      }
+
+      // Hard Check 2 — must have Driver role in TN360
+      const isDriver = Array.isArray(tn360User.roles)
+        ? tn360User.roles.some(r => r.name === "Driver")
+        : false;
+      if (!isDriver) {
+        return jsonResponse({ error: "Vendor verification failed — account is not a Driver." }, 403);
+      }
+
+      // Hard Check 3 — externalPin must match password
+      if (String(tn360User.externalPin || "") !== password) {
+        return jsonResponse({ error: "Vendor verification failed — invalid credentials." }, 401);
+      }
+    } catch (e) {
+      return jsonResponse({ error: "Vendor verification error: " + e.message }, 503);
+    }
+  }
+
+  // Step 3 — create session
   const sessionId = randomId();
   const ip        = request.headers.get("CF-Connecting-IP") || null;
 
@@ -119,11 +156,10 @@ async function handleLogin(request, env) {
     "INSERT INTO sessions (id, user_id, created_at, expires_at, ip) VALUES (?, ?, ?, ?, ?)"
   ).bind(sessionId, user.id, nowIso(), expiresIso(), ip).run();
 
-  // Log activity
-  await logActivity(env, user.id, "auth", "login", null, ip);
+  await logActivity(env, user.id, "auth", "login", "login_type:" + (user.login_type || "db_only"), ip);
 
   const response = jsonResponse({
-    ok:        true,
+    ok:   true,
     user: {
       id:        user.id,
       username:  user.username,
@@ -132,6 +168,7 @@ async function handleLogin(request, env) {
       email:     user.email,
       role:      user.role_name,
       roleId:    user.role_id,
+      loginType: user.login_type || "db_only",
     },
   });
 
@@ -231,9 +268,11 @@ async function handleCreateUser(request, env) {
 
   const hash = await sha256(password);
 
+  const loginType = ["db_only","db_vendor"].includes(body.loginType) ? body.loginType : "db_only";
+
   await env.DB.prepare(
-    "INSERT INTO users (username, password_hash, first_name, last_name, email, role_id, status, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).bind(username, hash, firstName, lastName, email || null, roleId, status, auth.session.user_id, nowIso(), nowIso()).run();
+    "INSERT INTO users (username, password_hash, first_name, last_name, email, role_id, status, login_type, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(username, hash, firstName, lastName, email || null, roleId, status, loginType, auth.session.user_id, nowIso(), nowIso()).run();
 
   await logActivity(env, auth.session.user_id, "admin", "create-user", `Created user: ${username}`, null);
 
@@ -273,8 +312,9 @@ async function handleUpdateUser(request, env, userId) {
   // Debug — return what we are about to update
   const debugInfo = { userId, firstName, lastName, username, email, roleId, status };
 
-  let sql    = "UPDATE users SET first_name=?, last_name=?, username=?, email=?, role_id=?, status=?, updated_at=?";
-  let params = [firstName, lastName, username, email || null, roleId, status, nowIso()];
+  const loginType = ["db_only","db_vendor"].includes(body.loginType) ? body.loginType : "db_only";
+  let sql    = "UPDATE users SET first_name=?, last_name=?, username=?, email=?, role_id=?, status=?, login_type=?, updated_at=?";
+  let params = [firstName, lastName, username, email || null, roleId, status, loginType, nowIso()];
   
   console.log("[Worker] UPDATE params:", JSON.stringify({ sql, params, userId }));
 
