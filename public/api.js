@@ -184,11 +184,11 @@
 
   // ── Load / render API list ────────────────────────────────────────────────────
   async function loadApis() {
-    var result = await api('GET', '/api/registry/apis');
+    var result = await api('GET', '/api/registry/apis?all=1');
     if (result.ok && result.data.apis && result.data.apis.length) {
       state.apis = result.data.apis;
     } else {
-      state.apis = getDefaultApis();
+      state.apis = [];
     }
     renderApiList();
   }
@@ -219,7 +219,7 @@
         '</div>' +
         '<div style="display:flex;flex-direction:column;gap:6px;">' +
           '<button class="btn btn-primary" style="height:28px;font-size:11px;padding:0 10px;" onclick="TGE.apiEdit(\'' + a.apiId + '\')">Edit</button>' +
-          '<button class="btn btn-danger" style="height:28px;font-size:11px;padding:0 10px;" onclick="TGE.apiDelete(\'' + a.apiId + '\')">Delete</button>' +
+          '<button class="btn" style="height:28px;font-size:11px;padding:0 10px;" onclick="TGE.apiToggleActive(\'' + a.apiId + '\',' + (isActive?'false':'true') + ')">' + (isActive ? 'Deactivate' : 'Activate') + '</button>' +
         '</div>' +
       '</div>';
     }).join('');
