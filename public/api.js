@@ -665,35 +665,6 @@
   function exportJson() {
     var active = state.apis.filter(function(a) { return a.active !== false; });
     if (!active.length) { alert('No active APIs to export.'); return; }
-    var json = JSON.stringify({ exportedAt: new Date().toISOString(), apiCount: active.length, apis: active }, null, 2);
-    var modal = document.createElement('div');
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;';
-    modal.innerHTML = '<div style="background:var(--surface);border-radius:14px;padding:20px;width:min(700px,100%);max-height:85vh;display:flex;flex-direction:column;gap:10px;">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;">' +
-        '<div><h3 style="margin:0;font-size:14px;font-weight:700;">API Registry Export</h3>' +
-        '<p style="margin:3px 0 0;font-size:12px;color:var(--muted);">' + active.length + ' active API' + (active.length!==1?'s':'') + ' · Paste into chat as coding reference</p></div>' +
-        '<button onclick="this.closest(\'div\').parentElement.remove()" style="border:none;background:none;font-size:18px;cursor:pointer;color:var(--muted);">✕</button>' +
-      '</div>' +
-      '<textarea style="flex:1;min-height:300px;font-family:monospace;font-size:11px;border:1px solid var(--line);border-radius:8px;padding:10px;resize:none;background:var(--surface-2);" readonly>' + json + '</textarea>' +
-      '<div style="display:flex;gap:8px;">' +
-        '<button class="btn btn-primary" onclick="navigator.clipboard.writeText(this.closest(\'div\').previousElementSibling.value).then(function(){alert(\'Copied to clipboard!\')})">Copy to Clipboard</button>' +
-        '<button class="btn" onclick="(function(j){var a=document.createElement(\'a\');a.href=URL.createObjectURL(new Blob([j],{type:\'application/json\'}));a.download=\'tge-api-registry-\'+new Date().toISOString().slice(0,10)+\'.json\';a.click()})(this.closest(\'div\').previousElementSibling.value)">Download JSON</button>' +
-      '</div>' +
-    '</div>';
-    document.body.appendChild(modal);
-  }
-
-  // ── Register ──────────────────────────────────────────────────────────────────
-  var _orig = TGE.onAppReady;
-  TGE.onAppReady = function () {
-    if (typeof _orig === 'function') _orig();
-    render();
-  };
-
-})();  // ── Export ────────────────────────────────────────────────────────────────────
-  function exportJson() {
-    var active = state.apis.filter(function(a) { return a.active !== false; });
-    if (!active.length) { alert('No active APIs to export.'); return; }
 
     var modal = document.createElement('div');
     modal.id = 'api-export-modal';
@@ -766,3 +737,12 @@
       };
     };
   }
+
+  // ── Register ──────────────────────────────────────────────────────────────────
+  var _orig = TGE.onAppReady;
+  TGE.onAppReady = function () {
+    if (typeof _orig === 'function') _orig();
+    render();
+  };
+
+})();
