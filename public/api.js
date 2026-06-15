@@ -690,4 +690,79 @@
     render();
   };
 
-})();
+})();  // ── Export ────────────────────────────────────────────────────────────────────
+  function exportJson() {
+    var active = state.apis.filter(function(a) { return a.active !== false; });
+    if (!active.length) { alert('No active APIs to export.'); return; }
+
+    var modal = document.createElement('div');
+    modal.id = 'api-export-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+    var checkboxes = active.map(function(a) {
+      return '<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;cursor:pointer;background:var(--surface-2);">' +
+        '<input type="checkbox" class="export-api-check" value="' + a.apiId + '" checked style="width:15px;height:15px;cursor:pointer;" />' +
+        '<span style="background:var(--ink);color:var(--yellow);padding:1px 7px;border-radius:999px;font-size:10px;font-weight:700;font-family:monospace;">' + a.apiId + '</span>' +
+        '<span style="font-size:13px;font-weight:600;flex:1;">' + a.label + '</span>' +
+        '<span class="badge badge-green" style="font-size:10px;">' + a.method + '</span>' +
+      '</label>';
+    }).join('');
+
+    modal.innerHTML = '<div style="background:var(--surface);border-radius:14px;padding:20px;width:min(600px,100%);max-height:90vh;display:flex;flex-direction:column;gap:10px;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">' +
+        '<div><h3 style="margin:0;font-size:14px;font-weight:700;">Export API Definitions</h3>' +
+        '<p style="margin:3px 0 0;font-size:12px;color:var(--muted);">Select which APIs to include</p></div>' +
+        '<button id="export-modal-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1;">✕</button>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex-shrink:0;">' +
+        '<button class="btn" style="height:28px;font-size:11px;" id="export-sel-all">Select All</button>' +
+        '<button class="btn" style="height:28px;font-size:11px;" id="export-desel-all">Deselect All</button>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1;" id="export-check-list">' + checkboxes + '</div>' +
+      '<div id="export-json-area" style="display:none;flex-shrink:0;">' +
+        '<textarea id="export-json-text" style="width:100%;min-height:160px;font-family:monospace;font-size:11px;border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical;background:var(--surface-2);" readonly></textarea>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;flex-shrink:0;">' +
+        '<button class="btn btn-primary" id="export-generate-btn" style="height:36px;">Generate Export</button>' +
+        '<button class="btn" id="export-copy-btn" style="height:36px;display:none;">Copy to Clipboard</button>' +
+        '<button class="btn" id="export-download-btn" style="height:36px;display:none;">Download JSON</button>' +
+      '</div>' +
+    '</div>';
+
+    document.body.appendChild(modal);
+
+    document.getElementById('export-modal-close').onclick = function() { modal.remove(); };
+    document.getElementById('export-sel-all').onclick   = function() { modal.querySelectorAll('.export-api-check').forEach(function(c){c.checked=true;}); };
+    document.getElementById('export-desel-all').onclick = function() { modal.querySelectorAll('.export-api-check').forEach(function(c){c.checked=false;}); };
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+
+    document.getElementById('export-generate-btn').onclick = function() {
+      var selected = [];
+      modal.querySelectorAll('.export-api-check:checked').forEach(function(c) {
+        var found = active.find(function(a) { return a.apiId === c.value; });
+        if (found) selected.push(found);
+      });
+      if (!selected.length) { alert('Select at least one API.'); return; }
+
+      var json = JSON.stringify({ exportedAt: new Date().toISOString(), apiCount: selected.length, apis: selected }, null, 2);
+      document.getElementById('export-json-text').value = json;
+      document.getElementById('export-json-area').style.display = '';
+      document.getElementById('export-copy-btn').style.display  = '';
+      document.getElementById('export-download-btn').style.display = '';
+      this.textContent = 'Regenerate';
+
+      document.getElementById('export-copy-btn').onclick = function() {
+        navigator.clipboard.writeText(json).then(function() {
+          document.getElementById('export-copy-btn').textContent = 'Copied!';
+          setTimeout(function() { document.getElementById('export-copy-btn').textContent = 'Copy to Clipboard'; }, 2000);
+        });
+      };
+
+      document.getElementById('export-download-btn').onclick = function() {
+        var a = document.createElement('a');
+        a.href     = URL.createObjectURL(new Blob([json], { type:'application/json' }));
+        a.download = 'tge-api-registry-' + new Date().toISOString().slice(0,10) + '.json';
+        document.body.appendChild(a); a.click(); a.remove();
+      };
+    };
+  }
