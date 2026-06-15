@@ -27,6 +27,7 @@
       items: [
         { key: 'admin',             label: 'Admin',             actions: ['view','run','export-csv','export-xlsx'] },
         { key: 'registry',          label: 'Registry',          actions: ['view','run','export-json'] },
+        { key: 'diagnostics',       label: 'Diagnostics',       actions: ['view'] },
       ]
     },
   ];
