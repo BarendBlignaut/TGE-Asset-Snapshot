@@ -418,6 +418,15 @@
     TGE.el('json-picker-overlay').style.display = 'none';
   };
 
+  // ── Toggle active ─────────────────────────────────────────────────────────────
+  TGE.apiToggleActive = async function(apiId, makeActive) {
+    var entry = state.apis.find(function(a) { return a.apiId === apiId; });
+    if (!entry) return;
+    entry.active = makeActive;
+    await api('PUT', '/api/registry/apis/' + encodeURIComponent(apiId), entry);
+    renderApiList();
+  };
+
   // ── Save API ──────────────────────────────────────────────────────────────────
   TGE.apiSave = async function() {
     if (state.saving) return;
