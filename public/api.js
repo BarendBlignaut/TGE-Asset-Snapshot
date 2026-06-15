@@ -200,6 +200,18 @@
                 '<div id="tag-use-wrap"></div>',
               '</div>',
 
+              // Row 3b — Hard check toggle
+              '<div style="display:grid;grid-template-columns:140px 1fr;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line-2);">',
+                '<span style="font-size:12px;font-weight:600;color:var(--ink);">Hard Check</span>',
+                '<div style="display:flex;align-items:center;gap:12px;">',
+                  '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;">',
+                    '<div class="perm-toggle" id="tag-hard-check-toggle" onclick="TGE.apiToggleHardCheck(this)" style="flex-shrink:0;"></div>',
+                    '<span style="font-size:12px;color:var(--ink);" id="tag-hard-check-label">Off — soft check only</span>',
+                  '</label>',
+                '</div>',
+                '<p style="margin:3px 0 0;font-size:10px;color:var(--muted-2);grid-column:2;">If ON — this field must match or the entire request fails immediately</p>',
+              '</div>',
+
               // Row 4 — Description
               '<div style="display:grid;grid-template-columns:140px 1fr;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line-2);">',
                 '<span style="font-size:12px;font-weight:600;color:var(--ink);">Description / Notes</span>',
@@ -402,6 +414,7 @@
           '<code style="font-size:12px;font-weight:700;color:var(--ink);flex-shrink:0;">' + (t.name||t.path||'unnamed') + '</code>' +
           (t.label ? '<span style="font-size:12px;color:var(--muted);">→ ' + t.label + '</span>' : '') +
           '<span class="badge ' + (useColors[t.use]||'badge-gray') + '" style="font-size:10px;">' + (useLabels[t.use]||t.use||'—') + '</span>' +
+          (t.hardCheck ? '<span class="badge badge-red" style="font-size:10px;background:var(--danger-bg);color:var(--danger);">HARD CHECK</span>' : '') +
           (t.path ? '<code style="font-size:10px;color:var(--muted-2);">' + t.path + '</code>' : '') +
         '</div>' +
         '<div style="display:flex;gap:4px;flex-shrink:0;">' +
@@ -437,6 +450,17 @@
     TGE.el('tag-description').value = tag.description || '';
     var exEl = TGE.el('tag-example-value');
     if (exEl) exEl.value = tag.example || '';
+    // Set hard check toggle
+    var hcEl = TGE.el('tag-hard-check-toggle');
+    var hcLb = TGE.el('tag-hard-check-label');
+    if (hcEl) {
+      hcEl.classList.toggle('on', !!tag.hardCheck);
+      if (hcLb) {
+        hcLb.textContent = tag.hardCheck ? 'ON — hard check (fail if no match)' : 'Off — soft check only';
+        hcLb.style.color = tag.hardCheck ? 'var(--danger)' : 'var(--ink)';
+        hcLb.style.fontWeight = tag.hardCheck ? '600' : 'normal';
+      }
+    }
 
     // Use dropdown
     TGE.el('tag-use-wrap').innerHTML = customSelect('tag-use-sel', TAG_USES, tag.use || 'display', 'Select how this field is used...');
@@ -472,7 +496,9 @@
 
     if (!name && !path) { alert('Field name or path is required.'); return; }
 
-    var tag = { name: name || path, label: label, use: use, description: desc, path: path, example: example };
+    var hardCheckEl = TGE.el('tag-hard-check-toggle');
+    var hardCheck = hardCheckEl ? hardCheckEl.classList.contains('on') : false;
+    var tag = { name: name || path, label: label, use: use, description: desc, path: path, example: example, hardCheck: hardCheck };
 
     if (state.editingTagIdx !== null && state.editingTagIdx !== undefined) {
       state.tags[state.editingTagIdx] = tag;
@@ -571,6 +597,21 @@
 
   TGE.apiCloseJsonPicker = function() {
     TGE.el('json-picker-overlay').style.display = 'none';
+  };
+
+  TGE.apiToggleHardCheck = function(el) {
+    el.classList.toggle('on');
+    var label = TGE.el('tag-hard-check-label');
+    if (label) label.textContent = el.classList.contains('on')
+      ? 'ON — hard check (fail if no match)'
+      : 'Off — soft check only';
+    if (el.classList.contains('on')) {
+      label.style.color = 'var(--danger)';
+      label.style.fontWeight = '600';
+    } else {
+      label.style.color = 'var(--ink)';
+      label.style.fontWeight = 'normal';
+    }
   };
 
   // ── Save API ──────────────────────────────────────────────────────────────────
