@@ -207,11 +207,20 @@
               '</div>',
 
               // Row 5 — Path
-              '<div style="display:grid;grid-template-columns:140px 1fr;gap:10px;align-items:center;padding:8px 0;">',
+              '<div style="display:grid;grid-template-columns:140px 1fr;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line-2);">',
                 '<span style="font-size:12px;font-weight:600;color:var(--ink);">JSON Path</span>',
                 '<div style="display:flex;gap:6px;">',
                   '<input id="tag-path" type="text" placeholder="e.g. username" style="flex:1;height:36px;border:1px solid var(--line);border-radius:7px;padding:0 10px;font:inherit;font-size:12px;font-family:monospace;color:var(--ink);background:var(--surface);" />',
                   '<button class="btn" style="height:36px;font-size:11px;white-space:nowrap;flex-shrink:0;" onclick="TGE.apiPickFromSample()">Pick from JSON</button>',
+                '</div>',
+              '</div>',
+
+              // Row 6 — Example value
+              '<div style="display:grid;grid-template-columns:140px 1fr;gap:10px;align-items:start;padding:8px 0;">',
+                '<span style="font-size:12px;font-weight:600;color:var(--ink);padding-top:8px;">Example Value</span>',
+                '<div>',
+                  '<input id="tag-example-value" type="text" placeholder="e.g. bare1234 (auto-filled when picking from JSON)" style="width:100%;height:36px;border:1px solid var(--line);border-radius:7px;padding:0 10px;font:inherit;font-size:12px;color:var(--muted);background:var(--surface-2);" />',
+                  '<p style="margin:3px 0 0;font-size:10px;color:var(--muted-2);">Reference only — shows what kind of data this field contains</p>',
                 '</div>',
               '</div>',
 
@@ -426,6 +435,8 @@
 
     TGE.el('tag-label').value       = tag.label || '';
     TGE.el('tag-description').value = tag.description || '';
+    var exEl = TGE.el('tag-example-value');
+    if (exEl) exEl.value = tag.example || '';
 
     // Use dropdown
     TGE.el('tag-use-wrap').innerHTML = customSelect('tag-use-sel', TAG_USES, tag.use || 'display', 'Select how this field is used...');
@@ -456,11 +467,12 @@
     var use  = getCustomSelectValue('tag-use-sel');
     var label = TGE.el('tag-label').value.trim();
     var desc  = TGE.el('tag-description').value.trim();
-    var path  = TGE.el('tag-path').value.trim();
+    var path    = TGE.el('tag-path').value.trim();
+    var example = TGE.el('tag-example-value') ? TGE.el('tag-example-value').value.trim() : '';
 
     if (!name && !path) { alert('Field name or path is required.'); return; }
 
-    var tag = { name: name || path, label: label, use: use, description: desc, path: path };
+    var tag = { name: name || path, label: label, use: use, description: desc, path: path, example: example };
 
     if (state.editingTagIdx !== null && state.editingTagIdx !== undefined) {
       state.tags[state.editingTagIdx] = tag;
@@ -543,8 +555,10 @@
     }).join('');
   }
 
-  TGE.apiSelectJsonPath = function(path) {
+  TGE.apiSelectJsonPath = function(path, example) {
     TGE.el('tag-path').value = path;
+    var exampleEl = document.getElementById('tag-example-value');
+    if (exampleEl && example) exampleEl.value = String(example).replace(/^"|"$/g,'');
     // Also set name if empty
     var nameSel = document.getElementById('tag-name-sel');
     if (nameSel && (!nameSel.value || nameSel.value === '__custom__')) {
