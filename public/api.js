@@ -17,6 +17,11 @@
   var API_METHODS = ['GET','POST','PUT','DELETE','PATCH'];
 
   // ── State ─────────────────────────────────────────────────────────────────────
+  var VENDORS = [
+    'Teletrac Navman','Seeing Machines','Power Fleet',
+    'Carrier','Thermo King','Volvo','Mercedes-Benz','Toyota'
+  ];
+
   var state = {
     apis:          [],
     editingApi:    null,
@@ -24,8 +29,9 @@
     tags:          [],
     saving:        false,
     editingTagIdx: null,
-    parsedFields:  [],   // field paths extracted from sample JSON
-    parsedExamples:{},   // example values per path
+    parsedFields:  [],
+    parsedExamples:{},
+    parsedRaw:     {},   // raw values per path (for JSON string detection)
   };
 
   var api = TGE.api;
@@ -154,6 +160,10 @@
             '<div class="field" style="margin:0;">',
               '<label>Notes / Purpose / Gotchas</label>',
               '<textarea id="api-notes" rows="2" placeholder="e.g. Returns all TN360 users. Match username + externalPin for login validation."></textarea>',
+            '</div>',
+            '<div class="field" style="margin-top:10px;">',
+              '<label>Vendor / Source System</label>',
+              '<div id="api-vendor-wrap"></div>',
             '</div>',
           '</div>',
 
@@ -328,6 +338,7 @@
             '<span class="badge ' + (groupColors[a.group]||'badge-gray') + '" style="font-size:10px;">' + a.group + '</span>' +
             (hasSample ? '<span class="badge badge-green" style="font-size:10px;">sample ✓</span>' : '<span class="badge badge-gray" style="font-size:10px;">no sample</span>') +
             '<span class="badge badge-gray" style="font-size:10px;">' + tagCount + ' tag' + (tagCount!==1?'s':'') + '</span>' +
+            (a.vendor ? '<span class="badge badge-yellow" style="font-size:10px;">' + a.vendor + '</span>' : '') +
             (isActive ? '' : '<span class="badge badge-gray" style="font-size:10px;">Inactive</span>') +
           '</div>' +
           '<div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:4px;">' + a.label + '</div>' +
@@ -335,6 +346,7 @@
           (a.notes ? '<div style="font-size:12px;color:var(--muted);">' + a.notes + '</div>' : '') +
         '</div>' +
         '<div style="display:flex;flex-direction:column;gap:6px;">' +
+          '<button class="btn" style="height:28px;font-size:11px;padding:0 10px;" onclick="TGE.apiView(\'' + a.apiId + '\')">View</button>' +
           '<button class="btn btn-primary" style="height:28px;font-size:11px;padding:0 10px;" onclick="TGE.apiEdit(\'' + a.apiId + '\')">Edit</button>' +
           '<button class="btn" style="height:28px;font-size:11px;padding:0 10px;" onclick="TGE.apiToggleActive(\'' + a.apiId + '\',' + (!isActive) + ')">' + (isActive?'Deactivate':'Activate') + '</button>' +
         '</div>' +
@@ -369,9 +381,10 @@
     TGE.el('api-panel-message').textContent = '';
     TGE.el('api-parse-status').textContent  = '';
 
-    // Render group and method dropdowns
+    // Render group, method and vendor dropdowns
     TGE.el('api-group-wrap').innerHTML  = customSelect('api-group',  API_GROUPS,  v.group  || 'other',  'Select group...');
     TGE.el('api-method-wrap').innerHTML = customSelect('api-method', API_METHODS, v.method || 'GET',     'Select method...');
+    TGE.el('api-vendor-wrap').innerHTML = customSelect('api-vendor', VENDORS,     v.vendor || '',        'Select vendor...');
 
     // Hide tag form
     TGE.el('tag-inline-form').style.display = 'none';
@@ -385,6 +398,61 @@
   }
 
   TGE.apiEdit = function(id) { openPanel('edit', id); };
+
+  TGE.apiView = function(apiId) {
+    var a = state.apis.find(function(x) { return x.apiId === apiId; });
+    if (!a) return;
+    var modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;';
+    var useLabels = { display:'Display', 'feeds-next':'Feeds next API', 'filter-rule':'Filter/rule', internal:'Internal', match:'Match/validate' };
+    var tags = (a.fields||[]).map(function(t) {
+      return '<tr style="border-bottom:1px solid var(--line-2);">' +
+        '<td style="padding:6px 10px;font-family:monospace;font-size:11px;color:var(--green-700);">' + (t.path||t.name||'') + '</td>' +
+        '<td style="padding:6px 10px;font-size:12px;">' + (t.label||'') + '</td>' +
+        '<td style="padding:6px 10px;font-size:12px;">' + (useLabels[t.use]||t.use||'') + '</td>' +
+        '<td style="padding:6px 10px;text-align:center;">' + (t.hardCheck ? '<span style="color:var(--danger);font-weight:700;">YES</span>' : '—') + '</td>' +
+        '<td style="padding:6px 10px;font-size:12px;color:var(--muted);">' + (t.description||'') + '</td>' +
+      '</tr>';
+    }).join('');
+    modal.innerHTML = '<div style="background:var(--surface);border-radius:14px;width:min(800px,100%);max-height:85vh;display:flex;flex-direction:column;overflow:hidden;">' +
+      '<div style="padding:16px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">' +
+        '<div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:rgba(212,240,38,0.7);">API Definition</div>' +
+        '<div style="font-size:15px;font-weight:700;color:#fff;">' + a.apiId + ' — ' + a.label + '</div></div>' +
+        '<button id="avc" style="border:none;background:rgba(255,255,255,0.1);border-radius:6px;color:#fff;font-size:16px;cursor:pointer;width:30px;height:30px;">✕</button>' +
+      '</div>' +
+      '<div style="flex:1;overflow-y:auto;padding:20px;">' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">' +
+          '<div class="data-item"><span>Method</span><strong>' + a.method + '</strong></div>' +
+          '<div class="data-item"><span>Group</span><strong>' + (a.group||'—') + '</strong></div>' +
+          (a.vendor ? '<div class="data-item"><span>Vendor</span><strong>' + a.vendor + '</strong></div>' : '') +
+          '<div class="data-item" style="grid-column:span 2;"><span>URL</span><strong style="font-family:monospace;font-size:12px;word-break:break-all;">' + a.url + '</strong></div>' +
+          (a.notes ? '<div class="data-item" style="grid-column:span 2;"><span>Notes</span><strong>' + a.notes + '</strong></div>' : '') +
+        '</div>' +
+        '<div class="card-kicker" style="margin-bottom:8px;">Field Tags (' + (a.fields||[]).length + ')</div>' +
+        '<div style="overflow-x:auto;border:1px solid var(--line);border-radius:8px;">' +
+          '<table style="width:100%;border-collapse:collapse;">' +
+            '<thead><tr style="background:var(--surface-2);">' +
+              '<th style="padding:8px;font-size:10px;text-align:left;color:var(--muted);">Path</th>' +
+              '<th style="padding:8px;font-size:10px;text-align:left;color:var(--muted);">Label</th>' +
+              '<th style="padding:8px;font-size:10px;text-align:left;color:var(--muted);">Use</th>' +
+              '<th style="padding:8px;font-size:10px;text-align:center;color:var(--muted);">Hard Check</th>' +
+              '<th style="padding:8px;font-size:10px;text-align:left;color:var(--muted);">Description</th>' +
+            '</tr></thead>' +
+            '<tbody>' + (tags || '<tr><td colspan="5" style="padding:16px;text-align:center;color:var(--muted);">No tags</td></tr>') + '</tbody>' +
+          '</table>' +
+        '</div>' +
+      '</div>' +
+      '<div style="padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:8px;flex-shrink:0;">' +
+        '<button id="ave" class="btn btn-primary" style="height:36px;">Edit This API</button>' +
+        '<button id="avc2" class="btn" style="height:36px;">Close</button>' +
+      '</div>' +
+    '</div>';
+    document.body.appendChild(modal);
+    document.getElementById('avc').onclick  = function() { modal.remove(); };
+    document.getElementById('avc2').onclick = function() { modal.remove(); };
+    document.getElementById('ave').onclick  = function() { modal.remove(); TGE.apiEdit(apiId); };
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+  };
 
   TGE.apiToggleActive = async function(apiId, makeActive) {
     var entry = state.apis.find(function(a) { return a.apiId === apiId; });
@@ -542,7 +610,7 @@
       var path = prefix ? prefix + '.' + key : key;
       var val  = obj[key];
       state.parsedFields.push(path);
-      // Store example value for non-object fields
+      state.parsedRaw[path] = val;
       if (val !== null && typeof val !== 'object') {
         state.parsedExamples[path] = String(val);
       }
@@ -552,6 +620,14 @@
         extractPaths(val[0], path + '[]');
       }
     });
+  }
+
+  // Check if a value is a JSON string
+  function isJsonString(val) {
+    if (typeof val !== 'string') return false;
+    var s = val.trim();
+    if (!(s.startsWith('{') || s.startsWith('['))) return false;
+    try { JSON.parse(s); return true; } catch(e) { return false; }
   }
 
   // ── Bulk tag editor ────────────────────────────────────────────────────────
@@ -567,38 +643,54 @@
     // Build rows for all parsed fields
     // Pre-tick fields that aren't nested objects (top-level useful fields)
     var rows = state.parsedFields.map(function(path, idx) {
-      var example = state.parsedExamples[path] || '';
-      // Auto-suggest display label from path
-      var lastKey = path.split('.').pop().replace('[]','');
-      var label = lastKey.replace(/([A-Z])/g, ' $1').replace(/^./, function(s){ return s.toUpperCase(); });
-      // Auto-suggest use based on common patterns
-      var autoUse = 'display';
-      if (/id$/i.test(lastKey) && lastKey !== 'id') autoUse = 'feeds-next';
-      if (lastKey === 'id') autoUse = 'feeds-next';
+      var example  = state.parsedExamples[path] || '';
+      var rawVal   = state.parsedRaw[path];
+      var isJson   = isJsonString(rawVal);
+      var isArray  = Array.isArray(rawVal) && rawVal.length > 0 && typeof rawVal[0] === 'object';
+      var lastKey  = path.split('.').pop().replace('[]','');
+      var autoLabel = lastKey.replace(/([A-Z])/g, ' $1').replace(/^./, function(s){ return s.toUpperCase(); });
+      var autoUse  = 'display';
+      if (/^id$/i.test(lastKey)) autoUse = 'feeds-next';
+      if (/Id$/i.test(lastKey) && lastKey !== 'id') autoUse = 'feeds-next';
       if (/type$/i.test(lastKey)) autoUse = 'filter-rule';
       if (/status$/i.test(lastKey)) autoUse = 'filter-rule';
-      // Only pre-tick top-level fields (no dots except array notation)
-      var depth = path.replace(/\[\]/g,'').split('.').length;
-      var preTick = depth <= 2 && example !== '';
+      var depth    = path.replace(/\[\]/g,'').split('.').length;
+      var preTick  = depth <= 2 && example !== '' && !isJson;
+      var isSubrow = path.indexOf('__sub__') > -1;
+
+      // Expand button for JSON strings
+      var expandBtn = isJson
+        ? '<button class="bulk-expand-btn" data-idx="' + idx + '" data-path="' + path + '" ' +
+            'onclick="TGE.bulkExpandJson(this)" ' +
+            'style="height:24px;padding:0 8px;border-radius:5px;border:1px solid var(--green-600);background:var(--green-50,#f0faf4);color:var(--green-700);font:inherit;font-size:11px;cursor:pointer;white-space:nowrap;margin-left:6px;">+ Expand JSON</button>'
+        : '';
+
+      // Filter button for arrays
+      var filterBtn = isArray
+        ? '<button class="bulk-filter-btn" data-idx="' + idx + '" data-path="' + path + '" ' +
+            'onclick="TGE.bulkExpandArray(this)" ' +
+            'style="height:24px;padding:0 8px;border-radius:5px;border:1px solid var(--yellow-dim,#b8d520);background:rgba(212,240,38,0.1);color:var(--ink);font:inherit;font-size:11px;cursor:pointer;white-space:nowrap;margin-left:6px;">+ Filter Array</button>'
+        : '';
 
       return '<tr id="bulk-row-' + idx + '" style="border-bottom:1px solid var(--line-2);' + (preTick?'':'opacity:0.5;') + '">' +
-        // Include checkbox
         '<td style="padding:6px 8px;text-align:center;width:36px;">' +
           '<input type="checkbox" class="bulk-include" data-idx="' + idx + '"' + (preTick?' checked':'') + ' ' +
             'onchange="TGE.bulkRowToggle(' + idx + ',this.checked)" ' +
             'style="width:16px;height:16px;cursor:pointer;" />' +
         '</td>' +
-        // Field path
-        '<td style="padding:6px 8px;min-width:160px;">' +
-          '<code style="font-size:11px;color:var(--green-700);">' + path + '</code>' +
-          (example ? '<br><span style="font-size:10px;color:var(--muted-2);">' + example.slice(0,30) + '</span>' : '') +
+        '<td style="padding:6px 8px;min-width:180px;">' +
+          '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">' +
+            '<code style="font-size:11px;color:var(--green-700);">' + path + '</code>' +
+            (isJson ? '<span class="badge badge-yellow" style="font-size:9px;">JSON string</span>' : '') +
+            (isArray ? '<span class="badge badge-green" style="font-size:9px;">array</span>' : '') +
+            expandBtn + filterBtn +
+          '</div>' +
+          (example && !isJson ? '<span style="font-size:10px;color:var(--muted-2);display:block;margin-top:2px;">' + example.slice(0,40) + '</span>' : '') +
         '</td>' +
-        // Display As
         '<td style="padding:6px 8px;min-width:140px;">' +
-          '<input type="text" class="bulk-label" data-idx="' + idx + '" value="' + label + '" ' +
+          '<input type="text" class="bulk-label" data-idx="' + idx + '" value="' + autoLabel + '" ' +
             'style="width:100%;height:32px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font:inherit;font-size:12px;" />' +
         '</td>' +
-        // Use dropdown
         '<td style="padding:6px 8px;min-width:150px;">' +
           '<select class="bulk-use" data-idx="' + idx + '" ' +
             'style="width:100%;height:32px;border:1px solid var(--line);border-radius:6px;padding:0 6px;font:inherit;font-size:12px;">' +
@@ -606,12 +698,10 @@
             '<option value="__custom__">+ Custom...</option>' +
           '</select>' +
         '</td>' +
-        // Hard check toggle
         '<td style="padding:6px 8px;text-align:center;width:80px;">' +
           '<div class="perm-toggle bulk-hard-check" data-idx="' + idx + '" ' +
             'onclick="TGE.bulkToggleHard(this)" style="margin:0 auto;"></div>' +
         '</td>' +
-        // Description
         '<td style="padding:6px 8px;min-width:180px;">' +
           '<input type="text" class="bulk-desc" data-idx="' + idx + '" placeholder="Optional notes..." ' +
             'style="width:100%;height:32px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font:inherit;font-size:12px;" />' +
@@ -673,6 +763,205 @@
 
   TGE.bulkToggleHard = function(el) {
     el.classList.toggle('on');
+  };
+
+  // Expand a JSON string field — parse it and insert sub-rows
+  TGE.bulkExpandJson = function(btn) {
+    var path    = btn.dataset.path;
+    var rawVal  = state.parsedRaw[path];
+    if (!rawVal) return;
+    var parsed;
+    try { parsed = JSON.parse(rawVal); } catch(e) { alert('Could not parse JSON: ' + e.message); return; }
+
+    // Extract sub-fields
+    var subFields = [];
+    var subExamples = {};
+    var subRaw = {};
+
+    function extractSub(obj, prefix) {
+      if (!obj || typeof obj !== 'object') return;
+      Object.keys(obj).forEach(function(key) {
+        var p = prefix + '.' + key;
+        var v = obj[key];
+        subFields.push(p);
+        subRaw[p] = v;
+        if (v !== null && typeof v !== 'object') subExamples[p] = String(v);
+        if (v && typeof v === 'object' && !Array.isArray(v)) extractSub(v, p);
+        else if (Array.isArray(v) && v[0] && typeof v[0] === 'object') extractSub(v[0], p + '[]');
+      });
+    }
+
+    extractSub(Array.isArray(parsed) ? parsed[0] : parsed, path);
+
+    // Add to state
+    subFields.forEach(function(p) {
+      if (state.parsedFields.indexOf(p) === -1) {
+        state.parsedFields.push(p);
+        state.parsedExamples[p] = subExamples[p] || '';
+        state.parsedRaw[p] = subRaw[p];
+      }
+    });
+
+    btn.textContent = '✓ Expanded';
+    btn.disabled = true;
+    btn.style.background = 'var(--green-100)';
+
+    // Rebuild table
+    var tbody = document.querySelector('#bulk-tag-modal tbody');
+    if (tbody) {
+      // Re-render — easiest approach
+      TGE.bulkClose();
+      openBulkTagEditor();
+    }
+  };
+
+  // Expand an array field — open a filter picker modal
+  TGE.bulkExpandArray = function(btn) {
+    var path   = btn.dataset.path;
+    var rawVal = state.parsedRaw[path];
+    if (!Array.isArray(rawVal) || !rawVal.length) return;
+
+    var item = rawVal[0];
+    if (typeof item !== 'object') return;
+
+    // Build filter picker modal
+    var existing = document.getElementById('array-filter-modal');
+    if (existing) existing.remove();
+
+    // Get all keys from first array item
+    var keys = Object.keys(item);
+
+    var modal = document.createElement('div');
+    modal.id = 'array-filter-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:700;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+    var keyOptions = keys.map(function(k) {
+      var val = item[k];
+      var display = typeof val === 'object' ? '[object]' : String(val).slice(0,30);
+      return '<option value="' + k + '">' + k + ' (e.g. ' + display + ')</option>';
+    }).join('');
+
+    // Also get leaf fields for what to extract
+    var leafFields = [];
+    function getLeafs(obj, prefix) {
+      Object.keys(obj).forEach(function(k) {
+        var p = prefix ? prefix + '.' + k : k;
+        var v = obj[k];
+        if (v && typeof v === 'object' && !Array.isArray(v)) getLeafs(v, p);
+        else if (!Array.isArray(v)) leafFields.push({ path: p, example: String(v).slice(0,30) });
+      });
+    }
+    getLeafs(item, '');
+
+    var leafOptions = leafFields.map(function(f) {
+      return '<option value="' + f.path + '">' + f.path + ' (' + f.example + ')</option>';
+    }).join('');
+
+    modal.innerHTML = '<div style="background:var(--surface);border-radius:14px;padding:24px;width:min(560px,100%);display:flex;flex-direction:column;gap:14px;max-height:85vh;overflow-y:auto;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;">' +
+        '<h3 style="margin:0;font-size:14px;font-weight:700;">Filter Array: <code style="font-size:12px;color:var(--green-700);">' + path + '[]</code></h3>' +
+        '<button onclick="TGE.arrayFilterClose()" style="border:none;background:none;font-size:18px;cursor:pointer;color:var(--muted);">✕</button>' +
+      '</div>' +
+      '<p style="margin:0;font-size:12px;color:var(--muted);">Define a tag that picks a specific item from this array based on a field value.</p>' +
+
+      '<div class="field" style="margin:0;">' +
+        '<label>Tag Name</label>' +
+        '<input id="af-tag-name" type="text" placeholder="e.g. roadFacingImageUrl" style="height:38px;" />' +
+      '</div>' +
+
+      '<div class="field" style="margin:0;">' +
+        '<label>Display As</label>' +
+        '<input id="af-display" type="text" placeholder="e.g. Road Facing Image URL" style="height:38px;" />' +
+      '</div>' +
+
+      '<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:12px;">' +
+        '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px;">Filter Condition — where:</div>' +
+        '<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;">' +
+          '<select id="af-filter-key" style="height:36px;border:1px solid var(--line);border-radius:7px;padding:0 8px;font:inherit;font-size:12px;">' + keyOptions + '</select>' +
+          '<span style="font-size:12px;font-weight:700;color:var(--muted);">contains</span>' +
+          '<input id="af-filter-val" type="text" placeholder="e.g. ROAD_FACING" style="height:36px;border:1px solid var(--line);border-radius:7px;padding:0 10px;font:inherit;font-size:12px;" />' +
+        '</div>' +
+        '<p style="margin:6px 0 0;font-size:11px;color:var(--muted-2);">e.g. where source contains ROAD_FACING, or where imageDetails.sources[] contains ROAD</p>' +
+      '</div>' +
+
+      '<div class="field" style="margin:0;">' +
+        '<label>Extract this field from the matching item</label>' +
+        '<select id="af-extract-field" style="height:38px;border:1px solid var(--line);border-radius:8px;padding:0 10px;font:inherit;font-size:12px;width:100%;">' + leafOptions + '</select>' +
+      '</div>' +
+
+      '<div class="field" style="margin:0;">' +
+        '<label>Use</label>' +
+        '<select id="af-use" style="height:38px;border:1px solid var(--line);border-radius:8px;padding:0 10px;font:inherit;font-size:12px;width:100%;">' +
+          TAG_USES.map(function(u){ return '<option value="'+u.value+'">'+u.label+'</option>'; }).join('') +
+        '</select>' +
+      '</div>' +
+
+      '<div class="field" style="margin:0;">' +
+        '<label>Description</label>' +
+        '<input id="af-desc" type="text" placeholder="e.g. Image URL for road facing camera" style="height:38px;" />' +
+      '</div>' +
+
+      '<div style="display:flex;gap:8px;">' +
+        '<button class="btn btn-primary" style="height:36px;" id="af-save-btn" data-path="' + path + '">Add as Tag</button>' +
+        '<button class="btn" style="height:36px;" onclick="TGE.arrayFilterClose()">Cancel</button>' +
+      '</div>' +
+    '</div>';
+
+    document.body.appendChild(modal);
+
+    // Wire save button
+    var saveBtn = document.getElementById('af-save-btn');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', function() {
+        TGE.bulkSaveArrayFilter(this.dataset.path);
+      });
+    }
+  };
+
+  TGE.arrayFilterClose = function() {
+    var m = document.getElementById('array-filter-modal');
+    if (m) m.remove();
+  };
+
+  TGE.bulkSaveArrayFilter = function(arrayPath) {
+    var name        = document.getElementById('af-tag-name').value.trim();
+    var label       = document.getElementById('af-display').value.trim();
+    var filterKey   = document.getElementById('af-filter-key').value;
+    var filterVal   = document.getElementById('af-filter-val').value.trim();
+    var extractField= document.getElementById('af-extract-field').value;
+    var use         = document.getElementById('af-use').value;
+    var desc        = document.getElementById('af-desc').value.trim();
+
+    if (!name || !filterVal || !extractField) {
+      alert('Tag name, filter value and extract field are all required.');
+      return;
+    }
+
+    // Build a descriptive path that encodes the filter
+    var tagPath = arrayPath + '[where ' + filterKey + '=' + filterVal + '].' + extractField;
+
+    var tag = {
+      name:        name,
+      label:       label || name,
+      use:         use,
+      description: desc || ('From ' + arrayPath + '[] where ' + filterKey + ' = ' + filterVal),
+      path:        tagPath,
+      filterKey:   filterKey,
+      filterVal:   filterVal,
+      extractField:extractField,
+      arrayPath:   arrayPath,
+      example:     '',
+      hardCheck:   false,
+      isArrayFilter: true,
+    };
+
+    state.tags.push(tag);
+    document.getElementById('array-filter-modal').remove();
+    renderTagsList();
+
+    // Show success in parse status
+    var s = TGE.el('api-parse-status');
+    if (s) { s.textContent = 'Array filter tag added: ' + name; s.style.color = 'var(--green-600)'; }
   };
 
   TGE.bulkRowToggle = function(idx, checked) {
@@ -829,7 +1118,8 @@
       return;
     }
 
-    var entry = { apiId:apiId, label:label, group:group, method:method, url:url, notes:notes, sampleResponse:sample, fields:state.tags, active:true };
+    var vendor = getCustomSelectValue('api-vendor');
+    var entry = { apiId:apiId, label:label, group:group, method:method, url:url, notes:notes, vendor:vendor, sampleResponse:sample, fields:state.tags, active:true };
 
     state.saving = true;
     var btn = TGE.el('api-save-btn');
