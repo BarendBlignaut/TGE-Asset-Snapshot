@@ -500,6 +500,7 @@ async function handleRegistryGetApis(request, env) {
       method:         r.method,
       url:            r.url,
       notes:          r.notes,
+      vendor:         r.vendor,
       sampleResponse: r.sample_response,
       fields:         r.fields ? JSON.parse(r.fields) : [],
       active:         r.active === 1,
@@ -513,8 +514,8 @@ async function handleRegistryCreateApi(request, env) {
   if (!auth.ok) return auth.response;
   const body = await safeJson(request);
   await env.DB.prepare(
-    "INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, sample_response, fields, active, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)"
-  ).bind(body.apiId, body.label, body.group, body.method, body.url, body.notes||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), 1, nowIso()).run();
+    "INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, vendor, sample_response, fields, active, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+  ).bind(body.apiId, body.label, body.group, body.method, body.url, body.notes||null, body.vendor||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), 1, nowIso()).run();
   return jsonResponse({ ok: true });
 }
 
@@ -524,8 +525,8 @@ async function handleRegistryUpdateApi(request, env, apiId) {
   const body = await safeJson(request);
   const active = body.active === false ? 0 : 1;
   await env.DB.prepare(
-    "INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, sample_response, fields, active, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)"
-  ).bind(apiId, body.label, body.group, body.method, body.url, body.notes||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), active, nowIso()).run();
+    "INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, vendor, sample_response, fields, active, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+  ).bind(apiId, body.label, body.group, body.method, body.url, body.notes||null, body.vendor||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), active, nowIso()).run();
   return jsonResponse({ ok: true });
 }
 
