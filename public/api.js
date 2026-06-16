@@ -25,6 +25,7 @@
     saving:        false,
     editingTagIdx: null,
     parsedFields:  [],   // field paths extracted from sample JSON
+    parsedExamples:{},   // example values per path
   };
 
   var api = TGE.api;
@@ -523,12 +524,16 @@
     var parsed;
     try { parsed = JSON.parse(raw); } catch(e) { alert('Invalid JSON: ' + e.message); return; }
 
-    // Extract all field paths
+    // Extract all field paths with example values
     state.parsedFields = [];
+    state.parsedExamples = {};
     extractPaths(Array.isArray(parsed) ? parsed[0] : parsed, '');
 
-    TGE.el('api-parse-status').textContent = state.parsedFields.length + ' fields found — ready to tag';
+    TGE.el('api-parse-status').textContent = state.parsedFields.length + ' fields found — opening bulk editor...';
     TGE.el('api-parse-status').style.color = 'var(--green-600)';
+
+    // Open bulk tag editor
+    openBulkTagEditor();
   };
 
   function extractPaths(obj, prefix) {
@@ -537,6 +542,10 @@
       var path = prefix ? prefix + '.' + key : key;
       var val  = obj[key];
       state.parsedFields.push(path);
+      // Store example value for non-object fields
+      if (val !== null && typeof val !== 'object') {
+        state.parsedExamples[path] = String(val);
+      }
       if (val && typeof val === 'object' && !Array.isArray(val)) {
         extractPaths(val, path);
       } else if (Array.isArray(val) && val[0] && typeof val[0] === 'object') {
@@ -544,6 +553,194 @@
       }
     });
   }
+
+  // ── Bulk tag editor ────────────────────────────────────────────────────────
+  function openBulkTagEditor() {
+    // Remove existing bulk editor if any
+    var existing = document.getElementById('bulk-tag-modal');
+    if (existing) existing.remove();
+
+    var useOptions = TAG_USES.map(function(u) {
+      return '<option value="' + u.value + '">' + u.label + '</option>';
+    }).join('') + '<option value="__custom__">+ Custom...</option>';
+
+    // Build rows for all parsed fields
+    // Pre-tick fields that aren't nested objects (top-level useful fields)
+    var rows = state.parsedFields.map(function(path, idx) {
+      var example = state.parsedExamples[path] || '';
+      // Auto-suggest display label from path
+      var lastKey = path.split('.').pop().replace('[]','');
+      var label = lastKey.replace(/([A-Z])/g, ' $1').replace(/^./, function(s){ return s.toUpperCase(); });
+      // Auto-suggest use based on common patterns
+      var autoUse = 'display';
+      if (/id$/i.test(lastKey) && lastKey !== 'id') autoUse = 'feeds-next';
+      if (lastKey === 'id') autoUse = 'feeds-next';
+      if (/type$/i.test(lastKey)) autoUse = 'filter-rule';
+      if (/status$/i.test(lastKey)) autoUse = 'filter-rule';
+      // Only pre-tick top-level fields (no dots except array notation)
+      var depth = path.replace(/\[\]/g,'').split('.').length;
+      var preTick = depth <= 2 && example !== '';
+
+      return '<tr id="bulk-row-' + idx + '" style="border-bottom:1px solid var(--line-2);' + (preTick?'':'opacity:0.5;') + '">' +
+        // Include checkbox
+        '<td style="padding:6px 8px;text-align:center;width:36px;">' +
+          '<input type="checkbox" class="bulk-include" data-idx="' + idx + '"' + (preTick?' checked':'') + ' ' +
+            'onchange="TGE.bulkRowToggle(' + idx + ',this.checked)" ' +
+            'style="width:16px;height:16px;cursor:pointer;" />' +
+        '</td>' +
+        // Field path
+        '<td style="padding:6px 8px;min-width:160px;">' +
+          '<code style="font-size:11px;color:var(--green-700);">' + path + '</code>' +
+          (example ? '<br><span style="font-size:10px;color:var(--muted-2);">' + example.slice(0,30) + '</span>' : '') +
+        '</td>' +
+        // Display As
+        '<td style="padding:6px 8px;min-width:140px;">' +
+          '<input type="text" class="bulk-label" data-idx="' + idx + '" value="' + label + '" ' +
+            'style="width:100%;height:32px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font:inherit;font-size:12px;" />' +
+        '</td>' +
+        // Use dropdown
+        '<td style="padding:6px 8px;min-width:150px;">' +
+          '<select class="bulk-use" data-idx="' + idx + '" ' +
+            'style="width:100%;height:32px;border:1px solid var(--line);border-radius:6px;padding:0 6px;font:inherit;font-size:12px;">' +
+            TAG_USES.map(function(u){ return '<option value="'+u.value+'"'+(u.value===autoUse?' selected':'')+'>'+u.label+'</option>'; }).join('') +
+            '<option value="__custom__">+ Custom...</option>' +
+          '</select>' +
+        '</td>' +
+        // Hard check toggle
+        '<td style="padding:6px 8px;text-align:center;width:80px;">' +
+          '<div class="perm-toggle bulk-hard-check" data-idx="' + idx + '" ' +
+            'onclick="TGE.bulkToggleHard(this)" style="margin:0 auto;"></div>' +
+        '</td>' +
+        // Description
+        '<td style="padding:6px 8px;min-width:180px;">' +
+          '<input type="text" class="bulk-desc" data-idx="' + idx + '" placeholder="Optional notes..." ' +
+            'style="width:100%;height:32px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font:inherit;font-size:12px;" />' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+
+    var modal = document.createElement('div');
+    modal.id = 'bulk-tag-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:600;display:flex;align-items:stretch;justify-content:center;padding:20px;';
+
+    modal.innerHTML = '<div style="background:var(--surface);border-radius:14px;width:100%;max-width:1100px;display:flex;flex-direction:column;overflow:hidden;">' +
+      // Header
+      '<div style="padding:14px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">' +
+        '<div>' +
+          '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:rgba(212,240,38,0.7);">Bulk Tag Editor</div>' +
+          '<div style="font-size:15px;font-weight:700;color:#fff;">' + state.parsedFields.length + ' fields detected — tick to include</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;align-items:center;">' +
+          '<button onclick="TGE.bulkSelectAll(true)" style="height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);color:#fff;font:inherit;font-size:11px;cursor:pointer;">Tick All</button>' +
+          '<button onclick="TGE.bulkSelectAll(false)" style="height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);color:#fff;font:inherit;font-size:11px;cursor:pointer;">Untick All</button>' +
+          '<button onclick="TGE.bulkClose()" style="height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);color:#fff;font:inherit;font-size:11px;cursor:pointer;">Cancel</button>' +
+        '</div>' +
+      '</div>' +
+      // Table
+      '<div style="flex:1;overflow:auto;">' +
+        '<table style="width:100%;border-collapse:collapse;">' +
+          '<thead>' +
+            '<tr style="background:var(--surface-2);position:sticky;top:0;z-index:1;">' +
+              '<th style="padding:8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);text-align:center;width:36px;">Include</th>' +
+              '<th style="padding:8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);text-align:left;">Field Path · Example</th>' +
+              '<th style="padding:8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);text-align:left;">Display As</th>' +
+              '<th style="padding:8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);text-align:left;">Use</th>' +
+              '<th style="padding:8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);text-align:center;">Hard Check</th>' +
+              '<th style="padding:8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);text-align:left;">Description</th>' +
+            '</tr>' +
+          '</thead>' +
+          '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+      '</div>' +
+      // Footer
+      '<div style="padding:12px 20px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:var(--surface-2);">' +
+        '<span id="bulk-count-label" style="font-size:12px;color:var(--muted);"></span>' +
+        '<div style="display:flex;gap:8px;">' +
+          '<button onclick="TGE.bulkClose()" class="btn" style="height:36px;">Cancel</button>' +
+          '<button onclick="TGE.bulkSaveTags()" class="btn btn-primary" style="height:36px;">Save Selected Tags</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+    document.body.appendChild(modal);
+    updateBulkCount();
+  }
+
+  TGE.bulkClose = function() {
+    var m = document.getElementById('bulk-tag-modal');
+    if (m) m.remove();
+  };
+
+  TGE.bulkToggleHard = function(el) {
+    el.classList.toggle('on');
+  };
+
+  TGE.bulkRowToggle = function(idx, checked) {
+    var row = document.getElementById('bulk-row-' + idx);
+    if (row) row.style.opacity = checked ? '1' : '0.5';
+    updateBulkCount();
+  };
+
+  TGE.bulkSelectAll = function(checked) {
+    document.querySelectorAll('.bulk-include').forEach(function(cb) {
+      cb.checked = checked;
+      var idx = parseInt(cb.dataset.idx);
+      var row = document.getElementById('bulk-row-' + idx);
+      if (row) row.style.opacity = checked ? '1' : '0.5';
+    });
+    updateBulkCount();
+  };
+
+  function updateBulkCount() {
+    var count = document.querySelectorAll('.bulk-include:checked').length;
+    var label = document.getElementById('bulk-count-label');
+    if (label) label.textContent = count + ' field' + (count!==1?'s':'') + ' selected to save as tags';
+  }
+
+  TGE.bulkSaveTags = function() {
+    var newTags = [];
+    document.querySelectorAll('.bulk-include:checked').forEach(function(cb) {
+      var idx = parseInt(cb.dataset.idx);
+      var path     = state.parsedFields[idx];
+      var labelEl  = document.querySelector('.bulk-label[data-idx="' + idx + '"]');
+      var useEl    = document.querySelector('.bulk-use[data-idx="' + idx + '"]');
+      var hardEl   = document.querySelector('.bulk-hard-check[data-idx="' + idx + '"]');
+      var descEl   = document.querySelector('.bulk-desc[data-idx="' + idx + '"]');
+
+      var useVal = useEl ? useEl.value : 'display';
+      if (useVal === '__custom__') {
+        // Skip custom for now — user can edit after
+        useVal = 'display';
+      }
+
+      newTags.push({
+        name:        path.split('.').pop().replace('[]',''),
+        label:       labelEl ? labelEl.value.trim() : path,
+        use:         useVal,
+        description: descEl ? descEl.value.trim() : '',
+        path:        path,
+        example:     state.parsedExamples[path] || '',
+        hardCheck:   hardEl ? hardEl.classList.contains('on') : false,
+      });
+    });
+
+    // Merge with existing tags (don't overwrite manually added ones)
+    var existingPaths = state.tags.map(function(t) { return t.path; });
+    newTags.forEach(function(t) {
+      if (!existingPaths.includes(t.path)) {
+        state.tags.push(t);
+      }
+    });
+
+    document.getElementById('bulk-tag-modal').remove();
+    renderTagsList();
+
+    var statusEl = TGE.el('api-parse-status');
+    if (statusEl) {
+      statusEl.textContent = newTags.length + ' tags added successfully';
+      statusEl.style.color = 'var(--green-600)';
+    }
+  };
 
   // JSON picker (visual tree)
   TGE.apiPickFromSample = function() {
