@@ -761,87 +761,196 @@
     if (m) m.remove();
   };
 
-  TGE.bulkToggleHard = function(el) {
-    el.classList.toggle('on');
+  TGE.bulkToggleHard = function(el) { el.classList.toggle('on'); };
+  TGE.ejToggleHard   = function(el) { el.classList.toggle('on'); };
+
+  TGE.ejRowToggle = function(cb, idx) {
+    var r = document.getElementById('ej-row-' + idx);
+    if (r) r.style.opacity = cb.checked ? '1' : '0.45';
   };
 
-  // Expand a JSON string field — parse it and insert sub-rows
+  TGE.ejSelectAll = function(checked) {
+    document.querySelectorAll('.ej-include').forEach(function(cb) {
+      cb.checked = checked;
+      var r = document.getElementById('ej-row-' + cb.dataset.idx);
+      if (r) r.style.opacity = checked ? '1' : '0.45';
+    });
+  };
+
+  // Expand a JSON string field — opens dedicated clean screen
   TGE.bulkExpandJson = function(btn) {
-    var path    = btn.dataset.path;
-    var rawVal  = state.parsedRaw[path];
+    var path   = btn.dataset.path;
+    var rawVal = state.parsedRaw[path];
     if (!rawVal) return;
     var parsed;
-    try { parsed = JSON.parse(rawVal); } catch(e) { alert('Could not parse JSON: ' + e.message); return; }
+    try { parsed = JSON.parse(rawVal); } catch(e) { alert('Could not parse: ' + e.message); return; }
 
-    // Extract sub-fields
+    var obj = Array.isArray(parsed) ? parsed[0] : parsed;
+
+    // Extract fields from parsed JSON string
     var subFields = [];
-    var subExamples = {};
-    var subRaw = {};
-
-    function extractSub(obj, prefix) {
-      if (!obj || typeof obj !== 'object') return;
-      Object.keys(obj).forEach(function(key) {
-        var p = prefix + '.' + key;
-        var v = obj[key];
-        subFields.push(p);
-        subRaw[p] = v;
-        if (v !== null && typeof v !== 'object') subExamples[p] = String(v);
-        if (v && typeof v === 'object' && !Array.isArray(v)) extractSub(v, p);
-        else if (Array.isArray(v) && v[0] && typeof v[0] === 'object') extractSub(v[0], p + '[]');
+    function extractSub(o, prefix) {
+      if (!o || typeof o !== 'object') return;
+      Object.keys(o).forEach(function(k) {
+        var p = prefix ? prefix + '.' + k : k;
+        var v = o[k];
+        if (typeof v !== 'object' || v === null) {
+          subFields.push({ path: p, key: k, example: String(v), rawVal: v });
+        } else if (!Array.isArray(v)) {
+          extractSub(v, p);
+        }
       });
     }
+    extractSub(obj, '');
 
-    extractSub(Array.isArray(parsed) ? parsed[0] : parsed, path);
+    if (!subFields.length) { alert('No fields found in this JSON string.'); return; }
 
-    // Add to state
-    subFields.forEach(function(p) {
-      if (state.parsedFields.indexOf(p) === -1) {
-        state.parsedFields.push(p);
-        state.parsedExamples[p] = subExamples[p] || '';
-        state.parsedRaw[p] = subRaw[p];
-      }
-    });
+    // Build dedicated screen
+    var existing = document.getElementById('expand-json-modal');
+    if (existing) existing.remove();
 
-    btn.textContent = '✓ Expanded';
-    btn.disabled = true;
-    btn.style.background = 'var(--green-100)';
+    var rows = subFields.map(function(f, i) {
+      var autoLabel = f.key.replace(/([A-Z])/g, ' $1').replace(/^./, function(s){ return s.toUpperCase(); });
+      var autoUse = 'display';
+      if (/^id$/i.test(f.key) || /Id$/.test(f.key)) autoUse = 'feeds-next';
+      if (/type|status/i.test(f.key)) autoUse = 'filter-rule';
+      var preTick = parseFloat(f.example) > 0 || (f.example !== '-1' && f.example !== 'false' && f.example !== 'null');
 
-    // Rebuild table
-    var tbody = document.querySelector('#bulk-tag-modal tbody');
-    if (tbody) {
-      // Re-render — easiest approach
-      TGE.bulkClose();
-      openBulkTagEditor();
-    }
+      return '<tr id="ej-row-' + i + '" style="border-bottom:1px solid var(--line-2);' + (preTick?'':'opacity:0.45;') + '">' +
+        '<td style="padding:7px 10px;text-align:center;width:36px;">' +
+          '<input type="checkbox" class="ej-include" data-idx="' + i + '"' + (preTick?' checked':'') + ' ' +
+          'onchange="TGE.ejRowToggle(this,' + i + ')" ' +
+          'style="width:16px;height:16px;cursor:pointer;" />' +
+        '</td>' +
+        '<td style="padding:7px 10px;">' +
+          '<code style="font-size:12px;color:var(--green-700);font-weight:600;">' + f.key + '</code>' +
+          '<span style="display:block;font-size:10px;color:var(--muted-2);margin-top:2px;font-family:monospace;">' + f.path + '</span>' +
+        '</td>' +
+        '<td style="padding:7px 10px;font-size:12px;color:var(--muted);">' + String(f.example).slice(0,25) + '</td>' +
+        '<td style="padding:7px 10px;">' +
+          '<input type="text" class="ej-label" data-idx="' + i + '" value="' + autoLabel + '" ' +
+          'style="width:100%;height:32px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font:inherit;font-size:12px;" />' +
+        '</td>' +
+        '<td style="padding:7px 10px;">' +
+          '<select class="ej-use" data-idx="' + i + '" style="width:100%;height:32px;border:1px solid var(--line);border-radius:6px;padding:0 6px;font:inherit;font-size:12px;">' +
+            TAG_USES.map(function(u){ return '<option value="'+u.value+'"'+(u.value===autoUse?' selected':'')+'>'+u.label+'</option>'; }).join('') +
+          '</select>' +
+        '</td>' +
+        '<td style="padding:7px 10px;text-align:center;width:80px;">' +
+          '<div class="perm-toggle ej-hard" data-idx="' + i + '" onclick="TGE.ejToggleHard(this)" style="margin:0 auto;"></div>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+
+    var modal = document.createElement('div');
+    modal.id = 'expand-json-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:700;display:flex;align-items:stretch;justify-content:center;padding:20px;';
+
+    modal.innerHTML = '<div style="background:var(--surface);border-radius:14px;width:min(860px,100%);display:flex;flex-direction:column;overflow:hidden;">' +
+      '<div style="padding:14px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">' +
+        '<div>' +
+          '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:rgba(212,240,38,0.7);">Expand JSON Field</div>' +
+          '<div style="font-size:15px;font-weight:700;color:#fff;">' + path + ' <span style="font-size:11px;opacity:0.6;">(' + subFields.length + ' fields)</span></div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;">' +
+          '<button id="ej-tick-all" style="height:28px;padding:0 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);color:#fff;font:inherit;font-size:11px;cursor:pointer;">Tick All</button>' +
+          '<button id="ej-untick-all" style="height:28px;padding:0 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);color:#fff;font:inherit;font-size:11px;cursor:pointer;">Untick All</button>' +
+          '<button id="ej-close" style="height:28px;padding:0 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);color:#fff;font:inherit;font-size:11px;cursor:pointer;">Cancel</button>' +
+        '</div>' +
+      '</div>' +
+      '<div style="flex:1;overflow-y:auto;">' +
+        '<table style="width:100%;border-collapse:collapse;">' +
+          '<thead><tr style="background:var(--surface-2);position:sticky;top:0;">' +
+            '<th style="padding:8px;width:36px;font-size:10px;text-transform:uppercase;color:var(--muted);">Include</th>' +
+            '<th style="padding:8px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted);">Field · Path</th>' +
+            '<th style="padding:8px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted);">Example</th>' +
+            '<th style="padding:8px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted);">Display As</th>' +
+            '<th style="padding:8px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted);">Use</th>' +
+            '<th style="padding:8px;text-align:center;font-size:10px;text-transform:uppercase;color:var(--muted);">Hard Check</th>' +
+          '</tr></thead>' +
+          '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+      '</div>' +
+      '<div style="padding:12px 20px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:var(--surface-2);">' +
+        '<span style="font-size:12px;color:var(--muted);">Tick the fields you want to tag. Parent path prefix: <code style="font-size:11px;">' + path + '.</code></span>' +
+        '<div style="display:flex;gap:8px;">' +
+          '<button id="ej-save" class="btn btn-primary" style="height:36px;" data-parent="' + path + '">Add Selected as Tags</button>' +
+          '<button id="ej-cancel" class="btn" style="height:36px;">Cancel</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+    document.body.appendChild(modal);
+
+    document.getElementById('ej-close').onclick    = function() { modal.remove(); };
+    document.getElementById('ej-cancel').onclick   = function() { modal.remove(); };
+    document.getElementById('ej-tick-all').onclick  = function() { TGE.ejSelectAll(true); };
+    document.getElementById('ej-untick-all').onclick= function() { TGE.ejSelectAll(false); };
+    document.getElementById('ej-save').onclick   = function() {
+      var parentPath = this.dataset.parent;
+      var added = 0;
+      document.querySelectorAll('.ej-include:checked').forEach(function(cb) {
+        var idx    = parseInt(cb.dataset.idx);
+        var f      = subFields[idx];
+        var labelEl = document.querySelector('.ej-label[data-idx="' + idx + '"]');
+        var useEl   = document.querySelector('.ej-use[data-idx="' + idx + '"]');
+        var hardEl  = document.querySelector('.ej-hard[data-idx="' + idx + '"]');
+        var fullPath = parentPath + '.' + f.path;
+        // Don't add duplicates
+        var exists = state.tags.some(function(t){ return t.path === fullPath; });
+        if (!exists) {
+          state.tags.push({
+            name:        f.key,
+            label:       labelEl ? labelEl.value.trim() : f.key,
+            use:         useEl ? useEl.value : 'display',
+            description: 'From ' + parentPath + ' (JSON string)',
+            path:        fullPath,
+            example:     f.example,
+            hardCheck:   hardEl ? hardEl.classList.contains('on') : false,
+          });
+          added++;
+        }
+      });
+      modal.remove();
+      renderTagsList();
+      var s = TGE.el('api-parse-status');
+      if (s) { s.textContent = added + ' tag' + (added!==1?'s':'') + ' added from ' + path; s.style.color = 'var(--green-600)'; }
+    };
   };
 
-  // Expand an array field — open a filter picker modal
+  // Expand an array field — opens dedicated filter screen
   TGE.bulkExpandArray = function(btn) {
     var path   = btn.dataset.path;
     var rawVal = state.parsedRaw[path];
     if (!Array.isArray(rawVal) || !rawVal.length) return;
-
     var item = rawVal[0];
     if (typeof item !== 'object') return;
 
-    // Build filter picker modal
     var existing = document.getElementById('array-filter-modal');
     if (existing) existing.remove();
 
-    // Get all keys from first array item
-    var keys = Object.keys(item);
+    // Get all flat keys for filter dropdown
+    var allKeys = [];
+    function getAllKeys(obj, prefix) {
+      Object.keys(obj).forEach(function(k) {
+        var p = prefix ? prefix + '.' + k : k;
+        var v = obj[k];
+        if (Array.isArray(v) && v.length && typeof v[0] !== 'object') {
+          allKeys.push({ path: p, example: String(v[0]) });
+        } else if (typeof v !== 'object' || v === null) {
+          allKeys.push({ path: p, example: String(v).slice(0,30) });
+        } else if (!Array.isArray(v)) {
+          getAllKeys(v, p);
+        }
+      });
+    }
+    getAllKeys(item, '');
 
-    var modal = document.createElement('div');
-    modal.id = 'array-filter-modal';
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:700;display:flex;align-items:center;justify-content:center;padding:20px;';
-
-    var keyOptions = keys.map(function(k) {
-      var val = item[k];
-      var display = typeof val === 'object' ? '[object]' : String(val).slice(0,30);
-      return '<option value="' + k + '">' + k + ' (e.g. ' + display + ')</option>';
+    var keyOptions = allKeys.map(function(f) {
+      return '<option value="' + f.path + '">' + f.path + ' · e.g. ' + f.example + '</option>';
     }).join('');
 
-    // Also get leaf fields for what to extract
+    // Get leaf fields for extract dropdown
     var leafFields = [];
     function getLeafs(obj, prefix) {
       Object.keys(obj).forEach(function(k) {
@@ -852,70 +961,68 @@
       });
     }
     getLeafs(item, '');
-
     var leafOptions = leafFields.map(function(f) {
-      return '<option value="' + f.path + '">' + f.path + ' (' + f.example + ')</option>';
+      return '<option value="' + f.path + '">' + f.path + ' · ' + f.example + '</option>';
     }).join('');
 
-    modal.innerHTML = '<div style="background:var(--surface);border-radius:14px;padding:24px;width:min(560px,100%);display:flex;flex-direction:column;gap:14px;max-height:85vh;overflow-y:auto;">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;">' +
-        '<h3 style="margin:0;font-size:14px;font-weight:700;">Filter Array: <code style="font-size:12px;color:var(--green-700);">' + path + '[]</code></h3>' +
-        '<button onclick="TGE.arrayFilterClose()" style="border:none;background:none;font-size:18px;cursor:pointer;color:var(--muted);">✕</button>' +
-      '</div>' +
-      '<p style="margin:0;font-size:12px;color:var(--muted);">Define a tag that picks a specific item from this array based on a field value.</p>' +
+    var modal = document.createElement('div');
+    modal.id = 'array-filter-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:700;display:flex;align-items:center;justify-content:center;padding:20px;';
 
-      '<div class="field" style="margin:0;">' +
-        '<label>Tag Name</label>' +
-        '<input id="af-tag-name" type="text" placeholder="e.g. roadFacingImageUrl" style="height:38px;" />' +
-      '</div>' +
-
-      '<div class="field" style="margin:0;">' +
-        '<label>Display As</label>' +
-        '<input id="af-display" type="text" placeholder="e.g. Road Facing Image URL" style="height:38px;" />' +
-      '</div>' +
-
-      '<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:12px;">' +
-        '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px;">Filter Condition — where:</div>' +
-        '<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;">' +
-          '<select id="af-filter-key" style="height:36px;border:1px solid var(--line);border-radius:7px;padding:0 8px;font:inherit;font-size:12px;">' + keyOptions + '</select>' +
-          '<span style="font-size:12px;font-weight:700;color:var(--muted);">contains</span>' +
-          '<input id="af-filter-val" type="text" placeholder="e.g. ROAD_FACING" style="height:36px;border:1px solid var(--line);border-radius:7px;padding:0 10px;font:inherit;font-size:12px;" />' +
+    modal.innerHTML = '<div style="background:var(--surface);border-radius:14px;width:min(580px,100%);display:flex;flex-direction:column;overflow:hidden;max-height:85vh;">' +
+      '<div style="padding:14px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">' +
+        '<div>' +
+          '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:rgba(212,240,38,0.7);">Filter Array Field</div>' +
+          '<div style="font-size:15px;font-weight:700;color:#fff;">' + path + '[]</div>' +
         '</div>' +
-        '<p style="margin:6px 0 0;font-size:11px;color:var(--muted-2);">e.g. where source contains ROAD_FACING, or where imageDetails.sources[] contains ROAD</p>' +
+        '<button id="af-close" style="border:none;background:rgba(255,255,255,0.1);border-radius:6px;color:#fff;font-size:16px;cursor:pointer;width:30px;height:30px;">✕</button>' +
       '</div>' +
+      '<div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px;">' +
+        '<p style="margin:0;font-size:12px;color:var(--muted);">This array has <strong>' + rawVal.length + ' items</strong>. Define which item to pick and what field to extract from it.</p>' +
 
-      '<div class="field" style="margin:0;">' +
-        '<label>Extract this field from the matching item</label>' +
-        '<select id="af-extract-field" style="height:38px;border:1px solid var(--line);border-radius:8px;padding:0 10px;font:inherit;font-size:12px;width:100%;">' + leafOptions + '</select>' +
+        '<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:14px;">' +
+          '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--green-600);margin-bottom:10px;">Step 1 — Filter: which item?</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 60px 1fr;gap:8px;align-items:center;">' +
+            '<select id="af-filter-key" style="height:38px;border:1px solid var(--line);border-radius:7px;padding:0 8px;font:inherit;font-size:12px;">' + keyOptions + '</select>' +
+            '<div style="text-align:center;font-size:12px;font-weight:700;color:var(--muted);">=</div>' +
+            '<input id="af-filter-val" type="text" placeholder="e.g. ROAD_FACING" style="height:38px;border:1px solid var(--line);border-radius:7px;padding:0 10px;font:inherit;font-size:12px;" />' +
+          '</div>' +
+          '<p style="margin:6px 0 0;font-size:11px;color:var(--muted-2);">Pick the item where this field matches this value</p>' +
+        '</div>' +
+
+        '<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:14px;">' +
+          '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--green-600);margin-bottom:10px;">Step 2 — Extract: which field?</div>' +
+          '<select id="af-extract-field" style="width:100%;height:38px;border:1px solid var(--line);border-radius:7px;padding:0 10px;font:inherit;font-size:12px;">' + leafOptions + '</select>' +
+          '<p style="margin:6px 0 0;font-size:11px;color:var(--muted-2);">Pick the field to extract from the matching item</p>' +
+        '</div>' +
+
+        '<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:14px;">' +
+          '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--green-600);margin-bottom:10px;">Step 3 — Define the tag</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+            '<div class="field" style="margin:0;"><label>Tag Name</label><input id="af-tag-name" type="text" placeholder="e.g. roadFacingUrl" style="height:38px;" /></div>' +
+            '<div class="field" style="margin:0;"><label>Display As</label><input id="af-display" type="text" placeholder="e.g. Road Facing Image" style="height:38px;" /></div>' +
+            '<div class="field" style="margin:0;"><label>Use</label>' +
+              '<select id="af-use" style="height:38px;width:100%;border:1px solid var(--line);border-radius:7px;padding:0 8px;font:inherit;font-size:12px;">' +
+                TAG_USES.map(function(u){ return '<option value="'+u.value+'">'+u.label+'</option>'; }).join('') +
+              '</select>' +
+            '</div>' +
+            '<div class="field" style="margin:0;"><label>Description</label><input id="af-desc" type="text" placeholder="e.g. URL for road camera" style="height:38px;" /></div>' +
+          '</div>' +
+        '</div>' +
       '</div>' +
-
-      '<div class="field" style="margin:0;">' +
-        '<label>Use</label>' +
-        '<select id="af-use" style="height:38px;border:1px solid var(--line);border-radius:8px;padding:0 10px;font:inherit;font-size:12px;width:100%;">' +
-          TAG_USES.map(function(u){ return '<option value="'+u.value+'">'+u.label+'</option>'; }).join('') +
-        '</select>' +
-      '</div>' +
-
-      '<div class="field" style="margin:0;">' +
-        '<label>Description</label>' +
-        '<input id="af-desc" type="text" placeholder="e.g. Image URL for road facing camera" style="height:38px;" />' +
-      '</div>' +
-
-      '<div style="display:flex;gap:8px;">' +
-        '<button class="btn btn-primary" style="height:36px;" id="af-save-btn" data-path="' + path + '">Add as Tag</button>' +
-        '<button class="btn" style="height:36px;" onclick="TGE.arrayFilterClose()">Cancel</button>' +
+      '<div style="padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:8px;flex-shrink:0;background:var(--surface-2);">' +
+        '<button id="af-save-btn" class="btn btn-primary" style="height:36px;" data-path="' + path + '">Add as Tag</button>' +
+        '<button id="af-cancel" class="btn" style="height:36px;">Cancel</button>' +
       '</div>' +
     '</div>';
 
     document.body.appendChild(modal);
-
-    // Wire save button
-    var saveBtn = document.getElementById('af-save-btn');
-    if (saveBtn) {
-      saveBtn.addEventListener('click', function() {
-        TGE.bulkSaveArrayFilter(this.dataset.path);
-      });
-    }
+    document.getElementById('af-close').onclick  = function() { modal.remove(); };
+    document.getElementById('af-cancel').onclick = function() { modal.remove(); };
+    document.getElementById('af-save-btn').addEventListener('click', function() {
+      TGE.bulkSaveArrayFilter(this.dataset.path);
+    });
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
   };
 
   TGE.arrayFilterClose = function() {
