@@ -205,24 +205,22 @@
         var vehicles = (Array.isArray(vRes.data) ? vRes.data : []).filter(function(v) { return v.status === 'ENABLED'; });
 
         setMessage('Checking ' + vehicles.length + ' vehicles for camera devices...', false);
-        var batchSize = 10;
-        for (var i = 0; i < vehicles.length; i += batchSize) {
-          var batch = vehicles.slice(i, i + batchSize);
-          var results = await Promise.all(batch.map(function(v) {
-            return TGE.api('GET', '/api/tn360/v1/vehicles/' + v.id + '/devices?pruning=B2B')
-              .then(function(r) {
-                if (!r.ok) return null;
-                var devices = Array.isArray(r.data) ? r.data : [];
-                var camDev  = devices.find(function(d) {
-                  return d.type && d.type.code === 'CAMERA' && !d.outServiceAt && d.vehicleId;
-                });
-                if (!camDev) return null;
-                return { vehicle: v, camera: camDev };
-              }).catch(function() { return null; });
-          }));
-          results.forEach(function(r) { if (r) cameraDevices.push(r); });
-          setMessage('Checking devices... ' + Math.min(i + batchSize, vehicles.length) + '/' + vehicles.length, false);
-        }
+        var checked = 0;
+        var allResults = await batchRun(vehicles, function(v) {
+          return TGE.api('GET', '/api/tn360/v1/vehicles/' + v.id + '/devices?pruning=B2B')
+            .then(function(r) {
+              checked++;
+              if (checked % 10 === 0) setMessage('Checking devices... ' + checked + '/' + vehicles.length, false);
+              if (!r.ok) return null;
+              var devices = Array.isArray(r.data) ? r.data : [];
+              var camDev  = devices.find(function(d) {
+                return d.type && d.type.code === 'CAMERA' && !d.outServiceAt && d.vehicleId;
+              });
+              if (!camDev) return null;
+              return { vehicle: v, camera: camDev };
+            }).catch(function() { return null; });
+        }, 5, 300);
+        allResults.forEach(function(r) { if (r) cameraDevices.push(r); });
 
       } else {
         // User mode — look up each IMEI directly
@@ -263,11 +261,14 @@
       showResults();
       renderRows(cameraDevices, {});
 
-      // Load snapshots in parallel
+      // Load snapshots in batches of 5 with 500ms delay to avoid rate limiting
       var snapshotMap = {};
-      await Promise.all(cameraDevices.map(function(cv) {
+      var done = 0;
+      await batchRun(cameraDevices, function(cv) {
         return TGE.api('GET', '/api/tn360/v1/events?pruning=B2B&types=camera&vehicle_ids=' + cv.vehicle.id)
           .then(function(r) {
+            done++;
+            setMessage('Loading snapshots... ' + done + '/' + cameraDevices.length, false);
             if (!r.ok) return;
             var events    = Array.isArray(r.data) ? r.data : [];
             var available = events.filter(function(e) { return e.attributes && e.attributes.status === 'available'; });
@@ -275,14 +276,13 @@
             available.sort(function(a,b) { return new Date(b.timeAt) - new Date(a.timeAt); });
             var latest = available[0];
             snapshotMap[cv.vehicle.id] = latest;
-            // Save to D1
             TGE.api('POST', '/api/camera-history/' + cv.vehicle.id, {
               eventId:      String(latest.id),
               capturedAt:   latest.timeAt,
               snapshotData: latest.attributes.context,
             }).catch(function(){});
           }).catch(function(){});
-      }));
+      }, 5, 500);
 
       renderRows(cameraDevices, snapshotMap);
       setMessage('');
@@ -457,6 +457,20 @@
       var el = TGE.el(id); if (el) el.classList.add('active');
     });
   }
+
+  // Throttled batch executor — runs promises in batches with delay between
+  async function batchRun(items, fn, batchSize, delayMs) {
+    var results = [];
+    for (var i = 0; i < items.length; i += batchSize) {
+      var batch = items.slice(i, i + batchSize);
+      var batchResults = await Promise.all(batch.map(fn));
+      results = results.concat(batchResults);
+      if (i + batchSize < items.length) await delay(delayMs);
+    }
+    return results;
+  }
+
+  function delay(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 
   function formatTs(ts) {
     if (!ts) return '—';
