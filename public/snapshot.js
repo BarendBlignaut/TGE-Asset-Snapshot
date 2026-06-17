@@ -44,7 +44,7 @@
         '<div class="hero-sub">Enter a fleet number to load current location, metrics, diagnostics and camera evidence.</div>',
         '<div class="hero-bar">',
           '<div class="hero-bar-left">',
-            '<input id="snap-fleet-input" type="text" placeholder="Fleet number e.g. 82050" style="height:34px;border:1px solid rgba(255,255,255,0.25);border-radius:7px;padding:0 12px;background:rgba(255,255,255,0.10);color:#fff;font:inherit;font-size:13px;min-width:180px;" />',
+            '<input id="snap-fleet-input" type="text" placeholder="Fleet number e.g. 82050" autocomplete="off" style="height:34px;border:1px solid rgba(255,255,255,0.25);border-radius:7px;padding:0 12px;background:rgba(255,255,255,0.10);color:#fff;font:inherit;font-size:13px;min-width:180px;" />',
             '<button class="hero-run-btn" id="snap-run-btn" type="button">Run</button>',
             '<button class="hero-action-btn" id="snap-refresh-btn" type="button" style="display:none;">Refresh</button>',
           '</div>',
@@ -296,11 +296,8 @@
       }
 
       if (state.devices.camera) {
-        var today = new Date();
-        var from  = new Date(today.getTime() - 7*24*60*60*1000).toISOString().slice(0,10);
-        var to    = new Date(today.getTime() + 86400000).toISOString().slice(0,10);
         promises.push(
-          TGE.api('GET', '/api/tn360/v1/events?pruning=B2B&types=CAMERA&vehicle_ids=' + vehicle.id + '&from=' + from + '&to=' + to)
+          TGE.api('GET', '/api/tn360/v1/events?pruning=B2B&types=camera&vehicle_ids=' + vehicle.id)
             .then(function(r) { if (r.ok) processCameraEvents(r.data, vehicle.id); })
         );
       }
@@ -648,10 +645,7 @@
 
   async function pullPostSnapshots() {
     var vid   = alignState.vehicleId;
-    var today = new Date();
-    var from  = new Date(today.getTime() - 3600000).toISOString().slice(0,10);
-    var to    = new Date(today.getTime() + 86400000).toISOString().slice(0,10);
-    var r = await TGE.api('GET', '/api/tn360/v1/events?pruning=B2B&types=CAMERA&vehicle_ids=' + vid + '&from=' + from + '&to=' + to);
+    var r = await TGE.api('GET', '/api/tn360/v1/events?pruning=B2B&types=camera&vehicle_ids=' + vid);
     if (!r.ok) throw new Error('Camera fetch failed');
 
     var available = (Array.isArray(r.data) ? r.data : []).filter(function(e) {
