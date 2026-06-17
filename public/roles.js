@@ -13,6 +13,7 @@
         { key: 'snapshot',          label: 'Snapshot',          actions: ['view','run','cancel','refresh','export-pdf','export-email-pdf','export-csv','export-xlsx','export-json'] },
         { key: 'asset-track',       label: 'Asset Track',       actions: ['view','user-mode','fleet-mode','run','cancel','refresh','export-pdf','export-email-pdf','export-csv','export-xlsx','export-json'], hasLimit: true },
         { key: 'vpm',               label: 'VPM Analysis',      actions: ['view','user-mode','fleet-mode','run','cancel','refresh','export-pdf','export-email-pdf','export-csv','export-xlsx','export-json'], hasLimit: true },
+        { key: 'utilisation',       label: 'Fleet Utilisation', actions: ['view','run','cancel','refresh','export-csv','export-xlsx'] },
       ]
     },
     {
