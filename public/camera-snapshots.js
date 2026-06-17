@@ -14,18 +14,24 @@
 
   var state = {
     running: false,
-    mode:    'user',   // 'user' or 'fleet'
+    mode:    'user',
     rows:    [],
   };
 
-  var userLimit = TGE.limit('camera-snapshots', 'user-mode') || 500;
-  var canUser   = TGE.can('camera-snapshots', 'user-mode');
-  var canFleet  = TGE.can('camera-snapshots', 'fleet-mode');
+  // Set at render time after permissions load
+  var userLimit = 500;
+  var canUser   = false;
+  var canFleet  = false;
 
   // ── Render ─────────────────────────────────────────────────────────────────────
   function render() {
     var view = TGE.el('view-camera-snapshots');
     if (!view) return;
+
+    // Evaluate permissions now (session is loaded)
+    userLimit = TGE.limit('camera-snapshots', 'user-mode') || 500;
+    canUser   = TGE.can('camera-snapshots', 'user-mode');
+    canFleet  = TGE.can('camera-snapshots', 'fleet-mode');
 
     // Default mode
     state.mode = canUser ? 'user' : 'fleet';
