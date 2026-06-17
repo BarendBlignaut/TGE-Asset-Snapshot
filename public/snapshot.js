@@ -165,44 +165,6 @@
           '</div>',
         '</div>',
 
-        // Alignment test slide-up panel
-        '<div id="snap-align-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;height:85vh;background:var(--surface);border-top:3px solid var(--green-600);z-index:400;flex-direction:column;box-shadow:0 -8px 32px rgba(0,0,0,0.2);">',
-          '<div style="padding:14px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">',
-            '<div>',
-              '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:rgba(212,240,38,0.7);">Camera Alignment Test</div>',
-              '<div style="font-size:15px;font-weight:700;color:#fff;" id="snap-align-title">Fleet —</div>',
-            '</div>',
-            '<button id="snap-align-close" style="border:none;background:rgba(255,255,255,0.1);border-radius:6px;color:#fff;font-size:16px;cursor:pointer;width:30px;height:30px;">✕</button>',
-          '</div>',
-          '<div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px;">',
-
-            // Before/After grids
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">',
-              '<div>',
-                '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">BEFORE</div>',
-                '<div id="snap-align-before" style="display:grid;gap:6px;"></div>',
-              '</div>',
-              '<div>',
-                '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--green-600);margin-bottom:8px;">AFTER</div>',
-                '<div id="snap-align-after" style="display:grid;gap:6px;"></div>',
-                '<p id="snap-align-after-msg" style="font-size:12px;color:var(--muted);margin-top:8px;font-style:italic;">Images will appear after test completes</p>',
-              '</div>',
-            '</div>',
-
-            // Step procedure
-            '<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:16px;">',
-              '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:12px;">Test Procedure</div>',
-              '<div id="snap-align-steps" style="display:flex;flex-direction:column;gap:8px;"></div>',
-            '</div>',
-
-          '</div>',
-          '<div style="padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:8px;flex-shrink:0;background:var(--surface-2);">',
-            '<button id="snap-align-start" class="btn btn-primary" style="height:36px;">Start Test</button>',
-            '<button id="snap-align-cancel" class="btn" style="height:36px;">Close</button>',
-            '<span id="snap-align-status" style="font-size:12px;color:var(--muted);align-self:center;margin-left:8px;"></span>',
-          '</div>',
-        '</div>',
-
         // Asset tracker card (shown only if ATRACKER)
         '<div class="card" id="snap-tracker-card" style="display:none;">',
           '<div class="card-kicker">Asset Tracker</div>',
@@ -222,6 +184,45 @@
     ].join('');
 
     wireEvents();
+
+    // Inject alignment panel into body (fixed position — must be outside scroll container)
+    var existing = document.getElementById('snap-align-panel');
+    if (existing) existing.remove();
+    var panel = document.createElement('div');
+    panel.id = 'snap-align-panel';
+    panel.style.cssText = 'display:none;position:fixed;bottom:0;left:0;right:0;height:85vh;background:var(--surface);border-top:3px solid var(--green-600);z-index:400;flex-direction:column;box-shadow:0 -8px 32px rgba(0,0,0,0.2);';
+    panel.innerHTML = [
+      '<div style="padding:14px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">',
+        '<div>',
+          '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:rgba(212,240,38,0.7);">Camera Alignment Test</div>',
+          '<div style="font-size:15px;font-weight:700;color:#fff;" id="snap-align-title">Fleet —</div>',
+        '</div>',
+        '<button id="snap-align-close" style="border:none;background:rgba(255,255,255,0.1);border-radius:6px;color:#fff;font-size:16px;cursor:pointer;width:30px;height:30px;">✕</button>',
+      '</div>',
+      '<div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px;">',
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">',
+          '<div>',
+            '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">BEFORE</div>',
+            '<div id="snap-align-before" style="display:grid;gap:6px;"></div>',
+          '</div>',
+          '<div>',
+            '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--green-600);margin-bottom:8px;">AFTER</div>',
+            '<div id="snap-align-after" style="display:grid;gap:6px;"></div>',
+            '<p id="snap-align-after-msg" style="font-size:12px;color:var(--muted);margin-top:8px;font-style:italic;">Images will appear after test completes</p>',
+          '</div>',
+        '</div>',
+        '<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:16px;">',
+          '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:12px;">Test Procedure</div>',
+          '<div id="snap-align-steps" style="display:flex;flex-direction:column;gap:8px;"></div>',
+        '</div>',
+      '</div>',
+      '<div style="padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:8px;flex-shrink:0;background:var(--surface-2);">',
+        '<button id="snap-align-start" class="btn btn-primary" style="height:36px;">Start Test</button>',
+        '<button id="snap-align-cancel" class="btn" style="height:36px;">Close</button>',
+        '<span id="snap-align-status" style="font-size:12px;color:var(--muted);align-self:center;margin-left:8px;"></span>',
+      '</div>',
+    ].join('');
+    document.body.appendChild(panel);
   }
 
   function di(id, label) {
@@ -428,77 +429,42 @@
   function processCameraEvents(events, vehicleId) {
     if (!Array.isArray(events) || !events.length) return;
 
-    // Filter available events for this vehicle
     var available = events.filter(function(e) {
       return String(e.vehicleId) === String(vehicleId) &&
              e.attributes && e.attributes.status === 'available';
     });
-
     if (!available.length) return;
 
-    // Get most recent
     available.sort(function(a,b) { return new Date(b.timeAt) - new Date(a.timeAt); });
     var latest = available[0];
 
-    // Determine camera slots based on device model
-    var cam    = state.devices.camera;
-    var model  = cam && cam.model && cam.model.name;
-    var slots  = model === 'MultiIQ' ? 5 : 2;
+    var cam   = state.devices.camera;
+    var model = cam && cam.model && cam.model.name;
+    var slots = model === 'MultiIQ' ? 5 : 2;
 
-    // Parse context
     var ctx;
     try { ctx = JSON.parse(latest.attributes.context); } catch(e) { return; }
     if (!ctx || !ctx.response || !ctx.response.mediaFiles) return;
 
-    var mediaFiles = ctx.response.mediaFiles;
+    var mediaFiles  = ctx.response.mediaFiles;
     state.data.cameras = mediaFiles;
 
-    // Show camera card and build grid
+    var activeSlots = CAMERA_SLOTS.slice(0, slots);
+
     show('snap-camera-card');
-    // Wire alignment button
     var alignBtn = TGE.el('snap-align-btn');
     if (alignBtn) alignBtn.onclick = openAlignPanel;
+
     var grid = TGE.el('snap-camera-grid');
-    if (!grid) return;
-
-    // Only show slots for this camera type
-    var activeSlots = CAMERA_SLOTS.slice(0, slots);
-    grid.style.gridTemplateColumns = 'repeat(' + slots + ',minmax(0,1fr))';
-
-    grid.innerHTML = activeSlots.map(function(slot) {
-      // Find matching media file
-      var file = null;
-      if (slot.source === 'MDVR') {
-        // Match by imageDetails.sources
-        file = mediaFiles.find(function(f) {
-          return f.source === 'MDVR' &&
-                 f.imageDetails && f.imageDetails.sources &&
-                 f.imageDetails.sources.some(function(s) {
-                   return slot.sources.indexOf(s) !== -1;
-                 }) &&
-                 f.status === 'FINISHED';
-        });
-      } else {
-        file = mediaFiles.find(function(f) {
-          return f.source === slot.source && f.status === 'FINISHED';
-        });
-      }
-
-      var hasImage = file && file.mediaFile;
-      return '<div>' +
-        '<div style="aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;" id="cam-frame-' + slot.id + '">' +
-          (hasImage
-            ? '<img src="/api/image-proxy?url=' + encodeURIComponent(file.mediaFile) + '" style="width:100%;height:100%;object-fit:cover;" alt="' + slot.label + '" onerror="this.parentElement.innerHTML=\'<span style=&quot;font-size:11px;color:var(--muted);&quot;>Unavailable</span>\'" />'
-            : '<span style="font-size:11px;color:var(--muted);">No image</span>') +
-        '</div>' +
-        '<div style="padding-top:6px;font-size:11px;font-weight:600;color:var(--ink-2);">' + slot.label + '</div>' +
-        '<div style="font-size:10px;color:var(--muted);">' + (hasImage ? 'FINISHED' : 'Unavailable') + '</div>' +
-      '</div>';
-    }).join('');
+    if (grid) {
+      grid.style.gridTemplateColumns = 'repeat(' + slots + ',minmax(0,1fr))';
+      grid.innerHTML = buildCameraGrid(mediaFiles, activeSlots, slots);
+    }
 
     var camTime = TGE.el('snap-cam-time');
     if (camTime) camTime.textContent = 'Snapshot captured: ' + formatTs(latest.timeAt);
   }
+
 
   function populateGpio(gpio) {
     var grid = TGE.el('snap-gpio-grid');
