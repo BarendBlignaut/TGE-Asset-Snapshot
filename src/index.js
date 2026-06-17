@@ -471,11 +471,29 @@ async function handleTelematicsProxy(request, env, path) {
   const url      = new URL(request.url);
   const upstream = `https://api-au.telematics.com${path}?key=${env.TN360_API_KEY}&${url.searchParams.toString()}`;
 
-  const res = await fetch(upstream, { method: request.method });
+  // Forward body for POST/PUT requests
+  const fetchOpts = { method: request.method };
+  if (request.method === "POST" || request.method === "PUT") {
+    const body = await request.text();
+    if (body) {
+      fetchOpts.body = body;
+      fetchOpts.headers = { "Content-Type": "application/json" };
+    }
+  }
+
+  const res = await fetch(upstream, fetchOpts);
   if (!res.ok) return jsonResponse({ error: `Upstream error: HTTP ${res.status}` }, 502);
 
-  const data = await res.json();
-  return jsonResponse(data);
+  // Handle empty responses (e.g. 204 No Content)
+  const text = await res.text();
+  if (!text) return jsonResponse({ ok: true, status: res.status });
+  
+  try {
+    const data = JSON.parse(text);
+    return jsonResponse(data);
+  } catch(e) {
+    return jsonResponse({ ok: true, raw: text });
+  }
 }
 
 // ── Image proxy ───────────────────────────────────────────────────────────────
@@ -541,8 +559,15 @@ async function handleImageProxy(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
 
-  const body     = await safeJson(request);
-  const imageUrl = String(body.url || "").trim();
+  // Support both GET ?url=... and POST {url:...}
+  let imageUrl = "";
+  if (request.method === "GET") {
+    const reqUrl = new URL(request.url);
+    imageUrl = decodeURIComponent(reqUrl.searchParams.get("url") || "").trim();
+  } else {
+    const body = await safeJson(request);
+    imageUrl = String(body.url || "").trim();
+  }
   if (!imageUrl) return jsonResponse({ error: "url is required." }, 400);
 
   let parsed;
@@ -616,7 +641,7 @@ export default {
       if (method === "DELETE" && path.match(/^\/api\/registry\/apis\//))                  return handleRegistryDeleteApi(request, env, decodeURIComponent(path.split("/").pop()));
 
       // Image proxy
-      if (method === "POST" && path === "/api/image-proxy") return handleImageProxy(request, env);
+      if (path === "/api/image-proxy") return handleImageProxy(request, env);
 
       // Telematics proxy — forward /api/tn360/* to telematics API
       if (path.startsWith("/api/tn360/")) {
