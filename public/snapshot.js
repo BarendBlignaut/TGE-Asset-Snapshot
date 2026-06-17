@@ -146,9 +146,61 @@
         // Camera card (shown only if CAMERA device)
         '<div class="card" id="snap-camera-card" style="display:none;">',
           '<div class="card-kicker">Evidence</div>',
-          '<div class="card-title">Camera Snapshots</div>',
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">',
+            '<div class="card-title" style="margin:0;">Camera Snapshots</div>',
+            '<button class="btn" id="snap-align-btn" style="height:32px;font-size:12px;background:var(--green-100);color:var(--green-700);border-color:var(--green-600);">⚙ Alignment Test</button>',
+          '</div>',
+
+          // PRE snapshots
+          '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px;" id="snap-cam-pre-label">Current Snapshots</div>',
           '<div id="snap-camera-grid" style="display:grid;gap:10px;grid-template-columns:repeat(5,minmax(0,1fr));"></div>',
-          '<p id="snap-cam-time" style="margin-top:10px;font-size:11px;color:var(--muted);"></p>',
+          '<p id="snap-cam-time" style="margin-top:6px;margin-bottom:16px;font-size:11px;color:var(--muted);"></p>',
+
+          // POST snapshots (hidden until alignment test done)
+          '<div id="snap-cam-post-section" style="display:none;">',
+            '<div style="border-top:2px dashed var(--green-600);margin-bottom:16px;"></div>',
+            '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--green-600);margin-bottom:8px;" id="snap-cam-post-label">Post Alignment Test</div>',
+            '<div id="snap-camera-grid-post" style="display:grid;gap:10px;grid-template-columns:repeat(5,minmax(0,1fr));"></div>',
+            '<p id="snap-cam-post-time" style="margin-top:6px;font-size:11px;color:var(--muted);"></p>',
+          '</div>',
+        '</div>',
+
+        // Alignment test slide-up panel
+        '<div id="snap-align-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;height:85vh;background:var(--surface);border-top:3px solid var(--green-600);z-index:400;flex-direction:column;box-shadow:0 -8px 32px rgba(0,0,0,0.2);">',
+          '<div style="padding:14px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">',
+            '<div>',
+              '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:rgba(212,240,38,0.7);">Camera Alignment Test</div>',
+              '<div style="font-size:15px;font-weight:700;color:#fff;" id="snap-align-title">Fleet —</div>',
+            '</div>',
+            '<button id="snap-align-close" style="border:none;background:rgba(255,255,255,0.1);border-radius:6px;color:#fff;font-size:16px;cursor:pointer;width:30px;height:30px;">✕</button>',
+          '</div>',
+          '<div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px;">',
+
+            // Before/After grids
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">',
+              '<div>',
+                '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">BEFORE</div>',
+                '<div id="snap-align-before" style="display:grid;gap:6px;"></div>',
+              '</div>',
+              '<div>',
+                '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--green-600);margin-bottom:8px;">AFTER</div>',
+                '<div id="snap-align-after" style="display:grid;gap:6px;"></div>',
+                '<p id="snap-align-after-msg" style="font-size:12px;color:var(--muted);margin-top:8px;font-style:italic;">Images will appear after test completes</p>',
+              '</div>',
+            '</div>',
+
+            // Step procedure
+            '<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:16px;">',
+              '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:12px;">Test Procedure</div>',
+              '<div id="snap-align-steps" style="display:flex;flex-direction:column;gap:8px;"></div>',
+            '</div>',
+
+          '</div>',
+          '<div style="padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:8px;flex-shrink:0;background:var(--surface-2);">',
+            '<button id="snap-align-start" class="btn btn-primary" style="height:36px;">Start Test</button>',
+            '<button id="snap-align-cancel" class="btn" style="height:36px;">Close</button>',
+            '<span id="snap-align-status" style="font-size:12px;color:var(--muted);align-self:center;margin-left:8px;"></span>',
+          '</div>',
         '</div>',
 
         // Asset tracker card (shown only if ATRACKER)
@@ -403,6 +455,9 @@
 
     // Show camera card and build grid
     show('snap-camera-card');
+    // Wire alignment button
+    var alignBtn = TGE.el('snap-align-btn');
+    if (alignBtn) alignBtn.onclick = openAlignPanel;
     var grid = TGE.el('snap-camera-grid');
     if (!grid) return;
 
