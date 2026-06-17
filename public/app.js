@@ -236,11 +236,11 @@
     TGE.hide('login-overlay');
     TGE.show('app-shell', 'grid');
 
-    // Apply permissions — hide nav items user can't access
-    applyNavPermissions();
-
-    // Init nav
-    initNav();
+    // Apply permissions — small delay ensures DOM is fully ready
+    setTimeout(function() {
+      applyNavPermissions();
+      initNav();
+    }, 50);
 
     // Show default view
     TGE.showView('snapshot');
