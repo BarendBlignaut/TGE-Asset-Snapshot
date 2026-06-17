@@ -512,6 +512,10 @@
             <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12l4-4 4 4 6-7"/><path d="M17 5h-4v4"/></svg>
             VPM Analysis
           </button>
+          <button class="nav-item" id="nav-utilisation" type="button" data-view="utilisation" data-group="operations" data-title="Fleet Utilisation">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="10" width="3" height="8" rx="1"/><rect x="7" y="6" width="3" height="12" rx="1"/><rect x="12" y="3" width="3" height="15" rx="1"/><rect x="17" y="7" width="1" height="11" rx="1"/></svg>
+            Fleet Utilisation
+          </button>
         </div>
 
         <!-- CAMERA -->
@@ -607,6 +611,10 @@
           <!-- Populated by vpm.js -->
         </div>
 
+        <div class="view" id="view-utilisation">
+          <!-- Populated by utilisation.js -->
+        </div>
+
         <div class="view" id="view-camera-snapshots">
           <!-- Populated by camera.js -->
         </div>
@@ -639,6 +647,7 @@
   <script src="./vpm.js" defer></script>
   <script src="./camera.js" defer></script>
   <script src="./admin.js" defer></script>
+  <script src="./utilisation.js" defer></script>
   <script src="./roles.js" defer></script>
   <script src="./api.js" defer></script>
 
