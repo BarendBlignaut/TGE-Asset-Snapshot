@@ -348,6 +348,7 @@
         '<div style="display:flex;flex-direction:column;gap:6px;">' +
           '<button class="btn" style="height:28px;font-size:11px;padding:0 10px;" onclick="TGE.apiView(\'' + a.apiId + '\')">View</button>' +
           '<button class="btn btn-primary" style="height:28px;font-size:11px;padding:0 10px;" onclick="TGE.apiEdit(\'' + a.apiId + '\')">Edit</button>' +
+          '<button class="btn" style="height:28px;font-size:11px;padding:0 10px;background:var(--green-100);color:var(--green-700);border-color:var(--green-600);" onclick="TGE.apiTest(\'' + a.apiId + '\')">Test</button>' +
           '<button class="btn" style="height:28px;font-size:11px;padding:0 10px;" onclick="TGE.apiToggleActive(\'' + a.apiId + '\',' + (!isActive) + ')">' + (isActive?'Deactivate':'Activate') + '</button>' +
         '</div>' +
       '</div>';
@@ -452,6 +453,137 @@
     document.getElementById('avc2').onclick = function() { modal.remove(); };
     document.getElementById('ave').onclick  = function() { modal.remove(); TGE.apiEdit(apiId); };
     modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+  };
+
+  TGE.apiTest = function(apiId) {
+    var a = state.apis.find(function(x) { return x.apiId === apiId; });
+    if (!a) return;
+
+    // Detect {placeholders} in URL
+    var placeholders = [];
+    var re = /\{([^}]+)\}/g;
+    var m;
+    while ((m = re.exec(a.url)) !== null) {
+      placeholders.push(m[1]);
+    }
+
+    var modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+    var paramFields = placeholders.map(function(p) {
+      var suggestion = '';
+      if (p === 'vehicleId') suggestion = '383582';
+      if (p === 'imei') suggestion = '015678004562431';
+      if (p === 'from') suggestion = new Date().toISOString().slice(0,10);
+      if (p === 'to') suggestion = new Date(Date.now()+86400000).toISOString().slice(0,10);
+      return '<div class="field" style="margin:0;">' +
+        '<label>' + p + '</label>' +
+        '<input type="text" class="api-test-param" data-param="' + p + '" value="' + suggestion + '" style="height:38px;" />' +
+      '</div>';
+    }).join('');
+
+    modal.innerHTML = '<div style="background:var(--surface);border-radius:14px;width:min(700px,100%);max-height:85vh;display:flex;flex-direction:column;overflow:hidden;">' +
+      '<div style="padding:14px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">' +
+        '<div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:rgba(212,240,38,0.7);">Test API</div>' +
+        '<div style="font-size:15px;font-weight:700;color:#fff;">' + a.apiId + ' — ' + a.label + '</div></div>' +
+        '<button id="at-close" style="border:none;background:rgba(255,255,255,0.1);border-radius:6px;color:#fff;font-size:16px;cursor:pointer;width:30px;height:30px;">✕</button>' +
+      '</div>' +
+      '<div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px;">' +
+        '<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:12px;">' +
+          '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Endpoint</div>' +
+          '<code style="font-size:12px;color:var(--ink);word-break:break-all;">' + a.method + ' ' + a.url.replace(/\?key=<apiKey>[^"]*/, '') + '</code>' +
+        '</div>' +
+        (placeholders.length ? '<div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Parameters</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' + paramFields + '</div></div>' : '') +
+        '<div id="at-response" style="display:none;">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
+            '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);">Response</div>' +
+            '<div id="at-status" style="font-size:12px;font-weight:700;"></div>' +
+          '</div>' +
+          '<textarea id="at-response-text" style="width:100%;min-height:200px;font-family:monospace;font-size:11px;border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--surface-2);resize:vertical;" readonly></textarea>' +
+          '<div style="display:flex;gap:8px;margin-top:8px;">' +
+            '<button id="at-copy-btn" class="btn" style="height:32px;font-size:12px;">Copy Response</button>' +
+            '<button id="at-use-sample-btn" class="btn btn-primary" style="height:32px;font-size:12px;">Use as Sample Response</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:8px;flex-shrink:0;background:var(--surface-2);">' +
+        '<button id="at-run-btn" class="btn btn-primary" style="height:36px;">Run Test</button>' +
+        '<button id="at-cancel" class="btn" style="height:36px;">Close</button>' +
+      '</div>' +
+    '</div>';
+
+    document.body.appendChild(modal);
+    document.getElementById('at-close').onclick  = function() { modal.remove(); };
+    document.getElementById('at-cancel').onclick = function() { modal.remove(); };
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+
+    document.getElementById('at-run-btn').onclick = async function() {
+      var btn = this;
+      btn.textContent = 'Running...';
+      btn.disabled = true;
+
+      // Build URL with params substituted
+      var testUrl = a.url;
+      modal.querySelectorAll('.api-test-param').forEach(function(inp) {
+        testUrl = testUrl.replace('{' + inp.dataset.param + '}', inp.value.trim());
+      });
+
+      // Strip base URL and key — proxy through worker
+      var tnPath = testUrl
+        .replace('https://api-au.telematics.com', '')
+        .replace(/\?key=<apiKey>&?/, '?')
+        .replace(/&key=<apiKey>/, '');
+
+      var proxyUrl = '/api/tn360' + tnPath;
+
+      var statusEl = document.getElementById('at-status');
+      var responseEl = document.getElementById('at-response');
+      var responseText = document.getElementById('at-response-text');
+
+      try {
+        var res = await fetch(proxyUrl, {
+          method: a.method,
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        var data = await res.json().catch(function() { return { raw: 'Non-JSON response' }; });
+        var json = JSON.stringify(data, null, 2);
+
+        statusEl.textContent = res.ok ? '✅ ' + res.status + ' OK' : '❌ ' + res.status + ' Error';
+        statusEl.style.color = res.ok ? 'var(--green-600)' : 'var(--danger)';
+        responseText.value = json;
+        responseEl.style.display = '';
+
+        document.getElementById('at-copy-btn').onclick = function() {
+          navigator.clipboard.writeText(json).then(function() {
+            document.getElementById('at-copy-btn').textContent = 'Copied!';
+            setTimeout(function() { document.getElementById('at-copy-btn').textContent = 'Copy Response'; }, 2000);
+          });
+        };
+
+        document.getElementById('at-use-sample-btn').onclick = async function() {
+          // Save as sample response for this API
+          a.sampleResponse = json;
+          await TGE.api('PUT', '/api/registry/apis/' + encodeURIComponent(a.apiId), a);
+          var idx = state.apis.findIndex(function(x) { return x.apiId === a.apiId; });
+          if (idx !== -1) state.apis[idx] = a;
+          renderApiList();
+          this.textContent = 'Saved as Sample!';
+          this.style.background = 'var(--green-600)';
+        };
+
+      } catch(e) {
+        statusEl.textContent = '❌ Error: ' + e.message;
+        statusEl.style.color = 'var(--danger)';
+        responseText.value = e.message;
+        responseEl.style.display = '';
+      } finally {
+        btn.textContent = 'Run Test';
+        btn.disabled = false;
+      }
+    };
   };
 
   TGE.apiToggleActive = async function(apiId, makeActive) {
