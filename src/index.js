@@ -470,21 +470,36 @@ async function handleTelematicsProxy(request, env, path) {
 
   const url = new URL(request.url);
 
-  // Check if caller supplied a session token (for endpoints that need it e.g. attachments)
-  const sessionToken = request.headers.get("X-TN360-Token") || null;
+  // Check if caller supplied a session token — try header first, then query param
+  const sessionToken = request.headers.get("X-TN360-Token") || 
+                       request.headers.get("x-tn360-token") ||
+                       url.searchParams.get("_token") || null;
+
+  console.log("[Worker] sessionToken present:", !!sessionToken, sessionToken ? sessionToken.slice(0,8) + "..." : "none");
+  
+  // Remove _token from params so it doesn't get forwarded
+  url.searchParams.delete("_token");
 
   // Build upstream URL — session token endpoints don't use API key query param
   const upstream = sessionToken
     ? `https://api-au.telematics.com${path}?${url.searchParams.toString()}`
     : `https://api-au.telematics.com${path}?key=${env.TN360_API_KEY}&${url.searchParams.toString()}`;
 
+  console.log("[Worker] upstream:", upstream.slice(0, 80));
+
   // Build fetch options
+  const authHeader = sessionToken
+    ? `Token token="${sessionToken}"`
+    : null;
+
   const fetchOpts = {
     method: request.method,
-    headers: sessionToken
-      ? { "Authorization": `Token token="${sessionToken}"`, "Content-Type": "application/json" }
+    headers: authHeader
+      ? { "Authorization": authHeader, "Content-Type": "application/json" }
       : { "Content-Type": "application/json" },
   };
+
+  console.log("[Worker] auth header:", authHeader ? authHeader.slice(0,20) + "..." : "none");
 
   if (request.method === "POST" || request.method === "PUT") {
     const body = await request.text();
