@@ -3,8 +3,10 @@
   "name": "tge-asset-snapshot",
   "main": "src/index.js",
   "compatibility_date": "2026-06-14",
+  "compatibility_flags": ["nodejs_compat"],
   "assets": {
-    "directory": "./public"
+    "directory": "./public",
+    "binding": "ASSETS"
   },
   "d1_databases": [
     {

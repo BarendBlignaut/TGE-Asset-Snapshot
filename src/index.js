@@ -99,8 +99,9 @@ async function handleLogin(request, env) {
 
   const hash = await sha256(password);
 
+  // Step 1 — find user by username + password hash
   const user = await env.DB.prepare(
-    "SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.role_id, u.status, r.name as role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.username = ? AND u.password_hash = ?"
+    "SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.role_id, u.status, u.login_type, r.name as role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.username = ? AND u.password_hash = ?"
   ).bind(username, hash).first();
 
   if (!user) {
@@ -111,7 +112,43 @@ async function handleLogin(request, env) {
     return jsonResponse({ error: "Account is inactive. Contact your administrator." }, 403);
   }
 
-  // Create session
+  // Step 2 — if login_type is db_vendor, run TN360 hard checks
+  if (user.login_type === "db_vendor" && env.TN360_API_KEY) {
+    try {
+      const tn360Res = await fetch(
+        `https://api-au.telematics.com/v1/users/?key=${env.TN360_API_KEY}&pruning=B2B`
+      );
+      if (!tn360Res.ok) {
+        return jsonResponse({ error: "Vendor verification service unavailable. Please try again." }, 503);
+      }
+      const tn360Users = await tn360Res.json();
+
+      // Hard Check 1 — find matching username in TN360
+      const tn360User = Array.isArray(tn360Users)
+        ? tn360Users.find(u => String(u.username || "").toLowerCase() === username)
+        : null;
+      if (!tn360User) {
+        return jsonResponse({ error: "Vendor verification failed — user not found in vendor system." }, 401);
+      }
+
+      // Hard Check 2 — must have Driver role in TN360
+      const isDriver = Array.isArray(tn360User.roles)
+        ? tn360User.roles.some(r => r.name === "Driver")
+        : false;
+      if (!isDriver) {
+        return jsonResponse({ error: "Vendor verification failed — account is not a Driver." }, 403);
+      }
+
+      // Hard Check 3 — externalPin must match password
+      if (String(tn360User.externalPin || "") !== password) {
+        return jsonResponse({ error: "Vendor verification failed — invalid credentials." }, 401);
+      }
+    } catch (e) {
+      return jsonResponse({ error: "Vendor verification error: " + e.message }, 503);
+    }
+  }
+
+  // Step 3 — create session
   const sessionId = randomId();
   const ip        = request.headers.get("CF-Connecting-IP") || null;
 
@@ -119,11 +156,10 @@ async function handleLogin(request, env) {
     "INSERT INTO sessions (id, user_id, created_at, expires_at, ip) VALUES (?, ?, ?, ?, ?)"
   ).bind(sessionId, user.id, nowIso(), expiresIso(), ip).run();
 
-  // Log activity
-  await logActivity(env, user.id, "auth", "login", null, ip);
+  await logActivity(env, user.id, "auth", "login", "login_type:" + (user.login_type || "db_only"), ip);
 
   const response = jsonResponse({
-    ok:        true,
+    ok:   true,
     user: {
       id:        user.id,
       username:  user.username,
@@ -132,6 +168,7 @@ async function handleLogin(request, env) {
       email:     user.email,
       role:      user.role_name,
       roleId:    user.role_id,
+      loginType: user.login_type || "db_only",
     },
   });
 
@@ -231,9 +268,11 @@ async function handleCreateUser(request, env) {
 
   const hash = await sha256(password);
 
+  const loginType = ["db_only","db_vendor"].includes(body.loginType) ? body.loginType : "db_only";
+
   await env.DB.prepare(
-    "INSERT INTO users (username, password_hash, first_name, last_name, email, role_id, status, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).bind(username, hash, firstName, lastName, email || null, roleId, status, auth.session.user_id, nowIso(), nowIso()).run();
+    "INSERT INTO users (username, password_hash, first_name, last_name, email, role_id, status, login_type, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(username, hash, firstName, lastName, email || null, roleId, status, loginType, auth.session.user_id, nowIso(), nowIso()).run();
 
   await logActivity(env, auth.session.user_id, "admin", "create-user", `Created user: ${username}`, null);
 
@@ -251,14 +290,35 @@ async function handleUpdateUser(request, env, userId) {
   const body      = await safeJson(request);
   const firstName = String(body.firstName || "").trim();
   const lastName  = String(body.lastName  || "").trim();
+  const username  = String(body.username  || "").trim().toLowerCase();
   const email     = String(body.email     || "").trim();
-  const roleId    = parseInt(body.roleId) || 3;
+  const roleId    = parseInt(body.roleId, 10);
   const status    = body.status === "inactive" ? "inactive" : "active";
 
-  let sql    = "UPDATE users SET first_name=?, last_name=?, email=?, role_id=?, status=?, updated_at=?";
-  let params = [firstName, lastName, email || null, roleId, status, nowIso()];
+  // Validate
+  if (!firstName || !lastName || !username) {
+    return jsonResponse({ error: "First name, last name and username are required." }, 400);
+  }
+  if (isNaN(roleId) || roleId < 1) {
+    return jsonResponse({ error: "Invalid role." }, 400);
+  }
 
-  if (body.password) {
+  // Check username not taken by another user
+  const existing = await env.DB.prepare(
+    "SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND id != ?"
+  ).bind(username, userId).first();
+  if (existing) return jsonResponse({ error: "Username '" + username + "' is already taken by another user." }, 409);
+
+  // Debug — return what we are about to update
+  const debugInfo = { userId, firstName, lastName, username, email, roleId, status };
+
+  const loginType = ["db_only","db_vendor"].includes(body.loginType) ? body.loginType : "db_only";
+  let sql    = "UPDATE users SET first_name=?, last_name=?, username=?, email=?, role_id=?, status=?, login_type=?, updated_at=?";
+  let params = [firstName, lastName, username, email || null, roleId, status, loginType, nowIso()];
+  
+  console.log("[Worker] UPDATE params:", JSON.stringify({ sql, params, userId }));
+
+  if (body.password && String(body.password).trim()) {
     const hash = await sha256(String(body.password).trim());
     sql    += ", password_hash=?";
     params.push(hash);
@@ -268,9 +328,14 @@ async function handleUpdateUser(request, env, userId) {
   params.push(userId);
 
   await env.DB.prepare(sql).bind(...params).run();
-  await logActivity(env, auth.session.user_id, "admin", "update-user", `Updated user id: ${userId}`, null);
+  await logActivity(env, auth.session.user_id, "admin", "update-user", `Updated user id: ${userId} (${username})`, null);
 
-  return jsonResponse({ ok: true });
+  // Return updated user for confirmation
+  const updated = await env.DB.prepare(
+    "SELECT id, username, first_name, last_name, role_id, status, updated_at FROM users WHERE id = ?"
+  ).bind(userId).first();
+
+  return jsonResponse({ ok: true, user: updated, debug: debugInfo, params: params });
 }
 
 // DELETE /api/admin/users/:id
@@ -403,24 +468,130 @@ async function handleTelematicsProxy(request, env, path) {
     return jsonResponse({ error: "Telematics API key not configured." }, 503);
   }
 
-  const url      = new URL(request.url);
-  const upstream = `https://api-au.telematics.com${path}?key=${env.TN360_API_KEY}&${url.searchParams.toString()}`;
+  const url = new URL(request.url);
 
-  const res = await fetch(upstream, { method: request.method });
+  // Check if caller supplied a session token — try header first, then query param
+  const sessionToken = request.headers.get("X-TN360-Token") || 
+                       request.headers.get("x-tn360-token") ||
+                       url.searchParams.get("_token") || null;
+
+  console.log("[Worker] sessionToken present:", !!sessionToken, sessionToken ? sessionToken.slice(0,8) + "..." : "none");
+  
+  // Remove _token from params so it doesn't get forwarded
+  url.searchParams.delete("_token");
+
+  // Build upstream URL — session token endpoints don't use API key query param
+  const upstream = sessionToken
+    ? `https://api-au.telematics.com${path}?${url.searchParams.toString()}`
+    : `https://api-au.telematics.com${path}?key=${env.TN360_API_KEY}&${url.searchParams.toString()}`;
+
+  console.log("[Worker] upstream:", upstream.slice(0, 80));
+
+  // Build fetch options
+  const authHeader = sessionToken
+    ? `Token token="${sessionToken}"`
+    : null;
+
+  const fetchOpts = {
+    method: request.method,
+    headers: authHeader
+      ? { "Authorization": authHeader, "Content-Type": "application/json" }
+      : { "Content-Type": "application/json" },
+  };
+
+  console.log("[Worker] auth header:", authHeader ? authHeader.slice(0,20) + "..." : "none");
+
+  if (request.method === "POST" || request.method === "PUT") {
+    const body = await request.text();
+    if (body) fetchOpts.body = body;
+  }
+
+  const res = await fetch(upstream, fetchOpts);
   if (!res.ok) return jsonResponse({ error: `Upstream error: HTTP ${res.status}` }, 502);
 
-  const data = await res.json();
-  return jsonResponse(data);
+  const text = await res.text();
+  if (!text) return jsonResponse({ ok: true, status: res.status });
+
+  try {
+    const data = JSON.parse(text);
+    return jsonResponse(data);
+  } catch(e) {
+    return jsonResponse({ ok: true, raw: text });
+  }
 }
 
 // ── Image proxy ───────────────────────────────────────────────────────────────
+
+
+// ── Registry: API Definitions ─────────────────────────────────────────────────
+
+async function handleRegistryGetApis(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const url   = new URL(request.url);
+  const all   = url.searchParams.get("all") === "1";
+  const query = all
+    ? "SELECT * FROM registry_apis ORDER BY api_id"
+    : "SELECT * FROM registry_apis WHERE active = 1 ORDER BY api_id";
+  const rows  = await env.DB.prepare(query).all();
+  const apis  = (rows.results || []).map(function(r) {
+    return {
+      apiId:          r.api_id,
+      label:          r.label,
+      group:          r.group_name,
+      method:         r.method,
+      url:            r.url,
+      notes:          r.notes,
+      vendor:         r.vendor,
+      sampleResponse: r.sample_response,
+      fields:         r.fields ? JSON.parse(r.fields) : [],
+      active:         r.active === 1,
+    };
+  });
+  return jsonResponse({ apis });
+}
+
+async function handleRegistryCreateApi(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const body = await safeJson(request);
+  await env.DB.prepare(
+    "INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, vendor, sample_response, fields, active, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+  ).bind(body.apiId, body.label, body.group, body.method, body.url, body.notes||null, body.vendor||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), 1, nowIso()).run();
+  return jsonResponse({ ok: true });
+}
+
+async function handleRegistryUpdateApi(request, env, apiId) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const body = await safeJson(request);
+  const active = body.active === false ? 0 : 1;
+  await env.DB.prepare(
+    "INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, vendor, sample_response, fields, active, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+  ).bind(apiId, body.label, body.group, body.method, body.url, body.notes||null, body.vendor||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), active, nowIso()).run();
+  return jsonResponse({ ok: true });
+}
+
+async function handleRegistryDeleteApi(request, env, apiId) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  await env.DB.prepare("DELETE FROM registry_apis WHERE api_id = ?").bind(apiId).run();
+  return jsonResponse({ ok: true });
+}
 
 async function handleImageProxy(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
 
-  const body     = await safeJson(request);
-  const imageUrl = String(body.url || "").trim();
+  // Support both GET ?url=... and POST {url:...}
+  let imageUrl = "";
+  if (request.method === "GET") {
+    const reqUrl = new URL(request.url);
+    imageUrl = decodeURIComponent(reqUrl.searchParams.get("url") || "").trim();
+  } else {
+    const body = await safeJson(request);
+    imageUrl = String(body.url || "").trim();
+  }
   if (!imageUrl) return jsonResponse({ error: "url is required." }, 400);
 
   let parsed;
@@ -440,6 +611,79 @@ async function handleImageProxy(request, env) {
     status:  200,
     headers: { "Content-Type": contentType, "Cache-Control": "private, max-age=300" },
   });
+}
+
+// ── Send email via Power Automate ──────────────────────────────────────────────
+
+async function handleSendEmail(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  if (!env.POWER_AUTOMATE_WEBHOOK_URL) {
+    return jsonResponse({ error: "Email webhook not configured." }, 503);
+  }
+
+  const body     = await safeJson(request);
+  const to       = String(body.to || "").trim();
+  const cc       = String(body.cc || "").trim();
+  const subject  = String(body.subject || "").trim();
+  const htmlBody = String(body.htmlBody || "").trim();
+
+  if (!to || !subject || !htmlBody) {
+    return jsonResponse({ error: "to, subject and htmlBody are required." }, 400);
+  }
+
+  try {
+    const res = await fetch(env.POWER_AUTOMATE_WEBHOOK_URL, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ to, cc, subject, htmlBody }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      return jsonResponse({ error: `Power Automate error: HTTP ${res.status}`, detail: text.slice(0,300) }, 502);
+    }
+
+    await logActivity(env, auth.session.user_id, "email", "send", `To: ${to} | Subject: ${subject}`, null);
+
+    return jsonResponse({ ok: true });
+  } catch(e) {
+    return jsonResponse({ error: e.message }, 502);
+  }
+}
+
+// ── Image size (HEAD request) ────────────────────────────────────────────────
+
+async function handleImageSize(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const reqUrl   = new URL(request.url);
+  const imageUrl = decodeURIComponent(reqUrl.searchParams.get("url") || "").trim();
+  if (!imageUrl) return jsonResponse({ error: "url is required." }, 400);
+
+  let parsed;
+  try { parsed = new URL(imageUrl); } catch { return jsonResponse({ error: "Invalid URL." }, 400); }
+
+  const allowedSuffixes = [".amazonaws.com", ".cloudfront.net", "telematics.com"];
+  const allowed = allowedSuffixes.some(s => parsed.hostname.endsWith(s));
+  if (!allowed) return jsonResponse({ error: "URL host not permitted." }, 403);
+
+  try {
+    const res = await fetch(imageUrl, { method: "HEAD" });
+    const size = res.headers.get("content-length");
+    const type = res.headers.get("content-type");
+    return jsonResponse({
+      ok:          res.ok,
+      status:      res.status,
+      sizeBytes:   size ? parseInt(size) : null,
+      sizeKb:      size ? Math.round(parseInt(size) / 1024) : null,
+      contentType: type,
+    });
+  } catch(e) {
+    return jsonResponse({ error: e.message }, 502);
+  }
 }
 
 // ── Main fetch handler ────────────────────────────────────────────────────────
@@ -462,11 +706,11 @@ export default {
       if (method === "GET"    && path === "/api/admin/users")       return handleGetUsers(request, env);
       if (method === "POST"   && path === "/api/admin/users")       return handleCreateUser(request, env);
       if (method === "PUT"    && path.match(/^\/api\/admin\/users\/\d+$/)) {
-        const id = path.split("/").pop();
+        const id = parseInt(path.split("/").pop(), 10);
         return handleUpdateUser(request, env, id);
       }
       if (method === "DELETE" && path.match(/^\/api\/admin\/users\/\d+$/)) {
-        const id = path.split("/").pop();
+        const id = parseInt(path.split("/").pop(), 10);
         return handleDeleteUser(request, env, id);
       }
 
@@ -476,19 +720,51 @@ export default {
 
       // Admin — permissions
       if (method === "GET" && path.match(/^\/api\/admin\/permissions\/\d+$/)) {
-        const roleId = path.split("/").pop();
+        const roleId = parseInt(path.split("/").pop(), 10);
         return handleGetPermissions(request, env, roleId);
       }
       if (method === "PUT" && path.match(/^\/api\/admin\/permissions\/\d+$/)) {
-        const roleId = path.split("/").pop();
+        const roleId = parseInt(path.split("/").pop(), 10);
         return handleUpdatePermissions(request, env, roleId);
       }
 
       // Admin — activity log
       if (method === "GET" && path === "/api/admin/activity") return handleGetActivity(request, env);
 
+      // Camera history
+      if (method === "GET" && path.startsWith("/api/camera-history/")) {
+        const vid = path.split('/').pop();
+        const rows = await env.DB.prepare(
+          "SELECT * FROM camera_history WHERE vehicle_id = ? ORDER BY captured_at DESC LIMIT 30"
+        ).bind(vid).all();
+        return jsonResponse(rows.results || []);
+      }
+
+      if (method === "POST" && path.startsWith("/api/camera-history/")) {
+        const auth = await requireSession(request, env);
+        if (!auth.ok) return auth.response;
+        const vid  = path.split('/').pop();
+        const body = await safeJson(request);
+        if (!body.eventId || !body.capturedAt) return jsonResponse({ error: "eventId and capturedAt required" }, 400);
+        await env.DB.prepare(
+          "INSERT OR IGNORE INTO camera_history (vehicle_id, event_id, captured_at, snapshot_data) VALUES (?,?,?,?)"
+        ).bind(vid, body.eventId, body.capturedAt, body.snapshotData || null).run();
+        await env.DB.prepare(
+          "DELETE FROM camera_history WHERE vehicle_id = ? AND id NOT IN (SELECT id FROM camera_history WHERE vehicle_id = ? ORDER BY captured_at DESC LIMIT 30)"
+        ).bind(vid, vid).run();
+        return jsonResponse({ ok: true });
+      }
+
+      // Registry
+      if (method === "GET"    && path === "/api/registry/apis")                              return handleRegistryGetApis(request, env);
+      if (method === "POST"   && path === "/api/registry/apis")                              return handleRegistryCreateApi(request, env);
+      if (method === "PUT"    && path.match(/^\/api\/registry\/apis\//))                  return handleRegistryUpdateApi(request, env, decodeURIComponent(path.split("/").pop()));
+      if (method === "DELETE" && path.match(/^\/api\/registry\/apis\//))                  return handleRegistryDeleteApi(request, env, decodeURIComponent(path.split("/").pop()));
+
       // Image proxy
-      if (method === "POST" && path === "/api/image-proxy") return handleImageProxy(request, env);
+      if (path === "/api/image-proxy") return handleImageProxy(request, env);
+      if (path === "/api/image-size") return handleImageSize(request, env);
+      if (method === "POST" && path === "/api/send-email") return handleSendEmail(request, env);
 
       // Telematics proxy — forward /api/tn360/* to telematics API
       if (path.startsWith("/api/tn360/")) {
@@ -503,6 +779,16 @@ export default {
     }
 
     // ── Static assets ───────────────────────────────────────────────────────
-    return env.ASSETS.fetch(request);
+    try {
+      if (env.ASSETS) {
+        const assetRes = await env.ASSETS.fetch(request);
+        if (assetRes.status !== 404) return assetRes;
+        // Return 404 for missing assets instead of crashing
+        return new Response('Not found', { status: 404 });
+      }
+      return new Response('Not found', { status: 404 });
+    } catch (e) {
+      return new Response('Asset error: ' + e.message, { status: 500 });
+    }
   },
 };

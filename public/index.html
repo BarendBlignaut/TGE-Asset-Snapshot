@@ -403,7 +403,24 @@
     .view { display: none; }
     .view.active { display: block; }
 
-    /* ── ANIMATIONS ────────────────────────────── */
+    /* ── PERMISSION TOGGLES ───────────────────── */
+    .perm-toggle {
+      width: 40px; height: 22px; border-radius: 999px;
+      background: var(--line); position: relative;
+      cursor: pointer; transition: background 200ms;
+      flex-shrink: 0;
+    }
+    .perm-toggle.on { background: var(--green-600); }
+    .perm-toggle-knob {
+      width: 16px; height: 16px; border-radius: 50%;
+      background: #fff; position: absolute;
+      top: 3px; left: 3px;
+      transition: transform 200ms;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .perm-toggle.on .perm-toggle-knob { transform: translateX(18px); }
+
+    /* ── ANIMATIONS ───────────────────────────── */
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(8px); }
       to   { opacity: 1; transform: translateY(0); }
@@ -495,6 +512,14 @@
             <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12l4-4 4 4 6-7"/><path d="M17 5h-4v4"/></svg>
             VPM Analysis
           </button>
+          <button class="nav-item" id="nav-merge-mail" type="button" data-view="merge-mail" data-group="operations" data-title="Merge Mail">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 5l8 6 8-6M2 5v10h16V5"/></svg>
+            Merge Mail
+          </button>
+          <button class="nav-item" id="nav-utilisation" type="button" data-view="utilisation" data-group="operations" data-title="Fleet Utilisation">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="10" width="3" height="8" rx="1"/><rect x="7" y="6" width="3" height="12" rx="1"/><rect x="12" y="3" width="3" height="15" rx="1"/><rect x="17" y="7" width="1" height="11" rx="1"/></svg>
+            Fleet Utilisation
+          </button>
         </div>
 
         <!-- CAMERA -->
@@ -509,6 +534,10 @@
           <button class="nav-item" id="nav-camera-snapshots" type="button" data-view="camera-snapshots" data-group="camera" data-title="Camera Snapshots">
             <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 7a2 2 0 012-2h1l1.5-2h5L13 5h1a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V7z"/><circle cx="10" cy="10.5" r="2.5"/></svg>
             Camera Snapshots
+          </button>
+          <button class="nav-item" id="nav-camera-count" type="button" data-view="camera-count" data-group="camera" data-title="Camera Count">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="16" height="16" rx="2"/><path d="M6 10h8M10 6v8"/></svg>
+            Camera Count
           </button>
           <button class="nav-item" id="nav-sd-health" type="button" data-view="sd-health" data-group="camera" data-title="SD Card Health">
             <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="16" height="16" rx="3"/><path d="M6 2v8M10 2v8M14 2v8"/><circle cx="6" cy="14" r="1" fill="currentColor"/><circle cx="10" cy="14" r="1" fill="currentColor"/></svg>
@@ -528,6 +557,14 @@
           <button class="nav-item" id="nav-admin" type="button" data-view="admin" data-group="management" data-title="Admin">
             <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="7" r="3"/><path d="M3 17c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>
             Admin
+          </button>
+          <button class="nav-item" id="nav-roles" type="button" data-view="roles" data-group="management" data-title="Roles">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M2 7h16"/><path d="M7 7v10"/></svg>
+            Roles
+          </button>
+          <button class="nav-item" id="nav-api" type="button" data-view="api" data-group="management" data-title="API Registry">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 9l-2 2 2 2M16 9l2 2-2 2M12 5l-4 10"/></svg>
+            API Registry
           </button>
         </div>
 
@@ -570,6 +607,10 @@
           <!-- Populated by new-request.js -->
         </div>
 
+        <div class="view" id="view-merge-mail">
+          <!-- Populated by merge-mail.js -->
+        </div>
+
         <div class="view active" id="view-snapshot">
           <!-- Populated by snapshot.js -->
         </div>
@@ -582,8 +623,16 @@
           <!-- Populated by vpm.js -->
         </div>
 
+        <div class="view" id="view-utilisation">
+          <!-- Populated by utilisation.js -->
+        </div>
+
         <div class="view" id="view-camera-snapshots">
           <!-- Populated by camera.js -->
+        </div>
+
+        <div class="view" id="view-camera-count">
+          <!-- Populated by camera-count.js -->
         </div>
 
         <div class="view" id="view-sd-health">
@@ -594,18 +643,34 @@
           <!-- Populated by admin.js -->
         </div>
 
+        <div class="view" id="view-roles">
+          <!-- Populated by roles.js -->
+        </div>
+
+        <div class="view" id="view-api">
+          <!-- Populated by api.js -->
+        </div>
+
       </div>
     </main>
 
   </div><!-- /shell -->
 
   <!-- Scripts — core first, then page modules -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
   <script src="./app.js" defer></script>
+  <script src="./email-composer.js" defer></script>
   <script src="./snapshot.js" defer></script>
   <script src="./asset-track.js" defer></script>
   <script src="./vpm.js" defer></script>
   <script src="./camera.js" defer></script>
   <script src="./admin.js" defer></script>
+  <script src="./utilisation.js" defer></script>
+  <script src="./camera-snapshots.js" defer></script>
+  <script src="./camera-count.js" defer></script>
+  <script src="./merge-mail.js" defer></script>
+  <script src="./roles.js" defer></script>
+  <script src="./api.js" defer></script>
 
 </body>
 </html>
