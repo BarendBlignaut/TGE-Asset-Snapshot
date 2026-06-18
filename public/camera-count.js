@@ -13,9 +13,9 @@
   ];
 
   var state = {
-    running:  false,
-    mode:     'user',
-    results:  [], // { vehicle, camera, slots: [{label, sizeBytes, sizeKb}] }
+    running: false,
+    mode:    'user',
+    results: [],   // { vehicle, camera, lastComms, slots: [{label, hasImage, url, status}] }
   };
 
   var userLimit = 500;
@@ -36,7 +36,7 @@
       '<div class="hero">',
         '<div class="hero-kicker">Camera</div>',
         '<div class="hero-title">Camera Count</div>',
-        '<div class="hero-sub">Audit camera health across the fleet by image file size.</div>',
+        '<div class="hero-sub">Review camera images and mark each as working or not working.</div>',
         '<div class="hero-bar">',
           '<div class="hero-bar-left">',
             canUser  ? '<button class="hero-mode-btn' + (state.mode==='user'?' active':'') + '" id="cc-mode-user">User Mode</button>' : '',
@@ -65,58 +65,25 @@
         '<p id="cc-imei-count" style="font-size:12px;color:var(--muted);margin-top:6px;">0 IMEIs entered</p>',
       '</div>',
 
-      // Notice banner
-      '<div class="card" style="background:var(--green-50);border-color:var(--green-600);">',
-        '<div style="display:flex;align-items:center;gap:10px;">',
-          '<span style="font-size:20px;">🔬</span>',
-          '<div>',
-            '<div style="font-size:12px;font-weight:700;color:var(--green-700);">Trial Run Mode</div>',
-            '<div style="font-size:12px;color:var(--muted);">Showing raw image sizes — no thresholds applied yet. Review the data to define Good / Bad / Missing size boundaries.</div>',
-          '</div>',
-        '</div>',
-      '</div>',
-
       // Empty state
       '<div id="cc-empty" class="card" style="text-align:center;padding:48px 20px;">',
-        '<div style="font-size:40px;margin-bottom:12px;opacity:0.3;">📊</div>',
+        '<div style="font-size:40px;margin-bottom:12px;opacity:0.3;">📋</div>',
         '<div style="font-size:14px;font-weight:600;color:var(--ink);margin-bottom:6px;">No data loaded</div>',
-        '<p style="font-size:13px;color:var(--muted);margin:0;">Select a mode and click Run to audit camera sizes.</p>',
+        '<p style="font-size:13px;color:var(--muted);margin:0;">Select a mode and click Run to review camera health.</p>',
       '</div>',
 
-      // Summary bar (shown after run)
+      // Summary bar
       '<div id="cc-summary" style="display:none;" class="card">',
         '<div class="data-grid data-grid-4">',
           '<div class="data-item"><span>Total Assets</span><strong id="cc-sum-assets">—</strong></div>',
-          '<div class="data-item"><span>Total Cameras</span><strong id="cc-sum-cameras">—</strong></div>',
-          '<div class="data-item"><span>With Images</span><strong id="cc-sum-with">—</strong></div>',
-          '<div class="data-item"><span>No Image</span><strong id="cc-sum-without">—</strong></div>',
+          '<div class="data-item"><span>Total Camera Slots</span><strong id="cc-sum-slots">—</strong></div>',
+          '<div class="data-item"><span>Marked Working</span><strong id="cc-sum-working" style="color:var(--green-600);">—</strong></div>',
+          '<div class="data-item"><span>Marked Not Working</span><strong id="cc-sum-broken" style="color:var(--danger);">—</strong></div>',
         '</div>',
       '</div>',
 
-      // Results table
-      '<div id="cc-results" style="display:none;">',
-        '<div class="card" style="padding:0;overflow:hidden;">',
-          '<div style="overflow-x:auto;">',
-            '<table style="width:100%;border-collapse:collapse;min-width:900px;">',
-              '<thead>',
-                '<tr style="background:var(--surface-2);border-bottom:2px solid var(--line);">',
-                  '<th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);white-space:nowrap;">Legacy No</th>',
-                  '<th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);">IMEI</th>',
-                  '<th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);">Model</th>',
-                  '<th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);">Road</th>',
-                  '<th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);">Driver</th>',
-                  '<th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);">In-Cab</th>',
-                  '<th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);">R.Ext</th>',
-                  '<th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);">L.Ext</th>',
-                  '<th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);">Active</th>',
-                  '<th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);">Captured</th>',
-                '</tr>',
-              '</thead>',
-              '<tbody id="cc-tbody"></tbody>',
-            '</table>',
-          '</div>',
-        '</div>',
-      '</div>',
+      // Results — card per asset (not table, since images need room)
+      '<div id="cc-results" style="display:none;display:flex;flex-direction:column;gap:14px;"></div>',
 
     ].join('');
 
@@ -126,12 +93,10 @@
   // ── Wire events ───────────────────────────────────────────────────────────────
   function wireEvents() {
     TGE.on('cc-run-btn', 'click', runCount);
-
     var userBtn  = TGE.el('cc-mode-user');
     var fleetBtn = TGE.el('cc-mode-fleet');
     if (userBtn)  userBtn.onclick  = function() { setMode('user'); };
     if (fleetBtn) fleetBtn.onclick = function() { setMode('fleet'); };
-
     var imeiInput = TGE.el('cc-imei-input');
     if (imeiInput) imeiInput.addEventListener('input', updateImeiCount);
   }
@@ -212,12 +177,38 @@
             }).catch(function() { return null; });
         }));
         devResults.forEach(function(r) { if (r) cameraDevices.push(r); });
+
+        await Promise.all(cameraDevices.map(function(cd) {
+          if (!cd.needsVehicle) return;
+          return TGE.api('GET', '/api/tn360/v1/vehicles?pruning=B2B')
+            .then(function(r) {
+              if (!r.ok) return;
+              var vehicles = Array.isArray(r.data) ? r.data : [];
+              var v = vehicles.find(function(v) { return v.id === cd.vehicle.id; });
+              if (v) cd.vehicle = v;
+            }).catch(function(){});
+        }));
       }
 
       if (!cameraDevices.length) throw new Error('No active camera devices found.');
 
-      setMessage('Found ' + cameraDevices.length + ' camera devices — loading events...', false);
-      showResults();
+      setMessage('Found ' + cameraDevices.length + ' camera devices — loading device status...', false);
+
+      // Get device stats (for lastEventAt / last comms) — batched
+      var statsMap = {};
+      var statsDone = 0;
+      await batchRun(cameraDevices, function(cv) {
+        return TGE.api('GET', '/api/tn360/v1/devices/' + cv.camera.imei + '?pruning=B2B&embed=devicestats')
+          .then(function(r) {
+            statsDone++;
+            setMessage('Checking device status... ' + statsDone + '/' + cameraDevices.length, false);
+            if (r.ok && r.data && r.data.deviceStats) {
+              statsMap[cv.camera.imei] = r.data.deviceStats.lastEventAt || null;
+            }
+          }).catch(function(){});
+      }, 5, 300);
+
+      setMessage('Loading camera events...', false);
 
       // Get events for all camera vehicles
       var snapshotMap = {};
@@ -236,12 +227,10 @@
           }).catch(function(){});
       }, 5, 500);
 
-      // Now get image sizes for each device
-      setMessage('Checking image sizes...', false);
-      var sizesDone = 0;
-      await batchRun(cameraDevices, function(cv) {
-        var snap = snapshotMap[cv.vehicle.id];
-        var cam  = cv.camera;
+      // Build results
+      state.results = cameraDevices.map(function(cv) {
+        var snap  = snapshotMap[cv.vehicle.id];
+        var cam   = cv.camera;
         var slots = cam.model && cam.model.name === 'MultiIQ' ? 5 : 2;
         var mediaFiles = [];
 
@@ -253,8 +242,7 @@
         }
 
         var activeSlots = CAMERA_SLOTS.slice(0, slots);
-
-        return Promise.all(activeSlots.map(function(slot) {
+        var slotData = activeSlots.map(function(slot) {
           var file = null;
           if (slot.source === 'MDVR') {
             file = mediaFiles.find(function(f) {
@@ -265,31 +253,19 @@
           } else {
             file = mediaFiles.find(function(f) { return f.source === slot.source && f.status === 'FINISHED'; });
           }
-
-          if (!file || !file.mediaFile) {
-            return { label: slot.label, sizeBytes: null, sizeKb: null, url: null };
-          }
-
-          return TGE.api('GET', '/api/image-size?url=' + encodeURIComponent(file.mediaFile))
-            .then(function(r) {
-              if (!r.ok || !r.data) return { label: slot.label, sizeBytes: null, sizeKb: null, url: file.mediaFile };
-              return { label: slot.label, sizeBytes: r.data.sizeBytes, sizeKb: r.data.sizeKb, url: file.mediaFile };
-            }).catch(function() {
-              return { label: slot.label, sizeBytes: null, sizeKb: null, url: null };
-            });
-        })).then(function(slotSizes) {
-          sizesDone++;
-          setMessage('Checking sizes... ' + sizesDone + '/' + cameraDevices.length, false);
-          state.results.push({
-            vehicle:     cv.vehicle,
-            camera:      cv.camera,
-            capturedAt:  snap ? snap.timeAt : null,
-            slots:       slotSizes,
-          });
-          renderRows();
+          return { label: slot.label, hasImage: !!(file && file.mediaFile), url: file ? file.mediaFile : null, status: null };
         });
-      }, 3, 300);
 
+        return {
+          vehicle:    cv.vehicle,
+          camera:     cam,
+          lastComms:  statsMap[cam.imei] || null,
+          capturedAt: snap ? snap.timeAt : null,
+          slots:      slotData,
+        };
+      });
+
+      renderResults();
       updateSummary();
       setMessage('');
       activateExports();
@@ -302,75 +278,94 @@
     }
   }
 
-  // ── Render rows ───────────────────────────────────────────────────────────────
-  function renderRows() {
-    var tbody = TGE.el('cc-tbody');
-    if (!tbody) return;
+  // ── Render results as cards ───────────────────────────────────────────────────
+  function renderResults() {
+    TGE.hide('cc-empty');
+    var container = TGE.el('cc-results');
+    if (!container) return;
+    container.style.display = 'flex';
 
-    tbody.innerHTML = state.results.map(function(r) {
-      var cam      = r.camera;
+    container.innerHTML = state.results.map(function(r, idx) {
       var v        = r.vehicle;
-      var slots    = cam.model && cam.model.name === 'MultiIQ' ? 5 : 2;
+      var cam      = r.camera;
       var camModel = cam.model && cam.model.name ? cam.model.name : '—';
-      var active   = 0;
+      var slots    = cam.model && cam.model.name === 'MultiIQ' ? 5 : 2;
 
-      var slotCells = CAMERA_SLOTS.map(function(slot, idx) {
-        if (idx >= slots) {
-          return '<td style="padding:8px;text-align:center;font-size:11px;color:var(--muted-2);">—</td>';
-        }
-        var s = r.slots[idx] || {};
-        if (!s.sizeKb && s.sizeKb !== 0) {
-          return '<td style="padding:8px;text-align:center;">' +
-            '<span style="font-size:11px;color:var(--muted);">No image</span>' +
-          '</td>';
-        }
-        active++;
-        var kb    = s.sizeKb;
-        var label = kb >= 1000 ? (kb/1024).toFixed(1) + ' MB' : kb + ' KB';
-        return '<td style="padding:8px;text-align:center;">' +
-          '<div style="font-size:12px;font-weight:600;color:var(--ink);">' + label + '</div>' +
-          '<div style="font-size:10px;color:var(--muted);">' + slot.label + '</div>' +
-        '</td>';
+      var lastCommsText = r.lastComms ? formatTs(r.lastComms) : 'Unknown';
+      var lastCommsAge   = r.lastComms ? daysAgo(r.lastComms) : null;
+      var lastCommsColor = lastCommsAge === null ? 'var(--muted)' : lastCommsAge > 7 ? 'var(--danger)' : lastCommsAge > 2 ? 'var(--warning)' : 'var(--green-600)';
+
+      var slotCells = r.slots.map(function(slot, slotIdx) {
+        var imgHtml = slot.hasImage
+          ? '<img src="/api/image-proxy?url=' + encodeURIComponent(slot.url) + '" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;border:1px solid var(--line);display:block;" alt="' + slot.label + '" onerror="this.style.opacity=0.3" />'
+          : '<div style="aspect-ratio:4/3;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;display:flex;align-items:center;justify-content:center;"><span style="font-size:11px;color:var(--muted);text-align:center;padding:4px;">No image<br>this run</span></div>';
+
+        return '<div style="flex:1;min-width:0;">' +
+          imgHtml +
+          '<div style="font-size:11px;font-weight:600;color:var(--ink-2);text-align:center;margin-top:4px;">' + slot.label + '</div>' +
+          '<div style="display:flex;gap:4px;justify-content:center;margin-top:4px;">' +
+            '<button class="cc-toggle-btn" data-row="' + idx + '" data-slot="' + slotIdx + '" data-val="working" style="flex:1;padding:4px;border-radius:5px;border:1px solid var(--line);background:transparent;cursor:pointer;font-size:11px;">✅</button>' +
+            '<button class="cc-toggle-btn" data-row="' + idx + '" data-slot="' + slotIdx + '" data-val="not_working" style="flex:1;padding:4px;border-radius:5px;border:1px solid var(--line);background:transparent;cursor:pointer;font-size:11px;">❌</button>' +
+          '</div>' +
+        '</div>';
       }).join('');
 
-      var capturedAt = r.capturedAt ? formatTs(r.capturedAt) : '<span style="color:var(--muted);">No snapshot</span>';
-
-      return '<tr style="border-bottom:1px solid var(--line-2);" ' +
-        'onmouseover="this.style.background=\'var(--surface-2)\'" ' +
-        'onmouseout="this.style.background=\'\'">' +
-        '<td style="padding:8px 12px;font-weight:700;font-size:13px;white-space:nowrap;">' + (v.name || '—') + '</td>' +
-        '<td style="padding:8px 12px;font-size:11px;font-family:monospace;color:var(--muted);">' + (cam.imei || cam.name || '—') + '</td>' +
-        '<td style="padding:8px 12px;font-size:12px;">' + camModel + '</td>' +
-        slotCells +
-        '<td style="padding:8px;text-align:center;">' +
-          '<strong style="font-size:13px;color:' + (active === slots ? 'var(--green-600)' : active === 0 ? 'var(--danger)' : 'var(--warning)') + ';">' + active + '/' + slots + '</strong>' +
-        '</td>' +
-        '<td style="padding:8px 12px;font-size:11px;white-space:nowrap;">' + capturedAt + '</td>' +
-      '</tr>';
+      return '<div class="card" data-row="' + idx + '">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">' +
+          '<div>' +
+            '<div style="font-size:14px;font-weight:700;">' + (v.name || '—') + ' <span style="font-size:11px;font-weight:400;color:var(--muted);">— ' + camModel + ' (' + slots + ' slots)</span></div>' +
+            '<div style="font-size:11px;color:var(--muted);font-family:monospace;">' + (cam.imei || cam.name || '—') + '</div>' +
+          '</div>' +
+          '<div style="text-align:right;">' +
+            '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Last Comms</div>' +
+            '<div style="font-size:12px;font-weight:600;color:' + lastCommsColor + ';">' + lastCommsText + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:10px;">' + slotCells + '</div>' +
+      '</div>';
     }).join('');
+
+    // Wire toggle buttons
+    container.querySelectorAll('.cc-toggle-btn').forEach(function(btn) {
+      btn.onclick = function() {
+        var row  = parseInt(btn.dataset.row, 10);
+        var slot = parseInt(btn.dataset.slot, 10);
+        var val  = btn.dataset.val;
+        state.results[row].slots[slot].status = val;
+
+        // Update button styles in this slot group
+        var group = btn.parentElement;
+        group.querySelectorAll('.cc-toggle-btn').forEach(function(b) {
+          var active = b.dataset.val === val;
+          b.style.background = active ? (val === 'working' ? 'var(--green-100)' : 'var(--danger-100,#fee2e2)') : 'transparent';
+          b.style.borderColor = active ? (val === 'working' ? 'var(--green-600)' : 'var(--danger)') : 'var(--line)';
+        });
+
+        updateSummary();
+      };
+    });
   }
 
   function updateSummary() {
-    var totalAssets  = state.results.length;
-    var totalCams    = 0;
-    var withImages   = 0;
-    var withoutImages = 0;
+    var totalAssets = state.results.length;
+    var totalSlots  = 0;
+    var working     = 0;
+    var notWorking  = 0;
 
     state.results.forEach(function(r) {
-      var slots = r.camera.model && r.camera.model.name === 'MultiIQ' ? 5 : 2;
-      totalCams += slots;
       r.slots.forEach(function(s) {
-        if (s && s.sizeKb) withImages++;
-        else withoutImages++;
+        totalSlots++;
+        if (s.status === 'working') working++;
+        if (s.status === 'not_working') notWorking++;
       });
     });
 
     var sumEl = TGE.el('cc-summary');
     if (sumEl) sumEl.style.display = '';
-    setText('cc-sum-assets',   totalAssets);
-    setText('cc-sum-cameras',  totalCams);
-    setText('cc-sum-with',     withImages);
-    setText('cc-sum-without',  withoutImages);
+    setText('cc-sum-assets',  totalAssets);
+    setText('cc-sum-slots',   totalSlots);
+    setText('cc-sum-working', working);
+    setText('cc-sum-broken',  notWorking);
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -386,11 +381,6 @@
   }
 
   function delay(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
-
-  function showResults() {
-    TGE.hide('cc-empty');
-    TGE.show('cc-results');
-  }
 
   function setMessage(msg, isError) {
     var el = TGE.el('cc-message');
@@ -419,6 +409,13 @@
     } catch(e) { return ts; }
   }
 
+  function daysAgo(ts) {
+    try {
+      var diff = Date.now() - new Date(ts).getTime();
+      return Math.floor(diff / (1000*60*60*24));
+    } catch(e) { return null; }
+  }
+
   function activateExports() {
     ['cc-pdf-btn','cc-email-btn','cc-csv-btn','cc-xlsx-btn','cc-json-btn'].forEach(function(id) {
       var el = TGE.el(id); if (el) el.classList.add('active');
@@ -435,6 +432,12 @@
     if (emailBtn) emailBtn.onclick = function() { alert('Email PDF — coming soon.'); };
   }
 
+  function statusGlyph(s) {
+    if (s === 'working') return 'Working';
+    if (s === 'not_working') return 'Not Working';
+    return 'Not Reviewed';
+  }
+
   function exportJson() {
     if (!state.results.length) return;
     var json = JSON.stringify(state.results, null, 2);
@@ -446,23 +449,21 @@
 
   function exportCsv() {
     if (!state.results.length) return;
-    var rows = [['Legacy No','IMEI','Camera Model','Vehicle Type','Road (KB)','Driver (KB)','In-Cab (KB)','R.Ext (KB)','L.Ext (KB)','Active Cameras','Total Slots','Captured']];
+    var rows = [['Legacy No','IMEI','Camera Model','Last Comms','Road','Driver','In-Cab','R.Ext','L.Ext','Reviewed By','Date']];
+    var user = (TGE.state && TGE.state.user) ? (TGE.state.user.firstName + ' ' + TGE.state.user.lastName) : '';
     state.results.forEach(function(r) {
-      var slots = r.camera.model && r.camera.model.name === 'MultiIQ' ? 5 : 2;
-      var slotSizes = CAMERA_SLOTS.slice(0, 5).map(function(s, i) {
-        if (i >= slots) return '—';
-        var slot = r.slots[i];
-        return slot && slot.sizeKb ? slot.sizeKb : 'No image';
+      var slots = CAMERA_SLOTS.map(function(_, i) {
+        var s = r.slots[i];
+        return s ? statusGlyph(s.status) : '—';
       });
-      var active = r.slots.filter(function(s) { return s && s.sizeKb; }).length;
       rows.push([
         r.vehicle.name,
         r.camera.imei || r.camera.name,
         r.camera.model && r.camera.model.name,
-        r.vehicle.type && r.vehicle.type.name,
-        slotSizes[0], slotSizes[1], slotSizes[2], slotSizes[3], slotSizes[4],
-        active, slots,
-        r.capturedAt ? formatTs(r.capturedAt) : '',
+        r.lastComms ? formatTs(r.lastComms) : 'Unknown',
+        slots[0], slots[1], slots[2], slots[3], slots[4],
+        user,
+        new Date().toLocaleDateString('en-AU'),
       ]);
     });
     var csv = rows.map(function(r) {
