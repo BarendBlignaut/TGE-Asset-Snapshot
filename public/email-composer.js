@@ -115,7 +115,7 @@
 
         // Insert field + signature toolbar
         '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:10px;">',
-          '<span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Insert into body:</span>',
+          '<span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Insert into subject or body:</span>',
           (composerState.mode === 'individual'
             ? '<select id="ec-field-select" style="height:30px;border:1px solid var(--line);border-radius:6px;font-size:12px;padding:0 6px;background:var(--surface);color:var(--ink);">' + fieldOptions + '</select>' +
               '<button id="ec-insert-field" type="button" class="btn" style="height:30px;font-size:12px;">+ Field</button>'
@@ -180,16 +180,26 @@
       var sel = document.getElementById('ec-sig-select');
       if (sel) insertAtCursor('{signature:' + sel.value + '}');
     };
+
+    // Track which field the user is editing so Insert knows where to go
+    var subjectInput = document.getElementById('ec-subject');
+    var bodyInput     = document.getElementById('ec-body');
+    if (subjectInput) subjectInput.addEventListener('focus', function() { lastFocusedField = 'ec-subject'; });
+    if (bodyInput)     bodyInput.addEventListener('focus',     function() { lastFocusedField = 'ec-body'; });
   }
 
+  // Tracks whichever field (subject or body) the user last clicked into,
+  // so "Insert" knows where to drop the merge tag.
+  var lastFocusedField = 'ec-body';
+
   function insertAtCursor(text) {
-    var body = document.getElementById('ec-body');
-    if (!body) return;
-    var start = body.selectionStart || body.value.length;
-    var end   = body.selectionEnd || body.value.length;
-    body.value = body.value.slice(0, start) + text + body.value.slice(end);
-    body.focus();
-    body.selectionStart = body.selectionEnd = start + text.length;
+    var target = document.getElementById(lastFocusedField) || document.getElementById('ec-body');
+    if (!target) return;
+    var start = target.selectionStart != null ? target.selectionStart : target.value.length;
+    var end   = target.selectionEnd != null ? target.selectionEnd : target.value.length;
+    target.value = target.value.slice(0, start) + text + target.value.slice(end);
+    target.focus();
+    target.selectionStart = target.selectionEnd = start + text.length;
   }
 
   // ── Merge logic ───────────────────────────────────────────────────────────────
@@ -210,13 +220,42 @@
     if (!Array.isArray(imgs) || !imgs.length) return '';
     return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;">' +
       imgs.map(function(img) {
-        if (!img.url) return '';
+        // Use the signed public URL (signedUrl) if available, otherwise fall back to the raw url
+        var src = img.signedUrl || img.url;
+        if (!src) return '';
         return '<div style="flex:1;min-width:120px;max-width:160px;">' +
-          '<img src="' + img.url + '" style="width:100%;border-radius:6px;border:1px solid #e5e7eb;display:block;" />' +
+          '<img src="' + src + '" style="width:100%;border-radius:6px;border:1px solid #e5e7eb;display:block;" />' +
           '<div style="font-size:10px;color:#6b7280;text-align:center;margin-top:3px;">' + (img.label || '') + '</div>' +
         '</div>';
       }).join('') +
     '</div>';
+  }
+
+  // Signs every image URL in composerState.rows so they work in email clients
+  // without requiring a login session. Called once before sending.
+  async function signAllImages() {
+    var jobs = [];
+    composerState.rows.forEach(function(row) {
+      if (!composerState.imagesField) return;
+      var imgs = row[composerState.imagesField];
+      if (!Array.isArray(imgs)) return;
+      imgs.forEach(function(img) {
+        if (!img.url || img.signedUrl) return;
+        // Extract the actual S3/source URL from our own proxy URL if needed
+        var rawUrl = img.url;
+        var proxyMarker = '/api/image-proxy?url=';
+        var idx = rawUrl.indexOf(proxyMarker);
+        if (idx !== -1) {
+          rawUrl = decodeURIComponent(rawUrl.slice(idx + proxyMarker.length));
+        }
+        jobs.push(
+          TGE.api('POST', '/api/sign-image-url', { url: rawUrl }).then(function(r) {
+            if (r.ok && r.data && r.data.publicUrl) img.signedUrl = r.data.publicUrl;
+          }).catch(function(){})
+        );
+      });
+    });
+    if (jobs.length) await Promise.all(jobs);
   }
 
   function buildCombinedTable() {
@@ -270,6 +309,11 @@
   // ── Send ───────────────────────────────────────────────────────────────────────
   async function handleSend() {
     if (composerState.sending) return;
+
+    composerState.sending = true; // set early so sign step is also protected
+    setStatus('Preparing images...', false);
+    await signAllImages();
+    composerState.sending = false; // reset, normal flow below will re-set it
 
     var to      = (document.getElementById('ec-to')      || {}).value || '';
     var cc      = (document.getElementById('ec-cc')      || {}).value || '';
