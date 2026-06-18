@@ -613,6 +613,46 @@ async function handleImageProxy(request, env) {
   });
 }
 
+// ── Send email via Power Automate ──────────────────────────────────────────────
+
+async function handleSendEmail(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  if (!env.POWER_AUTOMATE_WEBHOOK_URL) {
+    return jsonResponse({ error: "Email webhook not configured." }, 503);
+  }
+
+  const body     = await safeJson(request);
+  const to       = String(body.to || "").trim();
+  const cc       = String(body.cc || "").trim();
+  const subject  = String(body.subject || "").trim();
+  const htmlBody = String(body.htmlBody || "").trim();
+
+  if (!to || !subject || !htmlBody) {
+    return jsonResponse({ error: "to, subject and htmlBody are required." }, 400);
+  }
+
+  try {
+    const res = await fetch(env.POWER_AUTOMATE_WEBHOOK_URL, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ to, cc, subject, htmlBody }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      return jsonResponse({ error: `Power Automate error: HTTP ${res.status}`, detail: text.slice(0,300) }, 502);
+    }
+
+    await logActivity(env, auth.session.user_id, "email", "send", `To: ${to} | Subject: ${subject}`, null);
+
+    return jsonResponse({ ok: true });
+  } catch(e) {
+    return jsonResponse({ error: e.message }, 502);
+  }
+}
+
 // ── Image size (HEAD request) ────────────────────────────────────────────────
 
 async function handleImageSize(request, env) {
@@ -724,6 +764,7 @@ export default {
       // Image proxy
       if (path === "/api/image-proxy") return handleImageProxy(request, env);
       if (path === "/api/image-size") return handleImageSize(request, env);
+      if (method === "POST" && path === "/api/send-email") return handleSendEmail(request, env);
 
       // Telematics proxy — forward /api/tn360/* to telematics API
       if (path.startsWith("/api/tn360/")) {
