@@ -468,26 +468,35 @@ async function handleTelematicsProxy(request, env, path) {
     return jsonResponse({ error: "Telematics API key not configured." }, 503);
   }
 
-  const url      = new URL(request.url);
-  const upstream = `https://api-au.telematics.com${path}?key=${env.TN360_API_KEY}&${url.searchParams.toString()}`;
+  const url = new URL(request.url);
 
-  // Forward body for POST/PUT requests
-  const fetchOpts = { method: request.method };
+  // Check if caller supplied a session token (for endpoints that need it e.g. attachments)
+  const sessionToken = request.headers.get("X-TN360-Token") || null;
+
+  // Build upstream URL — session token endpoints don't use API key query param
+  const upstream = sessionToken
+    ? `https://api-au.telematics.com${path}?${url.searchParams.toString()}`
+    : `https://api-au.telematics.com${path}?key=${env.TN360_API_KEY}&${url.searchParams.toString()}`;
+
+  // Build fetch options
+  const fetchOpts = {
+    method: request.method,
+    headers: sessionToken
+      ? { "Authorization": `Token token="${sessionToken}"`, "Content-Type": "application/json" }
+      : { "Content-Type": "application/json" },
+  };
+
   if (request.method === "POST" || request.method === "PUT") {
     const body = await request.text();
-    if (body) {
-      fetchOpts.body = body;
-      fetchOpts.headers = { "Content-Type": "application/json" };
-    }
+    if (body) fetchOpts.body = body;
   }
 
   const res = await fetch(upstream, fetchOpts);
   if (!res.ok) return jsonResponse({ error: `Upstream error: HTTP ${res.status}` }, 502);
 
-  // Handle empty responses (e.g. 204 No Content)
   const text = await res.text();
   if (!text) return jsonResponse({ ok: true, status: res.status });
-  
+
   try {
     const data = JSON.parse(text);
     return jsonResponse(data);
