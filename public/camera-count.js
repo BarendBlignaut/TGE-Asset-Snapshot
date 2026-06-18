@@ -253,7 +253,7 @@
           } else {
             file = mediaFiles.find(function(f) { return f.source === slot.source && f.status === 'FINISHED'; });
           }
-          return { label: slot.label, hasImage: !!(file && file.mediaFile), url: file ? file.mediaFile : null, status: null };
+          return { label: slot.label, hasImage: !!(file && file.mediaFile), url: file ? file.mediaFile : null, status: null, sizeKb: null };
         });
 
         return {
@@ -267,8 +267,35 @@
 
       renderResults();
       updateSummary();
-      setMessage('');
+      setMessage('Checking image sizes...', false);
       activateExports();
+
+      // Fetch image sizes in background (doesn't block display)
+      var sizeChecks = [];
+      state.results.forEach(function(r, rowIdx) {
+        r.slots.forEach(function(slot, slotIdx) {
+          if (slot.hasImage && slot.url) {
+            sizeChecks.push({ rowIdx: rowIdx, slotIdx: slotIdx, url: slot.url });
+          }
+        });
+      });
+
+      var sizeDone = 0;
+      await batchRun(sizeChecks, function(check) {
+        return TGE.api('GET', '/api/image-size?url=' + encodeURIComponent(check.url))
+          .then(function(r) {
+            sizeDone++;
+            if (sizeDone % 10 === 0 || sizeDone === sizeChecks.length) {
+              setMessage('Checking image sizes... ' + sizeDone + '/' + sizeChecks.length, false);
+            }
+            if (r.ok && r.data && r.data.sizeKb != null) {
+              state.results[check.rowIdx].slots[check.slotIdx].sizeKb = r.data.sizeKb;
+            }
+          }).catch(function(){});
+      }, 5, 300);
+
+      setMessage('');
+      renderResults();
 
     } catch(e) {
       setMessage(e.message || 'Failed.', true);
@@ -300,9 +327,12 @@
           ? '<img src="/api/image-proxy?url=' + encodeURIComponent(slot.url) + '" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;border:1px solid var(--line);display:block;" alt="' + slot.label + '" onerror="this.style.opacity=0.3" />'
           : '<div style="aspect-ratio:4/3;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;display:flex;align-items:center;justify-content:center;"><span style="font-size:11px;color:var(--muted);text-align:center;padding:4px;">No image<br>this run</span></div>';
 
+        var sizeLabel = slot.sizeKb != null ? (slot.sizeKb >= 1000 ? (slot.sizeKb/1024).toFixed(1) + ' MB' : slot.sizeKb + ' KB') : '';
+
         return '<div style="flex:1;min-width:0;">' +
           imgHtml +
           '<div style="font-size:11px;font-weight:600;color:var(--ink-2);text-align:center;margin-top:4px;">' + slot.label + '</div>' +
+          (sizeLabel ? '<div style="font-size:10px;color:var(--muted);text-align:center;">' + sizeLabel + '</div>' : '') +
           '<div style="display:flex;gap:4px;justify-content:center;margin-top:4px;">' +
             '<button class="cc-toggle-btn" data-row="' + idx + '" data-slot="' + slotIdx + '" data-val="working" style="flex:1;padding:4px;border-radius:5px;border:1px solid var(--line);background:transparent;cursor:pointer;font-size:11px;">✅</button>' +
             '<button class="cc-toggle-btn" data-row="' + idx + '" data-slot="' + slotIdx + '" data-val="not_working" style="flex:1;padding:4px;border-radius:5px;border:1px solid var(--line);background:transparent;cursor:pointer;font-size:11px;">❌</button>' +
@@ -310,20 +340,39 @@
         '</div>';
       }).join('');
 
-      return '<div class="card" data-row="' + idx + '">' +
+      var systemDown = r.systemDown === true;
+
+      return '<div class="card" data-row="' + idx + '" style="' + (systemDown ? 'border-color:var(--danger);background:rgba(239,68,68,0.04);' : '') + '">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">' +
           '<div>' +
             '<div style="font-size:14px;font-weight:700;">' + (v.name || '—') + ' <span style="font-size:11px;font-weight:400;color:var(--muted);">— ' + camModel + ' (' + slots + ' slots)</span></div>' +
             '<div style="font-size:11px;color:var(--muted);font-family:monospace;">' + (cam.imei || cam.name || '—') + '</div>' +
           '</div>' +
-          '<div style="text-align:right;">' +
-            '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Last Comms</div>' +
-            '<div style="font-size:12px;font-weight:600;color:' + lastCommsColor + ';">' + lastCommsText + '</div>' +
+          '<div style="display:flex;align-items:center;gap:14px;">' +
+            '<div style="text-align:right;">' +
+              '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Last Comms</div>' +
+              '<div style="font-size:12px;font-weight:600;color:' + lastCommsColor + ';">' + lastCommsText + '</div>' +
+            '</div>' +
+            '<button class="cc-system-down-btn" data-row="' + idx + '" style="height:32px;padding:0 12px;border-radius:7px;border:1px solid ' + (systemDown ? 'var(--danger)' : 'var(--line)') + ';background:' + (systemDown ? 'var(--danger)' : 'transparent') + ';color:' + (systemDown ? '#fff' : 'var(--ink)') + ';font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">' +
+              (systemDown ? '⚠ System Down' : 'Mark System Down') +
+            '</button>' +
           '</div>' +
         '</div>' +
-        '<div style="display:flex;gap:10px;">' + slotCells + '</div>' +
+        (systemDown
+          ? '<div style="padding:14px;background:var(--surface-2);border-radius:8px;text-align:center;font-size:13px;color:var(--danger);font-weight:600;">Camera system flagged as not functioning — no data for an extended period.</div>'
+          : '<div style="display:flex;gap:10px;">' + slotCells + '</div>') +
       '</div>';
     }).join('');
+
+    // Wire system-down buttons
+    container.querySelectorAll('.cc-system-down-btn').forEach(function(btn) {
+      btn.onclick = function() {
+        var row = parseInt(btn.dataset.row, 10);
+        state.results[row].systemDown = !state.results[row].systemDown;
+        renderResults();
+        updateSummary();
+      };
+    });
 
     // Wire toggle buttons
     container.querySelectorAll('.cc-toggle-btn').forEach(function(btn) {
@@ -449,19 +498,24 @@
 
   function exportCsv() {
     if (!state.results.length) return;
-    var rows = [['Legacy No','IMEI','Camera Model','Last Comms','Road','Driver','In-Cab','R.Ext','L.Ext','Reviewed By','Date']];
+    var rows = [['Legacy No','IMEI','Camera Model','System Status','Last Comms','Road','Road (KB)','Driver','Driver (KB)','In-Cab','In-Cab (KB)','R.Ext','R.Ext (KB)','L.Ext','L.Ext (KB)','Reviewed By','Date']];
     var user = (TGE.state && TGE.state.user) ? (TGE.state.user.firstName + ' ' + TGE.state.user.lastName) : '';
     state.results.forEach(function(r) {
-      var slots = CAMERA_SLOTS.map(function(_, i) {
+      var slotStatus = CAMERA_SLOTS.map(function(_, i) {
         var s = r.slots[i];
         return s ? statusGlyph(s.status) : '—';
+      });
+      var slotSizes = CAMERA_SLOTS.map(function(_, i) {
+        var s = r.slots[i];
+        return s && s.sizeKb != null ? s.sizeKb : (s ? '' : '—');
       });
       rows.push([
         r.vehicle.name,
         r.camera.imei || r.camera.name,
         r.camera.model && r.camera.model.name,
+        r.systemDown ? 'System Down' : 'Operational',
         r.lastComms ? formatTs(r.lastComms) : 'Unknown',
-        slots[0], slots[1], slots[2], slots[3], slots[4],
+        slotStatus[0], slotSizes[0], slotStatus[1], slotSizes[1], slotStatus[2], slotSizes[2], slotStatus[3], slotSizes[3], slotStatus[4], slotSizes[4],
         user,
         new Date().toLocaleDateString('en-AU'),
       ]);
