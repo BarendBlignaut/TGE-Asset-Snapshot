@@ -589,6 +589,39 @@ async function handleImageProxy(request, env) {
   });
 }
 
+// ── Image size (HEAD request) ────────────────────────────────────────────────
+
+async function handleImageSize(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const reqUrl   = new URL(request.url);
+  const imageUrl = decodeURIComponent(reqUrl.searchParams.get("url") || "").trim();
+  if (!imageUrl) return jsonResponse({ error: "url is required." }, 400);
+
+  let parsed;
+  try { parsed = new URL(imageUrl); } catch { return jsonResponse({ error: "Invalid URL." }, 400); }
+
+  const allowedSuffixes = [".amazonaws.com", ".cloudfront.net", "telematics.com"];
+  const allowed = allowedSuffixes.some(s => parsed.hostname.endsWith(s));
+  if (!allowed) return jsonResponse({ error: "URL host not permitted." }, 403);
+
+  try {
+    const res = await fetch(imageUrl, { method: "HEAD" });
+    const size = res.headers.get("content-length");
+    const type = res.headers.get("content-type");
+    return jsonResponse({
+      ok:          res.ok,
+      status:      res.status,
+      sizeBytes:   size ? parseInt(size) : null,
+      sizeKb:      size ? Math.round(parseInt(size) / 1024) : null,
+      contentType: type,
+    });
+  } catch(e) {
+    return jsonResponse({ error: e.message }, 502);
+  }
+}
+
 // ── Main fetch handler ────────────────────────────────────────────────────────
 
 export default {
@@ -666,6 +699,7 @@ export default {
 
       // Image proxy
       if (path === "/api/image-proxy") return handleImageProxy(request, env);
+      if (path === "/api/image-size") return handleImageSize(request, env);
 
       // Telematics proxy — forward /api/tn360/* to telematics API
       if (path.startsWith("/api/tn360/")) {
