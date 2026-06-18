@@ -512,6 +512,10 @@
             <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12l4-4 4 4 6-7"/><path d="M17 5h-4v4"/></svg>
             VPM Analysis
           </button>
+          <button class="nav-item" id="nav-merge-mail" type="button" data-view="merge-mail" data-group="operations" data-title="Merge Mail">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 5l8 6 8-6M2 5v10h16V5"/></svg>
+            Merge Mail
+          </button>
           <button class="nav-item" id="nav-utilisation" type="button" data-view="utilisation" data-group="operations" data-title="Fleet Utilisation">
             <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="10" width="3" height="8" rx="1"/><rect x="7" y="6" width="3" height="12" rx="1"/><rect x="12" y="3" width="3" height="15" rx="1"/><rect x="17" y="7" width="1" height="11" rx="1"/></svg>
             Fleet Utilisation
@@ -603,6 +607,10 @@
           <!-- Populated by new-request.js -->
         </div>
 
+        <div class="view" id="view-merge-mail">
+          <!-- Populated by merge-mail.js -->
+        </div>
+
         <div class="view active" id="view-snapshot">
           <!-- Populated by snapshot.js -->
         </div>
@@ -649,7 +657,9 @@
   </div><!-- /shell -->
 
   <!-- Scripts — core first, then page modules -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
   <script src="./app.js" defer></script>
+  <script src="./email-composer.js" defer></script>
   <script src="./snapshot.js" defer></script>
   <script src="./asset-track.js" defer></script>
   <script src="./vpm.js" defer></script>
@@ -658,6 +668,7 @@
   <script src="./utilisation.js" defer></script>
   <script src="./camera-snapshots.js" defer></script>
   <script src="./camera-count.js" defer></script>
+  <script src="./merge-mail.js" defer></script>
   <script src="./roles.js" defer></script>
   <script src="./api.js" defer></script>
 
