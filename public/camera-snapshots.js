@@ -48,6 +48,7 @@
             '<button class="hero-run-btn" id="cam-run-btn" type="button">Run</button>',
             '<button class="hero-action-btn" id="cam-sel-all-btn" type="button" style="display:none;">Select All</button>',
             '<button class="hero-action-btn" id="cam-desel-btn" type="button" style="display:none;">Deselect All</button>',
+            '<button class="hero-action-btn" id="cam-email-selected-btn" type="button" style="display:none;">✉ Email Selected</button>',
           '</div>',
           '<div class="hero-bar-right">',
             '<div class="hero-divider"></div>',
@@ -300,6 +301,10 @@
   function renderRows(cameraDevices, snapshotMap) {
     var tbody = TGE.el('cam-tbody');
     if (!tbody) return;
+    // Store for export
+    state.rows = cameraDevices.map(function(cv) {
+      return { vehicle: cv.vehicle, camera: cv.camera, capturedAt: snapshotMap[cv.vehicle.id] ? snapshotMap[cv.vehicle.id].timeAt : null };
+    });
 
     tbody.innerHTML = cameraDevices.map(function(cv, idx) {
       var v        = cv.vehicle;
@@ -434,6 +439,52 @@
     if (panel) panel.style.display = 'none';
   }
 
+  // ── Email selected rows ─────────────────────────────────────────────────────
+  function openEmailForSelected() {
+    var checked = Array.prototype.slice.call(document.querySelectorAll('.cam-row-check:checked'));
+    if (!checked.length) { setMessage('Select at least one row first.', true); return; }
+
+    var vids = checked.map(function(cb) { return cb.dataset.vid; });
+    var rows = state.rows.filter(function(r) { return vids.indexOf(String(r.vehicle.id)) !== -1; });
+
+    var emailRows = rows.map(function(r) {
+      var slots = r.camera.model && r.camera.model.name === 'MultiIQ' ? 5 : 2;
+      var images = [];
+      // Re-derive images from the currently rendered row (snapshotMap data already used to render table)
+      // We stored minimal row data — pull images fresh from the DOM thumbnails already loaded
+      var rowEl = document.querySelector('tr[onclick*="' + r.vehicle.id + '"]');
+      if (rowEl) {
+        rowEl.querySelectorAll('img').forEach(function(img, idx) {
+          var labels = ['Road','Driver','In-Cab','R.Ext','L.Ext'];
+          images.push({ label: labels[idx] || 'Camera', url: img.src });
+        });
+      }
+      return {
+        legacyNo:    r.vehicle.name || '—',
+        imei:        r.camera.imei || r.camera.name || '—',
+        cameraModel: r.camera.model && r.camera.model.name || '—',
+        vehicleType: r.vehicle.type && r.vehicle.type.name || '—',
+        capturedAt:  r.capturedAt ? formatTs(r.capturedAt) : 'No snapshot',
+        images:      images,
+      };
+    });
+
+    TGE.openEmailComposer({
+      rows: emailRows,
+      fields: [
+        { key:'legacyNo',    label:'Legacy No' },
+        { key:'imei',        label:'IMEI' },
+        { key:'cameraModel', label:'Camera Model' },
+        { key:'vehicleType', label:'Vehicle Type' },
+        { key:'capturedAt',  label:'Captured At' },
+      ],
+      imagesField: 'images',
+      onSent: function() {
+        setMessage('Email batch complete.', false);
+      },
+    });
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────────
   function showResults() { TGE.hide('cam-empty'); TGE.show('cam-results'); }
 
@@ -450,12 +501,48 @@
   }
 
   function activateControls() {
-    ['cam-sel-all-btn','cam-desel-btn'].forEach(function(id) {
+    ['cam-sel-all-btn','cam-desel-btn','cam-email-selected-btn'].forEach(function(id) {
       var el = TGE.el(id); if (el) el.style.display = '';
     });
+    var emailBtn = TGE.el('cam-email-selected-btn');
+    if (emailBtn) emailBtn.onclick = openEmailForSelected;
     ['cam-pdf-btn','cam-email-btn','cam-csv-btn','cam-xlsx-btn','cam-json-btn'].forEach(function(id) {
       var el = TGE.el(id); if (el) el.classList.add('active');
     });
+    var csvBtn   = TGE.el('cam-csv-btn');
+    var jsonBtn  = TGE.el('cam-json-btn');
+    var xlsxBtn  = TGE.el('cam-xlsx-btn');
+    var pdfBtn   = TGE.el('cam-pdf-btn');
+    var emailBtn = TGE.el('cam-email-btn');
+    if (csvBtn)   csvBtn.onclick   = exportCsv;
+    if (jsonBtn)  jsonBtn.onclick  = exportJson;
+    if (xlsxBtn)  xlsxBtn.onclick  = exportCsv;
+    if (pdfBtn)   pdfBtn.onclick   = function() { window.print(); };
+    if (emailBtn) emailBtn.onclick = function() { alert('Email PDF — coming soon.'); };
+  }
+
+  function exportJson() {
+    if (!state.rows || !state.rows.length) return;
+    var json = JSON.stringify(state.rows, null, 2);
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([json], { type:'application/json' }));
+    a.download = 'camera-snapshots-' + new Date().toISOString().slice(0,10) + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  function exportCsv() {
+    if (!state.rows || !state.rows.length) return;
+    var rows = [['Legacy No','IMEI','Camera Model','Vehicle Type','Captured']];
+    state.rows.forEach(function(r) {
+      rows.push([r.vehicle.name, r.camera.imei, r.camera.model && r.camera.model.name, r.vehicle.type && r.vehicle.type.name, r.capturedAt || '']);
+    });
+    var csv = rows.map(function(r) {
+      return r.map(function(c) { return '"' + String(c||'').replace(/"/g,'""') + '"'; }).join(',');
+    }).join('\n');
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv' }));
+    a.download = 'camera-snapshots-' + new Date().toISOString().slice(0,10) + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
   }
 
   // Throttled batch executor — runs promises in batches with delay between
