@@ -42,6 +42,7 @@
             canUser  ? '<button class="hero-mode-btn' + (state.mode==='user'?' active':'') + '" id="cc-mode-user">User Mode</button>' : '',
             canFleet ? '<button class="hero-mode-btn' + (state.mode==='fleet'?' active':'') + '" id="cc-mode-fleet">Fleet Mode</button>' : '',
             '<button class="hero-run-btn" id="cc-run-btn">Run</button>',
+            '<button class="hero-action-btn" id="cc-email-selected-btn" type="button" style="display:none;">✉ Email Selected</button>',
           '</div>',
           '<div class="hero-bar-right">',
             '<div class="hero-divider"></div>',
@@ -253,7 +254,8 @@
           } else {
             file = mediaFiles.find(function(f) { return f.source === slot.source && f.status === 'FINISHED'; });
           }
-          return { label: slot.label, hasImage: !!(file && file.mediaFile), url: file ? file.mediaFile : null, status: null, sizeKb: null };
+          var hasImage = !!(file && file.mediaFile);
+          return { label: slot.label, hasImage: hasImage, url: file ? file.mediaFile : null, status: hasImage ? 'working' : null, sizeKb: null };
         });
 
         return {
@@ -269,6 +271,8 @@
       updateSummary();
       setMessage('Checking image sizes...', false);
       activateExports();
+      var emailBtn = TGE.el('cc-email-selected-btn');
+      if (emailBtn) { emailBtn.style.display = ''; emailBtn.onclick = openEmailForSelected; }
 
       // Fetch image sizes in background (doesn't block display)
       var sizeChecks = [];
@@ -323,19 +327,23 @@
       var lastCommsColor = lastCommsAge === null ? 'var(--muted)' : lastCommsAge > 7 ? 'var(--danger)' : lastCommsAge > 2 ? 'var(--warning)' : 'var(--green-600)';
 
       var slotCells = r.slots.map(function(slot, slotIdx) {
+        // Fixed standard size for all images regardless of camera model — prevents IQCamera images rendering oversized
         var imgHtml = slot.hasImage
-          ? '<img src="/api/image-proxy?url=' + encodeURIComponent(slot.url) + '" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;border:1px solid var(--line);display:block;" alt="' + slot.label + '" onerror="this.style.opacity=0.3" />'
-          : '<div style="aspect-ratio:4/3;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;display:flex;align-items:center;justify-content:center;"><span style="font-size:11px;color:var(--muted);text-align:center;padding:4px;">No image<br>this run</span></div>';
+          ? '<img src="/api/image-proxy?url=' + encodeURIComponent(slot.url) + '" style="width:100%;height:130px;object-fit:cover;border-radius:6px;border:1px solid var(--line);display:block;" alt="' + slot.label + '" onerror="this.style.opacity=0.3" />'
+          : '<div style="height:130px;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;display:flex;align-items:center;justify-content:center;"><span style="font-size:11px;color:var(--muted);text-align:center;padding:4px;">No image<br>this run</span></div>';
 
         var sizeLabel = slot.sizeKb != null ? (slot.sizeKb >= 1000 ? (slot.sizeKb/1024).toFixed(1) + ' MB' : slot.sizeKb + ' KB') : '';
 
-        return '<div style="flex:1;min-width:0;">' +
+        var workingActive    = slot.status === 'working';
+        var notWorkingActive = slot.status === 'not_working';
+
+        return '<div style="flex:1;min-width:0;max-width:180px;">' +
           imgHtml +
           '<div style="font-size:11px;font-weight:600;color:var(--ink-2);text-align:center;margin-top:4px;">' + slot.label + '</div>' +
           (sizeLabel ? '<div style="font-size:10px;color:var(--muted);text-align:center;">' + sizeLabel + '</div>' : '') +
           '<div style="display:flex;gap:4px;justify-content:center;margin-top:4px;">' +
-            '<button class="cc-toggle-btn" data-row="' + idx + '" data-slot="' + slotIdx + '" data-val="working" style="flex:1;padding:4px;border-radius:5px;border:1px solid var(--line);background:transparent;cursor:pointer;font-size:11px;">✅</button>' +
-            '<button class="cc-toggle-btn" data-row="' + idx + '" data-slot="' + slotIdx + '" data-val="not_working" style="flex:1;padding:4px;border-radius:5px;border:1px solid var(--line);background:transparent;cursor:pointer;font-size:11px;">❌</button>' +
+            '<button class="cc-toggle-btn" data-row="' + idx + '" data-slot="' + slotIdx + '" data-val="working" style="flex:1;padding:4px;border-radius:5px;border:1px solid ' + (workingActive ? 'var(--green-600)' : 'var(--line)') + ';background:' + (workingActive ? 'var(--green-100)' : 'transparent') + ';cursor:pointer;font-size:11px;">✅</button>' +
+            '<button class="cc-toggle-btn" data-row="' + idx + '" data-slot="' + slotIdx + '" data-val="not_working" style="flex:1;padding:4px;border-radius:5px;border:1px solid ' + (notWorkingActive ? 'var(--danger)' : 'var(--line)') + ';background:' + (notWorkingActive ? 'var(--danger-100,#fee2e2)' : 'transparent') + ';cursor:pointer;font-size:11px;">❌</button>' +
           '</div>' +
         '</div>';
       }).join('');
@@ -344,9 +352,12 @@
 
       return '<div class="card" data-row="' + idx + '" style="' + (systemDown ? 'border-color:var(--danger);background:rgba(239,68,68,0.04);' : '') + '">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">' +
-          '<div>' +
+          '<div style="display:flex;align-items:flex-start;gap:10px;">' +
+            '<input type="checkbox" class="cc-row-check" data-row="' + idx + '" style="width:16px;height:16px;cursor:pointer;margin-top:3px;" />' +
+            '<div>' +
             '<div style="font-size:14px;font-weight:700;">' + (v.name || '—') + ' <span style="font-size:11px;font-weight:400;color:var(--muted);">— ' + camModel + ' (' + slots + ' slots)</span></div>' +
             '<div style="font-size:11px;color:var(--muted);font-family:monospace;">' + (cam.imei || cam.name || '—') + '</div>' +
+            '</div>' +
           '</div>' +
           '<div style="display:flex;align-items:center;gap:14px;">' +
             '<div style="text-align:right;">' +
@@ -374,22 +385,25 @@
       };
     });
 
-    // Wire toggle buttons
+    // Wire toggle buttons — single click sets status, double click on the active one clears it
     container.querySelectorAll('.cc-toggle-btn').forEach(function(btn) {
       btn.onclick = function() {
         var row  = parseInt(btn.dataset.row, 10);
         var slot = parseInt(btn.dataset.slot, 10);
         var val  = btn.dataset.val;
-        state.results[row].slots[slot].status = val;
+        var current = state.results[row].slots[slot].status;
 
-        // Update button styles in this slot group
-        var group = btn.parentElement;
-        group.querySelectorAll('.cc-toggle-btn').forEach(function(b) {
-          var active = b.dataset.val === val;
-          b.style.background = active ? (val === 'working' ? 'var(--green-100)' : 'var(--danger-100,#fee2e2)') : 'transparent';
-          b.style.borderColor = active ? (val === 'working' ? 'var(--green-600)' : 'var(--danger)') : 'var(--line)';
-        });
-
+        // Clicking the already-active button clears it (acts like a toggle off)
+        state.results[row].slots[slot].status = (current === val) ? null : val;
+        renderResults();
+        updateSummary();
+      };
+      btn.ondblclick = function(e) {
+        e.preventDefault();
+        var row  = parseInt(btn.dataset.row, 10);
+        var slot = parseInt(btn.dataset.slot, 10);
+        state.results[row].slots[slot].status = null;
+        renderResults();
         updateSummary();
       };
     });
@@ -463,6 +477,51 @@
       var diff = Date.now() - new Date(ts).getTime();
       return Math.floor(diff / (1000*60*60*24));
     } catch(e) { return null; }
+  }
+
+  // ── Email selected rows ─────────────────────────────────────────────────────
+  function openEmailForSelected() {
+    var checked = Array.prototype.slice.call(document.querySelectorAll('.cc-row-check:checked'));
+    if (!checked.length) { setMessage('Tick at least one asset card first.', true); return; }
+
+    var rowIndices = checked.map(function(cb) { return parseInt(cb.dataset.row, 10); });
+    var selected   = rowIndices.map(function(idx) { return state.results[idx]; }).filter(Boolean);
+
+    var emailRows = selected.map(function(r) {
+      var images = r.slots.filter(function(s) { return s.hasImage; }).map(function(s) {
+        return { label: s.label, url: '/api/image-proxy?url=' + encodeURIComponent(s.url) };
+      });
+      var workingCount = r.slots.filter(function(s) { return s.status === 'working'; }).length;
+      var notWorkingCount = r.slots.filter(function(s) { return s.status === 'not_working'; }).length;
+
+      return {
+        legacyNo:     r.vehicle.name || '—',
+        imei:         r.camera.imei || r.camera.name || '—',
+        cameraModel:  r.camera.model && r.camera.model.name || '—',
+        lastComms:    r.lastComms ? formatTs(r.lastComms) : 'Unknown',
+        systemStatus: r.systemDown ? 'System Down' : 'Operational',
+        working:      workingCount,
+        notWorking:   notWorkingCount,
+        images:       images,
+      };
+    });
+
+    TGE.openEmailComposer({
+      rows: emailRows,
+      fields: [
+        { key:'legacyNo',     label:'Legacy No' },
+        { key:'imei',         label:'IMEI' },
+        { key:'cameraModel',  label:'Camera Model' },
+        { key:'lastComms',    label:'Last Comms' },
+        { key:'systemStatus', label:'System Status' },
+        { key:'working',      label:'Cameras Working' },
+        { key:'notWorking',   label:'Cameras Not Working' },
+      ],
+      imagesField: 'images',
+      onSent: function() {
+        setMessage('Email batch complete.', false);
+      },
+    });
   }
 
   function activateExports() {
