@@ -158,6 +158,18 @@ async function handleLogin(request, env) {
 
   await logActivity(env, user.id, "auth", "login", "login_type:" + (user.login_type || "db_only"), ip);
 
+  // Build the same permission map handleSession returns, so a fresh login
+  // gets full permissions immediately without requiring a page refresh.
+  const perms = await env.DB.prepare(
+    "SELECT feature, action, enabled, limit_value FROM permissions WHERE role_id = ? AND enabled = 1"
+  ).bind(user.role_id).all();
+
+  const permMap = {};
+  for (const p of (perms.results || [])) {
+    if (!permMap[p.feature]) permMap[p.feature] = {};
+    permMap[p.feature][p.action] = { enabled: true, limit: p.limit_value };
+  }
+
   const response = jsonResponse({
     ok:   true,
     user: {
@@ -170,6 +182,7 @@ async function handleLogin(request, env) {
       roleId:    user.role_id,
       loginType: user.login_type || "db_only",
     },
+    permissions: permMap,
   });
 
   return new Response(response.body, {
