@@ -1,6 +1,8 @@
 // TGE Asset Snapshot — Cloudflare Worker
 // src/index.js
 
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+
 const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12 hours
 const SESSION_COOKIE      = "tge_session";
 
@@ -747,6 +749,252 @@ async function handleSignImageUrl(request, env) {
   return jsonResponse({ ok: true, publicUrl });
 }
 
+// ── Camera fault report PDF generation ───────────────────────────────────────
+//
+// Layout constants below were measured and visually validated as a fixed
+// spec (see project notes) — every asset-band has the EXACT same height
+// regardless of content, so pagination is pure arithmetic: no band is ever
+// measured at render time, and no band can ever overlap a page break.
+
+const PDF_PAGE_W = 841.89;  // A4 landscape width in points
+const PDF_PAGE_H = 595.28;  // A4 landscape height in points
+
+const PDF_MARGIN_TOP    = 40;
+const PDF_MARGIN_BOTTOM = 30;
+const PDF_MARGIN_LEFT   = 30;
+const PDF_MARGIN_RIGHT  = 30;
+
+const PDF_HEADER_HEIGHT     = 16;
+const PDF_PHOTO_LABEL_GAP   = 4;
+const PDF_PHOTO_BOX_H       = 80;
+const PDF_PHOTO_LABEL_H     = 11;
+const PDF_STATUS_ROW_H      = 12;
+const PDF_FOOTER_GAP        = 4;
+const PDF_FOOTER_HEIGHT     = 14;
+const PDF_BAND_INTERNAL_PAD = 8;
+const PDF_BAND_GAP          = 10;
+
+const PDF_NUM_SLOTS   = 5;
+const PDF_PHOTO_GAP_X = 8;
+
+const PDF_SLOT_LABELS = ["Road", "Driver", "In-Cab", "R.Ext", "L.Ext"];
+
+function pdfBandHeight() {
+  return (
+    PDF_BAND_INTERNAL_PAD +
+    PDF_HEADER_HEIGHT +
+    PDF_PHOTO_LABEL_GAP +
+    PDF_PHOTO_BOX_H +
+    PDF_PHOTO_LABEL_H +
+    PDF_STATUS_ROW_H +
+    PDF_FOOTER_GAP +
+    PDF_FOOTER_HEIGHT +
+    PDF_BAND_INTERNAL_PAD
+  );
+}
+
+function pdfMaxBandsPerPage() {
+  const usableH = PDF_PAGE_H - PDF_MARGIN_TOP - PDF_MARGIN_BOTTOM;
+  const bandH   = pdfBandHeight();
+  let n = 1;
+  while (n * bandH + (n - 1) * PDF_BAND_GAP <= usableH) n++;
+  return n - 1;
+}
+
+// Fetches an image and returns its raw bytes + detected format ("jpg" or "png").
+// Returns null if the fetch fails or the format isn't supported, so the
+// caller can render an "image unavailable" placeholder instead of crashing.
+async function fetchImageForPdf(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const contentType = (res.headers.get("content-type") || "").toLowerCase();
+    const buf = await res.arrayBuffer();
+    if (contentType.includes("png")) return { bytes: buf, format: "png" };
+    // Default to jpg — TN360 camera snapshots are always JPEG in practice.
+    return { bytes: buf, format: "jpg" };
+  } catch (e) {
+    return null;
+  }
+}
+
+// Builds the full multi-page camera fault report PDF.
+// assets: [{ legacyNo, imei, model, slots: [{label, url|null, status:'working'|'not_working'|null}, ...5], lastComms, systemDown }]
+async function buildCameraFaultPdf(assets) {
+  const pdfDoc = await PDFDocument.create();
+  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold    = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const bandHeight    = pdfBandHeight();
+  const maxPerPage    = pdfMaxBandsPerPage();
+  const usableW        = PDF_PAGE_W - PDF_MARGIN_LEFT - PDF_MARGIN_RIGHT;
+  const availInnerW     = usableW - 12; // inner padding inside each band, matches prototype
+  const photoBoxW       = (availInnerW - (PDF_NUM_SLOTS - 1) * PDF_PHOTO_GAP_X) / PDF_NUM_SLOTS;
+
+  // Pre-fetch every image referenced across all assets, once each, in parallel
+  // (deduped — same URL never fetched twice even if it appears more than once).
+  const urlToImage = {};
+  const fetchJobs = [];
+  assets.forEach((asset) => {
+    asset.slots.forEach((slot) => {
+      if (slot && slot.url && !urlToImage[slot.url]) {
+        urlToImage[slot.url] = null; // reserve the key
+        fetchJobs.push(
+          fetchImageForPdf(slot.url).then((result) => { urlToImage[slot.url] = result; })
+        );
+      }
+    });
+  });
+  await Promise.all(fetchJobs);
+
+  // Embed each fetched image once, cache the embedded PDFImage object by URL
+  // (pdf-lib requires embedding per-document, but only once per unique image).
+  const urlToEmbedded = {};
+  for (const url of Object.keys(urlToImage)) {
+    const img = urlToImage[url];
+    if (!img) continue;
+    try {
+      urlToEmbedded[url] = img.format === "png"
+        ? await pdfDoc.embedPng(img.bytes)
+        : await pdfDoc.embedJpg(img.bytes);
+    } catch (e) {
+      urlToEmbedded[url] = null; // embedding failed (corrupt/unsupported bytes) — treat as unavailable
+    }
+  }
+
+  let page = null;
+  let bandIndexOnPage = 0;
+
+  function startNewPage() {
+    page = pdfDoc.addPage([PDF_PAGE_W, PDF_PAGE_H]);
+    bandIndexOnPage = 0;
+    // Title on first page only is handled by caller; every page gets a slim
+    // continuation header so multi-page reports are still easy to follow.
+  }
+
+  startNewPage();
+
+  assets.forEach((asset, assetIdx) => {
+    if (bandIndexOnPage >= maxPerPage) startNewPage();
+
+    const bandTopY = PDF_PAGE_H - PDF_MARGIN_TOP - bandIndexOnPage * (bandHeight + PDF_BAND_GAP);
+    const bandBottomY = bandTopY - bandHeight;
+
+    // Band border
+    page.drawRectangle({
+      x: PDF_MARGIN_LEFT, y: bandBottomY,
+      width: usableW, height: bandHeight,
+      borderColor: rgb(0.90, 0.91, 0.92), borderWidth: 1,
+    });
+
+    let cursorY = bandTopY - PDF_BAND_INTERNAL_PAD;
+
+    // Header — legacy no + model, IMEI underneath
+    page.drawText(`Asset ${asset.legacyNo || "—"} — ${asset.model || "—"}`, {
+      x: PDF_MARGIN_LEFT + 6, y: cursorY - 10, size: 11, font: fontBold, color: rgb(0.07, 0.07, 0.07),
+    });
+    page.drawText(asset.imei || "—", {
+      x: PDF_MARGIN_LEFT + 6, y: cursorY - 19, size: 8, font: fontRegular, color: rgb(0.42, 0.45, 0.50),
+    });
+
+    cursorY -= PDF_HEADER_HEIGHT + PDF_PHOTO_LABEL_GAP;
+    const photoTopY = cursorY;
+
+    for (let slotIdx = 0; slotIdx < PDF_NUM_SLOTS; slotIdx++) {
+      const slot = asset.slots[slotIdx];
+      const bx = PDF_MARGIN_LEFT + 6 + slotIdx * (photoBoxW + PDF_PHOTO_GAP_X);
+      const by = photoTopY - PDF_PHOTO_BOX_H;
+      const hasSlotAtAll = slot != null;
+      const embedded = hasSlotAtAll && slot.url ? urlToEmbedded[slot.url] : null;
+
+      if (embedded) {
+        // Draw the real photo, scaled to fully fill the fixed box (crop via
+        // scaleToFit then center) — keeps every box visually identical.
+        const scaled = embedded.scaleToFit(photoBoxW, PDF_PHOTO_BOX_H);
+        const offsetX = bx + (photoBoxW - scaled.width) / 2;
+        const offsetY = by + (PDF_PHOTO_BOX_H - scaled.height) / 2;
+        page.drawRectangle({ x: bx, y: by, width: photoBoxW, height: PDF_PHOTO_BOX_H, color: rgb(0.96, 0.96, 0.97) });
+        page.drawImage(embedded, { x: offsetX, y: offsetY, width: scaled.width, height: scaled.height });
+        page.drawRectangle({ x: bx, y: by, width: photoBoxW, height: PDF_PHOTO_BOX_H, borderColor: rgb(0.85, 0.86, 0.88), borderWidth: 1 });
+      } else {
+        // No image available for this slot (camera doesn't have this slot,
+        // or the fetch/embed failed) — draw an empty placeholder box.
+        const bg = hasSlotAtAll ? rgb(0.96, 0.96, 0.97) : rgb(0.98, 0.98, 0.98);
+        page.drawRectangle({ x: bx, y: by, width: photoBoxW, height: PDF_PHOTO_BOX_H, color: bg, borderColor: rgb(0.85, 0.86, 0.88), borderWidth: 1 });
+        const label = hasSlotAtAll ? "no image" : "n/a";
+        const textWidth = fontRegular.widthOfTextAtSize(label, 7);
+        page.drawText(label, { x: bx + photoBoxW/2 - textWidth/2, y: by + PDF_PHOTO_BOX_H/2 - 3, size: 7, font: fontRegular, color: rgb(0.61, 0.64, 0.69) });
+      }
+
+      // Slot label (Road / Driver / In-Cab / R.Ext / L.Ext) — always shown,
+      // even for unused slots, so columns stay visually aligned down the page.
+      const slotLabel = PDF_SLOT_LABELS[slotIdx];
+      const labelW = fontBold.widthOfTextAtSize(slotLabel, 8);
+      page.drawText(slotLabel, {
+        x: bx + photoBoxW/2 - labelW/2, y: by - PDF_PHOTO_LABEL_H + 2, size: 8, font: fontBold, color: rgb(0.07,0.07,0.07),
+      });
+
+      // Status row
+      let statusText = "—";
+      let statusColor = rgb(0.82, 0.84, 0.86);
+      if (hasSlotAtAll && slot.status === "working")      { statusText = "WORKING";     statusColor = rgb(0.09, 0.64, 0.29); }
+      else if (hasSlotAtAll && slot.status === "not_working") { statusText = "NOT WORKING"; statusColor = rgb(0.86, 0.15, 0.15); }
+      const statusW = fontBold.widthOfTextAtSize(statusText, 7);
+      page.drawText(statusText, {
+        x: bx + photoBoxW/2 - statusW/2, y: by - PDF_PHOTO_LABEL_H - PDF_STATUS_ROW_H + 5, size: 7, font: fontBold, color: statusColor,
+      });
+    }
+
+    cursorY = photoTopY - PDF_PHOTO_BOX_H - PDF_PHOTO_LABEL_H - PDF_STATUS_ROW_H - PDF_FOOTER_GAP;
+
+    // Footer — Non-Functional flag overrides Last Comms, never both
+    if (asset.systemDown) {
+      const text = "NON-FUNCTIONAL";
+      const tw = fontBold.widthOfTextAtSize(text, 9);
+      page.drawText(text, {
+        x: PDF_MARGIN_LEFT + usableW - 6 - tw, y: cursorY - 10, size: 9, font: fontBold, color: rgb(0.86, 0.15, 0.15),
+      });
+    } else {
+      const text = `Last Comms: ${asset.lastComms || "Unknown"}`;
+      const tw = fontBold.widthOfTextAtSize(text, 9);
+      page.drawText(text, {
+        x: PDF_MARGIN_LEFT + usableW - 6 - tw, y: cursorY - 10, size: 9, font: fontBold, color: rgb(0.22, 0.25, 0.32),
+      });
+    }
+
+    bandIndexOnPage++;
+  });
+
+  return await pdfDoc.save();
+}
+
+// POST /api/camera-fault-pdf — builds the PDF and returns it base64-encoded
+// so the caller (email composer) can attach it to the Power Automate payload.
+async function handleCameraFaultPdf(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const body   = await safeJson(request);
+  const assets = Array.isArray(body.assets) ? body.assets : [];
+  if (!assets.length) return jsonResponse({ error: "assets array is required." }, 400);
+  if (assets.length > 200) return jsonResponse({ error: "Maximum 200 assets per PDF." }, 400);
+
+  try {
+    const pdfBytes = await buildCameraFaultPdf(assets);
+    // Convert to base64 in chunks to avoid call-stack issues with large buffers
+    let binary = "";
+    const chunkSize = 8192;
+    const bytes = new Uint8Array(pdfBytes);
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    const base64 = btoa(binary);
+    return jsonResponse({ ok: true, base64, sizeBytes: pdfBytes.length });
+  } catch (e) {
+    return jsonResponse({ error: "PDF generation failed: " + e.message }, 500);
+  }
+}
+
 // ── Send email via Power Automate ──────────────────────────────────────────────
 
 async function handleSendEmail(request, env) {
@@ -762,16 +1010,27 @@ async function handleSendEmail(request, env) {
   const cc       = String(body.cc || "").trim();
   const subject  = String(body.subject || "").trim();
   const htmlBody = String(body.htmlBody || "").trim();
+  // Optional PDF attachment — base64 string + filename, built client-side
+  // beforehand by calling /api/camera-fault-pdf. Power Automate's "Send an
+  // email (V2)" action accepts attachments as { Name, ContentBytes } pairs.
+  const attachmentBase64 = body.attachmentBase64 ? String(body.attachmentBase64) : null;
+  const attachmentName   = body.attachmentName ? String(body.attachmentName) : "attachment.pdf";
 
   if (!to || !subject || !htmlBody) {
     return jsonResponse({ error: "to, subject and htmlBody are required." }, 400);
+  }
+
+  const payload = { to, cc, subject, htmlBody };
+  if (attachmentBase64) {
+    payload.attachmentName   = attachmentName;
+    payload.attachmentBase64 = attachmentBase64;
   }
 
   try {
     const res = await fetch(env.POWER_AUTOMATE_WEBHOOK_URL, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ to, cc, subject, htmlBody }),
+      body:    JSON.stringify(payload),
     });
 
     if (!res.ok) {
@@ -779,7 +1038,7 @@ async function handleSendEmail(request, env) {
       return jsonResponse({ error: `Power Automate error: HTTP ${res.status}`, detail: text.slice(0,300) }, 502);
     }
 
-    await logActivity(env, auth.session.user_id, "email", "send", `To: ${to} | Subject: ${subject}`, null);
+    await logActivity(env, auth.session.user_id, "email", "send", `To: ${to} | Subject: ${subject}${attachmentBase64 ? " | +PDF attachment" : ""}`, null);
 
     return jsonResponse({ ok: true });
   } catch(e) {
@@ -906,6 +1165,7 @@ export default {
         const sigId = parseInt(path.split("/").pop(), 10);
         return handleUpdateSignature(request, env, sigId);
       }
+      if (method === "POST" && path === "/api/camera-fault-pdf") return handleCameraFaultPdf(request, env);
       if (method === "POST" && path === "/api/send-email") return handleSendEmail(request, env);
 
       // Telematics proxy — forward /api/tn360/* to telematics API
