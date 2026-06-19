@@ -12,25 +12,38 @@
 (function () {
   'use strict';
 
-  var SIGNATURES = {
-    sig1: {
-      label: 'Barend Blignaut — Telematics',
-      html: '<div style="border-top:1px solid #e5e7eb;padding-top:16px;margin-top:8px;">' +
-              '<p style="font-size:14px;margin:0 0 2px;font-weight:700;color:#14532d;">Barend Blignaut</p>' +
-              '<p style="font-size:13px;margin:0 0 2px;color:#374151;">Telematics</p>' +
-              '<p style="font-size:13px;margin:0 0 2px;color:#374151;">Team Global Express</p>' +
-              '<p style="font-size:12px;margin:8px 0 0;color:#6b7280;">barend.blignaut@teamglobalexp.com &nbsp;|&nbsp; +61 000 000 000</p>' +
-            '</div>',
-    },
-    sig2: {
-      label: 'TGE Telematics Team',
-      html: '<div style="border-top:1px solid #e5e7eb;padding-top:16px;margin-top:8px;">' +
-              '<p style="font-size:14px;margin:0 0 2px;font-weight:700;color:#14532d;">TGE Telematics Team</p>' +
-              '<p style="font-size:13px;margin:0 0 2px;color:#374151;">Team Global Express</p>' +
-              '<p style="font-size:12px;margin:8px 0 0;color:#6b7280;">telematics@teamglobalexp.com</p>' +
-            '</div>',
-    },
-  };
+  // Signatures are loaded live from D1 via /api/mailer/signatures (active only).
+  // Falls back to a single generic placeholder if none have been created yet
+  // in Admin > Mailer Data, so the composer never breaks on a fresh install.
+  var SIGNATURES = {}; // populated by loadSignatures(), keyed by signature id (string)
+  var signaturesLoaded = false;
+
+  async function loadSignatures() {
+    try {
+      var r = await TGE.api('GET', '/api/mailer/signatures');
+      if (r.ok && r.data && Array.isArray(r.data.signatures) && r.data.signatures.length) {
+        SIGNATURES = {};
+        r.data.signatures.forEach(function(sig) {
+          SIGNATURES[String(sig.id)] = { label: sig.label, html: sig.html };
+        });
+      } else {
+        SIGNATURES = {
+          placeholder: {
+            label: 'No signatures configured',
+            html: '<p style="font-size:12px;color:#9ca3af;">No signatures have been set up yet — add one in Admin &gt; Mailer Data.</p>',
+          },
+        };
+      }
+    } catch(e) {
+      SIGNATURES = {
+        placeholder: {
+          label: 'No signatures available',
+          html: '',
+        },
+      };
+    }
+    signaturesLoaded = true;
+  }
 
   var composerState = {
     rows:        [],
@@ -42,7 +55,7 @@
   };
 
   // ── Public entry point ──────────────────────────────────────────────────────
-  TGE.openEmailComposer = function (opts) {
+  TGE.openEmailComposer = async function (opts) {
     composerState.rows        = opts.rows || [];
     composerState.fields      = opts.fields || [];
     composerState.imagesField = opts.imagesField || null;
@@ -51,8 +64,11 @@
     composerState.sending     = false;
 
     injectPanel();
-    renderPanel();
+    renderPanel(); // render once immediately so the panel isn't blank while signatures load
     showPanel();
+
+    await loadSignatures();
+    renderPanel(); // re-render now that real signatures are available in the dropdown
   };
 
   // ── Build the panel once ────────────────────────────────────────────────────
@@ -121,8 +137,9 @@
               '<button id="ec-insert-field" type="button" class="btn" style="height:30px;font-size:12px;">+ Field</button>'
             : '<span style="font-size:11px;color:var(--muted);font-style:italic;">Merge fields only available in "One email per item" mode</span>'),
           '<select id="ec-sig-select" style="height:30px;border:1px solid var(--line);border-radius:6px;font-size:12px;padding:0 6px;background:var(--surface);color:var(--ink);">' +
-            '<option value="sig1">' + SIGNATURES.sig1.label + '</option>' +
-            '<option value="sig2">' + SIGNATURES.sig2.label + '</option>' +
+            Object.keys(SIGNATURES).map(function(key) {
+              return '<option value="' + key + '">' + SIGNATURES[key].label + '</option>';
+            }).join('') +
           '</select>',
           '<button id="ec-insert-sig" type="button" class="btn" style="height:30px;font-size:12px;">+ Signature</button>',
         '</div>',
