@@ -231,6 +231,33 @@
     });
   }
 
+  function renderBodyHtml(template, row) {
+    if (!template) return '';
+
+    var signatures = [];
+    var body = template.replace(/\{signature:([a-zA-Z0-9_]+)\}/g, function(match, sigKey) {
+      var token = '%%TGE_SIGNATURE_' + signatures.length + '%%';
+      signatures.push(SIGNATURES[sigKey] ? SIGNATURES[sigKey].html : '');
+      return token;
+    });
+
+    if (row) {
+      body = body.replace(/\{([a-zA-Z0-9_]+)\}/g, function(match, key) {
+        if (row && row[key] != null) return String(row[key]);
+        return '';
+      });
+    }
+
+    // Preserve pasted rich HTML while still converting plain text line breaks.
+    if (!/<\/?[a-z][\s\S]*>/i.test(body)) body = nl2br(body);
+
+    signatures.forEach(function(html, idx) {
+      body = body.replace('%%TGE_SIGNATURE_' + idx + '%%', html);
+    });
+
+    return body;
+  }
+
   function buildImagesHtml(row) {
     if (!composerState.imagesField) return '';
     var imgs = row[composerState.imagesField];
@@ -298,27 +325,6 @@
     '</table>';
   }
 
-  function wrapInTemplate(bodyHtml, subject) {
-    return '<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:680px;margin:0 auto;color:#1a1a1a;">' +
-      '<div style="background:#14532d;padding:18px 26px;border-radius:8px 8px 0 0;">' +
-        '<div style="color:#d4f026;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Team Global Express — Fleet Telematics</div>' +
-        '<div style="color:#ffffff;font-size:18px;font-weight:700;margin-top:4px;">' + escapeHtml(subject) + '</div>' +
-      '</div>' +
-      '<div style="padding:26px;background:#ffffff;border:1px solid #e5e7eb;border-top:none;font-size:14px;line-height:1.6;">' +
-        bodyHtml +
-      '</div>' +
-      '<div style="padding:14px 26px;text-align:center;">' +
-        '<p style="font-size:11px;color:#9ca3af;margin:0;">This is an automated message from the TGE Fleet Telematics system.</p>' +
-      '</div>' +
-    '</div>';
-  }
-
-  function escapeHtml(s) {
-    var div = document.createElement('div');
-    div.textContent = s || '';
-    return div.innerHTML;
-  }
-
   function nl2br(s) {
     return (s || '').replace(/\n/g, '<br>');
   }
@@ -340,7 +346,7 @@
 
     if (!to.trim())      { setStatus('To field is required.', true); return; }
     if (!subject.trim()) { setStatus('Subject is required.', true); return; }
-    if (!body.trim())    { setStatus('Body is required.', true); return; }
+    if (!body.trim() && composerState.mode !== 'combined') { setStatus('Body is required.', true); return; }
 
     composerState.sending = true;
     var sendBtn = document.getElementById('ec-send');
@@ -349,8 +355,8 @@
     try {
       if (composerState.mode === 'combined') {
         setStatus('Sending combined email...', false);
-        var combinedBody = nl2br(body) + buildCombinedTable();
-        var finalHtml = wrapInTemplate(combinedBody, subject);
+        var combinedBody = renderBodyHtml(body, null) + buildCombinedTable();
+        var finalHtml = combinedBody;
 
         var r = await TGE.api('POST', '/api/send-email', { to: to, cc: cc, bcc: bcc, subject: subject, htmlBody: finalHtml });
         if (!r.ok) throw new Error(r.data && r.data.error ? r.data.error : 'Send failed');
@@ -364,9 +370,8 @@
         for (var i = 0; i < composerState.rows.length; i++) {
           var row = composerState.rows[i];
           var mergedSubject = mergeText(subject, row);
-          var mergedBodyRaw = mergeText(body, row);
-          var mergedBody    = nl2br(mergedBodyRaw) + buildImagesHtml(row);
-          var finalHtml     = wrapInTemplate(mergedBody, mergedSubject);
+          var mergedBody    = renderBodyHtml(body, row) + buildImagesHtml(row);
+          var finalHtml     = mergedBody;
           var mergedTo       = mergeText(to, row)  || to;
           var mergedCc       = mergeText(cc, row)  || cc;
           var mergedBcc      = mergeText(bcc, row) || bcc;
