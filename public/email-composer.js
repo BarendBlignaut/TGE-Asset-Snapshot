@@ -155,9 +155,12 @@
             'style="width:100%;flex:1;min-height:200px;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:13px;line-height:1.6;resize:vertical;background:var(--surface);color:var(--ink);font-family:inherit;"></textarea>',
         '</div>',
 
-        '<p style="font-size:11px;color:var(--muted);margin:0;">Images are hosted externally — recipients may need to click "Download pictures" to view them. ' +
-          (composerState.mode === 'combined' ? 'A table of all selected items with their images will be appended automatically below your message.' : 'Each item\'s images will be appended automatically below your message.') +
-        '</p>',
+        (composerState.rows.some(rowHasCameraSlots)
+          ? '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">' +
+              '<input type="checkbox" id="ec-attach-pdf" style="width:16px;height:16px;cursor:pointer;" />' +
+              'Attach camera photos as PDF' +
+            '</label>'
+          : ''),
 
         '<div id="ec-status" style="font-size:12px;color:var(--muted);"></div>',
 
@@ -220,96 +223,123 @@
   }
 
   // ── Merge logic ───────────────────────────────────────────────────────────────
-  function mergeText(template, row) {
+  // Merges {field} tags only — leaves {signature:X} tags untouched so the
+  // caller can extract and reposition the signature deliberately (it must
+  // always render AFTER the status table, regardless of where the user
+  // placed the {signature:X} tag in their typed text).
+  function mergeFieldsOnly(template, row) {
     if (!template) return '';
     return template.replace(/\{([a-zA-Z0-9_]+)\}/g, function(match, key) {
-      if (key.indexOf('signature:') === 0) return match; // handled separately
+      if (key.indexOf('signature:') === 0) return match;
       if (row && row[key] != null) return String(row[key]);
       return '';
-    }).replace(/\{signature:([a-zA-Z0-9_]+)\}/g, function(match, sigKey) {
-      return SIGNATURES[sigKey] ? SIGNATURES[sigKey].html : '';
     });
   }
 
-  function buildImagesHtml(row) {
-    if (!composerState.imagesField) return '';
-    var imgs = row[composerState.imagesField];
-    if (!Array.isArray(imgs) || !imgs.length) return '';
-    return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;">' +
-      imgs.map(function(img) {
-        // Use the signed public URL (signedUrl) if available, otherwise fall back to the raw url
-        var src = img.signedUrl || img.url;
-        if (!src) return '';
-        return '<div style="flex:1;min-width:120px;max-width:160px;">' +
-          '<img src="' + src + '" style="width:100%;border-radius:6px;border:1px solid #e5e7eb;display:block;" />' +
-          '<div style="font-size:10px;color:#6b7280;text-align:center;margin-top:3px;">' + (img.label || '') + '</div>' +
-        '</div>';
+  // Strips any {signature:X} tag out of the text and returns both the
+  // cleaned text and the resolved signature HTML (or '' if none was used).
+  function extractSignature(text) {
+    var sigHtml = '';
+    var cleaned = (text || '').replace(/\{signature:([a-zA-Z0-9_]+)\}/g, function(match, sigKey) {
+      if (SIGNATURES[sigKey]) sigHtml = SIGNATURES[sigKey].html;
+      return '';
+    });
+    return { text: cleaned, signatureHtml: sigHtml };
+  }
+
+  function mergeText(template, row) {
+    // Backward-compatible helper (subject line still uses this — subjects
+    // never contain a signature tag in practice, but handle it safely anyway).
+    return extractSignature(mergeFieldsOnly(template, row)).text;
+  }
+
+  // ── Standard camera status table ────────────────────────────────────────────
+  // Used by BOTH individual and combined modes for Camera Snapshots / Camera
+  // Count (anything with a `slots` field on each row) so the table looks
+  // identical regardless of how many assets are in it. Merge Mail rows never
+  // have a `slots` field, so this naturally returns '' for that page and no
+  // table is appended at all — Merge Mail's email is just the merged text.
+  var CAM_SLOT_LABELS = ['Cam 1', 'Cam 2', 'Cam 3', 'Cam 4', 'Cam 5'];
+
+  function rowHasCameraSlots(row) {
+    return row && Array.isArray(row.slots) && row.slots.length > 0;
+  }
+
+  function statusCellText(slot) {
+    if (!slot) return '—';
+    if (slot.status === 'working') return 'Working';
+    if (slot.status === 'not_working') return 'Not Working';
+    return '—';
+  }
+
+  function buildCameraStatusTable(rows) {
+    var camRows = rows.filter(rowHasCameraSlots);
+    if (!camRows.length) return '';
+
+    var headerCells = '<th style="text-align:left;padding:6px 8px;border-bottom:2px solid #e5e7eb;font-size:11px;color:#6b7280;text-transform:uppercase;">Asset ID</th>' +
+      '<th style="text-align:left;padding:6px 8px;border-bottom:2px solid #e5e7eb;font-size:11px;color:#6b7280;text-transform:uppercase;">IMEI</th>' +
+      CAM_SLOT_LABELS.map(function(label) {
+        return '<th style="text-align:center;padding:6px 8px;border-bottom:2px solid #e5e7eb;font-size:11px;color:#6b7280;text-transform:uppercase;">' + label + '</th>';
       }).join('') +
-    '</div>';
-  }
+      '<th style="text-align:right;padding:6px 8px;border-bottom:2px solid #e5e7eb;font-size:11px;color:#6b7280;text-transform:uppercase;">Last Comms</th>';
 
-  // Signs every image URL in composerState.rows so they work in email clients
-  // without requiring a login session. Called once before sending.
-  async function signAllImages() {
-    var jobs = [];
-    composerState.rows.forEach(function(row) {
-      if (!composerState.imagesField) return;
-      var imgs = row[composerState.imagesField];
-      if (!Array.isArray(imgs)) return;
-      imgs.forEach(function(img) {
-        if (!img.url || img.signedUrl) return;
-        // Extract the actual S3/source URL from our own proxy URL if needed
-        var rawUrl = img.url;
-        var proxyMarker = '/api/image-proxy?url=';
-        var idx = rawUrl.indexOf(proxyMarker);
-        if (idx !== -1) {
-          rawUrl = decodeURIComponent(rawUrl.slice(idx + proxyMarker.length));
-        }
-        jobs.push(
-          TGE.api('POST', '/api/sign-image-url', { url: rawUrl }).then(function(r) {
-            if (r.ok && r.data && r.data.publicUrl) img.signedUrl = r.data.publicUrl;
-          }).catch(function(){})
-        );
-      });
-    });
-    if (jobs.length) await Promise.all(jobs);
-  }
-
-  function buildCombinedTable() {
-    if (!composerState.rows.length) return '';
-    var fieldKeys = composerState.fields.map(function(f) { return f.key; });
-    var headerRow = composerState.fields.map(function(f) {
-      return '<th style="text-align:left;padding:8px;border-bottom:2px solid #e5e7eb;font-size:11px;color:#6b7280;text-transform:uppercase;">' + f.label + '</th>';
-    }).join('');
-
-    var bodyRows = composerState.rows.map(function(row) {
-      var cells = fieldKeys.map(function(k) {
-        return '<td style="padding:8px;border-bottom:1px solid #f3f4f6;font-size:13px;">' + (row[k] != null ? row[k] : '—') + '</td>';
+    var bodyRows = camRows.map(function(row) {
+      var slotCells = [0,1,2,3,4].map(function(i) {
+        var slot = row.slots[i];
+        return '<td style="text-align:center;padding:6px 8px;border-bottom:1px solid #f3f4f6;font-size:12px;">' + statusCellText(slot) + '</td>';
       }).join('');
-      var imagesRow = composerState.imagesField
-        ? '<tr><td colspan="' + fieldKeys.length + '" style="padding:8px;border-bottom:1px solid #f3f4f6;">' + buildImagesHtml(row) + '</td></tr>'
-        : '';
-      return '<tr>' + cells + '</tr>' + imagesRow;
+
+      var lastCommsCell = row.systemDown
+        ? '<td style="text-align:right;padding:6px 8px;border-bottom:1px solid #f3f4f6;font-size:12px;font-weight:700;color:#dc2626;">NON-FUNCTIONAL</td>'
+        : '<td style="text-align:right;padding:6px 8px;border-bottom:1px solid #f3f4f6;font-size:12px;">' + (row.lastComms || 'Unknown') + '</td>';
+
+      return '<tr>' +
+        '<td style="padding:6px 8px;border-bottom:1px solid #f3f4f6;font-size:12px;font-weight:700;">' + (row.legacyNo != null ? row.legacyNo : '—') + '</td>' +
+        '<td style="padding:6px 8px;border-bottom:1px solid #f3f4f6;font-size:11px;font-family:monospace;color:#6b7280;">' + (row.imei != null ? row.imei : '—') + '</td>' +
+        slotCells +
+        lastCommsCell +
+      '</tr>';
     }).join('');
 
     return '<table style="width:100%;border-collapse:collapse;margin-top:16px;font-family:inherit;">' +
-      '<thead><tr>' + headerRow + '</tr></thead>' +
+      '<thead><tr>' + headerCells + '</tr></thead>' +
       '<tbody>' + bodyRows + '</tbody>' +
     '</table>';
   }
 
-  function wrapInTemplate(bodyHtml, subject) {
-    return '<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:680px;margin:0 auto;color:#1a1a1a;">' +
-      '<div style="background:#14532d;padding:18px 26px;border-radius:8px 8px 0 0;">' +
-        '<div style="color:#d4f026;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Team Global Express — Fleet Telematics</div>' +
-        '<div style="color:#ffffff;font-size:18px;font-weight:700;margin-top:4px;">' + escapeHtml(subject) + '</div>' +
-      '</div>' +
-      '<div style="padding:26px;background:#ffffff;border:1px solid #e5e7eb;border-top:none;font-size:14px;line-height:1.6;">' +
-        bodyHtml +
-      '</div>' +
-      '<div style="padding:14px 26px;text-align:center;">' +
-        '<p style="font-size:11px;color:#9ca3af;margin:0;">This is an automated message from the TGE Fleet Telematics system.</p>' +
-      '</div>' +
+  // ── PDF attachment (camera photos) ──────────────────────────────────────────
+  // Built server-side via /api/camera-fault-pdf using the raw TN360 image URLs
+  // directly (no signing, no storage — relies on TN360's own ~7-day presigned
+  // URL validity). Only triggered when the user ticks "Attach camera photos".
+  async function buildCameraFaultPdfAttachment(rows) {
+    var camRows = rows.filter(rowHasCameraSlots);
+    if (!camRows.length) return null;
+
+    var assets = camRows.map(function(row) {
+      return {
+        legacyNo:   row.legacyNo,
+        imei:       row.imei,
+        model:      row.cameraModel,
+        lastComms:  row.lastComms,
+        systemDown: !!row.systemDown,
+        slots: [0,1,2,3,4].map(function(i) {
+          var slot = row.slots[i];
+          if (!slot) return null;
+          return { label: slot.label, url: slot.url || null, status: slot.status || null };
+        }),
+      };
+    });
+
+    var r = await TGE.api('POST', '/api/camera-fault-pdf', { assets: assets });
+    if (!r.ok || !r.data || !r.data.base64) return null;
+    return r.data.base64;
+  }
+
+  function wrapInTemplate(bodyHtml) {
+    // Plain, standard email — no banner, no footer disclaimer. Just the
+    // content, on a white background, like a normal email someone wrote.
+    return '<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;font-size:14px;line-height:1.6;max-width:680px;">' +
+      bodyHtml +
     '</div>';
   }
 
@@ -327,16 +357,12 @@
   async function handleSend() {
     if (composerState.sending) return;
 
-    composerState.sending = true; // set early so sign step is also protected
-    setStatus('Preparing images...', false);
-    await signAllImages();
-    composerState.sending = false; // reset, normal flow below will re-set it
-
     var to      = (document.getElementById('ec-to')      || {}).value || '';
     var cc      = (document.getElementById('ec-cc')      || {}).value || '';
     var bcc     = (document.getElementById('ec-bcc')     || {}).value || '';
     var subject = (document.getElementById('ec-subject') || {}).value || '';
     var body    = (document.getElementById('ec-body')    || {}).value || '';
+    var attachPdf = (document.getElementById('ec-attach-pdf') || {}).checked || false;
 
     if (!to.trim())      { setStatus('To field is required.', true); return; }
     if (!subject.trim()) { setStatus('Subject is required.', true); return; }
@@ -347,12 +373,25 @@
     if (sendBtn) { sendBtn.textContent = 'Sending...'; sendBtn.disabled = true; }
 
     try {
+      // Build the PDF once up front if requested — shared across individual
+      // sends too (same attachment goes to every recipient in that case).
+      var pdfBase64 = null;
+      if (attachPdf) {
+        setStatus('Building PDF attachment...', false);
+        pdfBase64 = await buildCameraFaultPdfAttachment(composerState.rows);
+        if (!pdfBase64) setStatus('⚠ Could not build PDF attachment — sending without it.', true);
+      }
+
       if (composerState.mode === 'combined') {
         setStatus('Sending combined email...', false);
-        var combinedBody = nl2br(body) + buildCombinedTable();
-        var finalHtml = wrapInTemplate(combinedBody, subject);
+        var combinedExtract = extractSignature(body);
+        var combinedBody = nl2br(combinedExtract.text) + buildCameraStatusTable(composerState.rows) + combinedExtract.signatureHtml;
+        var finalHtml = wrapInTemplate(combinedBody);
 
-        var r = await TGE.api('POST', '/api/send-email', { to: to, cc: cc, bcc: bcc, subject: subject, htmlBody: finalHtml });
+        var sendPayload = { to: to, cc: cc, bcc: bcc, subject: subject, htmlBody: finalHtml };
+        if (pdfBase64) { sendPayload.attachmentBase64 = pdfBase64; sendPayload.attachmentName = 'camera-fault-report.pdf'; }
+
+        var r = await TGE.api('POST', '/api/send-email', sendPayload);
         if (!r.ok) throw new Error(r.data && r.data.error ? r.data.error : 'Send failed');
 
         setStatus('✅ Combined email sent to ' + to, false);
@@ -364,16 +403,20 @@
         for (var i = 0; i < composerState.rows.length; i++) {
           var row = composerState.rows[i];
           var mergedSubject = mergeText(subject, row);
-          var mergedBodyRaw = mergeText(body, row);
-          var mergedBody    = nl2br(mergedBodyRaw) + buildImagesHtml(row);
-          var finalHtml     = wrapInTemplate(mergedBody, mergedSubject);
+          var mergedBodyFieldsOnly = mergeFieldsOnly(body, row);
+          var rowExtract    = extractSignature(mergedBodyFieldsOnly);
+          var mergedBody    = nl2br(rowExtract.text) + buildCameraStatusTable([row]) + rowExtract.signatureHtml;
+          var finalHtml     = wrapInTemplate(mergedBody);
           var mergedTo       = mergeText(to, row)  || to;
           var mergedCc       = mergeText(cc, row)  || cc;
           var mergedBcc      = mergeText(bcc, row) || bcc;
 
           setStatus('Sending ' + (sent+1) + ' of ' + total + '...', false);
 
-          var resp = await TGE.api('POST', '/api/send-email', { to: mergedTo, cc: mergedCc, bcc: mergedBcc, subject: mergedSubject, htmlBody: finalHtml });
+          var sendPayloadOne = { to: mergedTo, cc: mergedCc, bcc: mergedBcc, subject: mergedSubject, htmlBody: finalHtml };
+          if (pdfBase64) { sendPayloadOne.attachmentBase64 = pdfBase64; sendPayloadOne.attachmentName = 'camera-fault-report.pdf'; }
+
+          var resp = await TGE.api('POST', '/api/send-email', sendPayloadOne);
           if (!resp.ok) {
             setStatus('⚠ Failed on item ' + (i+1) + ': ' + (resp.data && resp.data.error ? resp.data.error : 'unknown error'), true);
           } else {
