@@ -28,6 +28,7 @@
             '<button class="hero-mode-btn active" id="admin-tab-users" type="button">Users</button>',
             '<button class="hero-mode-btn" id="admin-tab-history" type="button">Access History</button>',
             '<button class="hero-mode-btn" id="admin-tab-api" type="button">API Reference</button>',
+            '<button class="hero-mode-btn" id="admin-tab-mailer" type="button">Mailer Data</button>',
           '</div>',
           '<div class="hero-bar-right">',
             '<div class="hero-divider"></div>',
@@ -39,6 +40,7 @@
       '<div id="admin-content-users">',   renderUsersTab(),   '</div>',
       '<div id="admin-content-history" style="display:none;">', renderHistoryTab(), '</div>',
       '<div id="admin-content-api" style="display:none;">',     renderApiTab(),     '</div>',
+      '<div id="admin-content-mailer" style="display:none;">',  renderMailerTab(),  '</div>',
     ].join('');
 
     wireAdminTabs();
@@ -53,6 +55,7 @@
       { btn: 'admin-tab-users',   content: 'admin-content-users' },
       { btn: 'admin-tab-history', content: 'admin-content-history' },
       { btn: 'admin-tab-api',     content: 'admin-content-api' },
+      { btn: 'admin-tab-mailer',  content: 'admin-content-mailer' },
     ];
     tabs.forEach(function (t) {
       TGE.on(t.btn, 'click', function () {
@@ -69,6 +72,7 @@
         state.activeTab = t.btn.replace('admin-tab-', '');
         if (state.activeTab === 'history') loadActivity();
         if (state.activeTab === 'api') wireApiFilters();
+        if (state.activeTab === 'mailer') loadSignatures();
       });
     });
   }
@@ -404,6 +408,151 @@
     { id: 'API-7', method: 'GET', group: 'metrics',  url: '/v1/vehicles/{vehicleId}/meters',            returns: 'Odometer, engine hours',                                             usedBy: ['Asset Snapshot performance'] },
     { id: 'API-8', method: 'GET', group: 'vehicle',  url: '/v1/vehicles/{vehicleId}/devices',           returns: 'Devices linked to a vehicle — imei, serialNumber, type',             usedBy: ['Asset Snapshot devices', 'SD Health fleet'] },
   ];
+
+  // ── Mailer Data tab ──────────────────────────────────────────────────────────
+  var mailerState = { signatures: [], editingId: null };
+
+  function renderMailerTab() {
+    return [
+      '<div class="card">',
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">',
+          '<div>',
+            '<div class="card-kicker">Mailer Data</div>',
+            '<div class="card-title">Email Signatures</div>',
+          '</div>',
+          '<button class="btn btn-primary" id="mailer-add-btn" type="button">+ Add Signature</button>',
+        '</div>',
+        '<div id="mailer-sig-list"><p style="color:var(--muted);font-size:13px;">Loading signatures...</p></div>',
+      '</div>',
+
+      '<div class="card" id="mailer-edit-panel" style="display:none;">',
+        '<div class="card-kicker" id="mailer-edit-kicker">Add Signature</div>',
+        '<div class="card-title" id="mailer-edit-title">New Signature</div>',
+        '<div style="display:flex;flex-direction:column;gap:12px;margin-top:10px;">',
+          '<div><label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">Label</label>',
+            '<input id="mailer-label-input" type="text" placeholder="e.g. Barend Blignaut — Telematics" style="width:100%;height:36px;border:1px solid var(--line);border-radius:7px;padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink);" /></div>',
+          '<div><label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">HTML Content</label>',
+            '<textarea id="mailer-html-input" rows="10" placeholder="<div>...</div>" style="width:100%;font-family:monospace;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical;background:var(--surface);color:var(--ink);"></textarea></div>',
+          '<div><label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">Preview</label>',
+            '<div id="mailer-preview" style="border:1px solid var(--line);border-radius:8px;padding:14px;background:#fff;"></div></div>',
+          '<div style="display:flex;gap:8px;">',
+            '<button class="btn btn-primary" id="mailer-save-btn" type="button">Save</button>',
+            '<button class="btn" id="mailer-cancel-btn" type="button">Cancel</button>',
+          '</div>',
+        '</div>',
+      '</div>',
+    ].join('');
+  }
+
+  async function loadSignatures() {
+    var r = await api('GET', '/api/mailer/signatures?all=1');
+    mailerState.signatures = (r.ok && r.data && r.data.signatures) ? r.data.signatures : [];
+    renderSignatureList();
+  }
+
+  function renderSignatureList() {
+    var el = TGE.el('mailer-sig-list');
+    if (!el) return;
+    if (!mailerState.signatures.length) {
+      el.innerHTML = '<p style="color:var(--muted);font-size:13px;">No signatures yet — click "+ Add Signature" to create one.</p>';
+      wireMailerButtons();
+      return;
+    }
+    el.innerHTML = mailerState.signatures.map(function(sig) {
+      var active = sig.active === 1 || sig.active === true;
+      return '<div class="card" style="margin-bottom:10px;' + (active ? '' : 'opacity:0.55;') + '">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">' +
+          '<div>' +
+            '<div style="font-size:13px;font-weight:700;">' + escapeMailerHtml(sig.label) + '</div>' +
+            '<div style="font-size:11px;color:' + (active ? 'var(--green-600)' : 'var(--muted)') + ';font-weight:600;text-transform:uppercase;">' + (active ? 'Active' : 'Inactive') + '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:6px;">' +
+            '<button class="btn mailer-edit-row-btn" data-id="' + sig.id + '" type="button" style="height:30px;font-size:12px;">Edit</button>' +
+            '<button class="btn mailer-toggle-row-btn" data-id="' + sig.id + '" data-active="' + (active?1:0) + '" type="button" style="height:30px;font-size:12px;' + (active ? 'color:var(--danger);' : 'color:var(--green-600);') + '">' + (active ? 'Deactivate' : 'Reactivate') + '</button>' +
+          '</div>' +
+        '</div>' +
+        '<div style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px;background:#fff;border-radius:6px;padding:10px;">' + sig.html + '</div>' +
+      '</div>';
+    }).join('');
+    wireMailerButtons();
+  }
+
+  function wireMailerButtons() {
+    var addBtn = TGE.el('mailer-add-btn');
+    if (addBtn) addBtn.onclick = function() { openMailerEdit(null); };
+
+    document.querySelectorAll('.mailer-edit-row-btn').forEach(function(btn) {
+      btn.onclick = function() {
+        var id = parseInt(btn.dataset.id, 10);
+        var sig = mailerState.signatures.find(function(s) { return s.id === id; });
+        if (sig) openMailerEdit(sig);
+      };
+    });
+
+    document.querySelectorAll('.mailer-toggle-row-btn').forEach(function(btn) {
+      btn.onclick = async function() {
+        var id     = parseInt(btn.dataset.id, 10);
+        var active = btn.dataset.active === '1';
+        await api('PUT', '/api/mailer/signatures/' + id, { active: !active });
+        loadSignatures();
+      };
+    });
+  }
+
+  function openMailerEdit(sig) {
+    mailerState.editingId = sig ? sig.id : null;
+    TGE.el('mailer-edit-kicker').textContent = sig ? 'Edit Signature' : 'Add Signature';
+    TGE.el('mailer-edit-title').textContent  = sig ? sig.label : 'New Signature';
+    TGE.el('mailer-label-input').value = sig ? sig.label : '';
+    TGE.el('mailer-html-input').value  = sig ? sig.html  : '';
+    updateMailerPreview();
+
+    var panel = TGE.el('mailer-edit-panel');
+    if (panel) panel.style.display = '';
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    var htmlInput = TGE.el('mailer-html-input');
+    if (htmlInput) htmlInput.oninput = updateMailerPreview;
+
+    TGE.el('mailer-save-btn').onclick   = saveMailerSignature;
+    TGE.el('mailer-cancel-btn').onclick = function() { panel.style.display = 'none'; };
+  }
+
+  function updateMailerPreview() {
+    var html = (TGE.el('mailer-html-input') || {}).value || '';
+    var preview = TGE.el('mailer-preview');
+    if (preview) preview.innerHTML = html || '<span style="color:var(--muted);font-size:12px;">Preview will appear here</span>';
+  }
+
+  async function saveMailerSignature() {
+    var label = (TGE.el('mailer-label-input') || {}).value || '';
+    var html  = (TGE.el('mailer-html-input')  || {}).value || '';
+    if (!label.trim() || !html.trim()) { alert('Label and HTML content are both required.'); return; }
+
+    var saveBtn = TGE.el('mailer-save-btn');
+    if (saveBtn) { saveBtn.textContent = 'Saving...'; saveBtn.disabled = true; }
+
+    var payload = { label: label, html: html };
+    var r;
+    if (mailerState.editingId) {
+      r = await api('PUT', '/api/mailer/signatures/' + mailerState.editingId, payload);
+    } else {
+      r = await api('POST', '/api/mailer/signatures', payload);
+    }
+
+    if (saveBtn) { saveBtn.textContent = 'Save'; saveBtn.disabled = false; }
+
+    if (!r.ok) { alert(r.data && r.data.error ? r.data.error : 'Save failed.'); return; }
+
+    TGE.el('mailer-edit-panel').style.display = 'none';
+    loadSignatures();
+  }
+
+  function escapeMailerHtml(s) {
+    var div = document.createElement('div');
+    div.textContent = s || '';
+    return div.innerHTML;
+  }
 
   function renderApiTab() {
     var filterBar = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">' +
