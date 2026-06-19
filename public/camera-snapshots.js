@@ -448,24 +448,41 @@
     var rows = state.rows.filter(function(r) { return vids.indexOf(String(r.vehicle.id)) !== -1; });
 
     var emailRows = rows.map(function(r) {
-      var slots = r.camera.model && r.camera.model.name === 'MultiIQ' ? 5 : 2;
-      var images = [];
-      // Re-derive images from the currently rendered row (snapshotMap data already used to render table)
-      // We stored minimal row data — pull images fresh from the DOM thumbnails already loaded
+      var slotCount = r.camera.model && r.camera.model.name === 'MultiIQ' ? 5 : 2;
+      var slotLabels = ['Road','Driver','In-Cab','R.Ext','L.Ext'];
+
+      // Camera Snapshots doesn't do pass/fail review (that's Camera Count) —
+      // any slot with a real captured image is shown as 'working' so the
+      // standard status table still has something meaningful to display.
       var rowEl = document.querySelector('tr[onclick*="' + r.vehicle.id + '"]');
+      var imgUrls = [];
       if (rowEl) {
-        rowEl.querySelectorAll('img').forEach(function(img, idx) {
-          var labels = ['Road','Driver','In-Cab','R.Ext','L.Ext'];
-          images.push({ label: labels[idx] || 'Camera', url: img.src });
+        rowEl.querySelectorAll('img').forEach(function(img) {
+          // Pull the RAW TN360/S3 url back out of our proxy src, since the
+          // email/PDF must use the direct TN360 link (no login, ~7 day validity).
+          var src = img.src;
+          var marker = '/api/image-proxy?url=';
+          var idx = src.indexOf(marker);
+          imgUrls.push(idx !== -1 ? decodeURIComponent(src.slice(idx + marker.length)) : src);
         });
       }
+
+      var slots = [];
+      for (var i = 0; i < 5; i++) {
+        if (i >= slotCount) { slots.push(null); continue; }
+        var url = imgUrls[i] || null;
+        slots.push({ label: slotLabels[i], url: url, status: url ? 'working' : null });
+      }
+
       return {
         legacyNo:    r.vehicle.name || '—',
         imei:        r.camera.imei || r.camera.name || '—',
         cameraModel: r.camera.model && r.camera.model.name || '—',
         vehicleType: r.vehicle.type && r.vehicle.type.name || '—',
         capturedAt:  r.capturedAt ? formatTs(r.capturedAt) : 'No snapshot',
-        images:      images,
+        lastComms:   r.capturedAt ? formatTs(r.capturedAt) : 'Unknown',
+        systemDown:  false,
+        slots:       slots,
       };
     });
 
@@ -478,7 +495,7 @@
         { key:'vehicleType', label:'Vehicle Type' },
         { key:'capturedAt',  label:'Captured At' },
       ],
-      imagesField: 'images',
+      imagesField: null, // images are no longer embedded inline — see PDF attachment + slots[] on each row
       onSent: function() {
         setMessage('Email batch complete.', false);
       },
