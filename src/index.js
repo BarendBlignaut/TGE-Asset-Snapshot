@@ -672,6 +672,62 @@ async function handlePublicImageProxy(request, env) {
   });
 }
 
+// ── Mailer signatures (D1-backed) ────────────────────────────────────────────
+
+async function handleListSignatures(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const url    = new URL(request.url);
+  const all    = url.searchParams.get("all") === "1";
+  const query  = all
+    ? "SELECT id, label, html, active, created_at, updated_at FROM mailer_signatures ORDER BY id ASC"
+    : "SELECT id, label, html, active, created_at, updated_at FROM mailer_signatures WHERE active = 1 ORDER BY id ASC";
+
+  const result = await env.DB.prepare(query).all();
+  return jsonResponse({ ok: true, signatures: result.results || [] });
+}
+
+async function handleCreateSignature(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const body  = await safeJson(request);
+  const label = String(body.label || "").trim();
+  const html  = String(body.html  || "").trim();
+  if (!label || !html) return jsonResponse({ error: "label and html are required." }, 400);
+
+  await env.DB.prepare(
+    "INSERT INTO mailer_signatures (label, html, active, created_at, updated_at) VALUES (?, ?, 1, datetime('now'), datetime('now'))"
+  ).bind(label, html).run();
+
+  return jsonResponse({ ok: true });
+}
+
+async function handleUpdateSignature(request, env, id) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const body = await safeJson(request);
+  const updates = [];
+  const values  = [];
+
+  if (body.label != null) { updates.push("label = ?"); values.push(String(body.label).trim()); }
+  if (body.html  != null) { updates.push("html = ?");  values.push(String(body.html).trim()); }
+  if (body.active != null) { updates.push("active = ?"); values.push(body.active ? 1 : 0); }
+
+  if (!updates.length) return jsonResponse({ error: "Nothing to update." }, 400);
+
+  updates.push("updated_at = datetime('now')");
+  values.push(id);
+
+  await env.DB.prepare(
+    `UPDATE mailer_signatures SET ${updates.join(", ")} WHERE id = ?`
+  ).bind(...values).run();
+
+  return jsonResponse({ ok: true });
+}
+
 // POST /api/sign-image-url — generates a signed public URL for embedding in emails
 async function handleSignImageUrl(request, env) {
   const auth = await requireSession(request, env);
@@ -844,6 +900,12 @@ export default {
       if (path === "/api/image-size") return handleImageSize(request, env);
       if (path === "/api/public-image") return handlePublicImageProxy(request, env);
       if (method === "POST" && path === "/api/sign-image-url") return handleSignImageUrl(request, env);
+      if (path === "/api/mailer/signatures" && method === "GET") return handleListSignatures(request, env);
+      if (path === "/api/mailer/signatures" && method === "POST") return handleCreateSignature(request, env);
+      if (path.startsWith("/api/mailer/signatures/") && method === "PUT") {
+        const sigId = parseInt(path.split("/").pop(), 10);
+        return handleUpdateSignature(request, env, sigId);
+      }
       if (method === "POST" && path === "/api/send-email") return handleSendEmail(request, env);
 
       // Telematics proxy — forward /api/tn360/* to telematics API
