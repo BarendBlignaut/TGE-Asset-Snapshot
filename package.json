@@ -7,6 +7,9 @@
     "deploy": "wrangler deploy",
     "db:init": "wrangler d1 execute tge-asset-snapshot-db --file=src/schema.sql"
   },
+  "dependencies": {
+    "pdf-lib": "^1.17.1"
+  },
   "devDependencies": {
     "wrangler": "^4.100.0"
   }
