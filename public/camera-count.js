@@ -488,9 +488,16 @@
     var selected   = rowIndices.map(function(idx) { return state.results[idx]; }).filter(Boolean);
 
     var emailRows = selected.map(function(r) {
-      var images = r.slots.filter(function(s) { return s.hasImage; }).map(function(s) {
-        return { label: s.label, url: '/api/image-proxy?url=' + encodeURIComponent(s.url) };
+      // Pad to always 5 entries (null for slots the camera model doesn't have)
+      // so the standard table/PDF can always assume exactly 5 positions.
+      var slots = [0,1,2,3,4].map(function(i) {
+        var s = r.slots[i];
+        if (!s) return null;
+        // r.slots[i].url is already the raw TN360/S3 url (set during the run,
+        // before any proxying) — use it directly, no /api/image-proxy wrapping.
+        return { label: s.label, url: s.hasImage ? s.url : null, status: s.status || null };
       });
+
       var workingCount = r.slots.filter(function(s) { return s.status === 'working'; }).length;
       var notWorkingCount = r.slots.filter(function(s) { return s.status === 'not_working'; }).length;
 
@@ -499,10 +506,10 @@
         imei:         r.camera.imei || r.camera.name || '—',
         cameraModel:  r.camera.model && r.camera.model.name || '—',
         lastComms:    r.lastComms ? formatTs(r.lastComms) : 'Unknown',
-        systemStatus: r.systemDown ? 'System Down' : 'Operational',
+        systemDown:   !!r.systemDown,
         working:      workingCount,
         notWorking:   notWorkingCount,
-        images:       images,
+        slots:        slots,
       };
     });
 
@@ -513,11 +520,10 @@
         { key:'imei',         label:'IMEI' },
         { key:'cameraModel',  label:'Camera Model' },
         { key:'lastComms',    label:'Last Comms' },
-        { key:'systemStatus', label:'System Status' },
         { key:'working',      label:'Cameras Working' },
         { key:'notWorking',   label:'Cameras Not Working' },
       ],
-      imagesField: 'images',
+      imagesField: null, // images are no longer embedded inline — see PDF attachment + slots[] on each row
       onSent: function() {
         setMessage('Email batch complete.', false);
       },
