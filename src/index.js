@@ -1050,6 +1050,212 @@ async function handleCameraFaultPdf(request, env) {
   }
 }
 
+function pdfBytesToBase64(pdfBytes) {
+  let binary = "";
+  const chunkSize = 8192;
+  const bytes = new Uint8Array(pdfBytes);
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function cleanPdfText(value) {
+  const text = value == null ? "-" : String(value);
+  return text.replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim() || "-";
+}
+
+function safePdfFilePart(value) {
+  return cleanPdfText(value).replace(/[\\/:*?"<>|]+/g, "-").trim() || "asset";
+}
+
+function drawWrappedPdfText(page, text, opts) {
+  const font = opts.font;
+  const size = opts.size || 9;
+  const maxWidth = opts.maxWidth || 200;
+  const lineHeight = opts.lineHeight || size + 3;
+  const maxLines = opts.maxLines || 2;
+  const words = cleanPdfText(text).split(" ");
+  const lines = [];
+  let line = "";
+
+  words.forEach((word) => {
+    const next = line ? `${line} ${word}` : word;
+    if (font.widthOfTextAtSize(next, size) <= maxWidth) {
+      line = next;
+    } else {
+      if (line) lines.push(line);
+      line = word;
+    }
+  });
+  if (line) lines.push(line);
+
+  const clipped = lines.slice(0, maxLines);
+  if (lines.length > maxLines && clipped.length) {
+    let last = clipped[clipped.length - 1];
+    while (font.widthOfTextAtSize(`${last}...`, size) > maxWidth && last.length > 3) {
+      last = last.slice(0, -1);
+    }
+    clipped[clipped.length - 1] = `${last}...`;
+  }
+
+  clipped.forEach((drawLine, idx) => {
+    page.drawText(drawLine, {
+      x: opts.x,
+      y: opts.y - idx * lineHeight,
+      size,
+      font,
+      color: opts.color || rgb(0.12, 0.16, 0.13),
+    });
+  });
+  return clipped.length * lineHeight;
+}
+
+async function buildSnapshotPdf(asset) {
+  const pdfDoc = await PDFDocument.create();
+  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const pageW = 595.28;
+  const pageH = 841.89;
+  const margin = 34;
+  const contentW = pageW - margin * 2;
+  const green = rgb(0.078, 0.325, 0.176);
+  const line = rgb(0.86, 0.90, 0.87);
+  const muted = rgb(0.38, 0.45, 0.40);
+  const light = rgb(0.965, 0.982, 0.970);
+  const sections = Array.isArray(asset.sections) ? asset.sections : [];
+  const cameras = Array.isArray(asset.cameras) ? asset.cameras : [];
+  const embeddedImages = {};
+
+  await Promise.all(cameras.map(async (camera) => {
+    if (!camera || !camera.url || embeddedImages[camera.url] !== undefined) return;
+    embeddedImages[camera.url] = null;
+    const img = await fetchImageForPdf(camera.url);
+    if (!img) return;
+    try {
+      embeddedImages[camera.url] = img.format === "png"
+        ? await pdfDoc.embedPng(img.bytes)
+        : await pdfDoc.embedJpg(img.bytes);
+    } catch (e) {
+      embeddedImages[camera.url] = null;
+    }
+  }));
+
+  const pages = [];
+  let page;
+  let cursorY;
+
+  function startPage() {
+    page = pdfDoc.addPage([pageW, pageH]);
+    pages.push(page);
+    cursorY = pageH - margin;
+
+    page.drawRectangle({ x: 0, y: pageH - 82, width: pageW, height: 82, color: green });
+    const title = cleanPdfText(asset.title || `Asset ${asset.legacyNo || "-"} Snapshot`);
+    page.drawText(title, { x: margin, y: pageH - 38, size: 18, font: fontBold, color: rgb(1, 1, 1) });
+    const generated = new Date().toLocaleString("en-AU", {
+      timeZone: "Australia/Sydney", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true,
+    });
+    page.drawText(`Generated ${generated}`, { x: margin, y: pageH - 58, size: 9, font: fontRegular, color: rgb(0.86, 0.94, 0.88) });
+    cursorY = pageH - 112;
+  }
+
+  function ensureSpace(height) {
+    if (cursorY - height < margin + 24) startPage();
+  }
+
+  function drawSection(section) {
+    const rows = Array.isArray(section.rows) ? section.rows : [];
+    if (!rows.length) return;
+    const colGap = 10;
+    const colW = (contentW - colGap) / 2;
+    const rowH = 34;
+    const sectionH = 24 + Math.ceil(rows.length / 2) * rowH + 8;
+    ensureSpace(sectionH);
+
+    page.drawText(cleanPdfText(section.title), { x: margin, y: cursorY, size: 11, font: fontBold, color: green });
+    page.drawLine({ start: { x: margin, y: cursorY - 6 }, end: { x: margin + contentW, y: cursorY - 6 }, thickness: 1, color: line });
+    cursorY -= 22;
+
+    rows.forEach((item, idx) => {
+      const col = idx % 2;
+      const rowIdx = Math.floor(idx / 2);
+      const x = margin + col * (colW + colGap);
+      const y = cursorY - rowIdx * rowH;
+      page.drawRectangle({ x, y: y - 25, width: colW, height: 28, color: light, borderColor: line, borderWidth: 0.5 });
+      page.drawText(cleanPdfText(item.label).toUpperCase(), { x: x + 7, y: y - 8, size: 6.5, font: fontBold, color: muted });
+      drawWrappedPdfText(page, item.value, { x: x + 7, y: y - 20, maxWidth: colW - 14, size: 8.5, font: fontRegular, color: rgb(0.08, 0.10, 0.09), maxLines: 1 });
+    });
+
+    cursorY -= Math.ceil(rows.length / 2) * rowH + 14;
+  }
+
+  function drawCameras() {
+    if (!cameras.length) return;
+    const boxGap = 7;
+    const boxW = (contentW - boxGap * 4) / 5;
+    const boxH = 68;
+    const sectionH = 24 + boxH + 28;
+    ensureSpace(sectionH);
+
+    page.drawText("Camera Snapshots", { x: margin, y: cursorY, size: 11, font: fontBold, color: green });
+    if (asset.cameraCapturedAt) {
+      page.drawText(`Captured ${cleanPdfText(asset.cameraCapturedAt)}`, { x: margin + 116, y: cursorY, size: 8, font: fontRegular, color: muted });
+    }
+    page.drawLine({ start: { x: margin, y: cursorY - 6 }, end: { x: margin + contentW, y: cursorY - 6 }, thickness: 1, color: line });
+    cursorY -= 20;
+
+    cameras.slice(0, 5).forEach((camera, idx) => {
+      const x = margin + idx * (boxW + boxGap);
+      const y = cursorY - boxH;
+      const embedded = camera && camera.url ? embeddedImages[camera.url] : null;
+      page.drawRectangle({ x, y, width: boxW, height: boxH, color: rgb(0.96, 0.96, 0.96), borderColor: line, borderWidth: 0.5 });
+      if (embedded) {
+        const scaled = embedded.scaleToFit(boxW, boxH);
+        page.drawImage(embedded, { x: x + (boxW - scaled.width) / 2, y: y + (boxH - scaled.height) / 2, width: scaled.width, height: scaled.height });
+      } else {
+        page.drawText("No image", { x: x + 22, y: y + 31, size: 7, font: fontRegular, color: muted });
+      }
+      const label = cleanPdfText(camera && camera.label);
+      const labelW = fontBold.widthOfTextAtSize(label, 7);
+      page.drawText(label, { x: x + boxW / 2 - labelW / 2, y: y - 11, size: 7, font: fontBold, color: rgb(0.10, 0.12, 0.10) });
+      const status = cleanPdfText(camera && camera.status);
+      const statusW = fontRegular.widthOfTextAtSize(status, 6.5);
+      page.drawText(status, { x: x + boxW / 2 - statusW / 2, y: y - 21, size: 6.5, font: fontRegular, color: muted });
+    });
+
+    cursorY -= boxH + 36;
+  }
+
+  startPage();
+  sections.forEach(drawSection);
+  drawCameras();
+
+  pages.forEach((pg, idx) => {
+    const footer = `Page ${idx + 1} of ${pages.length}`;
+    pg.drawText(footer, { x: pageW - margin - 52, y: 18, size: 7.5, font: fontRegular, color: muted });
+  });
+
+  return await pdfDoc.save();
+}
+
+async function handleSnapshotPdf(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const body = await safeJson(request);
+  const asset = body.asset || {};
+  if (!asset || !asset.legacyNo) return jsonResponse({ error: "asset.legacyNo is required." }, 400);
+
+  try {
+    const pdfBytes = await buildSnapshotPdf(asset);
+    const fileName = `Asset ${safePdfFilePart(asset.legacyNo)} snapshot.pdf`;
+    return jsonResponse({ ok: true, base64: pdfBytesToBase64(pdfBytes), sizeBytes: pdfBytes.length, fileName });
+  } catch (e) {
+    return jsonResponse({ error: "Snapshot PDF generation failed: " + e.message }, 500);
+  }
+}
+
 // ── Send email via Power Automate ──────────────────────────────────────────────
 
 async function handleSendEmail(request, env) {
@@ -1222,6 +1428,7 @@ export default {
         return handleUpdateSignature(request, env, sigId);
       }
       if (method === "POST" && path === "/api/camera-fault-pdf") return handleCameraFaultPdf(request, env);
+      if (method === "POST" && path === "/api/snapshot-pdf") return handleSnapshotPdf(request, env);
       if (method === "POST" && path === "/api/send-email") return handleSendEmail(request, env);
 
       // Telematics proxy — forward /api/tn360/* to telematics API

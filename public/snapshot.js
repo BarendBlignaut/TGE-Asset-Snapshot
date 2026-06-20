@@ -18,7 +18,7 @@
     running: false,
     asset:   null,
     devices: { hermes:null, camera:null, iface:null, tracker:null },
-    data:    { vehicle:null, deviceStats:null, vpm:null, gpio:null, cameras:null },
+    data:    defaultData(),
   };
 
   var alignState = { running:false, steps:{}, vehicleId:null };
@@ -49,12 +49,7 @@
             '<button class="hero-action-btn" id="snap-refresh-btn" type="button" style="display:none;">Refresh</button>',
           '</div>',
           '<div class="hero-bar-right">',
-            '<div class="hero-divider"></div>',
-            TGE.can('snapshot','export-pdf')        ? '<button class="hero-export-btn" id="snap-pdf-btn" type="button">PDF</button>' : '',
-            TGE.can('snapshot','export-email-pdf')  ? '<button class="hero-export-btn" id="snap-email-btn" type="button">Email PDF</button>' : '',
-            TGE.can('snapshot','export-csv')        ? '<button class="hero-export-btn" id="snap-csv-btn" type="button">CSV</button>' : '',
-            TGE.can('snapshot','export-xlsx')       ? '<button class="hero-export-btn" id="snap-xlsx-btn" type="button">XLSX</button>' : '',
-            TGE.can('snapshot','export-json')       ? '<button class="hero-export-btn" id="snap-json-btn" type="button">JSON</button>' : '',
+            buildExportMenu(),
           '</div>',
         '</div>',
         '<p class="hero-message" id="snap-message"></p>',
@@ -69,7 +64,7 @@
       '<div id="snap-results" style="display:none;">',
 
         // 1 — Vehicle Info
-        '<div class="card">',
+        '<div class="card" id="snap-vehicle-card">',
           '<div class="card-kicker">Vehicle Information</div>',
           '<div id="snap-vehicle-title" class="card-title">—</div>',
           '<div class="data-grid data-grid-4" style="margin-bottom:14px;">',
@@ -215,6 +210,37 @@
     return '<div class="data-item"><span>' + label + '</span><strong id="' + id + '">—</strong></div>';
   }
 
+  function defaultData() {
+    return {
+      vehicle: null,
+      deviceStats: null,
+      vpm: null,
+      gpio: null,
+      cameras: null,
+      cameraSlots: [],
+      cameraCapturedAt: null,
+    };
+  }
+
+  function buildExportMenu() {
+    var items = [
+      TGE.can('snapshot','export-pdf')       ? '<button class="hero-menu-item" id="snap-pdf-btn" type="button"><span>Snapshot PDF</span><span>PDF</span></button>' : '',
+      TGE.can('snapshot','export-email-pdf') ? '<button class="hero-menu-item" id="snap-email-btn" type="button"><span>Email PDF</span><span>Send</span></button>' : '',
+      TGE.can('snapshot','export-csv')       ? '<button class="hero-menu-item" id="snap-csv-btn" type="button"><span>CSV</span><span>.csv</span></button>' : '',
+      TGE.can('snapshot','export-xlsx')      ? '<button class="hero-menu-item" id="snap-xlsx-btn" type="button"><span>Excel</span><span>.xlsx</span></button>' : '',
+      TGE.can('snapshot','export-json')      ? '<button class="hero-menu-item" id="snap-json-btn" type="button"><span>JSON</span><span>.json</span></button>' : '',
+    ].filter(Boolean).join('');
+    if (!items) return '';
+    return '<div class="hero-divider"></div>' +
+      '<div class="hero-menu" id="snap-export-menu">' +
+        '<button class="hero-menu-trigger" id="snap-export-trigger" type="button" aria-haspopup="true" aria-expanded="false">' +
+          '<span class="hero-menu-icon">&#8595;</span><span>Export</span>' +
+          '<svg class="hero-menu-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>' +
+        '</button>' +
+        '<div class="hero-menu-panel" role="menu">' + items + '</div>' +
+      '</div>';
+  }
+
   function injectAlignPanel() {
     var existing = document.getElementById('snap-align-panel');
     if (existing) existing.remove();
@@ -255,8 +281,21 @@
   // ── Wire events ───────────────────────────────────────────────────────────────
   function wireEvents() {
     TGE.on('snap-run-btn',     'click', runSnapshot);
-    TGE.on('snap-refresh-btn', 'click', runSnapshot);
+    TGE.on('snap-refresh-btn', 'click', resetSnapshot);
     TGE.on('snap-fleet-input', 'keydown', function(e) { if (e.key === 'Enter') runSnapshot(); });
+    var exportTrigger = TGE.el('snap-export-trigger');
+    var exportMenu = TGE.el('snap-export-menu');
+    if (exportTrigger && exportMenu) {
+      exportTrigger.onclick = function(e) {
+        e.stopPropagation();
+        var open = !exportMenu.classList.contains('open');
+        exportMenu.classList.toggle('open', open);
+        exportTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+      };
+      document.addEventListener('click', function(e) {
+        if (!exportMenu.contains(e.target)) closeExportMenu();
+      });
+    }
   }
 
   // ── Run snapshot ──────────────────────────────────────────────────────────────
@@ -268,7 +307,8 @@
 
     state.running = true;
     state.devices = { hermes:null, camera:null, iface:null, tracker:null };
-    state.data    = {};
+    state.data    = defaultData();
+    resetResultVisibility();
     setMessage('Looking up fleet ' + fleetNo + '...', false);
     setBtnState(true);
 
@@ -503,6 +543,15 @@
     var mediaFiles  = ctx.response.mediaFiles;
     state.data.cameras = mediaFiles;
     var activeSlots = CAMERA_SLOTS.slice(0, slots);
+    state.data.cameraCapturedAt = latest.timeAt;
+    state.data.cameraSlots = activeSlots.map(function(slot) {
+      var file = findCameraFile(mediaFiles, slot);
+      return {
+        label: slot.label,
+        url: file && file.mediaFile ? file.mediaFile : null,
+        status: file && file.mediaFile ? 'Available' : 'Unavailable',
+      };
+    });
 
     show('snap-camera-card');
     var alignBtn = TGE.el('snap-align-btn');
@@ -519,17 +568,7 @@
 
   function buildCameraGrid(mediaFiles, activeSlots) {
     return activeSlots.map(function(slot) {
-      var file = null;
-      if (slot.source === 'MDVR') {
-        file = mediaFiles.find(function(f) {
-          return f.source === 'MDVR' &&
-                 f.imageDetails && f.imageDetails.sources &&
-                 f.imageDetails.sources.some(function(s) { return slot.sources.indexOf(s) !== -1; }) &&
-                 f.status === 'FINISHED';
-        });
-      } else {
-        file = mediaFiles.find(function(f) { return f.source === slot.source && f.status === 'FINISHED'; });
-      }
+      var file = findCameraFile(mediaFiles, slot);
       var hasImage = file && file.mediaFile;
       return '<div>' +
         '<div style="aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;">' +
@@ -539,6 +578,19 @@
         '<div style="font-size:10px;color:var(--muted);">' + (hasImage ? 'FINISHED' : 'Unavailable') + '</div>' +
       '</div>';
     }).join('');
+  }
+
+  function findCameraFile(mediaFiles, slot) {
+    if (!Array.isArray(mediaFiles)) return null;
+    if (slot.source === 'MDVR') {
+      return mediaFiles.find(function(f) {
+        return f.source === 'MDVR' &&
+               f.imageDetails && f.imageDetails.sources &&
+               f.imageDetails.sources.some(function(s) { return slot.sources.indexOf(s) !== -1; }) &&
+               f.status === 'FINISHED';
+      }) || null;
+    }
+    return mediaFiles.find(function(f) { return f.source === slot.source && f.status === 'FINISHED'; }) || null;
   }
 
   function populateGpio(gpio) {
@@ -804,31 +856,73 @@
 
   function showResults() { TGE.hide('snap-empty'); TGE.show('snap-results'); }
 
+  function resetSnapshot() {
+    if (state.running) return;
+    state.devices = { hermes:null, camera:null, iface:null, tracker:null };
+    state.data    = defaultData();
+    alignState    = { running:false, steps:{}, vehicleId:null };
+    var input = TGE.el('snap-fleet-input');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+    resetResultVisibility();
+    setMessage('');
+    closeExportMenu();
+  }
+
+  function resetResultVisibility() {
+    TGE.show('snap-empty');
+    TGE.hide('snap-results');
+    [
+      'snap-driver-card','snap-status-card','snap-vpm-card','snap-gpio-card',
+      'snap-camera-card','snap-map-card','snap-tracker-card'
+    ].forEach(function(id) { TGE.hide(id); });
+    var refreshBtn = TGE.el('snap-refresh-btn');
+    if (refreshBtn) refreshBtn.style.display = 'none';
+    var cameraGrid = TGE.el('snap-camera-grid');
+    if (cameraGrid) cameraGrid.innerHTML = '';
+    var postSection = TGE.el('snap-cam-post-section');
+    if (postSection) postSection.style.display = 'none';
+    var map = TGE.el('snap-map');
+    if (map) map.innerHTML = '<span style="color:var(--muted);font-size:13px;">Map loads after fetch</span>';
+  }
+
+  function closeExportMenu() {
+    var exportMenu = TGE.el('snap-export-menu');
+    var exportTrigger = TGE.el('snap-export-trigger');
+    if (exportMenu) exportMenu.classList.remove('open');
+    if (exportTrigger) exportTrigger.setAttribute('aria-expanded', 'false');
+  }
+
   function activateExports() {
-    ['snap-pdf-btn','snap-email-btn','snap-csv-btn','snap-xlsx-btn','snap-json-btn'].forEach(function(id) {
-      var el = TGE.el(id);
-      if (el) el.classList.add('active');
-    });
-    // Wire handlers
     var csvBtn  = TGE.el('snap-csv-btn');
     var jsonBtn = TGE.el('snap-json-btn');
     var pdfBtn  = TGE.el('snap-pdf-btn');
     var xlsxBtn = TGE.el('snap-xlsx-btn');
     var emailBtn = TGE.el('snap-email-btn');
-    if (csvBtn)   csvBtn.onclick   = exportCsv;
-    if (jsonBtn)  jsonBtn.onclick  = exportJson;
-    if (pdfBtn)   pdfBtn.onclick   = function() { window.print(); };
-    if (xlsxBtn)  xlsxBtn.onclick  = exportCsv; // fallback to CSV for now
-    if (emailBtn) emailBtn.onclick = function() { alert('Email PDF — coming soon.'); };
+    if (csvBtn)   csvBtn.onclick   = function() { closeExportMenu(); exportCsv(); };
+    if (jsonBtn)  jsonBtn.onclick  = function() { closeExportMenu(); exportJson(); };
+    if (pdfBtn)   pdfBtn.onclick   = function() { closeExportMenu(); exportPdf(); };
+    if (xlsxBtn)  xlsxBtn.onclick  = function() { closeExportMenu(); exportCsv(); }; // fallback to CSV for now
+    if (emailBtn) emailBtn.onclick = function() { closeExportMenu(); openEmailPdfComposer(); };
   }
 
   function renderMap(containerId, lat, lng) {
     var el = TGE.el(containerId);
     if (!el) return;
-    el.innerHTML = '<iframe style="width:100%;height:100%;border:none;" loading="lazy" ' +
-      'src="https://www.openstreetmap.org/export/embed.html?bbox=' +
+    var src = 'https://www.openstreetmap.org/export/embed.html?bbox=' +
       (lng-0.02) + '%2C' + (lat-0.02) + '%2C' + (lng+0.02) + '%2C' + (lat+0.02) +
-      '&layer=mapnik&marker=' + lat + '%2C' + lng + '"></iframe>';
+      '&layer=mapnik&marker=' + lat + '%2C' + lng + '&_=' + Date.now();
+    el.innerHTML = '<iframe title="Last known position map" style="width:100%;height:100%;border:none;display:block;background:var(--surface-2);" loading="eager"></iframe>';
+    var iframe = el.querySelector('iframe');
+    if (!iframe) return;
+    requestAnimationFrame(function() {
+      iframe.src = src;
+      setTimeout(function() {
+        if (iframe && iframe.contentWindow) iframe.style.opacity = '0.999';
+      }, 250);
+    });
   }
 
   function formatTs(ts) {
@@ -842,8 +936,129 @@
   }
 
   // ── Exports ───────────────────────────────────────────────────────────────────
+  function ensureSnapshotLoaded() {
+    if (state.data && state.data.vehicle) return true;
+    setMessage('Run an asset snapshot before exporting.', true);
+    return false;
+  }
+
+  function assetFileName() {
+    var legacy = state.data && state.data.vehicle && state.data.vehicle.name ? state.data.vehicle.name : 'asset';
+    var safeLegacy = String(legacy).replace(/[\\/:*?"<>|]+/g, '-').trim() || 'asset';
+    return 'Asset ' + safeLegacy + ' snapshot.pdf';
+  }
+
+  function collectCardRows(cardId) {
+    var card = TGE.el(cardId);
+    if (!card || card.style.display === 'none') return [];
+    return Array.prototype.slice.call(card.querySelectorAll('.data-item')).map(function(item) {
+      var labelEl = item.querySelector('span');
+      var valueEl = item.querySelector('strong');
+      var extra = Array.prototype.slice.call(item.querySelectorAll('span')).slice(1).map(function(el) {
+        return el.textContent.trim();
+      }).filter(Boolean).join(' ');
+      var value = valueEl ? valueEl.textContent.trim() : '';
+      if (extra) value = value ? value + ' ' + extra : extra;
+      return {
+        label: labelEl ? labelEl.textContent.trim() : '',
+        value: value || '—',
+      };
+    }).filter(function(row) { return row.label; });
+  }
+
+  function buildSnapshotPdfPayload() {
+    var v = state.data.vehicle || {};
+    var sections = [
+      { title: 'Vehicle Information', rows: collectCardRows('snap-vehicle-card') },
+      { title: 'Driver', rows: collectCardRows('snap-driver-card') },
+      { title: 'Live Status', rows: collectCardRows('snap-status-card') },
+      { title: 'Engine Metrics', rows: collectCardRows('snap-vpm-card') },
+      { title: 'GPIO', rows: collectCardRows('snap-gpio-card') },
+      { title: 'Camera Health', rows: collectCardRows('snap-camera-card') },
+      { title: 'Location', rows: collectCardRows('snap-map-card') },
+      { title: 'Asset Tracker', rows: collectCardRows('snap-tracker-card') },
+    ].filter(function(section) { return section.rows.length; });
+
+    return {
+      legacyNo: v.name || 'asset',
+      title: 'Asset ' + (v.name || '—') + ' Snapshot',
+      generatedAt: new Date().toISOString(),
+      sections: sections,
+      cameras: state.data.cameraSlots || [],
+      cameraCapturedAt: state.data.cameraCapturedAt || null,
+    };
+  }
+
+  async function buildSnapshotAttachment(rows) {
+    var row = rows && rows[0];
+    var payload = row && row.pdfPayload ? row.pdfPayload : buildSnapshotPdfPayload();
+    var r = await TGE.api('POST', '/api/snapshot-pdf', { asset: payload });
+    if (!r.ok || !r.data || !r.data.base64) {
+      throw new Error(r.data && r.data.error ? r.data.error : 'Snapshot PDF generation failed');
+    }
+    return { base64: r.data.base64, name: r.data.fileName || assetFileName() };
+  }
+
+  function base64ToBlob(base64, type) {
+    var bin = atob(base64);
+    var len = bin.length;
+    var bytes = new Uint8Array(len);
+    for (var i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: type });
+  }
+
+  async function exportPdf() {
+    if (!ensureSnapshotLoaded()) return;
+    setMessage('Building snapshot PDF...', false);
+    try {
+      var attachment = await buildSnapshotAttachment([{ pdfPayload: buildSnapshotPdfPayload() }]);
+      var blob = base64ToBlob(attachment.base64, 'application/pdf');
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = attachment.name || assetFileName();
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(a.href);
+      a.remove();
+      setMessage('Snapshot PDF downloaded.', false);
+    } catch(e) {
+      setMessage(e.message || 'PDF export failed.', true);
+    }
+  }
+
+  function openEmailPdfComposer() {
+    if (!ensureSnapshotLoaded()) return;
+    var v = state.data.vehicle || {};
+    var ds = state.data.deviceStats || {};
+    var row = {
+      legacyNo:     v.name || '—',
+      registration: v.registration || '—',
+      state:        v.registrationState || '—',
+      location:     ds.location || TGE.safeText(TGE.el('snap-map-address') && TGE.el('snap-map-address').textContent),
+      lastGps:      TGE.safeText(TGE.el('snap-gps-time') && TGE.el('snap-gps-time').textContent),
+      pdfPayload:   buildSnapshotPdfPayload(),
+    };
+
+    TGE.openEmailComposer({
+      rows: [row],
+      fields: [
+        { key:'legacyNo',     label:'Legacy No' },
+        { key:'registration', label:'Registration' },
+        { key:'state',        label:'State' },
+        { key:'location',     label:'Location' },
+        { key:'lastGps',      label:'Last GPS' },
+      ],
+      attachmentBuilder: buildSnapshotAttachment,
+      attachmentLabel: 'Attach asset snapshot PDF',
+      attachByDefault: true,
+      onSent: function() {
+        setMessage('Snapshot email sent.', false);
+      },
+    });
+  }
+
   function exportJson() {
-    if (!state.data.vehicle) return;
+    if (!ensureSnapshotLoaded()) return;
     var json = JSON.stringify(state.data, null, 2);
     var a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([json], { type:'application/json' }));
@@ -852,7 +1067,7 @@
   }
 
   function exportCsv() {
-    if (!state.data.vehicle) return;
+    if (!ensureSnapshotLoaded()) return;
     var v   = state.data.vehicle;
     var ds  = state.data.deviceStats || {};
     var vpm = state.data.vpm || {};

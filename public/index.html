@@ -308,6 +308,84 @@
     }
     .hero-export-btn.active:hover { background: rgba(255,255,255,0.20); }
 
+    .hero-menu {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+    .hero-menu-trigger {
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 11px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.20);
+      background: rgba(255,255,255,0.10);
+      color: rgba(255,255,255,0.82);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      transition: background 140ms, border-color 140ms, color 140ms;
+    }
+    .hero-menu-trigger:hover,
+    .hero-menu.open .hero-menu-trigger {
+      background: rgba(255,255,255,0.18);
+      border-color: rgba(255,255,255,0.34);
+      color: #fff;
+    }
+    .hero-menu-icon {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--yellow);
+      color: var(--green-900);
+      line-height: 1;
+      font-size: 12px;
+    }
+    .hero-menu-caret {
+      width: 10px;
+      height: 10px;
+      opacity: 0.75;
+      transition: transform 140ms;
+    }
+    .hero-menu.open .hero-menu-caret { transform: rotate(180deg); }
+    .hero-menu-panel {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 8px);
+      min-width: 190px;
+      padding: 6px;
+      border-radius: 12px;
+      background: #fff;
+      border: 1px solid rgba(15,26,19,0.10);
+      box-shadow: 0 18px 42px rgba(10,45,20,0.22);
+      display: none;
+      z-index: 40;
+    }
+    .hero-menu.open .hero-menu-panel { display: block; }
+    .hero-menu-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 9px 10px;
+      border: none;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--ink-2);
+      font-size: 12px;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+    }
+    .hero-menu-item:hover { background: var(--green-50); color: var(--green-800); }
+
     .hero-message { font-size: 12px; color: rgba(255,255,255,0.6); margin-top: 8px; min-height: 16px; }
     .hero-message.error { color: #ff8a80; }
 
@@ -502,7 +580,7 @@
           </button>
           <button class="nav-item active" id="nav-snapshot" type="button" data-view="snapshot" data-group="operations" data-title="Asset Snapshot">
             <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="7" height="7" rx="1"/><rect x="11" y="2" width="7" height="7" rx="1"/><rect x="2" y="11" width="7" height="7" rx="1"/><rect x="11" y="11" width="7" height="7" rx="1"/></svg>
-            Snapshot
+            Asset Snapshot
           </button>
           <button class="nav-item" id="nav-asset-track" type="button" data-view="asset-track" data-group="operations" data-title="Asset Track">
             <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2L18 6v8l-8 4-8-4V6l8-4z"/><path d="M10 2v12M2 6l8 4 8-4"/></svg>

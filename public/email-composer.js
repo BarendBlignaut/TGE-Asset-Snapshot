@@ -50,6 +50,9 @@
     fields:      [],
     imagesField: null,
     onSent:      null,
+    attachmentBuilder: null,
+    attachmentLabel:   'Attach PDF',
+    attachByDefault:   false,
     mode:        'individual', // 'individual' | 'combined'
     sending:     false,
   };
@@ -77,6 +80,9 @@
     composerState.fields      = opts.fields || [];
     composerState.imagesField = opts.imagesField || null;
     composerState.onSent      = opts.onSent || null;
+    composerState.attachmentBuilder = typeof opts.attachmentBuilder === 'function' ? opts.attachmentBuilder : null;
+    composerState.attachmentLabel   = opts.attachmentLabel || 'Attach PDF';
+    composerState.attachByDefault   = opts.attachByDefault === true;
     composerState.mode        = 'individual';
     composerState.sending     = false;
 
@@ -172,10 +178,10 @@
             'style="width:100%;flex:1;min-height:200px;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:13px;line-height:1.6;resize:vertical;background:var(--surface);color:var(--ink);font-family:inherit;"></textarea>',
         '</div>',
 
-        (composerState.rows.some(rowHasCameraSlots)
+        (composerState.rows.some(rowHasCameraSlots) || composerState.attachmentBuilder
           ? '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">' +
-              '<input type="checkbox" id="ec-attach-pdf" style="width:16px;height:16px;cursor:pointer;" />' +
-              'Attach camera photos as PDF' +
+              '<input type="checkbox" id="ec-attach-pdf" style="width:16px;height:16px;cursor:pointer;" ' + (composerState.attachByDefault ? 'checked' : '') + ' />' +
+              (composerState.attachmentBuilder ? composerState.attachmentLabel : 'Attach camera photos as PDF') +
             '</label>'
           : ''),
 
@@ -356,6 +362,19 @@
     return r.data.base64;
   }
 
+  async function buildComposerAttachment(rows) {
+    if (composerState.attachmentBuilder) {
+      var built = await composerState.attachmentBuilder(rows);
+      if (!built) return null;
+      if (typeof built === 'string') return { base64: built, name: 'attachment.pdf' };
+      if (built.base64) return { base64: built.base64, name: built.name || 'attachment.pdf' };
+      return null;
+    }
+
+    var cameraBase64 = await buildCameraFaultPdfAttachment(rows);
+    return cameraBase64 ? { base64: cameraBase64, name: 'camera-fault-report.pdf' } : null;
+  }
+
   function wrapInTemplate(bodyHtml) {
     // Plain, standard email — no banner, no footer disclaimer. Just the
     // content, on a white background, like a normal email someone wrote.
@@ -404,11 +423,11 @@
       if (composerState.mode === 'combined') {
         setStatus('Sending combined email...', false);
 
-        var pdfBase64Combined = null;
+        var pdfAttachmentCombined = null;
         if (attachPdf) {
           setStatus('Building PDF attachment...', false);
-          pdfBase64Combined = await buildCameraFaultPdfAttachment(composerState.rows);
-          if (!pdfBase64Combined) setStatus('⚠ Could not build PDF attachment — sending without it.', true);
+          pdfAttachmentCombined = await buildComposerAttachment(composerState.rows);
+          if (!pdfAttachmentCombined) setStatus('⚠ Could not build PDF attachment — sending without it.', true);
         }
 
         var combinedExtract = extractSignature(body);
@@ -416,7 +435,7 @@
         var finalHtml = wrapInTemplate(combinedBody);
 
         var sendPayload = { to: to, cc: cc, bcc: bcc, subject: subject, htmlBody: finalHtml };
-        if (pdfBase64Combined) { sendPayload.attachmentBase64 = pdfBase64Combined; sendPayload.attachmentName = 'camera-fault-report.pdf'; }
+        if (pdfAttachmentCombined) { sendPayload.attachmentBase64 = pdfAttachmentCombined.base64; sendPayload.attachmentName = pdfAttachmentCombined.name; }
 
         var r = await TGE.api('POST', '/api/send-email', sendPayload);
         if (!r.ok) throw new Error(r.data && r.data.error ? r.data.error : 'Send failed');
@@ -439,17 +458,17 @@
           var mergedBcc      = mergeText(bcc, row) || bcc;
 
           // Build a fresh PDF for THIS row only — never shared across rows.
-          var pdfBase64Row = null;
+          var pdfAttachmentRow = null;
           if (attachPdf) {
             setStatus('Building PDF for item ' + (i+1) + ' of ' + total + '...', false);
-            pdfBase64Row = await buildCameraFaultPdfAttachment([row]);
-            if (!pdfBase64Row) setStatus('⚠ Could not build PDF for item ' + (i+1) + ' — sending without it.', true);
+            pdfAttachmentRow = await buildComposerAttachment([row]);
+            if (!pdfAttachmentRow) setStatus('⚠ Could not build PDF for item ' + (i+1) + ' — sending without it.', true);
           }
 
           setStatus('Sending ' + (sent+1) + ' of ' + total + '...', false);
 
           var sendPayloadOne = { to: mergedTo, cc: mergedCc, bcc: mergedBcc, subject: mergedSubject, htmlBody: finalHtml };
-          if (pdfBase64Row) { sendPayloadOne.attachmentBase64 = pdfBase64Row; sendPayloadOne.attachmentName = 'camera-fault-report.pdf'; }
+          if (pdfAttachmentRow) { sendPayloadOne.attachmentBase64 = pdfAttachmentRow.base64; sendPayloadOne.attachmentName = pdfAttachmentRow.name; }
 
           var resp = await TGE.api('POST', '/api/send-email', sendPayloadOne);
           if (!resp.ok) {
