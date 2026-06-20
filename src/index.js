@@ -1069,20 +1069,6 @@ function safePdfFilePart(value) {
   return cleanPdfText(value).replace(/[\\/:*?"<>|]+/g, "-").trim() || "asset";
 }
 
-function toPdfNumber(value) {
-  if (value == null || value === "" || value === "-") return null;
-  const num = typeof value === "number" ? value : Number(String(value).trim());
-  return Number.isFinite(num) ? num : null;
-}
-
-function openStreetMapTileUrl(lat, lng, zoom) {
-  const latRad = lat * Math.PI / 180;
-  const scale = 2 ** zoom;
-  const x = Math.floor((lng + 180) / 360 * scale);
-  const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * scale);
-  return `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
-}
-
 function drawWrappedPdfText(page, text, opts) {
   const font = opts.font;
   const size = opts.size || 9;
@@ -1141,38 +1127,6 @@ async function buildSnapshotPdf(asset) {
   const white = rgb(1, 1, 1);
   const ink = rgb(0.06, 0.10, 0.07);
   const sections = Array.isArray(asset.sections) ? asset.sections : [];
-  const cameras = Array.isArray(asset.cameras) ? asset.cameras : [];
-  const embeddedImages = {};
-  let embeddedMapTile = null;
-
-  await Promise.all(cameras.map(async (camera) => {
-    if (!camera || !camera.url || embeddedImages[camera.url] !== undefined) return;
-    embeddedImages[camera.url] = null;
-    const img = await fetchImageForPdf(camera.url);
-    if (!img) return;
-    try {
-      embeddedImages[camera.url] = img.format === "png"
-        ? await pdfDoc.embedPng(img.bytes)
-        : await pdfDoc.embedJpg(img.bytes);
-    } catch (e) {
-      embeddedImages[camera.url] = null;
-    }
-  }));
-
-  const mapLat = toPdfNumber(asset.map && asset.map.lat);
-  const mapLng = toPdfNumber(asset.map && asset.map.lng);
-  if (mapLat != null && mapLng != null) {
-    const tile = await fetchImageForPdf(openStreetMapTileUrl(mapLat, mapLng, 14));
-    if (tile) {
-      try {
-        embeddedMapTile = tile.format === "png"
-          ? await pdfDoc.embedPng(tile.bytes)
-          : await pdfDoc.embedJpg(tile.bytes);
-      } catch (e) {
-        embeddedMapTile = null;
-      }
-    }
-  }
 
   const pages = [];
   let page;
@@ -1204,85 +1158,55 @@ async function buildSnapshotPdf(asset) {
 
   function drawDataItem(x, yTop, width, height, label, value) {
     page.drawRectangle({ x, y: yTop - height, width, height, color: light, borderColor: line, borderWidth: 0.5 });
-    page.drawText(cleanPdfText(label).toUpperCase(), { x: x + 6, y: yTop - 8, size: 5.8, font: fontBold, color: muted });
+    page.drawText(cleanPdfText(label).toUpperCase(), { x: x + 5, y: yTop - 7, size: 5.1, font: fontBold, color: muted });
     drawWrappedPdfText(page, value, {
-      x: x + 6,
-      y: yTop - 20,
-      maxWidth: width - 12,
-      size: 7.4,
-      lineHeight: 8,
+      x: x + 5,
+      y: yTop - 16,
+      maxWidth: width - 10,
+      size: 6.7,
+      lineHeight: 7.5,
       maxLines: 1,
       font: fontRegular,
       color: ink,
     });
   }
 
-  function isLocationSection(section) {
-    const key = `${section.kicker || ""} ${section.title || ""}`.toLowerCase();
-    return key.includes("location") || key.includes("known position");
-  }
-
-  function drawMapPreview(x, yTop, width, height) {
-    page.drawRectangle({ x, y: yTop - height, width, height, color: rgb(0.93, 0.96, 0.94), borderColor: line, borderWidth: 0.5 });
-    if (embeddedMapTile) {
-      const scaled = embeddedMapTile.scaleToFit(width, height);
-      page.drawImage(embeddedMapTile, {
-        x: x + (width - scaled.width) / 2,
-        y: yTop - height + (height - scaled.height) / 2,
-        width: scaled.width,
-        height: scaled.height,
-      });
-    } else {
-      for (let i = 1; i < 5; i++) {
-        const gx = x + (width / 5) * i;
-        page.drawLine({ start: { x: gx, y: yTop - height }, end: { x: gx, y: yTop }, thickness: 0.4, color: rgb(0.80, 0.87, 0.82) });
-      }
-      for (let i = 1; i < 3; i++) {
-        const gy = yTop - (height / 3) * i;
-        page.drawLine({ start: { x, y: gy }, end: { x: x + width, y: gy }, thickness: 0.4, color: rgb(0.80, 0.87, 0.82) });
-      }
-    }
-
-    const pinX = x + width / 2;
-    const pinY = yTop - height / 2;
-    page.drawCircle({ x: pinX, y: pinY + 3, size: 6, color: green });
-    page.drawCircle({ x: pinX, y: pinY + 3, size: 2.2, color: white });
-    page.drawText("Last known position", { x: x + 10, y: yTop - height + 12, size: 8, font: fontBold, color: greenDark });
-    if (mapLat != null && mapLng != null) {
-      const coordText = `${mapLat.toFixed(6)}, ${mapLng.toFixed(6)}`;
-      const coordW = fontRegular.widthOfTextAtSize(coordText, 7.2);
-      page.drawText(coordText, { x: x + width - coordW - 10, y: yTop - height + 12, size: 7.2, font: fontRegular, color: muted });
-    }
-  }
-
-  function drawSection(section) {
+  function measureSection(section, width, cols) {
     const rows = Array.isArray(section.rows) ? section.rows : [];
-    if (!rows.length) return;
-    const cols = 4;
-    const gap = 5;
-    const innerPad = 9;
-    const headerH = 24;
-    const itemH = 26;
-    const gridW = contentW - innerPad * 2;
+    if (!rows.length) return 0;
+    const gap = 3;
+    const innerPad = 6;
+    const headerH = 18;
+    const itemH = 19;
+    const gridW = width - innerPad * 2;
     const itemW = (gridW - gap * (cols - 1)) / cols;
     const gridRows = Math.ceil(rows.length / cols);
-    const mapH = isLocationSection(section) ? 106 : 0;
-    const cardH = innerPad + headerH + gridRows * itemH + Math.max(0, gridRows - 1) * gap + (mapH ? gap + mapH : 0) + innerPad;
-    ensureSpace(cardH + 7);
+    return innerPad + headerH + gridRows * itemH + Math.max(0, gridRows - 1) * gap + innerPad;
+  }
 
+  function drawSectionBox(section, x, width, cols, forcedHeight) {
+    const rows = Array.isArray(section.rows) ? section.rows : [];
+    if (!rows.length) return 0;
+    const gap = 3;
+    const innerPad = 6;
+    const headerH = 18;
+    const itemH = 19;
+    const gridW = width - innerPad * 2;
+    const itemW = (gridW - gap * (cols - 1)) / cols;
+    const cardH = forcedHeight || measureSection(section, width, cols);
     const cardTop = cursorY;
-    drawCardShell(margin, cardTop, contentW, cardH);
+    drawCardShell(x, cardTop, width, cardH);
     page.drawText(cleanPdfText(section.kicker || section.title || "Snapshot").toUpperCase(), {
-      x: margin + innerPad,
-      y: cardTop - 12,
-      size: 6.2,
+      x: x + innerPad,
+      y: cardTop - 9,
+      size: 5.7,
       font: fontBold,
       color: green,
     });
     page.drawText(cleanPdfText(section.title || section.kicker || "Snapshot"), {
-      x: margin + innerPad,
-      y: cardTop - 25,
-      size: 10.2,
+      x: x + innerPad,
+      y: cardTop - 19,
+      size: 8.6,
       font: fontBold,
       color: ink,
     });
@@ -1291,61 +1215,62 @@ async function buildSnapshotPdf(asset) {
     rows.forEach((item, idx) => {
       const col = idx % cols;
       const rowIdx = Math.floor(idx / cols);
-      const x = margin + innerPad + col * (itemW + gap);
+      const itemX = x + innerPad + col * (itemW + gap);
       const yTop = gridTop - rowIdx * (itemH + gap);
-      drawDataItem(x, yTop, itemW, itemH, item.label, item.value);
+      drawDataItem(itemX, yTop, itemW, itemH, item.label, item.value);
     });
-
-    if (mapH) {
-      const mapTop = gridTop - gridRows * itemH - Math.max(0, gridRows - 1) * gap - gap;
-      drawMapPreview(margin + innerPad, mapTop, gridW, mapH);
-    }
-
-    cursorY -= cardH + 7;
+    return cardH;
   }
 
-  function drawCameras() {
-    if (!cameras.length) return;
-    const innerPad = 13;
-    const boxGap = 10;
-    const boxW = (contentW - innerPad * 2 - boxGap * 4) / 5;
-    const boxH = 86;
-    const cardH = 31 + boxH + 43;
-    ensureSpace(cardH + 10);
+  function drawFullSection(section) {
+    if (!section) return;
+    const h = measureSection(section, contentW, 4);
+    ensureSpace(h + 6);
+    drawSectionBox(section, margin, contentW, 4, h);
+    cursorY -= h + 6;
+  }
 
-    const cardTop = cursorY;
-    drawCardShell(margin, cardTop, contentW, cardH);
-    page.drawText("EVIDENCE", { x: margin + innerPad, y: cardTop - 15, size: 6.8, font: fontBold, color: green });
-    page.drawText("Camera Snapshots", { x: margin + innerPad, y: cardTop - 30, size: 11.5, font: fontBold, color: ink });
-    if (asset.cameraCapturedAt) {
-      page.drawText(`Captured ${cleanPdfText(asset.cameraCapturedAt)}`, { x: margin + 140, y: cardTop - 30, size: 8, font: fontRegular, color: muted });
+  function drawPairedSections(left, right) {
+    if (!left && !right) return;
+    if (!left || !right) {
+      drawFullSection(left || right);
+      return;
     }
+    const gap = 8;
+    const halfW = (contentW - gap) / 2;
+    const h = Math.max(measureSection(left, halfW, 2), measureSection(right, halfW, 2));
+    ensureSpace(h + 6);
+    drawSectionBox(left, margin, halfW, 2, h);
+    drawSectionBox(right, margin + halfW + gap, halfW, 2, h);
+    cursorY -= h + 6;
+  }
 
-    cameras.slice(0, 5).forEach((camera, idx) => {
-      const x = margin + innerPad + idx * (boxW + boxGap);
-      const y = cardTop - 46 - boxH;
-      const embedded = camera && camera.url ? embeddedImages[camera.url] : null;
-      page.drawRectangle({ x, y, width: boxW, height: boxH, color: rgb(0.96, 0.96, 0.96), borderColor: line, borderWidth: 0.5 });
-      if (embedded) {
-        const scaled = embedded.scaleToFit(boxW, boxH);
-        page.drawImage(embedded, { x: x + (boxW - scaled.width) / 2, y: y + (boxH - scaled.height) / 2, width: scaled.width, height: scaled.height });
-      } else {
-        page.drawText("No image", { x: x + 22, y: y + 31, size: 7, font: fontRegular, color: muted });
-      }
-      const label = cleanPdfText(camera && camera.label);
-      const labelW = fontBold.widthOfTextAtSize(label, 7);
-      page.drawText(label, { x: x + boxW / 2 - labelW / 2, y: y - 11, size: 7, font: fontBold, color: rgb(0.10, 0.12, 0.10) });
-      const status = cleanPdfText(camera && camera.status);
-      const statusW = fontRegular.widthOfTextAtSize(status, 6.5);
-      page.drawText(status, { x: x + boxW / 2 - statusW / 2, y: y - 21, size: 6.5, font: fontRegular, color: muted });
-    });
+  function sectionText(section) {
+    return `${section && section.kicker || ""} ${section && section.title || ""}`.toLowerCase();
+  }
 
-    cursorY -= cardH + 10;
+  function takeSection(sectionsLeft, matcher) {
+    const idx = sectionsLeft.findIndex((section) => matcher(sectionText(section)));
+    if (idx === -1) return null;
+    return sectionsLeft.splice(idx, 1)[0];
   }
 
   startPage();
-  sections.forEach(drawSection);
-  drawCameras();
+  const sectionsLeft = sections.slice();
+  const vehicleSection = takeSection(sectionsLeft, (text) => text.includes("vehicle"));
+  const driverSection = takeSection(sectionsLeft, (text) => text.includes("driver"));
+  const liveSection = takeSection(sectionsLeft, (text) => text.includes("live") || text.includes("current position"));
+  const engineSection = takeSection(sectionsLeft, (text) => text.includes("engine") || text.includes("vpm"));
+  const gpioSection = takeSection(sectionsLeft, (text) => text.includes("gpio") || text.includes("input / output"));
+  const sdSection = takeSection(sectionsLeft, (text) => text.includes("sd card"));
+  const locationSection = takeSection(sectionsLeft, (text) => text.includes("location") || text.includes("known position"));
+
+  drawFullSection(vehicleSection);
+  drawFullSection(liveSection);
+  drawFullSection(engineSection);
+  drawPairedSections(driverSection, gpioSection);
+  drawPairedSections(sdSection, locationSection);
+  sectionsLeft.forEach(drawFullSection);
 
   pages.forEach((pg, idx) => {
     const footer = `Page ${idx + 1} of ${pages.length}`;

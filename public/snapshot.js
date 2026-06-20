@@ -1034,6 +1034,25 @@
     };
   }
 
+  function collectSdCardSection() {
+    var sdSection = TGE.el('snap-sd-section');
+    if (!sdSection || sdSection.style.display === 'none') return null;
+    var rows = Array.prototype.slice.call(sdSection.querySelectorAll('.data-item')).map(function(item) {
+      var labelEl = item.querySelector('span');
+      var valueEl = item.querySelector('strong');
+      return {
+        label: labelEl ? labelEl.textContent.trim() : '',
+        value: valueEl ? valueEl.textContent.trim() : '—',
+      };
+    }).filter(function(row) { return row.label; });
+    if (!rows.length) return null;
+    return {
+      kicker: 'Evidence',
+      title: 'SD Card Health',
+      rows: rows,
+    };
+  }
+
   function buildSnapshotPdfPayload() {
     var v = state.data.vehicle || {};
     var sections = [
@@ -1042,7 +1061,7 @@
       collectCardSection('snap-status-card', 'Live Status'),
       collectCardSection('snap-vpm-card', 'Engine Metrics'),
       collectCardSection('snap-gpio-card', 'GPIO'),
-      collectCardSection('snap-camera-card', 'Camera Snapshots'),
+      collectSdCardSection(),
       collectCardSection('snap-map-card', 'Location'),
       collectCardSection('snap-tracker-card', 'Asset Tracker'),
     ].filter(Boolean);
@@ -1052,8 +1071,6 @@
       title: 'Asset ' + (v.name || '—') + ' Snapshot',
       generatedAt: new Date().toISOString(),
       sections: sections,
-      cameras: state.data.cameraSlots || [],
-      cameraCapturedAt: state.data.cameraCapturedAt || null,
       map: {
         address: TGE.safeText(TGE.el('snap-map-address') && TGE.el('snap-map-address').textContent),
         lat: TGE.safeText(TGE.el('snap-map-lat') && TGE.el('snap-map-lat').textContent),
