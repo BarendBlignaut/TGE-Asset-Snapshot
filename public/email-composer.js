@@ -384,78 +384,6 @@
     '</div>';
   }
 
-  function parseStyle(styleText) {
-    var out = {};
-    (styleText || '').split(';').forEach(function(part) {
-      var idx = part.indexOf(':');
-      if (idx === -1) return;
-      var key = part.slice(0, idx).trim().toLowerCase();
-      var val = part.slice(idx + 1).trim();
-      if (key) out[key] = val;
-    });
-    return out;
-  }
-
-  function styleToString(styleObj) {
-    return Object.keys(styleObj).map(function(key) {
-      return key + ':' + styleObj[key];
-    }).join(';');
-  }
-
-  function pxValue(value) {
-    var match = String(value || '').match(/^\s*(\d+(?:\.\d+)?)px\s*$/i);
-    return match ? String(Math.round(parseFloat(match[1]))) : '';
-  }
-
-  function normalizeEmailHtml(html) {
-    var root = document.createElement('div');
-    root.innerHTML = html || '';
-
-    root.querySelectorAll('img').forEach(function(img) {
-      var style = parseStyle(img.getAttribute('style') || '');
-      var width = img.getAttribute('width') || pxValue(style.width) || pxValue(style['max-width']);
-      var height = img.getAttribute('height') || pxValue(style.height);
-
-      delete style['object-fit'];
-      delete style['object-position'];
-      delete style.clip;
-      delete style['clip-path'];
-      delete style.transform;
-      delete style['max-height'];
-      delete style['min-width'];
-      delete style['min-height'];
-
-      style.display = 'block';
-      style.border = '0';
-      style.outline = 'none';
-      style['text-decoration'] = 'none';
-      style['-ms-interpolation-mode'] = 'bicubic';
-
-      if (width) {
-        img.setAttribute('width', width);
-        style.width = width + 'px';
-        style['max-width'] = width + 'px';
-      } else {
-        style['max-width'] = '100%';
-      }
-
-      if (height) img.removeAttribute('height');
-      style.height = 'auto';
-
-      img.setAttribute('style', styleToString(style));
-
-      var parent = img.parentElement;
-      if (parent) {
-        var parentStyle = parseStyle(parent.getAttribute('style') || '');
-        if (parentStyle.overflow === 'hidden') parentStyle.overflow = 'visible';
-        if (!parentStyle['line-height']) parentStyle['line-height'] = '0';
-        parent.setAttribute('style', styleToString(parentStyle));
-      }
-    });
-
-    return root.innerHTML;
-  }
-
   function escapeHtml(s) {
     var div = document.createElement('div');
     div.textContent = s || '';
@@ -508,7 +436,7 @@
         var combinedBodyFieldsOnly = combinedRow ? mergeFieldsOnly(body, combinedRow) : body;
         var combinedExtract = extractSignature(combinedBodyFieldsOnly);
         var combinedBody = nl2br(combinedExtract.text) + buildCameraStatusTable(composerState.rows) + combinedExtract.signatureHtml;
-        var finalHtml = normalizeEmailHtml(wrapInTemplate(combinedBody));
+        var finalHtml = wrapInTemplate(combinedBody);
 
         var sendPayload = { to: to, cc: cc, bcc: bcc, subject: combinedSubject, htmlBody: finalHtml };
         if (pdfAttachmentCombined) { sendPayload.attachmentBase64 = pdfAttachmentCombined.base64; sendPayload.attachmentName = pdfAttachmentCombined.name; }
@@ -528,7 +456,7 @@
           var mergedBodyFieldsOnly = mergeFieldsOnly(body, row);
           var rowExtract    = extractSignature(mergedBodyFieldsOnly);
           var mergedBody    = nl2br(rowExtract.text) + buildCameraStatusTable([row]) + rowExtract.signatureHtml;
-          var finalHtml     = normalizeEmailHtml(wrapInTemplate(mergedBody));
+          var finalHtml     = wrapInTemplate(mergedBody);
           var mergedTo       = mergeText(to, row)  || to;
           var mergedCc       = mergeText(cc, row)  || cc;
           var mergedBcc      = mergeText(bcc, row) || bcc;
