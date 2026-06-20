@@ -93,6 +93,7 @@
     var target = TGE.el('view-' + viewId);
     if (target) target.classList.add('active');
     TGE.state.activeView = viewId;
+    document.body.setAttribute('data-active-view', viewId);
     // Notify page module if it has an onShow handler
     var handler = TGE.onShow && TGE.onShow[viewId];
     if (typeof handler === 'function') handler();
@@ -260,8 +261,10 @@
     navItems.forEach(function (item) {
       var view = item.dataset.view;
       // Roles page uses admin permission
-      var permKey = (view === 'roles' || view === 'api') ? 'admin' : view;
-      if (!TGE.can(permKey, 'view')) {
+      var allowed = view === 'utilisation'
+        ? TGE.can('utilisation', 'view-dashboard')
+        : TGE.can((view === 'roles' || view === 'api') ? 'admin' : view, 'view');
+      if (!allowed) {
         item.style.display = 'none';
       }
     });

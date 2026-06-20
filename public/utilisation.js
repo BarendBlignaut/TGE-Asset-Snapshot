@@ -15,6 +15,7 @@
     active: [],
     cutoff: 100,
     view: 'overview',
+    history: false,
     days: 14,
     workshopMap: {},
     staticRules: { exact: new Set(), keywords: ['FUEL', 'E-TAG'] },
@@ -27,6 +28,7 @@
     { 'Legacy Number':'FL-004','BU Name':'Transport','BU':'TRN','Equip ID':'E004','Equip Type':'Semi-trailer','Description':'Kenworth T610','Make':'Kenworth','Model':'T610','Rego':'MNO345','Operator Name':'D. White','Operator State':'QLD','hasTelematics':true,'history':[520,610,580,0,595,620,540,560,0,588,610,575,590,605],'workshop':{},'offline':{} },
     { 'Legacy Number':'FL-005','BU Name':'Mining','BU':'MIN','Equip ID':'E005','Equip Type':'Haul Truck','Description':'Cat 785 Haul Truck','Make':'Caterpillar','Model':'785','Rego':'STU901','Operator Name':'F. Black','Operator State':'WA','hasTelematics':true,'history':[0,0,0,0,0,0,0,0,0,0,0,0,0,0],'workshop':{},'offline':{'dateOffline':'2026-05-20','expectedOnline':'2026-06-20'} },
     { 'Legacy Number':'FL-006','BU Name':'Mining','BU':'MIN','Equip ID':'E006','Equip Type':'Drill Rig','Description':'Sandvik DP1500','Make':'Sandvik','Model':'DP1500','Rego':'VWX234','Operator Name':'G. Gray','Operator State':'WA','hasTelematics':false,'history':[],'workshop':{},'offline':{} },
+    { 'Legacy Number':'FL-007','BU Name':'Civil','BU':'CIV','Equip ID':'E007','Equip Type':'Loader','Description':'Historical loader','Make':'Komatsu','Model':'WA380','Rego':'OLD007','Operator Name':'H. Green','Operator State':'NSW','hasTelematics':true,'currentActive':false,'history':[132,145,118,0,151,166,120,142,131,155,122,144,139,150],'workshop':{},'offline':{} },
     { 'Legacy Number':'FUEL ANYCARD - SOUTH REGENCY PARK WORKSHOP PUD','BU Name':'Civil','BU':'CIV','Equip ID':'FC001','Equip Type':'Fuel Card','Description':'Fuel Card','Make':'N/A','Model':'N/A','Rego':'N/A','Operator Name':'FUEL ANYCARD - SOUTH REGENCY PARK WORKSHOP PUD','Operator State':'NSW','hasTelematics':false,'history':[],'workshop':{},'offline':{} },
     { 'Legacy Number':'E-TAG PURPOSE ONLY MATTHEW YOUNG','BU Name':'Transport','BU':'TRN','Equip ID':'ET001','Equip Type':'E-Tag','Description':'E-Tag','Make':'N/A','Model':'N/A','Rego':'N/A','Operator Name':'E-TAG PURPOSE ONLY MATTHEW YOUNG','Operator State':'NSW','hasTelematics':false,'history':[],'workshop':{},'offline':{} },
   ];
@@ -43,7 +45,7 @@
             '<div class="util-logo-bars"><span></span><span></span><span></span></div>',
             '<div>',
               '<div class="util-title">Fleet Utilisation Dashboard</div>',
-              '<div class="util-subtitle">Daily KM tracking, workshop/offline exceptions and static mapping.</div>',
+              '<div class="util-subtitle">Daily KM tracking, workshop exceptions and non-functional status.</div>',
             '</div>',
           '</div>',
           '<div class="util-header-actions">',
@@ -52,14 +54,21 @@
               '<option value="overview">Overview</option>',
               '<option value="exceptions">Exceptions only</option>',
               '<option value="workshop">Workshop</option>',
-              '<option value="offline">Offline / Faults</option>',
+              '<option value="offline">Non-functional</option>',
               '<option value="notel">No telematics</option>',
             '</select>',
-            '<button class="util-btn" id="util-static-btn" type="button">Static mapping</button>',
-            '<button class="util-btn" id="util-workshop-btn" type="button">Workshop mapping</button>',
-            '<button class="util-btn util-primary" id="util-import-btn" type="button">Import fleet JSON</button>',
-            '<input id="util-file-input" type="file" accept=".json" style="display:none" />',
-            '<span class="util-refresh" id="util-refresh">Last update: --:--</span>',
+            '<button class="util-btn" id="util-history-btn" type="button">History: Off</button>',
+            '<div class="util-export-wrap">',
+              '<button class="util-btn util-primary" id="util-export-btn" type="button">Download</button>',
+              '<div class="util-export-menu" id="util-export-menu">',
+                '<button type="button" data-export="html-current">HTML - Current view</button>',
+                '<button type="button" data-export="html-all">HTML - All rows</button>',
+                '<button type="button" data-export="csv-current">CSV - Current view</button>',
+                '<button type="button" data-export="xlsx-current">XLSX - Current view</button>',
+                '<button type="button" data-export="pdf-current">PDF - Current view</button>',
+              '</div>',
+            '</div>',
+            '<span class="util-refresh" id="util-refresh">Last successful import: sample data</span>',
           '</div>',
         '</div>',
 
@@ -83,19 +92,10 @@
           '<div class="util-metric-card">',
             '<div><span>Active</span><strong class="green" id="util-m-active">0</strong></div>',
             '<div><span>Workshop</span><strong class="orange" id="util-m-ws">0</strong></div>',
-            '<div><span>Offline</span><strong class="red" id="util-m-off">0</strong></div>',
+            '<div><span>Non-functional</span><strong class="red" id="util-m-off">0</strong></div>',
             '<div><span>No telematics</span><strong id="util-m-notel">0</strong></div>',
           '</div>',
           buildFilterCards(),
-        '</div>',
-
-        '<div class="util-legend">',
-          '<span><i style="background:#ff5630"></i>Below KM cutoff</span>',
-          '<span><i style="background:#ffab00"></i>In workshop</span>',
-          '<span><i style="background:#ffebe6;border:1px solid #de350b"></i>Offline/fault</span>',
-          '<span><i style="background:#e8e8e8"></i>No telematics</span>',
-          '<span><i style="background:#fff;border:1px solid #ccc"></i>Above cutoff</span>',
-          '<em id="util-range-label">Showing last 14 days</em>',
         '</div>',
 
         '<div class="util-table-wrap">',
@@ -134,8 +134,30 @@
       '</div>',
     ].join('');
 
+    ensureSidebarLegend();
     wireEvents();
     initDashboard(SAMPLE);
+  }
+
+  function ensureSidebarLegend() {
+    if (document.getElementById('util-sidebar-legend')) return;
+    var footer = document.querySelector('.sidebar-footer');
+    if (!footer) return;
+    var legend = document.createElement('div');
+    legend.id = 'util-sidebar-legend';
+    legend.innerHTML = [
+      '<div class="util-side-title">Fleet Utilisation Legend</div>',
+      '<div class="util-side-item"><strong>KM</strong><span>Daily kilometres travelled</span></div>',
+      '<div class="util-side-item"><strong>WS</strong><span>Workshop booking</span></div>',
+      '<div class="util-side-item"><strong>EX</strong><span>Excluded / off-road</span></div>',
+      '<div class="util-side-item"><strong>NF</strong><span>Non-functional</span></div>',
+      '<div class="util-side-item"><strong>NT</strong><span>No telematics</span></div>',
+      '<div class="util-side-swatch"><i style="background:#ff5630"></i><span>Below KM cutoff</span></div>',
+      '<div class="util-side-swatch"><i style="background:#ffab00"></i><span>Workshop</span></div>',
+      '<div class="util-side-swatch"><i style="background:#ffebe6;border:1px solid #de350b"></i><span>Excluded / NF</span></div>',
+      '<div class="util-side-swatch"><i style="background:#f3d7d7;border:1px solid #bf2600"></i><span>Historical / inactive</span></div>',
+    ].join('');
+    footer.parentNode.insertBefore(legend, footer);
   }
 
   function buildFilterCards() {
@@ -165,20 +187,42 @@
       '.util-logo-bars{width:40px;height:30px;position:relative;flex-shrink:0}.util-logo-bars span{position:absolute;left:0;width:38px;height:6px;background:#c8f135;border-radius:8px;transform:skewY(-9deg)}.util-logo-bars span:nth-child(1){top:4px}.util-logo-bars span:nth-child(2){top:13px}.util-logo-bars span:nth-child(3){top:22px}',
       '.util-header-actions{display:flex;gap:8px;align-items:center;flex-wrap:nowrap}.util-total{font-size:12px;font-weight:800;color:#143200;background:#c8f135;padding:4px 10px;border-radius:20px;white-space:nowrap}.util-refresh{font-size:11px;color:rgba(235,235,235,.55);white-space:nowrap}',
       '.util-btn,.util-select{height:30px;padding:0 10px;border:1px solid rgba(200,241,53,.35);border-radius:6px;background:rgba(255,255,255,.08);font-size:11px;color:#ebebeb;cursor:pointer}.util-select option{color:#172b4d}.util-btn:hover{border-color:#c8f135;color:#c8f135}.util-primary{background:#c8f135!important;color:#143200!important;border-color:#c8f135!important;font-weight:800}',
+      '.util-export-wrap{position:relative}.util-export-menu{position:absolute;right:0;top:36px;display:none;min-width:190px;background:#fff;border:1px solid #dce8e0;border-radius:10px;box-shadow:0 12px 28px rgba(0,0,0,.18);z-index:800;padding:6px}.util-export-menu.open{display:block}.util-export-menu button{display:block;width:100%;border:0;background:#fff;text-align:left;padding:8px 10px;border-radius:7px;color:#172b4d;font-size:12px;cursor:pointer}.util-export-menu button:hover{background:#f0faf4;color:#143200}',
       '.util-filter-strip{display:flex;gap:10px;padding:10px 14px;background:#f7f8fa;border-bottom:1px solid #e6e8ec;overflow-x:auto;align-items:stretch;flex-shrink:0}.util-filter-card{background:#fff;border:1px solid #e6e8ec;border-radius:8px;padding:8px 10px;min-width:152px;max-width:180px;flex-shrink:0;display:flex;flex-direction:column;gap:6px}.util-filter-label{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#6b778c;font-weight:700}.util-filter-value{font-size:20px;font-weight:800;color:#143200}.util-slider-row{display:flex;justify-content:space-between;font-size:10px;color:#6b778c}.util-cutoff input{accent-color:#143200}.util-date-buttons{display:flex;gap:4px;flex-wrap:wrap}.util-date-buttons button{height:24px;padding:0 7px;border:1px solid #c0d8a0;background:#fff;border-radius:5px;font-size:10px;color:#143200;cursor:pointer}.util-date-buttons button.active{background:#143200;color:#c8f135}.util-date-summary{font-size:11px;font-weight:700;color:#143200;text-align:center}',
       '.util-metric-card{background:#fff;border:1px solid #e6e8ec;border-radius:8px;padding:7px 10px;min-width:126px;display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;flex-shrink:0}.util-metric-card span{display:block;font-size:9px;text-transform:uppercase;color:#6b778c;font-weight:700}.util-metric-card strong{font-size:18px;line-height:1}.green{color:#006644}.orange{color:#974f0c}.red{color:#bf2600}',
       '.util-check{position:relative}.util-check-btn{height:28px;border:1px solid #e6e8ec;border-radius:5px;background:#fff;color:#172b4d;display:flex;align-items:center;justify-content:space-between;padding:0 8px;font-size:11px;cursor:pointer}.util-drop{position:fixed;background:#fff;border:1px solid #e6e8ec;border-radius:7px;box-shadow:0 8px 24px rgba(0,0,0,.16);z-index:600;min-width:180px;display:none;flex-direction:column}.util-drop.open{display:flex}.util-search{height:30px;border:none;border-bottom:1px solid #e6e8ec;padding:0 8px;font-size:11px}.util-drop-list{max-height:210px;overflow:auto}.util-drop-item{display:flex;align-items:center;gap:6px;padding:6px 8px;font-size:11px;cursor:pointer}.util-drop-item:hover{background:#f0f7e8}.util-drop-count{font-size:10px;color:#6b778c;padding:5px 8px;border-top:1px solid #e6e8ec;background:#f7f8fa}',
-      '.util-legend{display:flex;gap:12px;padding:5px 14px;background:#f7f8fa;border-bottom:1px solid #e6e8ec;flex-shrink:0;align-items:center;flex-wrap:wrap}.util-legend span{display:flex;align-items:center;gap:5px;font-size:10px;color:#6b778c}.util-legend i{width:10px;height:10px;border-radius:2px;display:inline-block}.util-legend em{margin-left:auto;font-size:10px;color:#6b778c;font-style:normal}',
       '.util-table-wrap{flex:1;overflow:auto;background:#fff}.util-table{border-collapse:separate;border-spacing:0;min-width:100%}.util-table th,.util-table td{padding:3px 8px;text-align:center;border-bottom:1px solid #e6e8ec;border-right:1px solid #e6e8ec;white-space:nowrap;height:34px;font-size:11px}.util-table th{position:sticky;top:0;background:#143200;color:#c8f135;font-weight:700;z-index:10;font-size:10px}.util-table th.r2{top:24px}.util-pin-left{position:sticky;left:0;background:#fff!important;z-index:20;text-align:left!important;font-weight:700;border-right:2px solid #e6e8ec!important;box-shadow:2px 0 4px rgba(0,0,0,.05);min-width:130px}.util-table th.util-pin-left{background:#143200!important;z-index:30}.util-pin-total{position:sticky;right:62px;background:#f0f1f3!important;z-index:20;font-weight:700;min-width:62px}.util-pin-avg{position:sticky;right:0;background:#f0f1f3!important;z-index:20;font-weight:700;min-width:62px}.util-table th.util-pin-total,.util-table th.util-pin-avg{background:#f0f1f3!important;color:#172b4d;z-index:30}.util-dcol{min-width:38px;width:38px;padding:2px!important}.util-subhdr{font-size:9px!important;color:#dbe8c3!important;text-transform:uppercase}.util-low{color:#ff5630;font-weight:800}.util-ws{background:#fff3cd;color:#7a4000;font-weight:800}.util-off{background:#ffebe6;color:#de350b;font-weight:800}.util-notel{color:#9aa5b1;font-style:italic}',
+      '.util-historical td{background:#fff5f5!important;color:#7f1d1d!important}.util-historical .util-pin-left::after{content:"Historical";margin-left:8px;font-size:9px;color:#bf2600;border:1px solid #bf2600;border-radius:999px;padding:1px 5px;font-weight:700}',
+      '#util-sidebar-legend{display:none;margin:10px 8px 8px;padding:10px;border:1px solid rgba(200,241,53,.18);border-radius:10px;background:rgba(255,255,255,.04);color:rgba(255,255,255,.72)}body[data-active-view="utilisation"] #util-sidebar-legend{display:block}.util-side-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#c8f135;margin-bottom:8px}.util-side-item{display:grid;grid-template-columns:28px 1fr;gap:6px;align-items:start;font-size:10px;margin-bottom:6px}.util-side-item strong{color:#c8f135}.util-side-swatch{display:flex;align-items:center;gap:6px;font-size:10px;margin-top:6px}.util-side-swatch i{width:10px;height:10px;border-radius:2px;display:inline-block;flex-shrink:0}',
       '.util-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:900;display:none;align-items:center;justify-content:center}.util-modal-bg.open{display:flex}.util-modal{width:540px;max-height:86vh;background:#fff;border-radius:12px;box-shadow:0 14px 44px rgba(0,0,0,.25);display:flex;flex-direction:column}.util-modal-wide{width:760px}.util-modal-head,.util-modal-foot{padding:14px 18px;border-bottom:1px solid #e6e8ec;display:flex;align-items:center;justify-content:space-between}.util-modal-foot{border-bottom:none;border-top:1px solid #e6e8ec;justify-content:flex-end}.util-modal h3{font-size:14px}.util-modal .util-btn{background:#fff;color:#172b4d;border-color:#e6e8ec}.util-modal .util-primary{background:#143200!important;color:#c8f135!important;border-color:#143200!important}.util-modal-body{padding:16px 18px;overflow:auto}.util-note{font-size:12px;color:#6b778c;line-height:1.45;margin-bottom:12px}.util-map-grid{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}.util-map-grid label{font-size:11px;color:#6b778c;text-transform:uppercase;font-weight:700}.util-map-grid input{display:block;width:100%;height:34px;border:1px solid #e6e8ec;border-radius:6px;padding:0 8px;margin-top:4px}.util-keywords{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}.util-keyword{border:1px solid #de350b;background:#ffebe6;color:#bf2600;border-radius:999px;padding:4px 9px;font-size:11px;cursor:pointer}.util-static-list,.util-workshop-row{display:flex;flex-direction:column;gap:6px}.util-static-row,.util-workshop-row{padding:8px 0;border-bottom:1px solid #e6e8ec;font-size:12px}.util-static-row label{display:flex;gap:8px;align-items:center}.util-workshop-line{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #e6e8ec}.util-workshop-toggle button{height:26px;border:1px solid #e6e8ec;background:#fff;padding:0 8px;font-size:11px}.util-workshop-toggle button.active{background:#143200;color:#c8f135;border-color:#143200}',
     ].join('');
     document.head.appendChild(style);
   }
 
   function wireEvents() {
-    TGE.el('util-import-btn').onclick = function() { TGE.el('util-file-input').click(); };
-    TGE.el('util-file-input').onchange = loadFile;
     TGE.el('util-view-select').onchange = function(e) { state.view = e.target.value; renderTable(); };
+    TGE.el('util-history-btn').onclick = function() {
+      state.history = !state.history;
+      TGE.el('util-history-btn').textContent = 'History: ' + (state.history ? 'On' : 'Off');
+      TGE.el('util-history-btn').classList.toggle('util-primary', state.history);
+      if (state.history) {
+        Object.keys(FILTERS).forEach(function(key) {
+          uniqueValues(state.active, FILTERS[key].field).forEach(function(v) { FILTERS[key].selected.add(v); });
+        });
+      }
+      rebuildFilters();
+      renderTable();
+    };
+    TGE.el('util-export-btn').onclick = function(e) {
+      e.stopPropagation();
+      TGE.el('util-export-menu').classList.toggle('open');
+    };
+    TGE.el('util-export-menu').onclick = function(e) {
+      var action = e.target && e.target.dataset.export;
+      if (!action) return;
+      TGE.el('util-export-menu').classList.remove('open');
+      runExport(action);
+    };
     TGE.el('util-km-slider').oninput = function(e) {
       state.cutoff = parseInt(e.target.value, 10);
       TGE.el('util-km-value').textContent = state.cutoff;
@@ -200,9 +244,9 @@
       document.querySelector('[data-filter-search="' + key + '"]').oninput = function(e) { searchDrop(key, e.target.value); };
     });
     document.addEventListener('click', closeDrops);
-    TGE.el('util-static-btn').onclick = openStaticModal;
-    TGE.el('util-workshop-btn').onclick = openWorkshopModal;
-    TGE.el('util-add-keyword').onclick = addKeyword;
+    if (TGE.el('util-static-btn')) TGE.el('util-static-btn').onclick = openStaticModal;
+    if (TGE.el('util-workshop-btn')) TGE.el('util-workshop-btn').onclick = openWorkshopModal;
+    if (TGE.el('util-add-keyword')) TGE.el('util-add-keyword').onclick = addKeyword;
     document.querySelectorAll('[data-close-modal]').forEach(function(btn) {
       btn.onclick = function() { TGE.el(btn.dataset.closeModal).classList.remove('open'); applyStaticMapping(); };
     });
@@ -262,6 +306,7 @@
 
   function getFilteredRows(ignoreKey) {
     return state.active.filter(function(row) {
+      if (!state.history && row.currentActive === false) return false;
       return Object.keys(FILTERS).every(function(key) {
         if (key === ignoreKey) return true;
         var selected = FILTERS[key].selected;
@@ -371,7 +416,7 @@
     dates.forEach(function(d) { top += '<th colspan="3">' + fmtDate(d) + '</th>'; });
     top += '<th rowspan="2" class="util-pin-total">Total KM</th><th rowspan="2" class="util-pin-avg">Avg/day</th></tr>';
     var sub = '<tr class="r2">';
-    dates.forEach(function() { sub += '<th class="util-subhdr util-dcol">KM</th><th class="util-subhdr util-dcol">WS</th><th class="util-subhdr util-dcol">Off</th>'; });
+    dates.forEach(function() { sub += '<th class="util-subhdr util-dcol">KM</th><th class="util-subhdr util-dcol">WS</th><th class="util-subhdr util-dcol">EX</th>'; });
     sub += '</tr>';
     return top + sub;
   }
@@ -392,7 +437,7 @@
         '<td class="util-dcol ' + (off ? 'util-off' : '') + '">' + (off ? 'Off' : '-') + '</td>';
     }).join('');
     var avg = activeDays ? Math.round(total / activeDays) : '-';
-    return '<tr><td class="util-pin-left">' + escHtml(row['Legacy Number']) + '</td>' + cells +
+    return '<tr class="' + (row.currentActive === false ? 'util-historical' : '') + '"><td class="util-pin-left">' + escHtml(row['Legacy Number']) + '</td>' + cells +
       '<td class="util-pin-total">' + (row.hasTelematics ? total.toLocaleString() : '-') + '</td>' +
       '<td class="util-pin-avg">' + (row.hasTelematics ? avg : '-') + '</td></tr>';
   }
@@ -431,6 +476,61 @@
     var start = new Date(off.dateOffline + 'T00:00:00');
     var end = new Date(off.expectedOnline + 'T00:00:00');
     return d >= start && d <= end;
+  }
+
+  function runExport(action) {
+    var dates = dateRange();
+    var rows = action.indexOf('all') !== -1 ? state.active.filter(function(row) { return state.history || row.currentActive !== false; }) : tableRows(dates);
+    if (action.indexOf('csv') === 0 || action.indexOf('xlsx') === 0) return downloadCsv(rows, dates, action.indexOf('xlsx') === 0);
+    if (action.indexOf('html') === 0 || action.indexOf('pdf') === 0) return downloadHtml(rows, dates, action.indexOf('pdf') === 0);
+  }
+
+  function exportRows(rows, dates) {
+    var header = ['Legacy Number','BU Name','Equip Type','Operator State','Operator Name','Rego','Status'];
+    dates.forEach(function(d) { header.push(fmtDate(d) + ' KM'); header.push(fmtDate(d) + ' WS'); header.push(fmtDate(d) + ' EX'); });
+    header.push('Total KM'); header.push('Avg/day');
+    var out = [header];
+    rows.forEach(function(row) {
+      var total = 0, activeDays = 0;
+      var line = [row['Legacy Number'], row['BU Name'], row['Equip Type'], row['Operator State'], row['Operator Name'], row.Rego, row.currentActive === false ? 'Historical / inactive' : 'Active'];
+      dates.forEach(function(d, idx) {
+        var km = kmForDate(row, dates, idx);
+        var ws = workshopStatus(row, d);
+        var ex = isOffline(row, d) ? 'NF' : isWorkshopOffroad(ws) ? 'EX' : '';
+        if (row.hasTelematics && km != null && !ex) { total += km; activeDays++; }
+        line.push(km == null ? '' : km); line.push(ws || ''); line.push(ex);
+      });
+      line.push(row.hasTelematics ? total : ''); line.push(row.hasTelematics && activeDays ? Math.round(total / activeDays) : '');
+      out.push(line);
+    });
+    return out;
+  }
+
+  function downloadCsv(rows, dates, asXlsx) {
+    var csv = exportRows(rows, dates).map(function(row) {
+      return row.map(function(cell) { return '"' + String(cell == null ? '' : cell).replace(/"/g, '""') + '"'; }).join(',');
+    }).join('\n');
+    downloadFile(csv, asXlsx ? 'fleet-utilisation.xlsx' : 'fleet-utilisation.csv', asXlsx ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv');
+  }
+
+  function downloadHtml(rows, dates, printMode) {
+    var table = exportRows(rows, dates);
+    var html = '<!doctype html><html><head><meta charset="utf-8"><title>Fleet Utilisation Export</title><style>body{font-family:Arial,sans-serif;color:#172b4d}table{border-collapse:collapse;width:100%;font-size:11px}th{background:#143200;color:#c8f135}th,td{border:1px solid #dce8e0;padding:4px;white-space:nowrap}.hist{background:#fff5f5;color:#7f1d1d}.meta{color:#6b778c;font-size:12px;margin-bottom:12px}</style></head><body>' +
+      '<h2>Fleet Utilisation Dashboard</h2><div class="meta">Generated ' + new Date().toLocaleString('en-AU') + ' | ' + rows.length + ' assets | ' + (state.history ? 'History on' : 'Current active only') + '</div>' +
+      '<table><thead><tr>' + table[0].map(function(h) { return '<th>' + escHtml(h) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      table.slice(1).map(function(row) { return '<tr class="' + (row[6] === 'Historical / inactive' ? 'hist' : '') + '">' + row.map(function(cell) { return '<td>' + escHtml(cell) + '</td>'; }).join('') + '</tr>'; }).join('') +
+      '</tbody></table></body></html>';
+    downloadFile(html, printMode ? 'fleet-utilisation-print.html' : 'fleet-utilisation.html', 'text/html');
+  }
+
+  function downloadFile(content, name, type) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([content], { type: type }));
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(a.href);
+    a.remove();
   }
 
   function openStaticModal() {
@@ -487,7 +587,7 @@
 
   function tick() {
     var el = TGE.el('util-refresh');
-    if (el) el.textContent = 'Last update: ' + new Date().toLocaleTimeString('en-AU', { hour:'2-digit', minute:'2-digit' });
+    if (el) el.textContent = 'Last successful import: sample data · ' + new Date().toLocaleTimeString('en-AU', { hour:'2-digit', minute:'2-digit' });
   }
 
   function dateKey(d) {

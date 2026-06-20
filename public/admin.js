@@ -29,6 +29,7 @@
             '<button class="hero-mode-btn" id="admin-tab-history" type="button">Access History</button>',
             '<button class="hero-mode-btn" id="admin-tab-api" type="button">API Reference</button>',
             '<button class="hero-mode-btn" id="admin-tab-mailer" type="button">Mailer Data</button>',
+            '<button class="hero-mode-btn" id="admin-tab-utilisation" type="button">Utilisation</button>',
           '</div>',
           '<div class="hero-bar-right">',
             '<div class="hero-divider"></div>',
@@ -41,6 +42,7 @@
       '<div id="admin-content-history" style="display:none;">', renderHistoryTab(), '</div>',
       '<div id="admin-content-api" style="display:none;">',     renderApiTab(),     '</div>',
       '<div id="admin-content-mailer" style="display:none;">',  renderMailerTab(),  '</div>',
+      '<div id="admin-content-utilisation" style="display:none;">', renderUtilisationTab(), '</div>',
     ].join('');
 
     wireAdminTabs();
@@ -56,6 +58,7 @@
       { btn: 'admin-tab-history', content: 'admin-content-history' },
       { btn: 'admin-tab-api',     content: 'admin-content-api' },
       { btn: 'admin-tab-mailer',  content: 'admin-content-mailer' },
+      { btn: 'admin-tab-utilisation', content: 'admin-content-utilisation' },
     ];
     tabs.forEach(function (t) {
       TGE.on(t.btn, 'click', function () {
@@ -552,6 +555,32 @@
     var div = document.createElement('div');
     div.textContent = s || '';
     return div.innerHTML;
+  }
+
+  function renderUtilisationTab() {
+    var sections = [
+      ['Feed mappings', 'Configure SharePoint folder, file pattern, parser type, worksheet, header row, key column, and date/KM columns per feed.'],
+      ['Static Fleet sanitising', 'Draft and publish column-scoped exact value or phrase exclusions before users see active fleet records.'],
+      ['Field/display mappings', 'Choose which imported Static Fleet fields display in UD, appear as user filters, and define their labels/order.'],
+      ['Import logs/errors', 'Review import runs, row counts, source files, unmatched Legacy Numbers, validation errors, and DB upsert results.'],
+      ['Notification settings', 'Define the single email recipient used for import errors and unmatched asset notifications.'],
+    ];
+
+    return [
+      '<div class="card">',
+        '<div class="card-kicker">Utilisation Admin</div>',
+        '<div class="card-title">Control Centre</div>',
+        '<p style="font-size:12px;color:var(--muted);margin:0 0 14px;">Configuration shell for Fleet Utilisation imports, sanitising, field mappings, logs and notifications. DB-backed controls will be connected as each feed is built.</p>',
+        '<div class="data-grid data-grid-3">',
+          sections.map(function(section) {
+            return '<div class="data-item" style="align-items:flex-start;gap:6px;">' +
+              '<span>' + section[0] + '</span>' +
+              '<strong style="font-size:12px;line-height:1.45;font-weight:500;color:var(--ink-2);">' + section[1] + '</strong>' +
+            '</div>';
+          }).join(''),
+        '</div>',
+      '</div>',
+    ].join('');
   }
 
   function renderApiTab() {

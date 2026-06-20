@@ -13,7 +13,7 @@
         { key: 'snapshot',          label: 'Snapshot',          actions: ['view','run','cancel','refresh','export-pdf','export-email-pdf','export-csv','export-xlsx','export-json'] },
         { key: 'asset-track',       label: 'Asset Track',       actions: ['view','user-mode','fleet-mode','run','cancel','refresh','export-pdf','export-email-pdf','export-csv','export-xlsx','export-json'], hasLimit: true },
         { key: 'vpm',               label: 'VPM Analysis',      actions: ['view','user-mode','fleet-mode','run','cancel','refresh','export-pdf','export-email-pdf','export-csv','export-xlsx','export-json'], hasLimit: true },
-        { key: 'utilisation',       label: 'Fleet Utilisation', actions: ['view','run','cancel','refresh','export-csv','export-xlsx'] },
+        { key: 'utilisation',       label: 'Fleet Utilisation', actions: ['view-dashboard','view-history','export-html','export-csv','export-xlsx','export-pdf','view-admin','manage-feed-mappings','manage-static-sanitising','manage-field-mappings','view-import-logs','manage-notifications'] },
       ]
     },
     {
@@ -45,6 +45,15 @@
     'export-csv':       'CSV',
     'export-xlsx':      'XLSX',
     'export-json':      'JSON',
+    'view-dashboard':   'Dashboard',
+    'view-history':     'History',
+    'export-html':      'HTML',
+    'view-admin':       'Admin',
+    'manage-feed-mappings':      'Feeds',
+    'manage-static-sanitising':  'Sanitising',
+    'manage-field-mappings':     'Fields',
+    'view-import-logs':          'Logs',
+    'manage-notifications':      'Notifications',
   };
 
   // ── State ─────────────────────────────────────────────────────────────────────
