@@ -384,6 +384,49 @@
     '</div>';
   }
 
+  function parseInlineStyle(styleText) {
+    var out = {};
+    (styleText || '').split(';').forEach(function(part) {
+      var idx = part.indexOf(':');
+      if (idx === -1) return;
+      var key = part.slice(0, idx).trim().toLowerCase();
+      var val = part.slice(idx + 1).trim();
+      if (key) out[key] = val;
+    });
+    return out;
+  }
+
+  function inlineStyleText(styleObj) {
+    return Object.keys(styleObj).map(function(key) {
+      return key + ':' + styleObj[key];
+    }).join(';');
+  }
+
+  function softenLogoClipping(html) {
+    var root = document.createElement('div');
+    root.innerHTML = html || '';
+
+    root.querySelectorAll('img').forEach(function(img) {
+      var style = parseInlineStyle(img.getAttribute('style') || '');
+      var hadObjectFit = style['object-fit'] || style['object-position'];
+      delete style['object-fit'];
+      delete style['object-position'];
+      if (hadObjectFit) img.setAttribute('style', inlineStyleText(style));
+
+      var parent = img.parentElement;
+      while (parent && parent !== root) {
+        var parentStyle = parseInlineStyle(parent.getAttribute('style') || '');
+        if ((parentStyle.overflow || '').toLowerCase() === 'hidden') {
+          parentStyle.overflow = 'visible';
+          parent.setAttribute('style', inlineStyleText(parentStyle));
+        }
+        parent = parent.parentElement;
+      }
+    });
+
+    return root.innerHTML;
+  }
+
   function escapeHtml(s) {
     var div = document.createElement('div');
     div.textContent = s || '';
@@ -436,7 +479,7 @@
         var combinedBodyFieldsOnly = combinedRow ? mergeFieldsOnly(body, combinedRow) : body;
         var combinedExtract = extractSignature(combinedBodyFieldsOnly);
         var combinedBody = nl2br(combinedExtract.text) + buildCameraStatusTable(composerState.rows) + combinedExtract.signatureHtml;
-        var finalHtml = wrapInTemplate(combinedBody);
+        var finalHtml = softenLogoClipping(wrapInTemplate(combinedBody));
 
         var sendPayload = { to: to, cc: cc, bcc: bcc, subject: combinedSubject, htmlBody: finalHtml };
         if (pdfAttachmentCombined) { sendPayload.attachmentBase64 = pdfAttachmentCombined.base64; sendPayload.attachmentName = pdfAttachmentCombined.name; }
@@ -456,7 +499,7 @@
           var mergedBodyFieldsOnly = mergeFieldsOnly(body, row);
           var rowExtract    = extractSignature(mergedBodyFieldsOnly);
           var mergedBody    = nl2br(rowExtract.text) + buildCameraStatusTable([row]) + rowExtract.signatureHtml;
-          var finalHtml     = wrapInTemplate(mergedBody);
+          var finalHtml     = softenLogoClipping(wrapInTemplate(mergedBody));
           var mergedTo       = mergeText(to, row)  || to;
           var mergedCc       = mergeText(cc, row)  || cc;
           var mergedBcc      = mergeText(bcc, row) || bcc;
