@@ -333,17 +333,21 @@
     if (!camRows.length) return null;
 
     var assets = camRows.map(function(row) {
+      // Only include slots that actually exist for this asset (e.g. 2 for
+      // IQCamera, 5 for MultiIQ) — never padded with nulls. The PDF draws
+      // exactly this many fixed-size boxes, centered as a group.
+      var realSlots = [0,1,2,3,4]
+        .map(function(i) { return row.slots[i]; })
+        .filter(function(slot) { return slot != null; })
+        .map(function(slot) { return { label: slot.label, url: slot.url || null, status: slot.status || null }; });
+
       return {
         legacyNo:   row.legacyNo,
         imei:       row.imei,
         model:      row.cameraModel,
         lastComms:  row.lastComms,
         systemDown: !!row.systemDown,
-        slots: [0,1,2,3,4].map(function(i) {
-          var slot = row.slots[i];
-          if (!slot) return null;
-          return { label: slot.label, url: slot.url || null, status: slot.status || null };
-        }),
+        slots:      realSlots,
       };
     });
 
