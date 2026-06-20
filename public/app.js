@@ -93,7 +93,6 @@
     var target = TGE.el('view-' + viewId);
     if (target) target.classList.add('active');
     TGE.state.activeView = viewId;
-    document.body.setAttribute('data-active-view', viewId);
     // Notify page module if it has an onShow handler
     var handler = TGE.onShow && TGE.onShow[viewId];
     if (typeof handler === 'function') handler();
@@ -260,15 +259,9 @@
     var navItems = document.querySelectorAll('.nav-item[data-view]');
     navItems.forEach(function (item) {
       var view = item.dataset.view;
-
-      // Utilisation uses its own 'view-dashboard' action; roles/api map to
-      // the 'admin' permission feature; everything else checks its own
-      // feature name against the standard 'view' action.
-      var permFeature = (view === 'roles' || view === 'api') ? 'admin' : view;
-      var permAction   = (view === 'utilisation') ? 'view-dashboard' : 'view';
-      var allowed      = TGE.can(permFeature, permAction);
-
-      if (!allowed) {
+      // Roles page uses admin permission
+      var permKey = (view === 'roles' || view === 'api') ? 'admin' : view;
+      if (!TGE.can(permKey, 'view')) {
         item.style.display = 'none';
       }
     });
