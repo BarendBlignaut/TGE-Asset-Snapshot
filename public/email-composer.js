@@ -7,10 +7,6 @@
 //   fields: array of { key, label } describing which properties of each row
 //           can be inserted as merge tags, e.g. { key:'legacyNo', label:'Legacy No' }
 //   imagesField: optional key on each row holding an array of {label, url} images
-//   attachmentBuilder: optional async function(rows) -> { base64, name } | string | null.
-//                       If omitted, falls back to the built-in camera fault PDF builder.
-//   attachmentLabel:   optional label for the attach checkbox (default 'Attach PDF')
-//   attachByDefault:   optional boolean — pre-tick the attach checkbox
 //   onSent: optional callback after a send completes
 
 (function () {
@@ -61,6 +57,7 @@
     sending:     false,
   };
 
+  // ── Public entry point ──────────────────────────────────────────────────────
   // ── Debug helper ─────────────────────────────────────────────────────────────
   // TGE.debugPreviewPdf() lets you build and open the camera fault PDF from
   // whatever rows are currently loaded in the composer, without sending any
@@ -68,9 +65,9 @@
   TGE.debugPreviewPdf = async function () {
     if (!composerState.rows.length) { console.log('No rows loaded — open the composer first.'); return; }
     console.log('Building PDF from', composerState.rows.length, 'row(s)...');
-    var attachment = await buildComposerAttachment(composerState.rows);
-    if (!attachment) { console.log('PDF build failed or no eligible rows found.'); return; }
-    var bin = atob(attachment.base64);
+    var base64 = await buildCameraFaultPdfAttachment(composerState.rows);
+    if (!base64) { console.log('PDF build failed or no camera rows found.'); return; }
+    var bin = atob(base64);
     var bytes = new Uint8Array(bin.length);
     for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     var blob = new Blob([bytes], { type: 'application/pdf' });
@@ -78,7 +75,6 @@
     console.log('PDF opened in new tab. sizeBytes:', bytes.length);
   };
 
-  // ── Public entry point ──────────────────────────────────────────────────────
   TGE.openEmailComposer = async function (opts) {
     composerState.rows        = opts.rows || [];
     composerState.fields      = opts.fields || [];
@@ -128,15 +124,6 @@
       return '<option value="' + f.key + '">' + f.label + '</option>';
     }).join('');
     var canUseMergeFields = composerState.mode === 'individual' || composerState.rows.length === 1;
-
-    // Merge fields only make sense when each email maps to exactly one row —
-    // i.e. individual mode, or combined mode with a single row selected.
-    var canUseMergeFields = composerState.mode === 'individual' || composerState.rows.length === 1;
-
-    // Attach checkbox shows whenever there's something to attach: either a
-    // custom attachmentBuilder was supplied, or the rows look like camera rows
-    // (have a `slots` array) so the built-in camera-fault PDF builder applies.
-    var canAttach = composerState.attachmentBuilder != null || composerState.rows.some(rowHasCameraSlots);
 
     panel.innerHTML = [
       '<div style="padding:14px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">',
@@ -192,7 +179,7 @@
             'style="width:100%;flex:1;min-height:200px;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:13px;line-height:1.6;resize:vertical;background:var(--surface);color:var(--ink);font-family:inherit;"></textarea>',
         '</div>',
 
-        (canAttach
+        (composerState.rows.some(rowHasCameraSlots) || composerState.attachmentBuilder
           ? '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">' +
               '<input type="checkbox" id="ec-attach-pdf" style="width:16px;height:16px;cursor:pointer;" ' + (composerState.attachByDefault ? 'checked' : '') + ' />' +
               (composerState.attachmentBuilder ? composerState.attachmentLabel : 'Attach camera photos as PDF') +
@@ -260,10 +247,6 @@
   }
 
   // ── Merge logic ───────────────────────────────────────────────────────────────
-
-  // Plain-text merge — used for Subject and To/CC/BCC, which never contain a
-  // {signature:X} tag in practice, but {signature:X} is stripped defensively
-  // anyway since signatures only make sense inside an HTML body.
   function mergeText(template, row) {
     if (!template) return '';
     return template
@@ -274,10 +257,6 @@
       });
   }
 
-  // HTML body merge — resolves {field} tags AND {signature:X} tags.
-  // Signature HTML is substituted via placeholder tokens so it is dropped in
-  // verbatim (not HTML-escaped, not subject to nl2br) wherever the user
-  // placed the {signature:X} tag in their typed text.
   function renderBodyHtml(template, row) {
     if (!template) return '';
 
@@ -390,11 +369,6 @@
     return r.data.base64;
   }
 
-  // Resolves to a single attachment for the given rows, preferring a custom
-  // attachmentBuilder (passed into TGE.openEmailComposer) over the built-in
-  // camera fault PDF builder. Always returns either null or
-  // { base64, name } — never a bare base64 string — so callers never have to
-  // branch on the return shape.
   async function buildComposerAttachment(rows) {
     if (composerState.attachmentBuilder) {
       var built = await composerState.attachmentBuilder(rows);
@@ -463,12 +437,10 @@
           if (!pdfAttachmentCombined) setStatus('⚠ Could not build PDF attachment — sending without it.', true);
         }
 
-        // If exactly one row is selected, merge fields/signature against it;
-        // otherwise send the subject/body as typed (no single row to merge from).
-        var combinedRow     = composerState.rows.length === 1 ? composerState.rows[0] : null;
+        var combinedRow = composerState.rows.length === 1 ? composerState.rows[0] : null;
         var combinedSubject = combinedRow ? mergeText(subject, combinedRow) : subject;
-        var combinedBody    = renderBodyHtml(body, combinedRow) + buildCameraStatusTable(composerState.rows);
-        var finalHtml        = wrapInTemplate(combinedBody);
+        var combinedBody = renderBodyHtml(body, combinedRow) + buildCameraStatusTable(composerState.rows);
+        var finalHtml = wrapInTemplate(combinedBody);
 
         var sendPayload = { to: to, cc: cc, bcc: bcc, subject: combinedSubject, htmlBody: finalHtml };
         if (pdfAttachmentCombined) { sendPayload.attachmentBase64 = pdfAttachmentCombined.base64; sendPayload.attachmentName = pdfAttachmentCombined.name; }
@@ -487,11 +459,11 @@
           var mergedSubject = mergeText(subject, row);
           var mergedBody    = renderBodyHtml(body, row) + buildCameraStatusTable([row]);
           var finalHtml     = wrapInTemplate(mergedBody);
-          var mergedTo      = mergeText(to, row)  || to;
-          var mergedCc      = mergeText(cc, row)  || cc;
-          var mergedBcc     = mergeText(bcc, row) || bcc;
+          var mergedTo       = mergeText(to, row)  || to;
+          var mergedCc       = mergeText(cc, row)  || cc;
+          var mergedBcc      = mergeText(bcc, row) || bcc;
 
-          // Build a fresh attachment for THIS row only — never shared across rows.
+          // Build a fresh PDF for THIS row only — never shared across rows.
           var pdfAttachmentRow = null;
           if (attachPdf) {
             setStatus('Building PDF for item ' + (i+1) + ' of ' + total + '...', false);
