@@ -55,6 +55,23 @@
   };
 
   // ── Public entry point ──────────────────────────────────────────────────────
+  // ── Debug helper ─────────────────────────────────────────────────────────────
+  // TGE.debugPreviewPdf() lets you build and open the camera fault PDF from
+  // whatever rows are currently loaded in the composer, without sending any
+  // email at all — useful for isolating PDF issues from Power Automate issues.
+  TGE.debugPreviewPdf = async function () {
+    if (!composerState.rows.length) { console.log('No rows loaded — open the composer first.'); return; }
+    console.log('Building PDF from', composerState.rows.length, 'row(s)...');
+    var base64 = await buildCameraFaultPdfAttachment(composerState.rows);
+    if (!base64) { console.log('PDF build failed or no camera rows found.'); return; }
+    var bin = atob(base64);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    var blob = new Blob([bytes], { type: 'application/pdf' });
+    window.open(URL.createObjectURL(blob));
+    console.log('PDF opened in new tab. sizeBytes:', bytes.length);
+  };
+
   TGE.openEmailComposer = async function (opts) {
     composerState.rows        = opts.rows || [];
     composerState.fields      = opts.fields || [];
