@@ -127,6 +127,7 @@
     var fieldOptions = composerState.fields.map(function(f) {
       return '<option value="' + f.key + '">' + f.label + '</option>';
     }).join('');
+    var canUseMergeFields = composerState.mode === 'individual' || composerState.rows.length === 1;
 
     // Merge fields only make sense when each email maps to exactly one row —
     // i.e. individual mode, or combined mode with a single row selected.
