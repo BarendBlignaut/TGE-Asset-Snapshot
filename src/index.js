@@ -1008,6 +1008,7 @@ async function handleSendEmail(request, env) {
   const body     = await safeJson(request);
   const to       = String(body.to || "").trim();
   const cc       = String(body.cc || "").trim();
+  const bcc      = String(body.bcc || "").trim();
   const subject  = String(body.subject || "").trim();
   const htmlBody = String(body.htmlBody || "").trim();
   // Optional PDF attachment — base64 string + filename, built client-side
@@ -1020,7 +1021,7 @@ async function handleSendEmail(request, env) {
     return jsonResponse({ error: "to, subject and htmlBody are required." }, 400);
   }
 
-  const payload = { to, cc, subject, htmlBody };
+  const payload = { to, cc, bcc, subject, htmlBody };
   if (attachmentBase64) {
     payload.attachmentName   = attachmentName;
     payload.attachmentBase64 = attachmentBase64;
@@ -1038,7 +1039,7 @@ async function handleSendEmail(request, env) {
       return jsonResponse({ error: `Power Automate error: HTTP ${res.status}`, detail: text.slice(0,300) }, 502);
     }
 
-    await logActivity(env, auth.session.user_id, "email", "send", `To: ${to} | Subject: ${subject}${attachmentBase64 ? " | +PDF attachment" : ""}`, null);
+    await logActivity(env, auth.session.user_id, "email", "send", `To: ${to}${cc ? " | CC: "+cc : ""}${bcc ? " | BCC: "+bcc : ""} | Subject: ${subject}${attachmentBase64 ? " | +PDF attachment" : ""}`, null);
 
     return jsonResponse({ ok: true });
   } catch(e) {
