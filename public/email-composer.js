@@ -247,34 +247,40 @@
   }
 
   // ── Merge logic ───────────────────────────────────────────────────────────────
-  // Merges {field} tags only — leaves {signature:X} tags untouched so the
-  // caller can extract and reposition the signature deliberately (it must
-  // always render AFTER the status table, regardless of where the user
-  // placed the {signature:X} tag in their typed text).
-  function mergeFieldsOnly(template, row) {
-    if (!template) return '';
-    return template.replace(/\{([a-zA-Z0-9_]+)\}/g, function(match, key) {
-      if (key.indexOf('signature:') === 0) return match;
-      if (row && row[key] != null) return String(row[key]);
-      return '';
-    });
-  }
-
-  // Strips any {signature:X} tag out of the text and returns both the
-  // cleaned text and the resolved signature HTML (or '' if none was used).
-  function extractSignature(text) {
-    var sigHtml = '';
-    var cleaned = (text || '').replace(/\{signature:([a-zA-Z0-9_]+)\}/g, function(match, sigKey) {
-      if (SIGNATURES[sigKey]) sigHtml = SIGNATURES[sigKey].html;
-      return '';
-    });
-    return { text: cleaned, signatureHtml: sigHtml };
-  }
-
   function mergeText(template, row) {
-    // Backward-compatible helper (subject line still uses this — subjects
-    // never contain a signature tag in practice, but handle it safely anyway).
-    return extractSignature(mergeFieldsOnly(template, row)).text;
+    if (!template) return '';
+    return template
+      .replace(/\{signature:([a-zA-Z0-9_]+)\}/g, '')
+      .replace(/\{([a-zA-Z0-9_]+)\}/g, function(match, key) {
+        if (row && row[key] != null) return String(row[key]);
+        return '';
+      });
+  }
+
+  function renderBodyHtml(template, row) {
+    if (!template) return '';
+
+    var signatures = [];
+    var body = template.replace(/\{signature:([a-zA-Z0-9_]+)\}/g, function(match, sigKey) {
+      var token = '%%TGE_SIGNATURE_' + signatures.length + '%%';
+      signatures.push(SIGNATURES[sigKey] ? SIGNATURES[sigKey].html : '');
+      return token;
+    });
+
+    if (row) {
+      body = body.replace(/\{([a-zA-Z0-9_]+)\}/g, function(match, key) {
+        if (row && row[key] != null) return String(row[key]);
+        return '';
+      });
+    }
+
+    if (!/<\/?[a-z][\s\S]*>/i.test(body)) body = nl2br(body);
+
+    signatures.forEach(function(html, idx) {
+      body = body.replace('%%TGE_SIGNATURE_' + idx + '%%', html);
+    });
+
+    return body;
   }
 
   // ── Standard camera status table ────────────────────────────────────────────
@@ -384,49 +390,6 @@
     '</div>';
   }
 
-  function parseInlineStyle(styleText) {
-    var out = {};
-    (styleText || '').split(';').forEach(function(part) {
-      var idx = part.indexOf(':');
-      if (idx === -1) return;
-      var key = part.slice(0, idx).trim().toLowerCase();
-      var val = part.slice(idx + 1).trim();
-      if (key) out[key] = val;
-    });
-    return out;
-  }
-
-  function inlineStyleText(styleObj) {
-    return Object.keys(styleObj).map(function(key) {
-      return key + ':' + styleObj[key];
-    }).join(';');
-  }
-
-  function softenLogoClipping(html) {
-    var root = document.createElement('div');
-    root.innerHTML = html || '';
-
-    root.querySelectorAll('img').forEach(function(img) {
-      var style = parseInlineStyle(img.getAttribute('style') || '');
-      var hadObjectFit = style['object-fit'] || style['object-position'];
-      delete style['object-fit'];
-      delete style['object-position'];
-      if (hadObjectFit) img.setAttribute('style', inlineStyleText(style));
-
-      var parent = img.parentElement;
-      while (parent && parent !== root) {
-        var parentStyle = parseInlineStyle(parent.getAttribute('style') || '');
-        if ((parentStyle.overflow || '').toLowerCase() === 'hidden') {
-          parentStyle.overflow = 'visible';
-          parent.setAttribute('style', inlineStyleText(parentStyle));
-        }
-        parent = parent.parentElement;
-      }
-    });
-
-    return root.innerHTML;
-  }
-
   function escapeHtml(s) {
     var div = document.createElement('div');
     div.textContent = s || '';
@@ -476,10 +439,8 @@
 
         var combinedRow = composerState.rows.length === 1 ? composerState.rows[0] : null;
         var combinedSubject = combinedRow ? mergeText(subject, combinedRow) : subject;
-        var combinedBodyFieldsOnly = combinedRow ? mergeFieldsOnly(body, combinedRow) : body;
-        var combinedExtract = extractSignature(combinedBodyFieldsOnly);
-        var combinedBody = nl2br(combinedExtract.text) + buildCameraStatusTable(composerState.rows) + combinedExtract.signatureHtml;
-        var finalHtml = softenLogoClipping(wrapInTemplate(combinedBody));
+        var combinedBody = renderBodyHtml(body, combinedRow) + buildCameraStatusTable(composerState.rows);
+        var finalHtml = wrapInTemplate(combinedBody);
 
         var sendPayload = { to: to, cc: cc, bcc: bcc, subject: combinedSubject, htmlBody: finalHtml };
         if (pdfAttachmentCombined) { sendPayload.attachmentBase64 = pdfAttachmentCombined.base64; sendPayload.attachmentName = pdfAttachmentCombined.name; }
@@ -496,10 +457,8 @@
         for (var i = 0; i < composerState.rows.length; i++) {
           var row = composerState.rows[i];
           var mergedSubject = mergeText(subject, row);
-          var mergedBodyFieldsOnly = mergeFieldsOnly(body, row);
-          var rowExtract    = extractSignature(mergedBodyFieldsOnly);
-          var mergedBody    = nl2br(rowExtract.text) + buildCameraStatusTable([row]) + rowExtract.signatureHtml;
-          var finalHtml     = softenLogoClipping(wrapInTemplate(mergedBody));
+          var mergedBody    = renderBodyHtml(body, row) + buildCameraStatusTable([row]);
+          var finalHtml     = wrapInTemplate(mergedBody);
           var mergedTo       = mergeText(to, row)  || to;
           var mergedCc       = mergeText(cc, row)  || cc;
           var mergedBcc      = mergeText(bcc, row) || bcc;
