@@ -759,25 +759,25 @@ async function handleSignImageUrl(request, env) {
 const PDF_PAGE_W = 841.89;  // A4 landscape width in points
 const PDF_PAGE_H = 595.28;  // A4 landscape height in points
 
-const PDF_MARGIN_TOP    = 40;
-const PDF_MARGIN_BOTTOM = 30;
-const PDF_MARGIN_LEFT   = 30;
-const PDF_MARGIN_RIGHT  = 30;
+const PDF_MARGIN_TOP    = 60;
+const PDF_MARGIN_BOTTOM = 34;
+const PDF_MARGIN_LEFT   = 26;
+const PDF_MARGIN_RIGHT  = 26;
 
-const PDF_HEADER_HEIGHT     = 16;
+const PDF_HEADER_HEIGHT     = 14;
 const PDF_PHOTO_LABEL_GAP   = 4;
-const PDF_PHOTO_BOX_H       = 80;
-const PDF_PHOTO_LABEL_H     = 11;
+const PDF_PHOTO_BOX_H       = 71;
+const PDF_PHOTO_LABEL_H     = 10;
 const PDF_STATUS_ROW_H      = 12;
-const PDF_FOOTER_GAP        = 4;
-const PDF_FOOTER_HEIGHT     = 14;
-const PDF_BAND_INTERNAL_PAD = 8;
-const PDF_BAND_GAP          = 10;
+const PDF_BAND_INTERNAL_PAD = 6;
+const PDF_BAND_GAP          = 7;
 
-const PDF_NUM_SLOTS   = 5;
+const PDF_NUM_SLOTS   = 5;   // box width is always calculated for 5 slots, even
+                              // when an asset has fewer — boxes never resize.
 const PDF_PHOTO_GAP_X = 8;
 
 const PDF_SLOT_LABELS = ["Road", "Driver", "In-Cab", "R.Ext", "L.Ext"];
+const PDF_BRAND_GREEN = rgb(0.078, 0.325, 0.176); // #14532d
 
 function pdfBandHeight() {
   return (
@@ -787,8 +787,6 @@ function pdfBandHeight() {
     PDF_PHOTO_BOX_H +
     PDF_PHOTO_LABEL_H +
     PDF_STATUS_ROW_H +
-    PDF_FOOTER_GAP +
-    PDF_FOOTER_HEIGHT +
     PDF_BAND_INTERNAL_PAD
   );
 }
@@ -818,18 +816,35 @@ async function fetchImageForPdf(url) {
   }
 }
 
+function pdfDrawStatusDot(page, font, centerX, baselineY, isWorking) {
+  const color = isWorking ? rgb(0.09, 0.64, 0.29) : rgb(0.86, 0.15, 0.15);
+  const label = isWorking ? "OK" : "FAULT";
+  const dotR  = 2.6;
+  const labelW = font.widthOfTextAtSize(label, 7);
+  const totalW = dotR * 2 + 3 + labelW;
+  const startX = centerX - totalW / 2;
+  page.drawCircle({ x: startX + dotR, y: baselineY + 2, size: dotR, color });
+  page.drawText(label, { x: startX + dotR * 2 + 3, y: baselineY, size: 7, font, color });
+}
+
 // Builds the full multi-page camera fault report PDF.
-// assets: [{ legacyNo, imei, model, slots: [{label, url|null, status:'working'|'not_working'|null}, ...5], lastComms, systemDown }]
+// assets: [{ legacyNo, imei, model, slots: [{label, url|null, status:'working'|'not_working'|null}, ...up to 5], lastComms, systemDown }]
+// Note: slots.length may be LESS than 5 (e.g. 2 for IQCamera) — only that
+// many boxes are drawn, fixed-size, centered in the row. Never padded with
+// placeholder/n-a boxes.
 async function buildCameraFaultPdf(assets) {
   const pdfDoc = await PDFDocument.create();
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold    = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const bandHeight    = pdfBandHeight();
-  const maxPerPage    = pdfMaxBandsPerPage();
-  const usableW        = PDF_PAGE_W - PDF_MARGIN_LEFT - PDF_MARGIN_RIGHT;
-  const availInnerW     = usableW - 12; // inner padding inside each band, matches prototype
-  const photoBoxW       = (availInnerW - (PDF_NUM_SLOTS - 1) * PDF_PHOTO_GAP_X) / PDF_NUM_SLOTS;
+  const bandHeight = pdfBandHeight();
+  const maxPerPage = pdfMaxBandsPerPage();
+  const usableW     = PDF_PAGE_W - PDF_MARGIN_LEFT - PDF_MARGIN_RIGHT;
+  const usableH     = PDF_PAGE_H - PDF_MARGIN_TOP - PDF_MARGIN_BOTTOM;
+  const availInnerW = usableW - 12;
+  // Fixed box width, ALWAYS based on 5 slots — identical size regardless of
+  // how many cameras a given asset actually has (locked-in design decision).
+  const fixedPhotoBoxW = (availInnerW - (PDF_NUM_SLOTS - 1) * PDF_PHOTO_GAP_X) / PDF_NUM_SLOTS;
 
   // Pre-fetch every image referenced across all assets, once each, in parallel
   // (deduped — same URL never fetched twice even if it appears more than once).
@@ -838,7 +853,7 @@ async function buildCameraFaultPdf(assets) {
   assets.forEach((asset) => {
     asset.slots.forEach((slot) => {
       if (slot && slot.url && !urlToImage[slot.url]) {
-        urlToImage[slot.url] = null; // reserve the key
+        urlToImage[slot.url] = null;
         fetchJobs.push(
           fetchImageForPdf(slot.url).then((result) => { urlToImage[slot.url] = result; })
         );
@@ -847,8 +862,6 @@ async function buildCameraFaultPdf(assets) {
   });
   await Promise.all(fetchJobs);
 
-  // Embed each fetched image once, cache the embedded PDFImage object by URL
-  // (pdf-lib requires embedding per-document, but only once per unique image).
   const urlToEmbedded = {};
   for (const url of Object.keys(urlToImage)) {
     const img = urlToImage[url];
@@ -858,18 +871,46 @@ async function buildCameraFaultPdf(assets) {
         ? await pdfDoc.embedPng(img.bytes)
         : await pdfDoc.embedJpg(img.bytes);
     } catch (e) {
-      urlToEmbedded[url] = null; // embedding failed (corrupt/unsupported bytes) — treat as unavailable
+      urlToEmbedded[url] = null;
     }
   }
 
+  // Summary stats for the header strip
+  let totalCams = 0, totalWorking = 0, totalNotWorking = 0;
+  assets.forEach((a) => {
+    a.slots.forEach((s) => {
+      if (!s) return;
+      totalCams++;
+      if (s.status === "working") totalWorking++;
+      else if (s.status === "not_working") totalNotWorking++;
+    });
+  });
+
+  const pages = [];
   let page = null;
   let bandIndexOnPage = 0;
 
   function startNewPage() {
     page = pdfDoc.addPage([PDF_PAGE_W, PDF_PAGE_H]);
+    pages.push(page);
     bandIndexOnPage = 0;
-    // Title on first page only is handled by caller; every page gets a slim
-    // continuation header so multi-page reports are still easy to follow.
+
+    // Outer page border/frame
+    page.drawRectangle({
+      x: PDF_MARGIN_LEFT - 10, y: PDF_MARGIN_BOTTOM - 10,
+      width: usableW + 20, height: usableH + 20,
+      borderColor: rgb(0.82, 0.84, 0.86), borderWidth: 1,
+    });
+
+    // Title — centered
+    const title = "Camera Fault Report";
+    const titleW = fontBold.widthOfTextAtSize(title, 15);
+    page.drawText(title, { x: (PDF_PAGE_W - titleW) / 2, y: PDF_PAGE_H - 26, size: 15, font: fontBold, color: rgb(0.07, 0.07, 0.07) });
+
+    // Summary strip
+    const summary = `${assets.length} Asset${assets.length !== 1 ? "s" : ""}   |   ${totalCams} Camera${totalCams !== 1 ? "s" : ""}   |   ${totalWorking} Working   |   ${totalNotWorking} Not Working`;
+    const summaryW = fontRegular.widthOfTextAtSize(summary, 9);
+    page.drawText(summary, { x: (PDF_PAGE_W - summaryW) / 2, y: PDF_PAGE_H - 42, size: 9, font: fontRegular, color: rgb(0.42, 0.45, 0.50) });
   }
 
   startNewPage();
@@ -877,92 +918,106 @@ async function buildCameraFaultPdf(assets) {
   assets.forEach((asset, assetIdx) => {
     if (bandIndexOnPage >= maxPerPage) startNewPage();
 
-    const bandTopY = PDF_PAGE_H - PDF_MARGIN_TOP - bandIndexOnPage * (bandHeight + PDF_BAND_GAP);
+    const bandTopY    = PDF_PAGE_H - PDF_MARGIN_TOP - bandIndexOnPage * (bandHeight + PDF_BAND_GAP);
     const bandBottomY = bandTopY - bandHeight;
+    const isDown      = !!asset.systemDown;
+    const isZebra      = bandIndexOnPage % 2 === 1;
 
-    // Band border
+    // Band background — system-down gets a red tint (takes priority over zebra)
+    if (isDown) {
+      page.drawRectangle({ x: PDF_MARGIN_LEFT, y: bandBottomY, width: usableW, height: bandHeight, color: rgb(0.996, 0.953, 0.953) });
+    } else if (isZebra) {
+      page.drawRectangle({ x: PDF_MARGIN_LEFT, y: bandBottomY, width: usableW, height: bandHeight, color: rgb(0.980, 0.984, 0.988) });
+    }
+
+    // Band border — always neutral grey (red tint comes from the fill above + accent line below, not the border)
     page.drawRectangle({
-      x: PDF_MARGIN_LEFT, y: bandBottomY,
-      width: usableW, height: bandHeight,
-      borderColor: rgb(0.90, 0.91, 0.92), borderWidth: 1,
+      x: PDF_MARGIN_LEFT, y: bandBottomY, width: usableW, height: bandHeight,
+      borderColor: isDown ? rgb(0.99, 0.65, 0.65) : rgb(0.90, 0.91, 0.92), borderWidth: 1,
     });
 
     let cursorY = bandTopY - PDF_BAND_INTERNAL_PAD;
 
-    // Header — legacy no + model, IMEI underneath
-    page.drawText(`Asset ${asset.legacyNo || "—"} — ${asset.model || "—"}`, {
-      x: PDF_MARGIN_LEFT + 6, y: cursorY - 10, size: 11, font: fontBold, color: rgb(0.07, 0.07, 0.07),
+    // Compact header — name+model, IMEI, and Last Comms/Non-Functional all on ONE line
+    const headerLabel = `Asset ${asset.legacyNo || "—"} — ${asset.model || "—"}`;
+    page.drawText(headerLabel, {
+      x: PDF_MARGIN_LEFT + 6, y: cursorY - 9, size: 10.5, font: fontBold, color: rgb(0.07, 0.07, 0.07),
     });
+    const headerLabelW = fontBold.widthOfTextAtSize(headerLabel, 10.5);
     page.drawText(asset.imei || "—", {
-      x: PDF_MARGIN_LEFT + 6, y: cursorY - 19, size: 8, font: fontRegular, color: rgb(0.42, 0.45, 0.50),
+      x: PDF_MARGIN_LEFT + 6 + headerLabelW + 10, y: cursorY - 9, size: 8, font: fontRegular, color: rgb(0.42, 0.45, 0.50),
+    });
+
+    const rightText  = isDown ? "⚠ NON-FUNCTIONAL" : `Last Comms: ${asset.lastComms || "Unknown"}`;
+    const rightColor = isDown ? rgb(0.86, 0.15, 0.15) : rgb(0.22, 0.25, 0.32);
+    const rightW = fontBold.widthOfTextAtSize(rightText, 8);
+    page.drawText(rightText, { x: PDF_MARGIN_LEFT + usableW - 6 - rightW, y: cursorY - 9, size: 8, font: fontBold, color: rightColor });
+
+    // Brand accent line under the header row (green normally, red if system-down)
+    const headerBottomY = bandTopY - PDF_BAND_INTERNAL_PAD - PDF_HEADER_HEIGHT;
+    page.drawLine({
+      start: { x: PDF_MARGIN_LEFT + 6, y: headerBottomY },
+      end:   { x: PDF_MARGIN_LEFT + usableW - 6, y: headerBottomY },
+      thickness: 1.3, color: isDown ? rgb(0.86, 0.15, 0.15) : PDF_BRAND_GREEN,
     });
 
     cursorY -= PDF_HEADER_HEIGHT + PDF_PHOTO_LABEL_GAP;
     const photoTopY = cursorY;
 
-    for (let slotIdx = 0; slotIdx < PDF_NUM_SLOTS; slotIdx++) {
-      const slot = asset.slots[slotIdx];
-      const bx = PDF_MARGIN_LEFT + 6 + slotIdx * (photoBoxW + PDF_PHOTO_GAP_X);
-      const by = photoTopY - PDF_PHOTO_BOX_H;
-      const hasSlotAtAll = slot != null;
-      const embedded = hasSlotAtAll && slot.url ? urlToEmbedded[slot.url] : null;
+    // Smart centering — only draw as many boxes as this asset actually has
+    // slots for (n <= 5), all at the SAME fixed size, centered as a group.
+    const n = asset.slots.length;
+    const rowW   = n > 0 ? n * fixedPhotoBoxW + (n - 1) * PDF_PHOTO_GAP_X : 0;
+    const startX = PDF_MARGIN_LEFT + 6 + (availInnerW - rowW) / 2;
 
+    for (let slotIdx = 0; slotIdx < n; slotIdx++) {
+      const slot = asset.slots[slotIdx];
+      const bx = startX + slotIdx * (fixedPhotoBoxW + PDF_PHOTO_GAP_X);
+      const by = photoTopY - PDF_PHOTO_BOX_H;
+      const embedded = slot && slot.url ? urlToEmbedded[slot.url] : null;
+
+      // Photo box border is ALWAYS neutral grey, even on system-down assets —
+      // only the band background/accent line signals the fault, not the photo itself.
       if (embedded) {
-        // Draw the real photo, scaled to fully fill the fixed box (crop via
-        // scaleToFit then center) — keeps every box visually identical.
-        const scaled = embedded.scaleToFit(photoBoxW, PDF_PHOTO_BOX_H);
-        const offsetX = bx + (photoBoxW - scaled.width) / 2;
+        const scaled = embedded.scaleToFit(fixedPhotoBoxW, PDF_PHOTO_BOX_H);
+        const offsetX = bx + (fixedPhotoBoxW - scaled.width) / 2;
         const offsetY = by + (PDF_PHOTO_BOX_H - scaled.height) / 2;
-        page.drawRectangle({ x: bx, y: by, width: photoBoxW, height: PDF_PHOTO_BOX_H, color: rgb(0.96, 0.96, 0.97) });
+        page.drawRectangle({ x: bx, y: by, width: fixedPhotoBoxW, height: PDF_PHOTO_BOX_H, color: rgb(0.96, 0.96, 0.97) });
         page.drawImage(embedded, { x: offsetX, y: offsetY, width: scaled.width, height: scaled.height });
-        page.drawRectangle({ x: bx, y: by, width: photoBoxW, height: PDF_PHOTO_BOX_H, borderColor: rgb(0.85, 0.86, 0.88), borderWidth: 1 });
+        page.drawRectangle({ x: bx, y: by, width: fixedPhotoBoxW, height: PDF_PHOTO_BOX_H, borderColor: rgb(0.82, 0.84, 0.86), borderWidth: 1 });
       } else {
-        // No image available for this slot (camera doesn't have this slot,
-        // or the fetch/embed failed) — draw an empty placeholder box.
-        const bg = hasSlotAtAll ? rgb(0.96, 0.96, 0.97) : rgb(0.98, 0.98, 0.98);
-        page.drawRectangle({ x: bx, y: by, width: photoBoxW, height: PDF_PHOTO_BOX_H, color: bg, borderColor: rgb(0.85, 0.86, 0.88), borderWidth: 1 });
-        const label = hasSlotAtAll ? "no image" : "n/a";
+        page.drawRectangle({ x: bx, y: by, width: fixedPhotoBoxW, height: PDF_PHOTO_BOX_H, color: rgb(0.96, 0.96, 0.97), borderColor: rgb(0.82, 0.84, 0.86), borderWidth: 1 });
+        const label = "no image";
         const textWidth = fontRegular.widthOfTextAtSize(label, 7);
-        page.drawText(label, { x: bx + photoBoxW/2 - textWidth/2, y: by + PDF_PHOTO_BOX_H/2 - 3, size: 7, font: fontRegular, color: rgb(0.61, 0.64, 0.69) });
+        page.drawText(label, { x: bx + fixedPhotoBoxW/2 - textWidth/2, y: by + PDF_PHOTO_BOX_H/2 - 3, size: 7, font: fontRegular, color: rgb(0.61, 0.64, 0.69) });
       }
 
-      // Slot label (Road / Driver / In-Cab / R.Ext / L.Ext) — always shown,
-      // even for unused slots, so columns stay visually aligned down the page.
-      const slotLabel = PDF_SLOT_LABELS[slotIdx];
-      const labelW = fontBold.widthOfTextAtSize(slotLabel, 8);
+      const slotLabel = (slot && slot.label) || PDF_SLOT_LABELS[slotIdx] || "—";
+      const labelW = fontBold.widthOfTextAtSize(slotLabel, 7.5);
       page.drawText(slotLabel, {
-        x: bx + photoBoxW/2 - labelW/2, y: by - PDF_PHOTO_LABEL_H + 2, size: 8, font: fontBold, color: rgb(0.07,0.07,0.07),
+        x: bx + fixedPhotoBoxW/2 - labelW/2, y: by - PDF_PHOTO_LABEL_H + 2, size: 7.5, font: fontBold, color: rgb(0.07, 0.07, 0.07),
       });
 
-      // Status row
-      let statusText = "—";
-      let statusColor = rgb(0.82, 0.84, 0.86);
-      if (hasSlotAtAll && slot.status === "working")      { statusText = "WORKING";     statusColor = rgb(0.09, 0.64, 0.29); }
-      else if (hasSlotAtAll && slot.status === "not_working") { statusText = "NOT WORKING"; statusColor = rgb(0.86, 0.15, 0.15); }
-      const statusW = fontBold.widthOfTextAtSize(statusText, 7);
-      page.drawText(statusText, {
-        x: bx + photoBoxW/2 - statusW/2, y: by - PDF_PHOTO_LABEL_H - PDF_STATUS_ROW_H + 5, size: 7, font: fontBold, color: statusColor,
-      });
-    }
-
-    cursorY = photoTopY - PDF_PHOTO_BOX_H - PDF_PHOTO_LABEL_H - PDF_STATUS_ROW_H - PDF_FOOTER_GAP;
-
-    // Footer — Non-Functional flag overrides Last Comms, never both
-    if (asset.systemDown) {
-      const text = "NON-FUNCTIONAL";
-      const tw = fontBold.widthOfTextAtSize(text, 9);
-      page.drawText(text, {
-        x: PDF_MARGIN_LEFT + usableW - 6 - tw, y: cursorY - 10, size: 9, font: fontBold, color: rgb(0.86, 0.15, 0.15),
-      });
-    } else {
-      const text = `Last Comms: ${asset.lastComms || "Unknown"}`;
-      const tw = fontBold.widthOfTextAtSize(text, 9);
-      page.drawText(text, {
-        x: PDF_MARGIN_LEFT + usableW - 6 - tw, y: cursorY - 10, size: 9, font: fontBold, color: rgb(0.22, 0.25, 0.32),
-      });
+      if (slot && slot.status) {
+        pdfDrawStatusDot(page, fontBold, bx + fixedPhotoBoxW/2, by - PDF_PHOTO_LABEL_H - PDF_STATUS_ROW_H + 6, slot.status === "working");
+      } else {
+        const dash = "—";
+        const dashW = fontBold.widthOfTextAtSize(dash, 7);
+        page.drawText(dash, { x: bx + fixedPhotoBoxW/2 - dashW/2, y: by - PDF_PHOTO_LABEL_H - PDF_STATUS_ROW_H + 6, size: 7, font: fontBold, color: rgb(0.82, 0.84, 0.86) });
+      }
     }
 
     bandIndexOnPage++;
+  });
+
+  // Footer on every page — page number + generated timestamp
+  const generatedAt = new Date().toLocaleString("en-AU", {
+    timeZone: "Australia/Sydney", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true,
+  });
+  pages.forEach((pg, idx) => {
+    const footerText = `Page ${idx + 1} of ${pages.length}   —   Generated ${generatedAt}`;
+    const footerW = fontRegular.widthOfTextAtSize(footerText, 7.5);
+    pg.drawText(footerText, { x: (PDF_PAGE_W - footerW) / 2, y: PDF_MARGIN_BOTTOM - 22, size: 7.5, font: fontRegular, color: rgb(0.61, 0.64, 0.69) });
   });
 
   return await pdfDoc.save();
