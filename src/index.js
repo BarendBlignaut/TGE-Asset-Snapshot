@@ -1115,14 +1115,17 @@ async function buildSnapshotPdf(asset) {
   const pdfDoc = await PDFDocument.create();
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const pageW = 595.28;
-  const pageH = 841.89;
-  const margin = 34;
+  const pageW = 841.89;
+  const pageH = 595.28;
+  const margin = 26;
   const contentW = pageW - margin * 2;
   const green = rgb(0.078, 0.325, 0.176);
+  const greenDark = rgb(0.039, 0.176, 0.078);
   const line = rgb(0.86, 0.90, 0.87);
   const muted = rgb(0.38, 0.45, 0.40);
   const light = rgb(0.965, 0.982, 0.970);
+  const white = rgb(1, 1, 1);
+  const ink = rgb(0.06, 0.10, 0.07);
   const sections = Array.isArray(asset.sections) ? asset.sections : [];
   const cameras = Array.isArray(asset.cameras) ? asset.cameras : [];
   const embeddedImages = {};
@@ -1148,66 +1151,105 @@ async function buildSnapshotPdf(asset) {
   function startPage() {
     page = pdfDoc.addPage([pageW, pageH]);
     pages.push(page);
-    cursorY = pageH - margin;
-
-    page.drawRectangle({ x: 0, y: pageH - 82, width: pageW, height: 82, color: green });
+    page.drawRectangle({ x: margin, y: pageH - 82, width: contentW, height: 62, color: greenDark, borderColor: greenDark, borderWidth: 1 });
     const title = cleanPdfText(asset.title || `Asset ${asset.legacyNo || "-"} Snapshot`);
-    page.drawText(title, { x: margin, y: pageH - 38, size: 18, font: fontBold, color: rgb(1, 1, 1) });
+    page.drawText("OPERATIONS", { x: margin + 18, y: pageH - 42, size: 7.5, font: fontBold, color: rgb(0.83, 0.94, 0.15) });
+    page.drawText(title, { x: margin + 18, y: pageH - 62, size: 17, font: fontBold, color: white });
     const generated = new Date().toLocaleString("en-AU", {
       timeZone: "Australia/Sydney", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true,
     });
-    page.drawText(`Generated ${generated}`, { x: margin, y: pageH - 58, size: 9, font: fontRegular, color: rgb(0.86, 0.94, 0.88) });
-    cursorY = pageH - 112;
+    const generatedText = `Generated ${generated}`;
+    const generatedW = fontRegular.widthOfTextAtSize(generatedText, 8);
+    page.drawText(generatedText, { x: margin + contentW - 18 - generatedW, y: pageH - 62, size: 8, font: fontRegular, color: rgb(0.86, 0.94, 0.88) });
+    cursorY = pageH - 104;
   }
 
   function ensureSpace(height) {
-    if (cursorY - height < margin + 24) startPage();
+    if (cursorY - height < margin + 22) startPage();
+  }
+
+  function drawCardShell(x, yTop, width, height) {
+    page.drawRectangle({ x, y: yTop - height, width, height, color: white, borderColor: line, borderWidth: 1 });
+  }
+
+  function drawDataItem(x, yTop, width, height, label, value) {
+    page.drawRectangle({ x, y: yTop - height, width, height, color: light, borderColor: line, borderWidth: 0.5 });
+    page.drawText(cleanPdfText(label).toUpperCase(), { x: x + 7, y: yTop - 10, size: 6.2, font: fontBold, color: muted });
+    drawWrappedPdfText(page, value, {
+      x: x + 7,
+      y: yTop - 23,
+      maxWidth: width - 14,
+      size: 8.2,
+      lineHeight: 10,
+      maxLines: 2,
+      font: fontRegular,
+      color: ink,
+    });
   }
 
   function drawSection(section) {
     const rows = Array.isArray(section.rows) ? section.rows : [];
     if (!rows.length) return;
-    const colGap = 10;
-    const colW = (contentW - colGap) / 2;
-    const rowH = 34;
-    const sectionH = 24 + Math.ceil(rows.length / 2) * rowH + 8;
-    ensureSpace(sectionH);
+    const cols = 4;
+    const gap = 8;
+    const innerPad = 13;
+    const headerH = 31;
+    const itemH = 35;
+    const gridW = contentW - innerPad * 2;
+    const itemW = (gridW - gap * (cols - 1)) / cols;
+    const gridRows = Math.ceil(rows.length / cols);
+    const cardH = innerPad + headerH + gridRows * itemH + Math.max(0, gridRows - 1) * gap + innerPad;
+    ensureSpace(cardH + 10);
 
-    page.drawText(cleanPdfText(section.title), { x: margin, y: cursorY, size: 11, font: fontBold, color: green });
-    page.drawLine({ start: { x: margin, y: cursorY - 6 }, end: { x: margin + contentW, y: cursorY - 6 }, thickness: 1, color: line });
-    cursorY -= 22;
-
-    rows.forEach((item, idx) => {
-      const col = idx % 2;
-      const rowIdx = Math.floor(idx / 2);
-      const x = margin + col * (colW + colGap);
-      const y = cursorY - rowIdx * rowH;
-      page.drawRectangle({ x, y: y - 25, width: colW, height: 28, color: light, borderColor: line, borderWidth: 0.5 });
-      page.drawText(cleanPdfText(item.label).toUpperCase(), { x: x + 7, y: y - 8, size: 6.5, font: fontBold, color: muted });
-      drawWrappedPdfText(page, item.value, { x: x + 7, y: y - 20, maxWidth: colW - 14, size: 8.5, font: fontRegular, color: rgb(0.08, 0.10, 0.09), maxLines: 1 });
+    const cardTop = cursorY;
+    drawCardShell(margin, cardTop, contentW, cardH);
+    page.drawText(cleanPdfText(section.kicker || section.title || "Snapshot").toUpperCase(), {
+      x: margin + innerPad,
+      y: cardTop - 15,
+      size: 6.8,
+      font: fontBold,
+      color: green,
+    });
+    page.drawText(cleanPdfText(section.title || section.kicker || "Snapshot"), {
+      x: margin + innerPad,
+      y: cardTop - 30,
+      size: 11.5,
+      font: fontBold,
+      color: ink,
     });
 
-    cursorY -= Math.ceil(rows.length / 2) * rowH + 14;
+    const gridTop = cardTop - innerPad - headerH;
+    rows.forEach((item, idx) => {
+      const col = idx % cols;
+      const rowIdx = Math.floor(idx / cols);
+      const x = margin + innerPad + col * (itemW + gap);
+      const yTop = gridTop - rowIdx * (itemH + gap);
+      drawDataItem(x, yTop, itemW, itemH, item.label, item.value);
+    });
+
+    cursorY -= cardH + 10;
   }
 
   function drawCameras() {
     if (!cameras.length) return;
-    const boxGap = 7;
-    const boxW = (contentW - boxGap * 4) / 5;
-    const boxH = 68;
-    const sectionH = 24 + boxH + 28;
-    ensureSpace(sectionH);
+    const innerPad = 13;
+    const boxGap = 10;
+    const boxW = (contentW - innerPad * 2 - boxGap * 4) / 5;
+    const boxH = 86;
+    const cardH = 31 + boxH + 43;
+    ensureSpace(cardH + 10);
 
-    page.drawText("Camera Snapshots", { x: margin, y: cursorY, size: 11, font: fontBold, color: green });
+    const cardTop = cursorY;
+    drawCardShell(margin, cardTop, contentW, cardH);
+    page.drawText("EVIDENCE", { x: margin + innerPad, y: cardTop - 15, size: 6.8, font: fontBold, color: green });
+    page.drawText("Camera Snapshots", { x: margin + innerPad, y: cardTop - 30, size: 11.5, font: fontBold, color: ink });
     if (asset.cameraCapturedAt) {
-      page.drawText(`Captured ${cleanPdfText(asset.cameraCapturedAt)}`, { x: margin + 116, y: cursorY, size: 8, font: fontRegular, color: muted });
+      page.drawText(`Captured ${cleanPdfText(asset.cameraCapturedAt)}`, { x: margin + 140, y: cardTop - 30, size: 8, font: fontRegular, color: muted });
     }
-    page.drawLine({ start: { x: margin, y: cursorY - 6 }, end: { x: margin + contentW, y: cursorY - 6 }, thickness: 1, color: line });
-    cursorY -= 20;
 
     cameras.slice(0, 5).forEach((camera, idx) => {
-      const x = margin + idx * (boxW + boxGap);
-      const y = cursorY - boxH;
+      const x = margin + innerPad + idx * (boxW + boxGap);
+      const y = cardTop - 46 - boxH;
       const embedded = camera && camera.url ? embeddedImages[camera.url] : null;
       page.drawRectangle({ x, y, width: boxW, height: boxH, color: rgb(0.96, 0.96, 0.96), borderColor: line, borderWidth: 0.5 });
       if (embedded) {
@@ -1224,7 +1266,7 @@ async function buildSnapshotPdf(asset) {
       page.drawText(status, { x: x + boxW / 2 - statusW / 2, y: y - 21, size: 6.5, font: fontRegular, color: muted });
     });
 
-    cursorY -= boxH + 36;
+    cursorY -= cardH + 10;
   }
 
   startPage();

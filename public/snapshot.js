@@ -405,19 +405,19 @@
     setText('snap-gps-time', ds.gpsAt ? formatTs(ds.gpsAt) : null, 'No GPS fix');
     setText('snap-odometer', ds.odometer ? Number(ds.odometer).toLocaleString() + ' km' : null, 'No odometer data');
 
-    var gps = ds.gps || {};
-    if (gps.Lat) {
-      setText('snap-lat', gps.Lat.toFixed(6));
-      setText('snap-lng', gps.Lng.toFixed(6));
+    var pr = parseJsonObject(ds.attrs && (ds.attrs.last_pr || ds.attrs.lastPr));
+    var coords = extractGpsCoords(ds, pr);
+    if (coords) {
+      setText('snap-lat', formatCoord(coords.lat));
+      setText('snap-lng', formatCoord(coords.lng));
       try {
-        var pr = JSON.parse(ds.attrs && ds.attrs.last_pr || '{}');
-        setText('snap-speed', pr.Spd ? pr.Spd + ' km/h' : '—');
+        setText('snap-speed', pr.Spd != null && pr.Spd !== '' ? pr.Spd + ' km/h' : '—');
       } catch(e) {}
       show('snap-map-card');
       setText('snap-map-address', ds.location || '—');
-      setText('snap-map-lat', gps.Lat.toFixed(6));
-      setText('snap-map-lng', gps.Lng.toFixed(6));
-      renderMap('snap-map', gps.Lat, gps.Lng);
+      setText('snap-map-lat', formatCoord(coords.lat));
+      setText('snap-map-lng', formatCoord(coords.lng));
+      renderMap('snap-map', coords.lat, coords.lng);
     }
 
     try {
@@ -515,11 +515,11 @@
     setText('snap-tracker-address', ds.location || '—');
     setText('snap-tracker-time',    ds.lastEventAt ? formatTs(ds.lastEventAt) : '—');
     setText('snap-tracker-model',   (d.model && d.model.name) || '—');
-    var gps = ds.gps || {};
-    if (gps.Lat) {
-      setText('snap-tracker-lat', gps.Lat.toFixed(6));
-      setText('snap-tracker-lng', gps.Lng.toFixed(6));
-      renderMap('snap-tracker-map', gps.Lat, gps.Lng);
+    var coords = extractGpsCoords(ds, parseJsonObject(ds.attrs && (ds.attrs.last_pr || ds.attrs.lastPr)));
+    if (coords) {
+      setText('snap-tracker-lat', formatCoord(coords.lat));
+      setText('snap-tracker-lng', formatCoord(coords.lng));
+      renderMap('snap-tracker-map', coords.lat, coords.lng);
     }
   }
 
@@ -854,6 +854,57 @@
     if (btn) { btn.textContent = loading ? 'Loading...' : 'Run'; btn.disabled = loading; }
   }
 
+  function parseJsonObject(raw) {
+    if (!raw) return {};
+    if (typeof raw === 'object') return raw;
+    try {
+      var parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch(e) {
+      return {};
+    }
+  }
+
+  function toFiniteNumber(val) {
+    if (val == null || val === '') return null;
+    var num = typeof val === 'number' ? val : Number(String(val).trim());
+    return isFinite(num) ? num : null;
+  }
+
+  function firstFinite(values) {
+    for (var i = 0; i < values.length; i++) {
+      var num = toFiniteNumber(values[i]);
+      if (num != null) return num;
+    }
+    return null;
+  }
+
+  function extractGpsCoords(ds, lastPr) {
+    ds = ds || {};
+    var gps = ds.gps || {};
+    var pos = ds.position || {};
+    var pr  = lastPr || {};
+    var lat = firstFinite([
+      gps.Lat, gps.lat, gps.latitude, gps.Latitude,
+      pos.Lat, pos.lat, pos.latitude, pos.Latitude,
+      ds.Lat, ds.lat, ds.latitude, ds.Latitude,
+      pr.Lat, pr.lat, pr.latitude, pr.Latitude,
+    ]);
+    var lng = firstFinite([
+      gps.Lng, gps.lng, gps.lon, gps.long, gps.longitude, gps.Longitude, gps.Lon, gps.Long,
+      pos.Lng, pos.lng, pos.lon, pos.long, pos.longitude, pos.Longitude, pos.Lon, pos.Long,
+      ds.Lng, ds.lng, ds.lon, ds.long, ds.longitude, ds.Longitude, ds.Lon, ds.Long,
+      pr.Lng, pr.lng, pr.lon, pr.long, pr.longitude, pr.Longitude, pr.Lon, pr.Long,
+    ]);
+    if (lat == null || lng == null) return null;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    return { lat: lat, lng: lng };
+  }
+
+  function formatCoord(num) {
+    return Number(num).toFixed(6);
+  }
+
   function showResults() { TGE.hide('snap-empty'); TGE.show('snap-results'); }
 
   function resetSnapshot() {
@@ -886,6 +937,8 @@
     if (postSection) postSection.style.display = 'none';
     var map = TGE.el('snap-map');
     if (map) map.innerHTML = '<span style="color:var(--muted);font-size:13px;">Map loads after fetch</span>';
+    var trackerMap = TGE.el('snap-tracker-map');
+    if (trackerMap) trackerMap.innerHTML = '';
   }
 
   function closeExportMenu() {
@@ -911,18 +964,19 @@
   function renderMap(containerId, lat, lng) {
     var el = TGE.el(containerId);
     if (!el) return;
+    lat = toFiniteNumber(lat);
+    lng = toFiniteNumber(lng);
+    if (lat == null || lng == null || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      el.innerHTML = '<span style="color:var(--muted);font-size:13px;">Map unavailable — invalid coordinates</span>';
+      return;
+    }
+    var latText = formatCoord(lat);
+    var lngText = formatCoord(lng);
     var src = 'https://www.openstreetmap.org/export/embed.html?bbox=' +
-      (lng-0.02) + '%2C' + (lat-0.02) + '%2C' + (lng+0.02) + '%2C' + (lat+0.02) +
-      '&layer=mapnik&marker=' + lat + '%2C' + lng + '&_=' + Date.now();
-    el.innerHTML = '<iframe title="Last known position map" style="width:100%;height:100%;border:none;display:block;background:var(--surface-2);" loading="eager"></iframe>';
-    var iframe = el.querySelector('iframe');
-    if (!iframe) return;
-    requestAnimationFrame(function() {
-      iframe.src = src;
-      setTimeout(function() {
-        if (iframe && iframe.contentWindow) iframe.style.opacity = '0.999';
-      }, 250);
-    });
+      formatCoord(lng - 0.02) + '%2C' + formatCoord(lat - 0.02) + '%2C' +
+      formatCoord(lng + 0.02) + '%2C' + formatCoord(lat + 0.02) +
+      '&layer=mapnik&marker=' + latText + '%2C' + lngText + '&_=' + Date.now();
+    el.innerHTML = '<iframe title="Last known position map" src="' + src + '" style="width:100%;height:100%;border:none;display:block;background:var(--surface-2);" loading="eager" referrerpolicy="no-referrer-when-downgrade"></iframe>';
   }
 
   function formatTs(ts) {
@@ -966,18 +1020,32 @@
     }).filter(function(row) { return row.label; });
   }
 
+  function collectCardSection(cardId, fallbackTitle) {
+    var card = TGE.el(cardId);
+    if (!card || card.style.display === 'none') return null;
+    var kicker = card.querySelector('.card-kicker');
+    var title = card.querySelector('.card-title');
+    var rows = collectCardRows(cardId);
+    if (!rows.length) return null;
+    return {
+      kicker: kicker ? kicker.textContent.trim() : fallbackTitle,
+      title: title ? title.textContent.trim() : fallbackTitle,
+      rows: rows,
+    };
+  }
+
   function buildSnapshotPdfPayload() {
     var v = state.data.vehicle || {};
     var sections = [
-      { title: 'Vehicle Information', rows: collectCardRows('snap-vehicle-card') },
-      { title: 'Driver', rows: collectCardRows('snap-driver-card') },
-      { title: 'Live Status', rows: collectCardRows('snap-status-card') },
-      { title: 'Engine Metrics', rows: collectCardRows('snap-vpm-card') },
-      { title: 'GPIO', rows: collectCardRows('snap-gpio-card') },
-      { title: 'Camera Health', rows: collectCardRows('snap-camera-card') },
-      { title: 'Location', rows: collectCardRows('snap-map-card') },
-      { title: 'Asset Tracker', rows: collectCardRows('snap-tracker-card') },
-    ].filter(function(section) { return section.rows.length; });
+      collectCardSection('snap-vehicle-card', 'Vehicle Information'),
+      collectCardSection('snap-driver-card', 'Driver'),
+      collectCardSection('snap-status-card', 'Live Status'),
+      collectCardSection('snap-vpm-card', 'Engine Metrics'),
+      collectCardSection('snap-gpio-card', 'GPIO'),
+      collectCardSection('snap-camera-card', 'Camera Snapshots'),
+      collectCardSection('snap-map-card', 'Location'),
+      collectCardSection('snap-tracker-card', 'Asset Tracker'),
+    ].filter(Boolean);
 
     return {
       legacyNo: v.name || 'asset',
@@ -986,6 +1054,11 @@
       sections: sections,
       cameras: state.data.cameraSlots || [],
       cameraCapturedAt: state.data.cameraCapturedAt || null,
+      map: {
+        address: TGE.safeText(TGE.el('snap-map-address') && TGE.el('snap-map-address').textContent),
+        lat: TGE.safeText(TGE.el('snap-map-lat') && TGE.el('snap-map-lat').textContent),
+        lng: TGE.safeText(TGE.el('snap-map-lng') && TGE.el('snap-map-lng').textContent),
+      },
     };
   }
 
