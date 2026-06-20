@@ -1120,8 +1120,14 @@
     if (!ensureSnapshotLoaded()) return;
     var v = state.data.vehicle || {};
     var ds = state.data.deviceStats || {};
+    var primaryDevice = state.devices.camera || state.devices.hermes || state.devices.iface || state.devices.tracker || {};
     var row = {
       legacyNo:     v.name || '—',
+      imei:         primaryDevice.imei || '—',
+      cameraImei:   state.devices.camera && state.devices.camera.imei || '—',
+      hermesImei:   state.devices.hermes && state.devices.hermes.imei || '—',
+      ifaceImei:    state.devices.iface && state.devices.iface.imei || '—',
+      trackerImei:  state.devices.tracker && state.devices.tracker.imei || '—',
       registration: v.registration || '—',
       state:        v.registrationState || '—',
       location:     ds.location || TGE.safeText(TGE.el('snap-map-address') && TGE.el('snap-map-address').textContent),
@@ -1133,6 +1139,11 @@
       rows: [row],
       fields: [
         { key:'legacyNo',     label:'Legacy No' },
+        { key:'imei',         label:'Primary IMEI' },
+        { key:'cameraImei',   label:'Camera IMEI' },
+        { key:'hermesImei',   label:'Hermes IMEI' },
+        { key:'ifaceImei',    label:'iFace IMEI' },
+        { key:'trackerImei',  label:'Tracker IMEI' },
         { key:'registration', label:'Registration' },
         { key:'state',        label:'State' },
         { key:'location',     label:'Location' },

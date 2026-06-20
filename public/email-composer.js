@@ -123,6 +123,7 @@
     var fieldOptions = composerState.fields.map(function(f) {
       return '<option value="' + f.key + '">' + f.label + '</option>';
     }).join('');
+    var canUseMergeFields = composerState.mode === 'individual' || composerState.rows.length === 1;
 
     panel.innerHTML = [
       '<div style="padding:14px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">',
@@ -155,7 +156,7 @@
         // Insert field + signature toolbar
         '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:10px;">',
           '<span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Insert into subject or body:</span>',
-          (composerState.mode === 'individual'
+          (canUseMergeFields
             ? '<select id="ec-field-select" style="height:30px;border:1px solid var(--line);border-radius:6px;font-size:12px;padding:0 6px;background:var(--surface);color:var(--ink);">' + fieldOptions + '</select>' +
               '<button id="ec-insert-field" type="button" class="btn" style="height:30px;font-size:12px;">+ Field</button>'
             : '<span style="font-size:11px;color:var(--muted);font-style:italic;">Merge fields only available in "One email per item" mode</span>'),
@@ -502,11 +503,14 @@
           if (!pdfAttachmentCombined) setStatus('⚠ Could not build PDF attachment — sending without it.', true);
         }
 
-        var combinedExtract = extractSignature(body);
+        var combinedRow = composerState.rows.length === 1 ? composerState.rows[0] : null;
+        var combinedSubject = combinedRow ? mergeText(subject, combinedRow) : subject;
+        var combinedBodyFieldsOnly = combinedRow ? mergeFieldsOnly(body, combinedRow) : body;
+        var combinedExtract = extractSignature(combinedBodyFieldsOnly);
         var combinedBody = nl2br(combinedExtract.text) + buildCameraStatusTable(composerState.rows) + combinedExtract.signatureHtml;
         var finalHtml = normalizeEmailHtml(wrapInTemplate(combinedBody));
 
-        var sendPayload = { to: to, cc: cc, bcc: bcc, subject: subject, htmlBody: finalHtml };
+        var sendPayload = { to: to, cc: cc, bcc: bcc, subject: combinedSubject, htmlBody: finalHtml };
         if (pdfAttachmentCombined) { sendPayload.attachmentBase64 = pdfAttachmentCombined.base64; sendPayload.attachmentName = pdfAttachmentCombined.name; }
 
         var r = await TGE.api('POST', '/api/send-email', sendPayload);
