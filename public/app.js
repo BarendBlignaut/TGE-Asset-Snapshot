@@ -260,10 +260,14 @@
     var navItems = document.querySelectorAll('.nav-item[data-view]');
     navItems.forEach(function (item) {
       var view = item.dataset.view;
-      // Roles page uses admin permission
-      var allowed = view === 'utilisation'
-        ? TGE.can('utilisation', 'view-dashboard')
-        : TGE.can((view === 'roles' || view === 'api') ? 'admin' : view, 'view');
+
+      // Utilisation uses its own 'view-dashboard' action; roles/api map to
+      // the 'admin' permission feature; everything else checks its own
+      // feature name against the standard 'view' action.
+      var permFeature = (view === 'roles' || view === 'api') ? 'admin' : view;
+      var permAction   = (view === 'utilisation') ? 'view-dashboard' : 'view';
+      var allowed      = TGE.can(permFeature, permAction);
+
       if (!allowed) {
         item.style.display = 'none';
       }

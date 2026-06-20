@@ -241,7 +241,8 @@
       border-radius: var(--radius-lg);
       padding: 20px 24px;
       margin-bottom: 16px;
-      position: relative; overflow: visible;
+      position: relative;
+      overflow: visible; /* hero-menu-panel dropdown must escape the card bounds */
     }
     .hero::before {
       content: ""; position: absolute;
@@ -251,60 +252,35 @@
     }
     .hero-kicker {
       font-size: 10px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 0.1em; color: rgba(212,240,38,0.7); margin-bottom: 4px;
+      letter-spacing: 0.08em; color: rgba(255,255,255,0.5);
     }
-    .hero-title { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 2px; }
-    .hero-sub   { font-size: 12px; color: rgba(255,255,255,0.55); margin-bottom: 14px; }
+    .hero-title { font-size: 19px; font-weight: 700; color: #fff; margin-top: 2px; }
 
-    /* Hero action bar */
-    .hero-bar {
-      display: flex; align-items: center;
-      justify-content: space-between;
-      gap: 10px; flex-wrap: wrap;
-    }
+    .hero-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
     .hero-bar-left  { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-    .hero-bar-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .hero-bar-right { display: flex; align-items: center; gap: 8px; }
+    .hero-divider { width: 1px; height: 22px; background: rgba(255,255,255,0.18); }
 
     .hero-mode-btn {
-      height: 34px; padding: 0 14px; border-radius: 7px;
-      border: 1px solid rgba(255,255,255,0.22);
-      background: rgba(255,255,255,0.08);
-      color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600;
-      cursor: pointer; transition: background 140ms, border-color 140ms;
+      height: 32px; padding: 0 13px; border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.65);
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      transition: background 140ms, border-color 140ms, color 140ms;
     }
-    .hero-mode-btn:hover { background: rgba(255,255,255,0.15); }
-    .hero-mode-btn.active { background: var(--yellow); border-color: var(--yellow); color: var(--green-900); }
-
-    .hero-divider { width: 1px; height: 22px; background: rgba(255,255,255,0.15); margin: 0 2px; }
-
-    .hero-run-btn {
-      height: 34px; padding: 0 18px; border-radius: 7px; border: none;
-      background: var(--yellow); color: var(--green-900);
-      font-size: 12px; font-weight: 700; cursor: pointer;
-      transition: background 140ms;
-    }
-    .hero-run-btn:hover { background: var(--yellow-dim); }
-
-    .hero-action-btn {
-      height: 34px; padding: 0 14px; border-radius: 7px;
-      border: 1px solid rgba(255,255,255,0.22);
-      background: rgba(255,255,255,0.08);
-      color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600;
-      cursor: pointer; transition: background 140ms;
-    }
-    .hero-action-btn:hover { background: rgba(255,255,255,0.15); }
+    .hero-mode-btn:hover  { background: rgba(255,255,255,0.14); color: #fff; }
+    .hero-mode-btn.active { background: var(--yellow); color: var(--green-900); border-color: var(--yellow); }
 
     .hero-export-btn {
-      height: 34px; padding: 0 12px; border-radius: 7px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.05);
-      color: rgba(255,255,255,0.3); font-size: 11px; font-weight: 600;
-      cursor: default; transition: background 140ms, color 140ms, border-color 140ms;
-      pointer-events: none;
+      height: 32px; padding: 0 13px; border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.65);
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      transition: background 140ms, border-color 140ms, color 140ms;
     }
     .hero-export-btn.active {
-      color: rgba(255,255,255,0.85); border-color: rgba(255,255,255,0.28);
-      background: rgba(255,255,255,0.12); pointer-events: auto; cursor: pointer;
+      background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.82);
+      pointer-events: auto; cursor: pointer;
     }
     .hero-export-btn.active:hover { background: rgba(255,255,255,0.20); }
 

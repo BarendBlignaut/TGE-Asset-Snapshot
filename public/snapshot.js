@@ -49,6 +49,12 @@
             '<button class="hero-action-btn" id="snap-refresh-btn" type="button" style="display:none;">Refresh</button>',
           '</div>',
           '<div class="hero-bar-right">',
+            '<div class="hero-divider"></div>',
+            TGE.can('snapshot','export-pdf')        ? '<button class="hero-export-btn" id="snap-pdf-btn" type="button">PDF</button>' : '',
+            TGE.can('snapshot','export-email-pdf')  ? '<button class="hero-export-btn" id="snap-email-btn" type="button">Email PDF</button>' : '',
+            TGE.can('snapshot','export-csv')        ? '<button class="hero-export-btn" id="snap-csv-btn" type="button">CSV</button>' : '',
+            TGE.can('snapshot','export-xlsx')       ? '<button class="hero-export-btn" id="snap-xlsx-btn" type="button">XLSX</button>' : '',
+            TGE.can('snapshot','export-json')       ? '<button class="hero-export-btn" id="snap-json-btn" type="button">JSON</button>' : '',
             buildExportMenu(),
           '</div>',
         '</div>',
@@ -281,7 +287,10 @@
   // ── Wire events ───────────────────────────────────────────────────────────────
   function wireEvents() {
     TGE.on('snap-run-btn',     'click', runSnapshot);
-    TGE.on('snap-refresh-btn', 'click', resetSnapshot);
+    // NOTE: refresh re-runs the same fleet lookup — it must NOT call
+    // resetSnapshot() as well, since that clears the input/results that
+    // runSnapshot() is simultaneously trying to read and repopulate.
+    TGE.on('snap-refresh-btn', 'click', runSnapshot);
     TGE.on('snap-fleet-input', 'keydown', function(e) { if (e.key === 'Enter') runSnapshot(); });
     var exportTrigger = TGE.el('snap-export-trigger');
     var exportMenu = TGE.el('snap-export-menu');
@@ -405,6 +414,9 @@
     setText('snap-gps-time', ds.gpsAt ? formatTs(ds.gpsAt) : null, 'No GPS fix');
     setText('snap-odometer', ds.odometer ? Number(ds.odometer).toLocaleString() + ' km' : null, 'No odometer data');
 
+    // extractGpsCoords defensively checks many possible field name/casing
+    // variations (gps.Lat, gps.lat, position.Latitude, etc.) and validates
+    // the range, so it's used in place of reading ds.gps.Lat/.Lng directly.
     var pr = parseJsonObject(ds.attrs && (ds.attrs.last_pr || ds.attrs.lastPr));
     var coords = extractGpsCoords(ds, pr);
     if (coords) {
@@ -494,7 +506,7 @@
       var faultsSection = TGE.el('snap-faults-section');
       if (faultsGrid) {
         faultsGrid.innerHTML = faultKeys.map(function(k) {
-          var label = k.replace('lm.ongoing_faults.', '').replace(/_/g,' ').replace(/\w/g, function(c){ return c.toUpperCase(); });
+          var label = k.replace('lm.ongoing_faults.', '').replace(/_/g,' ').replace(/\w/g, function(c){ return c.toUpperCase(); });
           var val   = attrs[k];
           var isBad = val === 'true' || (val && val !== 'false' && val !== 'CLOSED' && val !== 'ok');
           var color = isBad ? 'var(--danger)' : 'var(--green-600)';
@@ -515,6 +527,7 @@
     setText('snap-tracker-address', ds.location || '—');
     setText('snap-tracker-time',    ds.lastEventAt ? formatTs(ds.lastEventAt) : '—');
     setText('snap-tracker-model',   (d.model && d.model.name) || '—');
+
     var coords = extractGpsCoords(ds, parseJsonObject(ds.attrs && (ds.attrs.last_pr || ds.attrs.lastPr)));
     if (coords) {
       setText('snap-tracker-lat', formatCoord(coords.lat));
@@ -949,10 +962,17 @@
   }
 
   function activateExports() {
-    var csvBtn  = TGE.el('snap-csv-btn');
-    var jsonBtn = TGE.el('snap-json-btn');
-    var pdfBtn  = TGE.el('snap-pdf-btn');
-    var xlsxBtn = TGE.el('snap-xlsx-btn');
+    ['snap-pdf-btn','snap-email-btn','snap-csv-btn','snap-xlsx-btn','snap-json-btn'].forEach(function(id) {
+      var el = TGE.el(id);
+      if (el) el.classList.add('active');
+    });
+    // Wire handlers — PDF uses the real /api/snapshot-pdf builder (exportPdf),
+    // Email uses the fully-built composer (openEmailPdfComposer). XLSX still
+    // falls back to CSV until a real XLSX export is built.
+    var csvBtn   = TGE.el('snap-csv-btn');
+    var jsonBtn  = TGE.el('snap-json-btn');
+    var pdfBtn   = TGE.el('snap-pdf-btn');
+    var xlsxBtn  = TGE.el('snap-xlsx-btn');
     var emailBtn = TGE.el('snap-email-btn');
     if (csvBtn)   csvBtn.onclick   = function() { closeExportMenu(); exportCsv(); };
     if (jsonBtn)  jsonBtn.onclick  = function() { closeExportMenu(); exportJson(); };
@@ -964,6 +984,7 @@
   function renderMap(containerId, lat, lng) {
     var el = TGE.el(containerId);
     if (!el) return;
+
     lat = toFiniteNumber(lat);
     lng = toFiniteNumber(lng);
     if (lat == null || lng == null || lat < -90 || lat > 90 || lng < -180 || lng > 180) {

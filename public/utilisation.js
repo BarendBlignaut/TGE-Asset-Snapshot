@@ -1,3 +1,45 @@
+// TGE Asset Snapshot — Fleet Utilisation Dashboard
+// public/utilisation.js
+// Status: PENDING BUILD — using hardcoded SAMPLE data until D1/Worker routes
+// from the brief are wired up. Replace initDashboard(SAMPLE) at the bottom of
+// render() with a TGE.api('GET', '/api/utilisation/dashboard?...') call once
+// the backend exists.
+//
+// Brief: /mnt/user-data/uploads/TGE_Utilisation_Dashboard_Brief.md
+// Reference UI: /mnt/user-data/uploads/fleet_dashboard_v4.html
+//
+// What this page does:
+//   - Shows daily KM per asset across ~5,000 vehicles
+//   - Date range picker (default last 14 days)
+//   - KM cutoff slider (0-600km, default 100)
+//   - Cross-filtering by BU, Equip Type, Operator State, Operator Name, Legacy No, Rego
+//   - Colour coded: red=below cutoff, amber=workshop, grey=offline, white=ok
+//   - Static mapping modal — exclude non-vehicle records
+//   - Workshop mapping modal — classify workshop statuses
+//   - Sticky columns: Legacy Number left, Total KM + Avg/day right
+//   - Horizontal scroll for date columns
+//   - CSV and XLSX export
+//
+// D1 tables needed (not yet created):
+//   fleet_register, telematics_km, workshop, non_functioning,
+//   workshop_mapping, static_mapping
+//
+// Worker routes needed (not yet built):
+//   POST /api/utilisation/fleet-register
+//   POST /api/utilisation/telematics-km
+//   POST /api/utilisation/workshop
+//   POST /api/utilisation/non-functioning
+//   GET  /api/utilisation/dashboard
+//   GET  /api/utilisation/fleet-register
+//   GET/POST /api/utilisation/workshop-mapping
+//   GET/POST /api/utilisation/static-mapping
+//
+// Power Automate flows needed (11 flows):
+//   1 x fleet register weekly
+//   8 x vendor KM daily (one per vendor)
+//   1 x workshop daily
+//   1 x non-functioning weekly (email trigger)
+
 (function () {
   'use strict';
 
@@ -233,7 +275,6 @@
         state.days = parseInt(btn.dataset.days, 10);
         document.querySelectorAll('.util-date-buttons button').forEach(function(b) { b.classList.toggle('active', b === btn); });
         TGE.el('util-date-summary').textContent = 'Last ' + state.days + ' days';
-        TGE.el('util-range-label').textContent = 'Showing last ' + state.days + ' days';
         renderTable();
       };
     });
@@ -612,6 +653,10 @@
     render();
   };
 
-  TGE.onShow['utilisation'] = function () {};
+  TGE.onShow['utilisation'] = function () {
+    // Will load dashboard data from D1 via TGE.api() once the Worker routes
+    // and database tables from the brief exist. Currently a no-op since
+    // initDashboard(SAMPLE) in render() already populates everything.
+  };
 
 })();
