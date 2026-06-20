@@ -1069,6 +1069,20 @@ function safePdfFilePart(value) {
   return cleanPdfText(value).replace(/[\\/:*?"<>|]+/g, "-").trim() || "asset";
 }
 
+function toPdfNumber(value) {
+  if (value == null || value === "" || value === "-") return null;
+  const num = typeof value === "number" ? value : Number(String(value).trim());
+  return Number.isFinite(num) ? num : null;
+}
+
+function openStreetMapTileUrl(lat, lng, zoom) {
+  const latRad = lat * Math.PI / 180;
+  const scale = 2 ** zoom;
+  const x = Math.floor((lng + 180) / 360 * scale);
+  const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * scale);
+  return `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
+}
+
 function drawWrappedPdfText(page, text, opts) {
   const font = opts.font;
   const size = opts.size || 9;
@@ -1129,6 +1143,7 @@ async function buildSnapshotPdf(asset) {
   const sections = Array.isArray(asset.sections) ? asset.sections : [];
   const cameras = Array.isArray(asset.cameras) ? asset.cameras : [];
   const embeddedImages = {};
+  let embeddedMapTile = null;
 
   await Promise.all(cameras.map(async (camera) => {
     if (!camera || !camera.url || embeddedImages[camera.url] !== undefined) return;
@@ -1143,6 +1158,21 @@ async function buildSnapshotPdf(asset) {
       embeddedImages[camera.url] = null;
     }
   }));
+
+  const mapLat = toPdfNumber(asset.map && asset.map.lat);
+  const mapLng = toPdfNumber(asset.map && asset.map.lng);
+  if (mapLat != null && mapLng != null) {
+    const tile = await fetchImageForPdf(openStreetMapTileUrl(mapLat, mapLng, 14));
+    if (tile) {
+      try {
+        embeddedMapTile = tile.format === "png"
+          ? await pdfDoc.embedPng(tile.bytes)
+          : await pdfDoc.embedJpg(tile.bytes);
+      } catch (e) {
+        embeddedMapTile = null;
+      }
+    }
+  }
 
   const pages = [];
   let page;
@@ -1174,46 +1204,85 @@ async function buildSnapshotPdf(asset) {
 
   function drawDataItem(x, yTop, width, height, label, value) {
     page.drawRectangle({ x, y: yTop - height, width, height, color: light, borderColor: line, borderWidth: 0.5 });
-    page.drawText(cleanPdfText(label).toUpperCase(), { x: x + 7, y: yTop - 10, size: 6.2, font: fontBold, color: muted });
+    page.drawText(cleanPdfText(label).toUpperCase(), { x: x + 6, y: yTop - 8, size: 5.8, font: fontBold, color: muted });
     drawWrappedPdfText(page, value, {
-      x: x + 7,
-      y: yTop - 23,
-      maxWidth: width - 14,
-      size: 8.2,
-      lineHeight: 10,
-      maxLines: 2,
+      x: x + 6,
+      y: yTop - 20,
+      maxWidth: width - 12,
+      size: 7.4,
+      lineHeight: 8,
+      maxLines: 1,
       font: fontRegular,
       color: ink,
     });
+  }
+
+  function isLocationSection(section) {
+    const key = `${section.kicker || ""} ${section.title || ""}`.toLowerCase();
+    return key.includes("location") || key.includes("known position");
+  }
+
+  function drawMapPreview(x, yTop, width, height) {
+    page.drawRectangle({ x, y: yTop - height, width, height, color: rgb(0.93, 0.96, 0.94), borderColor: line, borderWidth: 0.5 });
+    if (embeddedMapTile) {
+      const scaled = embeddedMapTile.scaleToFit(width, height);
+      page.drawImage(embeddedMapTile, {
+        x: x + (width - scaled.width) / 2,
+        y: yTop - height + (height - scaled.height) / 2,
+        width: scaled.width,
+        height: scaled.height,
+      });
+    } else {
+      for (let i = 1; i < 5; i++) {
+        const gx = x + (width / 5) * i;
+        page.drawLine({ start: { x: gx, y: yTop - height }, end: { x: gx, y: yTop }, thickness: 0.4, color: rgb(0.80, 0.87, 0.82) });
+      }
+      for (let i = 1; i < 3; i++) {
+        const gy = yTop - (height / 3) * i;
+        page.drawLine({ start: { x, y: gy }, end: { x: x + width, y: gy }, thickness: 0.4, color: rgb(0.80, 0.87, 0.82) });
+      }
+    }
+
+    const pinX = x + width / 2;
+    const pinY = yTop - height / 2;
+    page.drawCircle({ x: pinX, y: pinY + 3, size: 6, color: green });
+    page.drawCircle({ x: pinX, y: pinY + 3, size: 2.2, color: white });
+    page.drawText("Last known position", { x: x + 10, y: yTop - height + 12, size: 8, font: fontBold, color: greenDark });
+    if (mapLat != null && mapLng != null) {
+      const coordText = `${mapLat.toFixed(6)}, ${mapLng.toFixed(6)}`;
+      const coordW = fontRegular.widthOfTextAtSize(coordText, 7.2);
+      page.drawText(coordText, { x: x + width - coordW - 10, y: yTop - height + 12, size: 7.2, font: fontRegular, color: muted });
+    }
   }
 
   function drawSection(section) {
     const rows = Array.isArray(section.rows) ? section.rows : [];
     if (!rows.length) return;
     const cols = 4;
-    const gap = 8;
-    const innerPad = 13;
-    const headerH = 31;
-    const itemH = 35;
+    const gap = 5;
+    const innerPad = 9;
+    const headerH = 24;
+    const itemH = 26;
     const gridW = contentW - innerPad * 2;
     const itemW = (gridW - gap * (cols - 1)) / cols;
     const gridRows = Math.ceil(rows.length / cols);
-    const cardH = innerPad + headerH + gridRows * itemH + Math.max(0, gridRows - 1) * gap + innerPad;
-    ensureSpace(cardH + 10);
+    const mapH = isLocationSection(section) ? 106 : 0;
+    const cardH = innerPad + headerH + gridRows * itemH + Math.max(0, gridRows - 1) * gap + (mapH ? gap + mapH : 0) + innerPad;
+    ensureSpace(cardH + 7);
 
     const cardTop = cursorY;
     drawCardShell(margin, cardTop, contentW, cardH);
     page.drawText(cleanPdfText(section.kicker || section.title || "Snapshot").toUpperCase(), {
       x: margin + innerPad,
-      y: cardTop - 15,
-      size: 6.8,
+      y: cardTop - 12,
+      size: 6.2,
       font: fontBold,
       color: green,
     });
     page.drawText(cleanPdfText(section.title || section.kicker || "Snapshot"), {
       x: margin + innerPad,
-      y: cardTop - 30,
-      size: 11.5,
+      y: cardTop - 25,
+      size: 10.2,
       font: fontBold,
       color: ink,
     });
@@ -1227,7 +1296,12 @@ async function buildSnapshotPdf(asset) {
       drawDataItem(x, yTop, itemW, itemH, item.label, item.value);
     });
 
-    cursorY -= cardH + 10;
+    if (mapH) {
+      const mapTop = gridTop - gridRows * itemH - Math.max(0, gridRows - 1) * gap - gap;
+      drawMapPreview(margin + innerPad, mapTop, gridW, mapH);
+    }
+
+    cursorY -= cardH + 7;
   }
 
   function drawCameras() {
