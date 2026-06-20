@@ -390,23 +390,29 @@
     if (sendBtn) { sendBtn.textContent = 'Sending...'; sendBtn.disabled = true; }
 
     try {
-      // Build the PDF once up front if requested — shared across individual
-      // sends too (same attachment goes to every recipient in that case).
-      var pdfBase64 = null;
-      if (attachPdf) {
-        setStatus('Building PDF attachment...', false);
-        pdfBase64 = await buildCameraFaultPdfAttachment(composerState.rows);
-        if (!pdfBase64) setStatus('⚠ Could not build PDF attachment — sending without it.', true);
-      }
+      // NOTE: PDF attachment behaviour differs by mode —
+      //  - combined mode: ONE pdf covering ALL selected rows (correct, since
+      //    it's one email about everything)
+      //  - individual mode: a SEPARATE pdf per row, built fresh inside the
+      //    loop below, so each recipient's email only contains THEIR asset's
+      //    photos — never built once up-front and reused across all sends.
 
       if (composerState.mode === 'combined') {
         setStatus('Sending combined email...', false);
+
+        var pdfBase64Combined = null;
+        if (attachPdf) {
+          setStatus('Building PDF attachment...', false);
+          pdfBase64Combined = await buildCameraFaultPdfAttachment(composerState.rows);
+          if (!pdfBase64Combined) setStatus('⚠ Could not build PDF attachment — sending without it.', true);
+        }
+
         var combinedExtract = extractSignature(body);
         var combinedBody = nl2br(combinedExtract.text) + buildCameraStatusTable(composerState.rows) + combinedExtract.signatureHtml;
         var finalHtml = wrapInTemplate(combinedBody);
 
         var sendPayload = { to: to, cc: cc, bcc: bcc, subject: subject, htmlBody: finalHtml };
-        if (pdfBase64) { sendPayload.attachmentBase64 = pdfBase64; sendPayload.attachmentName = 'camera-fault-report.pdf'; }
+        if (pdfBase64Combined) { sendPayload.attachmentBase64 = pdfBase64Combined; sendPayload.attachmentName = 'camera-fault-report.pdf'; }
 
         var r = await TGE.api('POST', '/api/send-email', sendPayload);
         if (!r.ok) throw new Error(r.data && r.data.error ? r.data.error : 'Send failed');
@@ -428,10 +434,18 @@
           var mergedCc       = mergeText(cc, row)  || cc;
           var mergedBcc      = mergeText(bcc, row) || bcc;
 
+          // Build a fresh PDF for THIS row only — never shared across rows.
+          var pdfBase64Row = null;
+          if (attachPdf) {
+            setStatus('Building PDF for item ' + (i+1) + ' of ' + total + '...', false);
+            pdfBase64Row = await buildCameraFaultPdfAttachment([row]);
+            if (!pdfBase64Row) setStatus('⚠ Could not build PDF for item ' + (i+1) + ' — sending without it.', true);
+          }
+
           setStatus('Sending ' + (sent+1) + ' of ' + total + '...', false);
 
           var sendPayloadOne = { to: mergedTo, cc: mergedCc, bcc: mergedBcc, subject: mergedSubject, htmlBody: finalHtml };
-          if (pdfBase64) { sendPayloadOne.attachmentBase64 = pdfBase64; sendPayloadOne.attachmentName = 'camera-fault-report.pdf'; }
+          if (pdfBase64Row) { sendPayloadOne.attachmentBase64 = pdfBase64Row; sendPayloadOne.attachmentName = 'camera-fault-report.pdf'; }
 
           var resp = await TGE.api('POST', '/api/send-email', sendPayloadOne);
           if (!resp.ok) {
