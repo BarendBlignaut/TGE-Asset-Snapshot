@@ -7,6 +7,10 @@
 //   fields: array of { key, label } describing which properties of each row
 //           can be inserted as merge tags, e.g. { key:'legacyNo', label:'Legacy No' }
 //   imagesField: optional key on each row holding an array of {label, url} images
+//   attachmentBuilder: optional async function(rows) -> { base64, name } | string | null.
+//                       If omitted, falls back to the built-in camera fault PDF builder.
+//   attachmentLabel:   optional label for the attach checkbox (default 'Attach PDF')
+//   attachByDefault:   optional boolean — pre-tick the attach checkbox
 //   onSent: optional callback after a send completes
 
 (function () {
@@ -50,11 +54,13 @@
     fields:      [],
     imagesField: null,
     onSent:      null,
+    attachmentBuilder: null,
+    attachmentLabel:   'Attach PDF',
+    attachByDefault:   false,
     mode:        'individual', // 'individual' | 'combined'
     sending:     false,
   };
 
-  // ── Public entry point ──────────────────────────────────────────────────────
   // ── Debug helper ─────────────────────────────────────────────────────────────
   // TGE.debugPreviewPdf() lets you build and open the camera fault PDF from
   // whatever rows are currently loaded in the composer, without sending any
@@ -62,9 +68,9 @@
   TGE.debugPreviewPdf = async function () {
     if (!composerState.rows.length) { console.log('No rows loaded — open the composer first.'); return; }
     console.log('Building PDF from', composerState.rows.length, 'row(s)...');
-    var base64 = await buildCameraFaultPdfAttachment(composerState.rows);
-    if (!base64) { console.log('PDF build failed or no camera rows found.'); return; }
-    var bin = atob(base64);
+    var attachment = await buildComposerAttachment(composerState.rows);
+    if (!attachment) { console.log('PDF build failed or no eligible rows found.'); return; }
+    var bin = atob(attachment.base64);
     var bytes = new Uint8Array(bin.length);
     for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     var blob = new Blob([bytes], { type: 'application/pdf' });
@@ -72,11 +78,15 @@
     console.log('PDF opened in new tab. sizeBytes:', bytes.length);
   };
 
+  // ── Public entry point ──────────────────────────────────────────────────────
   TGE.openEmailComposer = async function (opts) {
     composerState.rows        = opts.rows || [];
     composerState.fields      = opts.fields || [];
     composerState.imagesField = opts.imagesField || null;
     composerState.onSent      = opts.onSent || null;
+    composerState.attachmentBuilder = typeof opts.attachmentBuilder === 'function' ? opts.attachmentBuilder : null;
+    composerState.attachmentLabel   = opts.attachmentLabel || 'Attach PDF';
+    composerState.attachByDefault   = opts.attachByDefault === true;
     composerState.mode        = 'individual';
     composerState.sending     = false;
 
@@ -118,6 +128,15 @@
       return '<option value="' + f.key + '">' + f.label + '</option>';
     }).join('');
 
+    // Merge fields only make sense when each email maps to exactly one row —
+    // i.e. individual mode, or combined mode with a single row selected.
+    var canUseMergeFields = composerState.mode === 'individual' || composerState.rows.length === 1;
+
+    // Attach checkbox shows whenever there's something to attach: either a
+    // custom attachmentBuilder was supplied, or the rows look like camera rows
+    // (have a `slots` array) so the built-in camera-fault PDF builder applies.
+    var canAttach = composerState.attachmentBuilder != null || composerState.rows.some(rowHasCameraSlots);
+
     panel.innerHTML = [
       '<div style="padding:14px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">',
         '<div>',
@@ -149,7 +168,7 @@
         // Insert field + signature toolbar
         '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:10px;">',
           '<span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Insert into subject or body:</span>',
-          (composerState.mode === 'individual'
+          (canUseMergeFields
             ? '<select id="ec-field-select" style="height:30px;border:1px solid var(--line);border-radius:6px;font-size:12px;padding:0 6px;background:var(--surface);color:var(--ink);">' + fieldOptions + '</select>' +
               '<button id="ec-insert-field" type="button" class="btn" style="height:30px;font-size:12px;">+ Field</button>'
             : '<span style="font-size:11px;color:var(--muted);font-style:italic;">Merge fields only available in "One email per item" mode</span>'),
@@ -172,10 +191,10 @@
             'style="width:100%;flex:1;min-height:200px;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:13px;line-height:1.6;resize:vertical;background:var(--surface);color:var(--ink);font-family:inherit;"></textarea>',
         '</div>',
 
-        (composerState.rows.some(rowHasCameraSlots)
+        (canAttach
           ? '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">' +
-              '<input type="checkbox" id="ec-attach-pdf" style="width:16px;height:16px;cursor:pointer;" />' +
-              'Attach camera photos as PDF' +
+              '<input type="checkbox" id="ec-attach-pdf" style="width:16px;height:16px;cursor:pointer;" ' + (composerState.attachByDefault ? 'checked' : '') + ' />' +
+              (composerState.attachmentBuilder ? composerState.attachmentLabel : 'Attach camera photos as PDF') +
             '</label>'
           : ''),
 
@@ -240,34 +259,48 @@
   }
 
   // ── Merge logic ───────────────────────────────────────────────────────────────
-  // Merges {field} tags only — leaves {signature:X} tags untouched so the
-  // caller can extract and reposition the signature deliberately (it must
-  // always render AFTER the status table, regardless of where the user
-  // placed the {signature:X} tag in their typed text).
-  function mergeFieldsOnly(template, row) {
-    if (!template) return '';
-    return template.replace(/\{([a-zA-Z0-9_]+)\}/g, function(match, key) {
-      if (key.indexOf('signature:') === 0) return match;
-      if (row && row[key] != null) return String(row[key]);
-      return '';
-    });
-  }
 
-  // Strips any {signature:X} tag out of the text and returns both the
-  // cleaned text and the resolved signature HTML (or '' if none was used).
-  function extractSignature(text) {
-    var sigHtml = '';
-    var cleaned = (text || '').replace(/\{signature:([a-zA-Z0-9_]+)\}/g, function(match, sigKey) {
-      if (SIGNATURES[sigKey]) sigHtml = SIGNATURES[sigKey].html;
-      return '';
-    });
-    return { text: cleaned, signatureHtml: sigHtml };
-  }
-
+  // Plain-text merge — used for Subject and To/CC/BCC, which never contain a
+  // {signature:X} tag in practice, but {signature:X} is stripped defensively
+  // anyway since signatures only make sense inside an HTML body.
   function mergeText(template, row) {
-    // Backward-compatible helper (subject line still uses this — subjects
-    // never contain a signature tag in practice, but handle it safely anyway).
-    return extractSignature(mergeFieldsOnly(template, row)).text;
+    if (!template) return '';
+    return template
+      .replace(/\{signature:([a-zA-Z0-9_]+)\}/g, '')
+      .replace(/\{([a-zA-Z0-9_]+)\}/g, function(match, key) {
+        if (row && row[key] != null) return String(row[key]);
+        return '';
+      });
+  }
+
+  // HTML body merge — resolves {field} tags AND {signature:X} tags.
+  // Signature HTML is substituted via placeholder tokens so it is dropped in
+  // verbatim (not HTML-escaped, not subject to nl2br) wherever the user
+  // placed the {signature:X} tag in their typed text.
+  function renderBodyHtml(template, row) {
+    if (!template) return '';
+
+    var signatures = [];
+    var body = template.replace(/\{signature:([a-zA-Z0-9_]+)\}/g, function(match, sigKey) {
+      var token = '%%TGE_SIGNATURE_' + signatures.length + '%%';
+      signatures.push(SIGNATURES[sigKey] ? SIGNATURES[sigKey].html : '');
+      return token;
+    });
+
+    if (row) {
+      body = body.replace(/\{([a-zA-Z0-9_]+)\}/g, function(match, key) {
+        if (row && row[key] != null) return String(row[key]);
+        return '';
+      });
+    }
+
+    if (!/<\/?[a-z][\s\S]*>/i.test(body)) body = nl2br(body);
+
+    signatures.forEach(function(html, idx) {
+      body = body.replace('%%TGE_SIGNATURE_' + idx + '%%', html);
+    });
+
+    return body;
   }
 
   // ── Standard camera status table ────────────────────────────────────────────
@@ -356,6 +389,24 @@
     return r.data.base64;
   }
 
+  // Resolves to a single attachment for the given rows, preferring a custom
+  // attachmentBuilder (passed into TGE.openEmailComposer) over the built-in
+  // camera fault PDF builder. Always returns either null or
+  // { base64, name } — never a bare base64 string — so callers never have to
+  // branch on the return shape.
+  async function buildComposerAttachment(rows) {
+    if (composerState.attachmentBuilder) {
+      var built = await composerState.attachmentBuilder(rows);
+      if (!built) return null;
+      if (typeof built === 'string') return { base64: built, name: 'attachment.pdf' };
+      if (built.base64) return { base64: built.base64, name: built.name || 'attachment.pdf' };
+      return null;
+    }
+
+    var cameraBase64 = await buildCameraFaultPdfAttachment(rows);
+    return cameraBase64 ? { base64: cameraBase64, name: 'camera-fault-report.pdf' } : null;
+  }
+
   function wrapInTemplate(bodyHtml) {
     // Plain, standard email — no banner, no footer disclaimer. Just the
     // content, on a white background, like a normal email someone wrote.
@@ -404,19 +455,22 @@
       if (composerState.mode === 'combined') {
         setStatus('Sending combined email...', false);
 
-        var pdfBase64Combined = null;
+        var pdfAttachmentCombined = null;
         if (attachPdf) {
           setStatus('Building PDF attachment...', false);
-          pdfBase64Combined = await buildCameraFaultPdfAttachment(composerState.rows);
-          if (!pdfBase64Combined) setStatus('⚠ Could not build PDF attachment — sending without it.', true);
+          pdfAttachmentCombined = await buildComposerAttachment(composerState.rows);
+          if (!pdfAttachmentCombined) setStatus('⚠ Could not build PDF attachment — sending without it.', true);
         }
 
-        var combinedExtract = extractSignature(body);
-        var combinedBody = nl2br(combinedExtract.text) + buildCameraStatusTable(composerState.rows) + combinedExtract.signatureHtml;
-        var finalHtml = wrapInTemplate(combinedBody);
+        // If exactly one row is selected, merge fields/signature against it;
+        // otherwise send the subject/body as typed (no single row to merge from).
+        var combinedRow     = composerState.rows.length === 1 ? composerState.rows[0] : null;
+        var combinedSubject = combinedRow ? mergeText(subject, combinedRow) : subject;
+        var combinedBody    = renderBodyHtml(body, combinedRow) + buildCameraStatusTable(composerState.rows);
+        var finalHtml        = wrapInTemplate(combinedBody);
 
-        var sendPayload = { to: to, cc: cc, bcc: bcc, subject: subject, htmlBody: finalHtml };
-        if (pdfBase64Combined) { sendPayload.attachmentBase64 = pdfBase64Combined; sendPayload.attachmentName = 'camera-fault-report.pdf'; }
+        var sendPayload = { to: to, cc: cc, bcc: bcc, subject: combinedSubject, htmlBody: finalHtml };
+        if (pdfAttachmentCombined) { sendPayload.attachmentBase64 = pdfAttachmentCombined.base64; sendPayload.attachmentName = pdfAttachmentCombined.name; }
 
         var r = await TGE.api('POST', '/api/send-email', sendPayload);
         if (!r.ok) throw new Error(r.data && r.data.error ? r.data.error : 'Send failed');
@@ -430,26 +484,24 @@
         for (var i = 0; i < composerState.rows.length; i++) {
           var row = composerState.rows[i];
           var mergedSubject = mergeText(subject, row);
-          var mergedBodyFieldsOnly = mergeFieldsOnly(body, row);
-          var rowExtract    = extractSignature(mergedBodyFieldsOnly);
-          var mergedBody    = nl2br(rowExtract.text) + buildCameraStatusTable([row]) + rowExtract.signatureHtml;
+          var mergedBody    = renderBodyHtml(body, row) + buildCameraStatusTable([row]);
           var finalHtml     = wrapInTemplate(mergedBody);
-          var mergedTo       = mergeText(to, row)  || to;
-          var mergedCc       = mergeText(cc, row)  || cc;
-          var mergedBcc      = mergeText(bcc, row) || bcc;
+          var mergedTo      = mergeText(to, row)  || to;
+          var mergedCc      = mergeText(cc, row)  || cc;
+          var mergedBcc     = mergeText(bcc, row) || bcc;
 
-          // Build a fresh PDF for THIS row only — never shared across rows.
-          var pdfBase64Row = null;
+          // Build a fresh attachment for THIS row only — never shared across rows.
+          var pdfAttachmentRow = null;
           if (attachPdf) {
             setStatus('Building PDF for item ' + (i+1) + ' of ' + total + '...', false);
-            pdfBase64Row = await buildCameraFaultPdfAttachment([row]);
-            if (!pdfBase64Row) setStatus('⚠ Could not build PDF for item ' + (i+1) + ' — sending without it.', true);
+            pdfAttachmentRow = await buildComposerAttachment([row]);
+            if (!pdfAttachmentRow) setStatus('⚠ Could not build PDF for item ' + (i+1) + ' — sending without it.', true);
           }
 
           setStatus('Sending ' + (sent+1) + ' of ' + total + '...', false);
 
           var sendPayloadOne = { to: mergedTo, cc: mergedCc, bcc: mergedBcc, subject: mergedSubject, htmlBody: finalHtml };
-          if (pdfBase64Row) { sendPayloadOne.attachmentBase64 = pdfBase64Row; sendPayloadOne.attachmentName = 'camera-fault-report.pdf'; }
+          if (pdfAttachmentRow) { sendPayloadOne.attachmentBase64 = pdfAttachmentRow.base64; sendPayloadOne.attachmentName = pdfAttachmentRow.name; }
 
           var resp = await TGE.api('POST', '/api/send-email', sendPayloadOne);
           if (!resp.ok) {
