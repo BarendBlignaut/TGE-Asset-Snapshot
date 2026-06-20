@@ -241,126 +241,72 @@
       border-radius: var(--radius-lg);
       padding: 20px 24px;
       margin-bottom: 16px;
-      position: relative;
-      overflow: visible; /* hero-menu-panel dropdown must escape the card bounds */
+      position: relative; overflow: hidden;
     }
     .hero::before {
       content: ""; position: absolute;
-      top: -34px; right: 14px;
-      width: 170px; height: 170px; border-radius: 50%;
+      top: -60px; right: -60px;
+      width: 220px; height: 220px; border-radius: 50%;
       background: rgba(212,240,38,0.05); pointer-events: none;
     }
     .hero-kicker {
       font-size: 10px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 0.08em; color: rgba(255,255,255,0.5);
+      letter-spacing: 0.1em; color: rgba(212,240,38,0.7); margin-bottom: 4px;
     }
-    .hero-title { font-size: 19px; font-weight: 700; color: #fff; margin-top: 2px; }
+    .hero-title { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 2px; }
+    .hero-sub   { font-size: 12px; color: rgba(255,255,255,0.55); margin-bottom: 14px; }
 
-    .hero-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    /* Hero action bar */
+    .hero-bar {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      gap: 10px; flex-wrap: wrap;
+    }
     .hero-bar-left  { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-    .hero-bar-right { display: flex; align-items: center; gap: 8px; }
-    .hero-divider { width: 1px; height: 22px; background: rgba(255,255,255,0.18); }
+    .hero-bar-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
     .hero-mode-btn {
-      height: 32px; padding: 0 13px; border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.18);
-      background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.65);
-      font-size: 12px; font-weight: 600; cursor: pointer;
-      transition: background 140ms, border-color 140ms, color 140ms;
+      height: 34px; padding: 0 14px; border-radius: 7px;
+      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: background 140ms, border-color 140ms;
     }
-    .hero-mode-btn:hover  { background: rgba(255,255,255,0.14); color: #fff; }
-    .hero-mode-btn.active { background: var(--yellow); color: var(--green-900); border-color: var(--yellow); }
+    .hero-mode-btn:hover { background: rgba(255,255,255,0.15); }
+    .hero-mode-btn.active { background: var(--yellow); border-color: var(--yellow); color: var(--green-900); }
+
+    .hero-divider { width: 1px; height: 22px; background: rgba(255,255,255,0.15); margin: 0 2px; }
+
+    .hero-run-btn {
+      height: 34px; padding: 0 18px; border-radius: 7px; border: none;
+      background: var(--yellow); color: var(--green-900);
+      font-size: 12px; font-weight: 700; cursor: pointer;
+      transition: background 140ms;
+    }
+    .hero-run-btn:hover { background: var(--yellow-dim); }
+
+    .hero-action-btn {
+      height: 34px; padding: 0 14px; border-radius: 7px;
+      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: background 140ms;
+    }
+    .hero-action-btn:hover { background: rgba(255,255,255,0.15); }
 
     .hero-export-btn {
-      height: 32px; padding: 0 13px; border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.18);
-      background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.65);
-      font-size: 12px; font-weight: 600; cursor: pointer;
-      transition: background 140ms, border-color 140ms, color 140ms;
+      height: 34px; padding: 0 12px; border-radius: 7px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.05);
+      color: rgba(255,255,255,0.3); font-size: 11px; font-weight: 600;
+      cursor: default; transition: background 140ms, color 140ms, border-color 140ms;
+      pointer-events: none;
     }
     .hero-export-btn.active {
-      background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.82);
-      pointer-events: auto; cursor: pointer;
+      color: rgba(255,255,255,0.85); border-color: rgba(255,255,255,0.28);
+      background: rgba(255,255,255,0.12); pointer-events: auto; cursor: pointer;
     }
     .hero-export-btn.active:hover { background: rgba(255,255,255,0.20); }
-
-    .hero-menu {
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-    }
-    .hero-menu-trigger {
-      height: 34px;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 0 11px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.20);
-      background: rgba(255,255,255,0.10);
-      color: rgba(255,255,255,0.82);
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      cursor: pointer;
-      transition: background 140ms, border-color 140ms, color 140ms;
-    }
-    .hero-menu-trigger:hover,
-    .hero-menu.open .hero-menu-trigger {
-      background: rgba(255,255,255,0.18);
-      border-color: rgba(255,255,255,0.34);
-      color: #fff;
-    }
-    .hero-menu-icon {
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--yellow);
-      color: var(--green-900);
-      line-height: 1;
-      font-size: 12px;
-    }
-    .hero-menu-caret {
-      width: 10px;
-      height: 10px;
-      opacity: 0.75;
-      transition: transform 140ms;
-    }
-    .hero-menu.open .hero-menu-caret { transform: rotate(180deg); }
-    .hero-menu-panel {
-      position: absolute;
-      right: 0;
-      top: calc(100% + 8px);
-      min-width: 190px;
-      padding: 6px;
-      border-radius: 12px;
-      background: #fff;
-      border: 1px solid rgba(15,26,19,0.10);
-      box-shadow: 0 18px 42px rgba(10,45,20,0.22);
-      display: none;
-      z-index: 40;
-    }
-    .hero-menu.open .hero-menu-panel { display: block; }
-    .hero-menu-item {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 9px 10px;
-      border: none;
-      border-radius: 9px;
-      background: transparent;
-      color: var(--ink-2);
-      font-size: 12px;
-      font-weight: 600;
-      text-align: left;
-      cursor: pointer;
-    }
-    .hero-menu-item:hover { background: var(--green-50); color: var(--green-800); }
 
     .hero-message { font-size: 12px; color: rgba(255,255,255,0.6); margin-top: 8px; min-height: 16px; }
     .hero-message.error { color: #ff8a80; }
@@ -556,7 +502,7 @@
           </button>
           <button class="nav-item active" id="nav-snapshot" type="button" data-view="snapshot" data-group="operations" data-title="Asset Snapshot">
             <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="7" height="7" rx="1"/><rect x="11" y="2" width="7" height="7" rx="1"/><rect x="2" y="11" width="7" height="7" rx="1"/><rect x="11" y="11" width="7" height="7" rx="1"/></svg>
-            Asset Snapshot
+            Snapshot
           </button>
           <button class="nav-item" id="nav-asset-track" type="button" data-view="asset-track" data-group="operations" data-title="Asset Track">
             <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2L18 6v8l-8 4-8-4V6l8-4z"/><path d="M10 2v12M2 6l8 4 8-4"/></svg>
