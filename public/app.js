@@ -15,7 +15,7 @@
 
   // ── Utility functions (available to all page modules) ───────────────────────
 
-  TGE.el = function (id) { return document.getElementById(id); };
+  TGE.el = (function (id) { return document.getElementById(id); };
 
   TGE.show = function (el, display) {
     if (!el) return;
@@ -405,4 +405,4 @@ if (toggleBtn && sidebar) {
     restoreSession();
   });
 
-}();
+})();
