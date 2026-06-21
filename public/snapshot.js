@@ -56,7 +56,11 @@
       '.hero-menu-icon{color:var(--yellow,#d4f026);flex-shrink:0;}',
       '.hero-menu-caret{transition:transform 0.15s ease;flex-shrink:0;}',
       '.hero-menu.open .hero-menu-caret{transform:rotate(180deg);}',
-      '.hero-menu-panel{display:none;position:absolute;top:100%;margin-top:8px;right:0;min-width:200px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 12px 32px rgba(0,0,0,0.28);z-index:300;overflow:hidden;padding:6px;}',
+      // position:fixed (not absolute) so the panel escapes any ancestor's
+      // overflow:hidden (the .hero banner clips its own decorative circle
+      // this way) — its exact top/left coordinates are set in JS each time
+      // it opens, based on the trigger button's real screen position.
+      '.hero-menu-panel{display:none;position:fixed;min-width:200px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 12px 32px rgba(0,0,0,0.28);z-index:300;overflow:hidden;padding:6px;}',
       '.hero-menu.open .hero-menu-panel{display:block;}',
       '.hero-menu-item{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;height:36px;padding:0 10px;border:none;background:transparent;border-radius:7px;color:var(--ink);font:inherit;font-size:13px;text-align:left;cursor:pointer;transition:background 0.12s ease;}',
       '.hero-menu-item:hover{background:var(--surface-2);}',
@@ -176,9 +180,7 @@
             '<button class="btn" id="snap-align-btn" style="height:32px;font-size:12px;background:var(--green-100);color:var(--green-700);border-color:var(--green-600);">⚙ Alignment Test</button>',
           '</div>',
           '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px;" id="snap-cam-pre-label">Current Snapshots</div>',
-          '<div id="snap-camera-grid" style="display:grid;gap:10px;">',
-            '<div style="font-size:12px;color:var(--muted);grid-column:1/-1;">No camera data for this asset.</div>',
-          '</div>',
+          '<div id="snap-camera-grid" style="display:grid;gap:10px;grid-template-columns:repeat(5,minmax(0,1fr));"></div>',
           '<p id="snap-cam-time" style="margin-top:6px;margin-bottom:16px;font-size:11px;color:var(--muted);"></p>',
           '<div id="snap-cam-post-section" style="display:none;">',
             '<div style="border-top:2px dashed var(--green-600);margin:0 0 16px;"></div>',
@@ -222,29 +224,25 @@
           '</div>',
         '</div>',
 
-        // 8 — Asset tracker (locked layout: always visible)
-        '<div class="card" id="snap-tracker-card">',
-          '<div class="card-kicker">Asset Tracker</div>',
-          '<div class="card-title">Last Known Position</div>',
-          '<div class="data-grid data-grid-3" style="margin-bottom:14px;">',
-            di('snap-tracker-address', 'Location'),
-            di('snap-tracker-lat',     'Latitude'),
-            di('snap-tracker-lng',     'Longitude'),
-            di('snap-tracker-time',    'Last Seen'),
-            di('snap-tracker-battery', 'Battery'),
-            di('snap-tracker-model',   'Device Model'),
-          '</div>',
-          '<div id="snap-tracker-map" style="height:280px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);background:var(--surface-2);display:flex;align-items:center;justify-content:center;">',
-            '<span style="color:var(--muted);font-size:13px;">No tracker data for this asset</span>',
-          '</div>',
-        '</div>',
-
       '</div>',// end snap-results
 
     ].join('');
 
     wireEvents();
     injectAlignPanel();
+    resetCameraGrid();
+  }
+
+  // Renders five empty camera slot placeholders (the maximum slot count,
+  // matching MultiIQ) so the locked layout always shows real slot boxes
+  // rather than a generic text message — even before any data has loaded
+  // or when an asset genuinely has no camera device.
+  function resetCameraGrid() {
+    var grid = TGE.el('snap-camera-grid');
+    if (grid) {
+      grid.style.gridTemplateColumns = 'repeat(5,minmax(0,1fr))';
+      grid.innerHTML = buildCameraGrid([], CAMERA_SLOTS.slice(0, 5));
+    }
   }
 
   function di(id, label) {
@@ -331,15 +329,33 @@
 
     var exportTrigger = TGE.el('snap-export-trigger');
     var exportMenu    = TGE.el('snap-export-menu');
+    var exportPanel   = TGE.el('snap-export-menu') ? TGE.el('snap-export-menu').querySelector('.hero-menu-panel') : null;
+
+    function positionExportPanel() {
+      if (!exportTrigger || !exportPanel) return;
+      var rect = exportTrigger.getBoundingClientRect();
+      exportPanel.style.top   = (rect.bottom + 8) + 'px';
+      exportPanel.style.left  = 'auto';
+      // Align the panel's right edge with the trigger's right edge.
+      exportPanel.style.right = (window.innerWidth - rect.right) + 'px';
+    }
+
     if (exportTrigger && exportMenu) {
       exportTrigger.onclick = function(e) {
         e.stopPropagation();
         var open = !exportMenu.classList.contains('open');
+        if (open) positionExportPanel();
         exportMenu.classList.toggle('open', open);
         exportTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
       };
       document.addEventListener('click', function(e) {
         if (!exportMenu.contains(e.target)) closeExportMenu();
+      });
+      window.addEventListener('scroll', function() {
+        if (exportMenu.classList.contains('open')) positionExportPanel();
+      }, true);
+      window.addEventListener('resize', function() {
+        if (exportMenu.classList.contains('open')) positionExportPanel();
       });
     }
   }
@@ -413,13 +429,6 @@
         promises.push(
           TGE.api('GET', '/api/tn360/v1/devices/' + state.devices.camera.imei + '?pruning=B2B&embed=devicestats')
             .then(function(r) { if (r.ok) processCameraDeviceStats(r.data); })
-        );
-      }
-
-      if (state.devices.tracker) {
-        promises.push(
-          TGE.api('GET', '/api/tn360/v1/devices/' + state.devices.tracker.imei + '?pruning=B2B&embed=devicestats')
-            .then(function(r) { if (r.ok) processTrackerStats(r.data); })
         );
       }
 
@@ -548,19 +557,6 @@
       } else {
         faultsGrid.innerHTML = '<div class="data-item" style="color:var(--muted);font-size:12px;grid-column:span 3;">No fault data reported.</div>';
       }
-    }
-  }
-
-  function processTrackerStats(d) {
-    var ds = d.deviceStats || {};
-    setText('snap-tracker-address', ds.location || null, 'No data');
-    setText('snap-tracker-time',    ds.lastEventAt ? formatTs(ds.lastEventAt) : null, 'No data');
-    setText('snap-tracker-model',   (d.model && d.model.name) || null, 'No data');
-    var gps = ds.gps || {};
-    if (gps.Lat != null && gps.Lng != null) {
-      setText('snap-tracker-lat', Number(gps.Lat).toFixed(6));
-      setText('snap-tracker-lng', Number(gps.Lng).toFixed(6));
-      renderMap('snap-tracker-map', gps.Lat, gps.Lng);
     }
   }
 
@@ -902,10 +898,9 @@
     var statusFields  = ['snap-ignition','snap-movement','snap-speed','snap-odometer','snap-address','snap-gps-time','snap-lat','snap-lng'];
     var vpmFields     = ['snap-rpm','snap-engine-speed','snap-engine-hrs','snap-fuel-total','snap-oil-temp','snap-oil-press','snap-engine-load','snap-vpm-time'];
     var mapFields     = ['snap-map-address','snap-map-lat','snap-map-lng'];
-    var trackerFields = ['snap-tracker-address','snap-tracker-lat','snap-tracker-lng','snap-tracker-time','snap-tracker-battery','snap-tracker-model'];
     var sdFields      = ['snap-sd1','snap-sd2','snap-sd-overall','snap-sd1-size','snap-sd2-size'];
 
-    driverFields.concat(statusFields, vpmFields, mapFields, trackerFields, sdFields).forEach(function(id) {
+    driverFields.concat(statusFields, vpmFields, mapFields, sdFields).forEach(function(id) {
       setText(id, null, 'No data');
     });
 
@@ -916,7 +911,7 @@
     if (faultsGrid) faultsGrid.innerHTML = '<div class="data-item" style="color:var(--muted);font-size:12px;grid-column:span 3;">No fault data reported.</div>';
 
     var cameraGrid = TGE.el('snap-camera-grid');
-    if (cameraGrid) cameraGrid.innerHTML = '<div style="font-size:12px;color:var(--muted);grid-column:1/-1;">No camera data for this asset.</div>';
+    if (cameraGrid) resetCameraGrid();
 
     var camTime = TGE.el('snap-cam-time');
     if (camTime) camTime.textContent = '';
@@ -926,9 +921,6 @@
 
     var map = TGE.el('snap-map');
     if (map) map.innerHTML = '<span style="color:var(--muted);font-size:13px;">No map data for this asset</span>';
-
-    var trackerMap = TGE.el('snap-tracker-map');
-    if (trackerMap) trackerMap.innerHTML = '<span style="color:var(--muted);font-size:13px;">No tracker data for this asset</span>';
 
     var deviceCards = TGE.el('snap-device-cards');
     if (deviceCards) deviceCards.innerHTML = '';
@@ -1053,7 +1045,6 @@
       collectCardSection('snap-vpm-card',     'Engine Metrics'),
       collectCardSection('snap-gpio-card',    'GPIO'),
       collectCardSection('snap-map-card',     'Location'),
-      collectCardSection('snap-tracker-card', 'Asset Tracker'),
     ].filter(Boolean);
 
     return {
