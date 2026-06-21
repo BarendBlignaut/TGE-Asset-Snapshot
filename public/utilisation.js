@@ -287,8 +287,8 @@
     var style = document.createElement('style');
     style.id = 'ud-style';
     style.textContent = [
-      '.view#view-utilisation.active{padding:0!important;height:calc(100vh - var(--topbar-h));overflow:hidden;display:flex;justify-content:center;}',
-      '.ud-shell{width:90%;height:100%;display:flex;flex-direction:column;background:#f4f5f7;color:#172b4d;overflow:hidden;padding:8px;}',
+      '.view#view-utilisation.active{padding:0!important;height:calc(100vh - var(--topbar-h));overflow:hidden;display:flex;justify-content:center;align-items:stretch;}',
+      '.ud-shell{width:95%;height:100%;display:flex;flex-direction:column;background:#f4f5f7;color:#172b4d;overflow:hidden;padding:6px 10px;}',
       '.ud-header{height:48px;background:#143200;border-radius:12px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;gap:12px;flex-shrink:0;margin-bottom:8px;}',
       '.ud-title-wrap{display:flex;align-items:center;gap:10px;min-width:260px;}',
       '.ud-title{font-size:14px;font-weight:800;color:#c8f135;}',
