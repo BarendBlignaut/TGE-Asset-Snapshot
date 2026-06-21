@@ -405,4 +405,4 @@ if (toggleBtn && sidebar) {
     restoreSession();
   });
 
-})();
+}();
