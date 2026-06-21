@@ -2,6 +2,16 @@
 // src/index.js
 
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import {
+  handleGetStaticFields,
+  handleUpdateStaticFields,
+  handleGetStaticExclusions,
+  handleSaveStaticExclusionsDraft,
+  handlePreviewStaticExclusions,
+  handlePublishStaticExclusions,
+  handleImportStaticFleet,
+  handleGetStaticFleet,
+} from "./utilisation-static-fleet.js";
 
 const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12 hours
 const SESSION_COOKIE      = "tge_session";
@@ -78,6 +88,11 @@ async function hasPermission(env, roleId, feature, action) {
   if (!row) return { allowed: false, limit: null };
   return { allowed: row.enabled === 1, limit: row.limit_value };
 }
+
+const utilisationAuthHelpers = {
+  hasPermission,
+  safeJson,
+};
 
 // ── Activity log ──────────────────────────────────────────────────────────────
 
@@ -1223,6 +1238,52 @@ export default {
       }
       if (method === "POST" && path === "/api/camera-fault-pdf") return handleCameraFaultPdf(request, env);
       if (method === "POST" && path === "/api/send-email") return handleSendEmail(request, env);
+
+      // Utilisation — Static Fleet List import (Power Automate, key-auth, no session)
+      if (method === "POST" && path === "/api/utilisation/static-fleet/import") {
+        return handleImportStaticFleet(request, env);
+      }
+
+      // Utilisation — Static Fleet List dashboard query (session required)
+      if (method === "GET" && path === "/api/utilisation/static-fleet") {
+        const auth = await requireSession(request, env);
+        if (!auth.ok) return auth.response;
+        return handleGetStaticFleet(request, env, { session: auth.session, ...utilisationAuthHelpers });
+      }
+
+      // Utilisation — field definitions admin (session required)
+      if (method === "GET" && path === "/api/utilisation/static-fields") {
+        const auth = await requireSession(request, env);
+        if (!auth.ok) return auth.response;
+        return handleGetStaticFields(request, env, { session: auth.session, ...utilisationAuthHelpers });
+      }
+      if (method === "PUT" && path === "/api/utilisation/static-fields") {
+        const auth = await requireSession(request, env);
+        if (!auth.ok) return auth.response;
+        return handleUpdateStaticFields(request, env, { session: auth.session, ...utilisationAuthHelpers });
+      }
+
+      // Utilisation — exclusion rules admin (session required)
+      if (method === "GET" && path === "/api/utilisation/static-exclusions") {
+        const auth = await requireSession(request, env);
+        if (!auth.ok) return auth.response;
+        return handleGetStaticExclusions(request, env, { session: auth.session, ...utilisationAuthHelpers });
+      }
+      if (method === "PUT" && path === "/api/utilisation/static-exclusions/draft") {
+        const auth = await requireSession(request, env);
+        if (!auth.ok) return auth.response;
+        return handleSaveStaticExclusionsDraft(request, env, { session: auth.session, ...utilisationAuthHelpers });
+      }
+      if (method === "POST" && path === "/api/utilisation/static-exclusions/preview") {
+        const auth = await requireSession(request, env);
+        if (!auth.ok) return auth.response;
+        return handlePreviewStaticExclusions(request, env, { session: auth.session, ...utilisationAuthHelpers });
+      }
+      if (method === "POST" && path === "/api/utilisation/static-exclusions/publish") {
+        const auth = await requireSession(request, env);
+        if (!auth.ok) return auth.response;
+        return handlePublishStaticExclusions(request, env, { session: auth.session, ...utilisationAuthHelpers });
+      }
 
       // Telematics proxy — forward /api/tn360/* to telematics API
       if (path.startsWith("/api/tn360/")) {
