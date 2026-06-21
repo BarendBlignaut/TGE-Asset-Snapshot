@@ -18,9 +18,16 @@
     running: false,
     asset:   null,
     devices: { hermes:null, camera:null, iface:null, tracker:null },
-    data:    { vehicle:null, deviceStats:null, vpm:null, gpio:null, cameras:null },
+    data:    defaultData(),
   };
 
+  // ── Alignment test ───────────────────────────────────────────────────────────
+  // NOTE: This feature is intentionally frozen/inert. The UI (button, panel,
+  // BEFORE/AFTER comparison, Test Procedure steps) stays exactly as-is, but no
+  // backend actions run from it, pending the correct trigger process being
+  // confirmed with the Teletrac vendor. Do not wire, unwire, or modify any of
+  // this code as part of unrelated fixes — revisit only once that process
+  // exists.
   var alignState = { running:false, steps:{}, vehicleId:null };
 
   var ALIGN_STEPS = [
@@ -32,8 +39,35 @@
     { id:'step-snapshot', label:'Pull new camera snapshots',      type:'snapshot'                                },
   ];
 
+  // ── Styles (Standard 1: export dropdown — rounded trigger, yellow icon) ────
+  // Injected once per session, the same pattern utilisation.js uses for its
+  // own page-specific styles. Reuses the app's existing CSS variables
+  // (--green-*, --yellow, --surface, --ink, --muted, --line, --radius) so it
+  // matches the established theme rather than introducing new colors.
+  function injectStyles() {
+    if (document.getElementById('snap-styles')) return;
+    var style = document.createElement('style');
+    style.id = 'snap-styles';
+    style.textContent = [
+      '.hero-menu{position:relative;display:inline-flex;}',
+      '.hero-menu-trigger{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.10);color:#fff;font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:background 0.15s ease;}',
+      '.hero-menu-trigger:hover{background:rgba(255,255,255,0.18);}',
+      '.hero-menu-trigger:focus-visible{outline:2px solid var(--yellow,#d4f026);outline-offset:2px;}',
+      '.hero-menu-icon{color:var(--yellow,#d4f026);flex-shrink:0;}',
+      '.hero-menu-caret{transition:transform 0.15s ease;flex-shrink:0;}',
+      '.hero-menu.open .hero-menu-caret{transform:rotate(180deg);}',
+      '.hero-menu-panel{display:none;position:absolute;top:calc(100% + 8px);right:0;min-width:200px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:50;overflow:hidden;padding:6px;}',
+      '.hero-menu.open .hero-menu-panel{display:block;}',
+      '.hero-menu-item{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;height:36px;padding:0 10px;border:none;background:transparent;border-radius:7px;color:var(--ink);font:inherit;font-size:13px;text-align:left;cursor:pointer;transition:background 0.12s ease;}',
+      '.hero-menu-item:hover{background:var(--surface-2);}',
+      '.hero-menu-item span:last-child{font-size:11px;color:var(--muted);}',
+    ].join('');
+    document.head.appendChild(style);
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────────
   function render() {
+    injectStyles();
     var view = TGE.el('view-snapshot');
     if (!view) return;
 
@@ -50,11 +84,7 @@
           '</div>',
           '<div class="hero-bar-right">',
             '<div class="hero-divider"></div>',
-            TGE.can('snapshot','export-pdf')        ? '<button class="hero-export-btn" id="snap-pdf-btn" type="button">PDF</button>' : '',
-            TGE.can('snapshot','export-email-pdf')  ? '<button class="hero-export-btn" id="snap-email-btn" type="button">Email PDF</button>' : '',
-            TGE.can('snapshot','export-csv')        ? '<button class="hero-export-btn" id="snap-csv-btn" type="button">CSV</button>' : '',
-            TGE.can('snapshot','export-xlsx')       ? '<button class="hero-export-btn" id="snap-xlsx-btn" type="button">XLSX</button>' : '',
-            TGE.can('snapshot','export-json')       ? '<button class="hero-export-btn" id="snap-json-btn" type="button">JSON</button>' : '',
+            buildExportMenu(),
           '</div>',
         '</div>',
         '<p class="hero-message" id="snap-message"></p>',
@@ -68,8 +98,8 @@
 
       '<div id="snap-results" style="display:none;">',
 
-        // 1 — Vehicle Info
-        '<div class="card">',
+        // 1 — Vehicle Info (always shown once a snapshot has run — not device-gated)
+        '<div class="card" id="snap-vehicle-card">',
           '<div class="card-kicker">Vehicle Information</div>',
           '<div id="snap-vehicle-title" class="card-title">—</div>',
           '<div class="data-grid data-grid-4" style="margin-bottom:14px;">',
@@ -85,8 +115,8 @@
           '<div class="data-grid data-grid-3" id="snap-device-cards"></div>',
         '</div>',
 
-        // 2 — Driver (iFace only)
-        '<div class="card" id="snap-driver-card" style="display:none;">',
+        // 2 — Driver (locked layout: always visible, "No data" if iFace absent/empty)
+        '<div class="card" id="snap-driver-card">',
           '<div class="card-kicker">Driver</div>',
           '<div class="card-title">Currently Logged In</div>',
           '<div class="data-grid data-grid-4">',
@@ -97,8 +127,8 @@
           '</div>',
         '</div>',
 
-        // 3 — Live Status (HERMES only)
-        '<div class="card" id="snap-status-card" style="display:none;">',
+        // 3 — Live Status (locked layout: always visible)
+        '<div class="card" id="snap-status-card">',
           '<div class="card-kicker">Live Status</div>',
           '<div class="card-title">Current Position &amp; State</div>',
           '<div class="data-grid data-grid-4">',
@@ -113,8 +143,8 @@
           '</div>',
         '</div>',
 
-        // 4 — VPM (HERMES only)
-        '<div class="card" id="snap-vpm-card" style="display:none;">',
+        // 4 — VPM (locked layout: always visible)
+        '<div class="card" id="snap-vpm-card">',
           '<div class="card-kicker">Engine Metrics</div>',
           '<div class="card-title">VPM — Last Reading</div>',
           '<div class="data-grid data-grid-4">',
@@ -129,24 +159,26 @@
           '</div>',
         '</div>',
 
-        // 5 — GPIO (HERMES only)
-        '<div class="card" id="snap-gpio-card" style="display:none;">',
+        // 5 — GPIO (locked layout: always visible)
+        '<div class="card" id="snap-gpio-card">',
           '<div class="card-kicker">GPIO</div>',
           '<div class="card-title">Input / Output Status</div>',
           '<div class="data-grid data-grid-4" id="snap-gpio-grid">',
-            '<div class="data-item" style="color:var(--muted);font-size:12px;grid-column:span 4;">Loading GPIO...</div>',
+            '<div class="data-item" style="color:var(--muted);font-size:12px;grid-column:span 4;">No GPIO data.</div>',
           '</div>',
         '</div>',
 
-        // 6 — Cameras (CAMERA device only)
-        '<div class="card" id="snap-camera-card" style="display:none;">',
+        // 6 — Cameras (locked layout: always visible)
+        '<div class="card" id="snap-camera-card">',
           '<div class="card-kicker">Evidence</div>',
           '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">',
             '<div class="card-title" style="margin:0;">Camera Snapshots</div>',
             '<button class="btn" id="snap-align-btn" style="height:32px;font-size:12px;background:var(--green-100);color:var(--green-700);border-color:var(--green-600);">⚙ Alignment Test</button>',
           '</div>',
           '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px;" id="snap-cam-pre-label">Current Snapshots</div>',
-          '<div id="snap-camera-grid" style="display:grid;gap:10px;"></div>',
+          '<div id="snap-camera-grid" style="display:grid;gap:10px;">',
+            '<div style="font-size:12px;color:var(--muted);grid-column:1/-1;">No camera data for this asset.</div>',
+          '</div>',
           '<p id="snap-cam-time" style="margin-top:6px;margin-bottom:16px;font-size:11px;color:var(--muted);"></p>',
           '<div id="snap-cam-post-section" style="display:none;">',
             '<div style="border-top:2px dashed var(--green-600);margin:0 0 16px;"></div>',
@@ -155,8 +187,8 @@
             '<p id="snap-cam-post-time" style="margin-top:6px;font-size:11px;color:var(--muted);"></p>',
           '</div>',
 
-          // SD Card health
-          '<div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px;" id="snap-sd-section" style="display:none;">',
+          // SD Card health (locked layout: always visible)
+          '<div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px;" id="snap-sd-section">',
             '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px;">SD Card Health</div>',
             '<div class="data-grid data-grid-3">',
               di('snap-sd1',        'SD Card 1'),
@@ -167,15 +199,17 @@
             '</div>',
           '</div>',
 
-          // Camera faults
-          '<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:14px;" id="snap-faults-section" style="display:none;">',
+          // Camera faults (locked layout: always visible)
+          '<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:14px;" id="snap-faults-section">',
             '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px;">Camera Diagnostics</div>',
-            '<div class="data-grid data-grid-3" id="snap-faults-grid"></div>',
+            '<div class="data-grid data-grid-3" id="snap-faults-grid">',
+              '<div class="data-item" style="color:var(--muted);font-size:12px;grid-column:span 3;">No fault data reported.</div>',
+            '</div>',
           '</div>',
         '</div>',
 
-        // 7 — Map (HERMES only)
-        '<div class="card" id="snap-map-card" style="display:none;">',
+        // 7 — Map (locked layout: always visible)
+        '<div class="card" id="snap-map-card">',
           '<div class="card-kicker">Location</div>',
           '<div class="card-title">Last Known Position</div>',
           '<div class="data-grid data-grid-3" style="margin-bottom:12px;">',
@@ -184,12 +218,12 @@
             di('snap-map-lng',     'Longitude'),
           '</div>',
           '<div id="snap-map" style="height:300px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);background:var(--surface-2);display:flex;align-items:center;justify-content:center;">',
-            '<span style="color:var(--muted);font-size:13px;">Map loads after fetch</span>',
+            '<span style="color:var(--muted);font-size:13px;">No map data for this asset</span>',
           '</div>',
         '</div>',
 
-        // 8 — Asset tracker (ATRACKER only)
-        '<div class="card" id="snap-tracker-card" style="display:none;">',
+        // 8 — Asset tracker (locked layout: always visible)
+        '<div class="card" id="snap-tracker-card">',
           '<div class="card-kicker">Asset Tracker</div>',
           '<div class="card-title">Last Known Position</div>',
           '<div class="data-grid data-grid-3" style="margin-bottom:14px;">',
@@ -200,7 +234,9 @@
             di('snap-tracker-battery', 'Battery'),
             di('snap-tracker-model',   'Device Model'),
           '</div>',
-          '<div id="snap-tracker-map" style="height:280px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);background:var(--surface-2);"></div>',
+          '<div id="snap-tracker-map" style="height:280px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);background:var(--surface-2);display:flex;align-items:center;justify-content:center;">',
+            '<span style="color:var(--muted);font-size:13px;">No tracker data for this asset</span>',
+          '</div>',
         '</div>',
 
       '</div>',// end snap-results
@@ -213,6 +249,38 @@
 
   function di(id, label) {
     return '<div class="data-item"><span>' + label + '</span><strong id="' + id + '">—</strong></div>';
+  }
+
+  function defaultData() {
+    return {
+      vehicle: null,
+      deviceStats: null,
+      vpm: null,
+      gpio: null,
+      cameras: null,
+    };
+  }
+
+  // ── Export menu (Standard 1: export actions grouped under one dropdown) ───────
+  function buildExportMenu() {
+    var items = [
+      TGE.can('snapshot','export-pdf')       ? '<button class="hero-menu-item" id="snap-pdf-btn" type="button"><span>Snapshot PDF</span><span>PDF</span></button>' : '',
+      TGE.can('snapshot','export-email-pdf') ? '<button class="hero-menu-item" id="snap-email-btn" type="button"><span>Email PDF</span><span>Send</span></button>' : '',
+      TGE.can('snapshot','export-csv')       ? '<button class="hero-menu-item" id="snap-csv-btn" type="button"><span>CSV</span><span>.csv</span></button>' : '',
+      TGE.can('snapshot','export-xlsx')      ? '<button class="hero-menu-item" id="snap-xlsx-btn" type="button"><span>Excel</span><span>.xlsx</span></button>' : '',
+      TGE.can('snapshot','export-json')      ? '<button class="hero-menu-item" id="snap-json-btn" type="button"><span>JSON</span><span>.json</span></button>' : '',
+    ].filter(Boolean).join('');
+    if (!items) return '';
+    return '<div class="hero-menu" id="snap-export-menu">' +
+        '<button class="hero-menu-trigger" id="snap-export-trigger" type="button" aria-haspopup="true" aria-expanded="false" title="Export">' +
+          '<svg class="hero-menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">' +
+            '<path d="M8 1.5v8M5 6.5l3 3 3-3M2.5 11.5v2A1 1 0 0 0 3.5 14.5h9a1 1 0 0 0 1-1v-2"/>' +
+          '</svg>' +
+          '<span>Export</span>' +
+          '<svg class="hero-menu-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><path d="M4 6l4 4 4-4"/></svg>' +
+        '</button>' +
+        '<div class="hero-menu-panel" role="menu">' + items + '</div>' +
+      '</div>';
   }
 
   function injectAlignPanel() {
@@ -255,8 +323,25 @@
   // ── Wire events ───────────────────────────────────────────────────────────────
   function wireEvents() {
     TGE.on('snap-run-btn',     'click', runSnapshot);
-    TGE.on('snap-refresh-btn', 'click', runSnapshot);
+    // Refresh = full reset only. It must NOT re-run the lookup — it clears
+    // the screen so the user can run a fresh asset. To reload the SAME asset
+    // with updated data, the user just clicks Run again.
+    TGE.on('snap-refresh-btn', 'click', resetSnapshot);
     TGE.on('snap-fleet-input', 'keydown', function(e) { if (e.key === 'Enter') runSnapshot(); });
+
+    var exportTrigger = TGE.el('snap-export-trigger');
+    var exportMenu    = TGE.el('snap-export-menu');
+    if (exportTrigger && exportMenu) {
+      exportTrigger.onclick = function(e) {
+        e.stopPropagation();
+        var open = !exportMenu.classList.contains('open');
+        exportMenu.classList.toggle('open', open);
+        exportTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+      };
+      document.addEventListener('click', function(e) {
+        if (!exportMenu.contains(e.target)) closeExportMenu();
+      });
+    }
   }
 
   // ── Run snapshot ──────────────────────────────────────────────────────────────
@@ -268,7 +353,8 @@
 
     state.running = true;
     state.devices = { hermes:null, camera:null, iface:null, tracker:null };
-    state.data    = {};
+    state.data    = defaultData();
+    resetCardContent();
     setMessage('Looking up fleet ' + fleetNo + '...', false);
     setBtnState(true);
 
@@ -351,13 +437,16 @@
   }
 
   // ── Process functions ─────────────────────────────────────────────────────────
+  // NOTE: locked layout means these functions no longer call show()/hide() on
+  // their card containers — every card is always visible once results exist.
+  // Each function still only writes data when the relevant device/data
+  // exists; fields fall back to their existing "No data" states otherwise,
+  // so a genuinely absent device still surfaces as a visible "No data" card
+  // rather than disappearing — by design, so missing data on assets that
+  // should report it doesn't go unnoticed.
   function processHermesStats(d) {
     var ds = d.deviceStats || {};
     state.data.deviceStats = ds;
-
-    show('snap-status-card');
-    show('snap-vpm-card');
-    show('snap-gpio-card');
 
     setText('snap-ignition', ds.ignition, 'No data');
     setText('snap-movement', ds.movement, 'No data');
@@ -366,18 +455,19 @@
     setText('snap-odometer', ds.odometer ? Number(ds.odometer).toLocaleString() + ' km' : null, 'No odometer data');
 
     var gps = ds.gps || {};
-    if (gps.Lat) {
-      setText('snap-lat', gps.Lat.toFixed(6));
-      setText('snap-lng', gps.Lng.toFixed(6));
+    if (gps.Lat != null && gps.Lng != null) {
+      setText('snap-lat', Number(gps.Lat).toFixed(6));
+      setText('snap-lng', Number(gps.Lng).toFixed(6));
       try {
         var pr = JSON.parse(ds.attrs && ds.attrs.last_pr || '{}');
-        setText('snap-speed', pr.Spd ? pr.Spd + ' km/h' : '—');
-      } catch(e) {}
-      show('snap-map-card');
-      setText('snap-map-address', ds.location || '—');
-      setText('snap-map-lat', gps.Lat.toFixed(6));
-      setText('snap-map-lng', gps.Lng.toFixed(6));
+        setText('snap-speed', pr.Spd ? pr.Spd + ' km/h' : null, 'No data');
+      } catch(e) { setText('snap-speed', null, 'No data'); }
+      setText('snap-map-address', ds.location || null, 'No data');
+      setText('snap-map-lat', Number(gps.Lat).toFixed(6));
+      setText('snap-map-lng', Number(gps.Lng).toFixed(6));
       renderMap('snap-map', gps.Lat, gps.Lng);
+    } else {
+      setText('snap-speed', null, 'No data');
     }
 
     try {
@@ -404,17 +494,15 @@
     var ds = d.deviceStats || {};
     var cu = ds.currentUser;
     if (!cu) return;
-    show('snap-driver-card');
-    setText('snap-driver-name',    (cu.firstName || '') + ' ' + (cu.lastName || ''));
-    setText('snap-driver-user',    cu.username || '—');
-    setText('snap-driver-licence', cu.licenceNumber || '—');
-    setText('snap-driver-state',   cu.licenceState || '—');
+    setText('snap-driver-name',    ((cu.firstName || '') + ' ' + (cu.lastName || '')).trim(), 'No data');
+    setText('snap-driver-user',    cu.username || null, 'No data');
+    setText('snap-driver-licence', cu.licenceNumber || null, 'No data');
+    setText('snap-driver-state',   cu.licenceState || null, 'No data');
   }
 
   function processCameraDeviceStats(d) {
     var attrs = (d.deviceStats && d.deviceStats.attrs) || {};
 
-    // SD Card
     var sd1     = attrs['lm.sd_card.1']       || '';
     var sd2     = attrs['lm.sd_card.2']       || '';
     var sd1size = attrs['lm.sd_card.1_total_size_bytes'] || '';
@@ -422,68 +510,62 @@
     var sdOver  = attrs['lm.sd_card.overall_status']     || '';
 
     function fmtSd(val) {
-      if (!val) return 'No data';
+      if (!val) return null;
       if (val === 'sdCardPresent') return 'Present';
       if (val === 'sdCardAbsent')  return 'Not Present';
       if (val === 'sdCardFailed')  return 'Failed';
       return val;
     }
     function fmtBytes(b) {
-      if (!b) return '—';
+      if (!b) return null;
       var n = parseFloat(b);
-      if (isNaN(n)) return '—';
+      if (isNaN(n)) return null;
       if (n >= 1e12) return (n/1e12).toFixed(1) + ' TB';
       if (n >= 1e9)  return (n/1e9).toFixed(1)  + ' GB';
       if (n >= 1e6)  return (n/1e6).toFixed(1)  + ' MB';
       return n + ' B';
     }
 
-    setText('snap-sd1',        fmtSd(sd1));
-    setText('snap-sd2',        fmtSd(sd2));
-    setText('snap-sd-overall', sdOver ? sdOver.toUpperCase() : '—');
-    setText('snap-sd1-size',   fmtBytes(sd1size));
-    setText('snap-sd2-size',   fmtBytes(sd2size));
+    setText('snap-sd1',        fmtSd(sd1),    'No data');
+    setText('snap-sd2',        fmtSd(sd2),    'No data');
+    setText('snap-sd-overall', sdOver ? sdOver.toUpperCase() : null, 'No data');
+    setText('snap-sd1-size',   fmtBytes(sd1size), 'No data');
+    setText('snap-sd2-size',   fmtBytes(sd2size), 'No data');
 
-    var sdSection = TGE.el('snap-sd-section');
-    if (sdSection) sdSection.style.display = '';
-
-    // Camera faults
-    var faultKeys = Object.keys(attrs).filter(function(k) { return k.indexOf('lm.ongoing_faults.') === 0; });
-    if (faultKeys.length) {
-      var faultsGrid = TGE.el('snap-faults-grid');
-      var faultsSection = TGE.el('snap-faults-section');
-      if (faultsGrid) {
+    var faultKeys = Object.keys(attrs).filter(function(k) { return k.indexOf('lm.ongoing_faults.') === 0 && !k.endsWith('_at'); });
+    var faultsGrid = TGE.el('snap-faults-grid');
+    if (faultsGrid) {
+      if (faultKeys.length) {
         faultsGrid.innerHTML = faultKeys.map(function(k) {
-          var label = k.replace('lm.ongoing_faults.', '').replace(/_/g,' ').replace(/\w/g, function(c){ return c.toUpperCase(); });
+          var label = k.replace('lm.ongoing_faults.', '').replace(/_/g,' ').replace(/\w/g, function(c){ return c.toUpperCase(); });
           var val   = attrs[k];
           var isBad = val === 'true' || (val && val !== 'false' && val !== 'CLOSED' && val !== 'ok');
           var color = isBad ? 'var(--danger)' : 'var(--green-600)';
           var icon  = isBad ? '⚠️' : '✅';
-          // Skip timestamp fields
-          if (k.endsWith('_at')) return '';
           return '<div class="data-item"><span>' + label + '</span>' +
             '<strong style="color:' + color + ';">' + icon + ' ' + val + '</strong></div>';
-        }).filter(Boolean).join('');
+        }).join('');
+      } else {
+        faultsGrid.innerHTML = '<div class="data-item" style="color:var(--muted);font-size:12px;grid-column:span 3;">No fault data reported.</div>';
       }
-      if (faultsSection) faultsSection.style.display = '';
     }
   }
 
   function processTrackerStats(d) {
     var ds = d.deviceStats || {};
-    show('snap-tracker-card');
-    setText('snap-tracker-address', ds.location || '—');
-    setText('snap-tracker-time',    ds.lastEventAt ? formatTs(ds.lastEventAt) : '—');
-    setText('snap-tracker-model',   (d.model && d.model.name) || '—');
+    setText('snap-tracker-address', ds.location || null, 'No data');
+    setText('snap-tracker-time',    ds.lastEventAt ? formatTs(ds.lastEventAt) : null, 'No data');
+    setText('snap-tracker-model',   (d.model && d.model.name) || null, 'No data');
     var gps = ds.gps || {};
-    if (gps.Lat) {
-      setText('snap-tracker-lat', gps.Lat.toFixed(6));
-      setText('snap-tracker-lng', gps.Lng.toFixed(6));
+    if (gps.Lat != null && gps.Lng != null) {
+      setText('snap-tracker-lat', Number(gps.Lat).toFixed(6));
+      setText('snap-tracker-lng', Number(gps.Lng).toFixed(6));
       renderMap('snap-tracker-map', gps.Lat, gps.Lng);
     }
   }
 
   function processCameraEvents(events, vehicleId) {
+    var grid = TGE.el('snap-camera-grid');
     if (!Array.isArray(events) || !events.length) return;
     var available = events.filter(function(e) {
       return String(e.vehicleId) === String(vehicleId) &&
@@ -504,32 +586,33 @@
     state.data.cameras = mediaFiles;
     var activeSlots = CAMERA_SLOTS.slice(0, slots);
 
-    show('snap-camera-card');
-    var alignBtn = TGE.el('snap-align-btn');
-    if (alignBtn) alignBtn.onclick = openAlignPanel;
-
-    var grid = TGE.el('snap-camera-grid');
     if (grid) {
       grid.style.gridTemplateColumns = 'repeat(' + slots + ',minmax(0,1fr))';
       grid.innerHTML = buildCameraGrid(mediaFiles, activeSlots);
     }
     var camTime = TGE.el('snap-cam-time');
     if (camTime) camTime.textContent = 'Snapshot captured: ' + formatTs(latest.timeAt);
+
+    var alignBtn = TGE.el('snap-align-btn');
+    if (alignBtn) alignBtn.onclick = openAlignPanel;
+  }
+
+  function findCameraFile(mediaFiles, slot) {
+    if (!Array.isArray(mediaFiles)) return null;
+    if (slot.source === 'MDVR') {
+      return mediaFiles.find(function(f) {
+        return f.source === 'MDVR' &&
+               f.imageDetails && f.imageDetails.sources &&
+               f.imageDetails.sources.some(function(s) { return slot.sources.indexOf(s) !== -1; }) &&
+               f.status === 'FINISHED';
+      }) || null;
+    }
+    return mediaFiles.find(function(f) { return f.source === slot.source && f.status === 'FINISHED'; }) || null;
   }
 
   function buildCameraGrid(mediaFiles, activeSlots) {
     return activeSlots.map(function(slot) {
-      var file = null;
-      if (slot.source === 'MDVR') {
-        file = mediaFiles.find(function(f) {
-          return f.source === 'MDVR' &&
-                 f.imageDetails && f.imageDetails.sources &&
-                 f.imageDetails.sources.some(function(s) { return slot.sources.indexOf(s) !== -1; }) &&
-                 f.status === 'FINISHED';
-        });
-      } else {
-        file = mediaFiles.find(function(f) { return f.source === slot.source && f.status === 'FINISHED'; });
-      }
+      var file = findCameraFile(mediaFiles, slot);
       var hasImage = file && file.mediaFile;
       return '<div>' +
         '<div style="aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;">' +
@@ -581,6 +664,10 @@
   function populateDeviceCards(devices) {
     var el = TGE.el('snap-device-cards');
     if (!el) return;
+    if (!devices.length) {
+      el.innerHTML = '<div class="data-item" style="color:var(--muted);font-size:12px;grid-column:span 3;">No active devices on this asset.</div>';
+      return;
+    }
     el.innerHTML = devices.map(function(d) {
       var code  = (d.type && d.type.code)  || '—';
       var model = (d.model && d.model.name) || '—';
@@ -592,7 +679,7 @@
     }).join('');
   }
 
-  // ── Alignment test ───────────────────────────────────────────────────────────
+  // ── Alignment test — UNCHANGED, frozen pending vendor trigger process ───────
   function openAlignPanel() {
     var vehicle = state.data.vehicle;
     if (!vehicle) return;
@@ -606,7 +693,6 @@
 
     setText('snap-align-title', vehicle.name + ' — ' + (vehicle.make || ''));
 
-    // Clone BEFORE from current grid
     var beforeGrid  = TGE.el('snap-align-before');
     var currentGrid = TGE.el('snap-camera-grid');
     if (beforeGrid && currentGrid) {
@@ -734,7 +820,7 @@
   }
 
   async function pullPostSnapshots() {
-    var vid   = alignState.vehicleId;
+    var vid = alignState.vehicleId;
     var r = await TGE.api('GET', '/api/tn360/v1/events?pruning=B2B&types=camera&vehicle_ids=' + vid);
     if (!r.ok) throw new Error('Camera fetch failed');
 
@@ -756,13 +842,11 @@
     var activeSlots = CAMERA_SLOTS.slice(0, slots);
     var html        = buildCameraGrid(mediaFiles, activeSlots);
 
-    // AFTER in panel
     var afterGrid = TGE.el('snap-align-after');
     if (afterGrid) { afterGrid.innerHTML = html; afterGrid.style.gridTemplateColumns = 'repeat(' + slots + ',minmax(0,1fr))'; }
     var afterMsg = TGE.el('snap-align-after-msg');
     if (afterMsg) afterMsg.style.display = 'none';
 
-    // POST on main page
     var postGrid = TGE.el('snap-camera-grid-post');
     if (postGrid) { postGrid.innerHTML = html; postGrid.style.gridTemplateColumns = 'repeat(' + slots + ',minmax(0,1fr))'; }
     var postSection = TGE.el('snap-cam-post-section');
@@ -788,8 +872,6 @@
     }
   }
 
-  function show(id) { var el = TGE.el(id); if (el) el.style.display = ''; }
-
   function setMessage(msg, isError) {
     var el = TGE.el('snap-message');
     if (!el) return;
@@ -804,28 +886,99 @@
 
   function showResults() { TGE.hide('snap-empty'); TGE.show('snap-results'); }
 
-  function activateExports() {
-    ['snap-pdf-btn','snap-email-btn','snap-csv-btn','snap-xlsx-btn','snap-json-btn'].forEach(function(id) {
-      var el = TGE.el(id);
-      if (el) el.classList.add('active');
+  function closeExportMenu() {
+    var exportMenu    = TGE.el('snap-export-menu');
+    var exportTrigger = TGE.el('snap-export-trigger');
+    if (exportMenu)    exportMenu.classList.remove('open');
+    if (exportTrigger) exportTrigger.setAttribute('aria-expanded', 'false');
+  }
+
+  // Resets every card's inner content back to its empty/"No data" state,
+  // without hiding the cards themselves — used before a fresh run starts,
+  // so stale data from a previous asset never lingers while the new lookup
+  // is in flight.
+  function resetCardContent() {
+    var driverFields = ['snap-driver-name','snap-driver-user','snap-driver-licence','snap-driver-state'];
+    var statusFields  = ['snap-ignition','snap-movement','snap-speed','snap-odometer','snap-address','snap-gps-time','snap-lat','snap-lng'];
+    var vpmFields     = ['snap-rpm','snap-engine-speed','snap-engine-hrs','snap-fuel-total','snap-oil-temp','snap-oil-press','snap-engine-load','snap-vpm-time'];
+    var mapFields     = ['snap-map-address','snap-map-lat','snap-map-lng'];
+    var trackerFields = ['snap-tracker-address','snap-tracker-lat','snap-tracker-lng','snap-tracker-time','snap-tracker-battery','snap-tracker-model'];
+    var sdFields      = ['snap-sd1','snap-sd2','snap-sd-overall','snap-sd1-size','snap-sd2-size'];
+
+    driverFields.concat(statusFields, vpmFields, mapFields, trackerFields, sdFields).forEach(function(id) {
+      setText(id, null, 'No data');
     });
-    // Wire handlers
-    var csvBtn  = TGE.el('snap-csv-btn');
-    var jsonBtn = TGE.el('snap-json-btn');
-    var pdfBtn  = TGE.el('snap-pdf-btn');
-    var xlsxBtn = TGE.el('snap-xlsx-btn');
+
+    var gpioGrid = TGE.el('snap-gpio-grid');
+    if (gpioGrid) gpioGrid.innerHTML = '<div class="data-item" style="color:var(--muted);font-size:12px;grid-column:span 4;">No GPIO data.</div>';
+
+    var faultsGrid = TGE.el('snap-faults-grid');
+    if (faultsGrid) faultsGrid.innerHTML = '<div class="data-item" style="color:var(--muted);font-size:12px;grid-column:span 3;">No fault data reported.</div>';
+
+    var cameraGrid = TGE.el('snap-camera-grid');
+    if (cameraGrid) cameraGrid.innerHTML = '<div style="font-size:12px;color:var(--muted);grid-column:1/-1;">No camera data for this asset.</div>';
+
+    var camTime = TGE.el('snap-cam-time');
+    if (camTime) camTime.textContent = '';
+
+    var postSection = TGE.el('snap-cam-post-section');
+    if (postSection) postSection.style.display = 'none';
+
+    var map = TGE.el('snap-map');
+    if (map) map.innerHTML = '<span style="color:var(--muted);font-size:13px;">No map data for this asset</span>';
+
+    var trackerMap = TGE.el('snap-tracker-map');
+    if (trackerMap) trackerMap.innerHTML = '<span style="color:var(--muted);font-size:13px;">No tracker data for this asset</span>';
+
+    var deviceCards = TGE.el('snap-device-cards');
+    if (deviceCards) deviceCards.innerHTML = '';
+  }
+
+  // Refresh button: full reset back to the pre-run empty state. Does NOT
+  // call the API — the user re-runs by typing a fleet number and clicking
+  // Run again.
+  function resetSnapshot() {
+    if (state.running) return;
+    state.devices = { hermes:null, camera:null, iface:null, tracker:null };
+    state.data    = defaultData();
+    alignState     = { running:false, steps:{}, vehicleId:null };
+
+    var input = TGE.el('snap-fleet-input');
+    if (input) { input.value = ''; input.focus(); }
+
+    resetCardContent();
+    TGE.hide('snap-results');
+    TGE.show('snap-empty');
+
+    var refreshBtn = TGE.el('snap-refresh-btn');
+    if (refreshBtn) refreshBtn.style.display = 'none';
+
+    setMessage('');
+    closeExportMenu();
+  }
+
+  function activateExports() {
+    var csvBtn   = TGE.el('snap-csv-btn');
+    var jsonBtn  = TGE.el('snap-json-btn');
+    var pdfBtn   = TGE.el('snap-pdf-btn');
+    var xlsxBtn  = TGE.el('snap-xlsx-btn');
     var emailBtn = TGE.el('snap-email-btn');
-    if (csvBtn)   csvBtn.onclick   = exportCsv;
-    if (jsonBtn)  jsonBtn.onclick  = exportJson;
-    if (pdfBtn)   pdfBtn.onclick   = function() { window.print(); };
-    if (xlsxBtn)  xlsxBtn.onclick  = exportCsv; // fallback to CSV for now
-    if (emailBtn) emailBtn.onclick = function() { alert('Email PDF — coming soon.'); };
+    if (csvBtn)   csvBtn.onclick   = function() { closeExportMenu(); exportCsv(); };
+    if (jsonBtn)  jsonBtn.onclick  = function() { closeExportMenu(); exportJson(); };
+    if (pdfBtn)   pdfBtn.onclick   = function() { closeExportMenu(); exportPdf(); };
+    if (xlsxBtn)  xlsxBtn.onclick  = function() { closeExportMenu(); exportXlsx(); };
+    if (emailBtn) emailBtn.onclick = function() { closeExportMenu(); openEmailPdfComposer(); };
   }
 
   function renderMap(containerId, lat, lng) {
     var el = TGE.el(containerId);
     if (!el) return;
-    el.innerHTML = '<iframe style="width:100%;height:100%;border:none;" loading="lazy" ' +
+    lat = Number(lat); lng = Number(lng);
+    if (!isFinite(lat) || !isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      el.innerHTML = '<span style="color:var(--muted);font-size:13px;">Map unavailable — invalid coordinates</span>';
+      return;
+    }
+    el.innerHTML = '<iframe title="Last known position map" style="width:100%;height:100%;border:none;" loading="lazy" ' +
       'src="https://www.openstreetmap.org/export/embed.html?bbox=' +
       (lng-0.02) + '%2C' + (lat-0.02) + '%2C' + (lng+0.02) + '%2C' + (lat+0.02) +
       '&layer=mapnik&marker=' + lat + '%2C' + lng + '"></iframe>';
@@ -841,22 +994,149 @@
     } catch(e) { return ts; }
   }
 
-  // ── Exports ───────────────────────────────────────────────────────────────────
-  function exportJson() {
-    if (!state.data.vehicle) return;
-    var json = JSON.stringify(state.data, null, 2);
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([json], { type:'application/json' }));
-    a.download = 'snapshot-' + (state.data.vehicle.name || 'asset') + '.json';
-    document.body.appendChild(a); a.click(); a.remove();
+  function ensureSnapshotLoaded() {
+    if (state.data && state.data.vehicle) return true;
+    setMessage('Run an asset snapshot before exporting.', true);
+    return false;
   }
 
-  function exportCsv() {
-    if (!state.data.vehicle) return;
+  function safeFileSegment(name) {
+    return String(name || 'asset').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'asset';
+  }
+
+  function downloadBlob(blob, filename) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(a.href);
+    a.remove();
+  }
+
+  // ── Snapshot PDF payload — scrapes the rendered cards into structured data
+  // for the server-side PDF builder. Reused by both exportPdf() and the
+  // Email PDF composer's attachment builder, so the two stay in sync.
+  function collectCardRows(cardId) {
+    var card = TGE.el(cardId);
+    if (!card) return [];
+    return Array.prototype.slice.call(card.querySelectorAll('.data-item')).map(function(item) {
+      var labelEl = item.querySelector('span');
+      var valueEl = item.querySelector('strong');
+      return {
+        label: labelEl ? labelEl.textContent.trim() : '',
+        value: valueEl ? valueEl.textContent.trim() : '—',
+      };
+    }).filter(function(row) { return row.label; });
+  }
+
+  function collectCardSection(cardId, fallbackTitle) {
+    var card = TGE.el(cardId);
+    if (!card) return null;
+    var kicker = card.querySelector('.card-kicker');
+    var title  = card.querySelector('.card-title');
+    var rows   = collectCardRows(cardId);
+    if (!rows.length) return null;
+    return {
+      kicker: kicker ? kicker.textContent.trim() : fallbackTitle,
+      title:  title  ? title.textContent.trim()  : fallbackTitle,
+      rows:   rows,
+    };
+  }
+
+  function buildSnapshotPdfPayload() {
+    var v = state.data.vehicle || {};
+    var sections = [
+      collectCardSection('snap-vehicle-card', 'Vehicle Information'),
+      collectCardSection('snap-driver-card',  'Driver'),
+      collectCardSection('snap-status-card',  'Live Status'),
+      collectCardSection('snap-vpm-card',     'Engine Metrics'),
+      collectCardSection('snap-gpio-card',    'GPIO'),
+      collectCardSection('snap-map-card',     'Location'),
+      collectCardSection('snap-tracker-card', 'Asset Tracker'),
+    ].filter(Boolean);
+
+    return {
+      legacyNo:    v.name || 'asset',
+      title:       'Asset ' + (v.name || '—') + ' Snapshot',
+      generatedAt: new Date().toISOString(),
+      sections:    sections,
+    };
+  }
+
+  // Calls the server-side PDF builder. NOTE: this endpoint (/api/snapshot-pdf)
+  // needs to exist in the Worker for this to succeed — if it returns an
+  // error or isn't deployed yet, this surfaces a clear message rather than
+  // failing silently.
+  async function buildSnapshotAttachment(rows) {
+    var row = rows && rows[0];
+    var payload = row && row.pdfPayload ? row.pdfPayload : buildSnapshotPdfPayload();
+    var r = await TGE.api('POST', '/api/snapshot-pdf', { asset: payload });
+    if (!r.ok || !r.data || !r.data.base64) {
+      throw new Error(r.data && r.data.error ? r.data.error : 'Snapshot PDF generation failed — the snapshot-pdf endpoint may not be deployed yet.');
+    }
+    return { base64: r.data.base64, name: r.data.fileName || ('Asset ' + safeFileSegment(payload.legacyNo) + ' snapshot.pdf') };
+  }
+
+  function base64ToBlob(base64, type) {
+    var bin = atob(base64);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: type });
+  }
+
+  async function exportPdf() {
+    if (!ensureSnapshotLoaded()) return;
+    setMessage('Building snapshot PDF...', false);
+    try {
+      var attachment = await buildSnapshotAttachment([{ pdfPayload: buildSnapshotPdfPayload() }]);
+      downloadBlob(base64ToBlob(attachment.base64, 'application/pdf'), attachment.name);
+      setMessage('Snapshot PDF downloaded.', false);
+    } catch(e) {
+      setMessage(e.message || 'PDF export failed.', true);
+    }
+  }
+
+  function openEmailPdfComposer() {
+    if (!ensureSnapshotLoaded()) return;
+    var v  = state.data.vehicle || {};
+    var ds = state.data.deviceStats || {};
+    var row = {
+      legacyNo:     v.name || '—',
+      registration: v.registration || '—',
+      state:        v.registrationState || '—',
+      location:     ds.location || '—',
+      lastGps:      (TGE.el('snap-gps-time') || {}).textContent || '—',
+      pdfPayload:   buildSnapshotPdfPayload(),
+    };
+
+    TGE.openEmailComposer({
+      rows: [row],
+      fields: [
+        { key:'legacyNo',     label:'Legacy No' },
+        { key:'registration', label:'Registration' },
+        { key:'state',        label:'State' },
+        { key:'location',     label:'Location' },
+        { key:'lastGps',      label:'Last GPS' },
+      ],
+      attachmentBuilder: buildSnapshotAttachment,
+      attachmentLabel:   'Attach asset snapshot PDF',
+      attachByDefault:   true,
+      onSent: function() { setMessage('Snapshot email sent.', false); },
+    });
+  }
+
+  function exportJson() {
+    if (!ensureSnapshotLoaded()) return;
+    var json = JSON.stringify(state.data, null, 2);
+    downloadBlob(new Blob([json], { type:'application/json' }), 'snapshot-' + safeFileSegment(state.data.vehicle.name) + '.json');
+  }
+
+  function snapshotRows() {
     var v   = state.data.vehicle;
     var ds  = state.data.deviceStats || {};
     var vpm = state.data.vpm || {};
-    var rows = [
+    return [
       ['Field','Value'],
       ['Fleet Number', v.name], ['Registration', v.registration], ['State', v.registrationState],
       ['VIN', v.vin], ['Make', v.make], ['Model', v.model],
@@ -865,13 +1145,50 @@
       ['Engine Hours', vpm.hours], ['Oil Temp (C)', vpm.oiltemp],
       ['Oil Pressure (kPa)', vpm.oilpressure], ['Fuel Used (L)', vpm.fuelconsumption],
     ];
+  }
+
+  function exportCsv() {
+    if (!ensureSnapshotLoaded()) return;
+    var rows = snapshotRows();
     var csv = rows.map(function(r) {
-      return r.map(function(c) { return '"' + String(c||'').replace(/"/g,'""') + '"'; }).join(',');
+      return r.map(function(c) { return '"' + String(c==null?'':c).replace(/"/g,'""') + '"'; }).join(',');
     }).join('\n');
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv' }));
-    a.download = 'snapshot-' + v.name + '.csv';
-    document.body.appendChild(a); a.click(); a.remove();
+    downloadBlob(new Blob([csv], { type:'text/csv' }), 'snapshot-' + safeFileSegment(state.data.vehicle.name) + '.csv');
+  }
+
+  // XLSX export — client-side via SheetJS, matching the same "no server
+  // round-trip" approach already used for CSV. Loads the library from CDN
+  // on first use only (not bundled), so pages that never export XLSX never
+  // pay the load cost.
+  var _xlsxLoading = null;
+  function loadXlsxLib() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    if (_xlsxLoading) return _xlsxLoading;
+    _xlsxLoading = new Promise(function(resolve, reject) {
+      var script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      script.onload = function() { resolve(window.XLSX); };
+      script.onerror = function() { reject(new Error('Could not load the Excel export library.')); };
+      document.head.appendChild(script);
+    });
+    return _xlsxLoading;
+  }
+
+  async function exportXlsx() {
+    if (!ensureSnapshotLoaded()) return;
+    setMessage('Preparing Excel file...', false);
+    try {
+      var XLSX = await loadXlsxLib();
+      var rows = snapshotRows();
+      var sheet = XLSX.utils.aoa_to_sheet(rows);
+      var workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, sheet, 'Snapshot');
+      var arrayBuffer = XLSX.write(workbook, { bookType:'xlsx', type:'array' });
+      downloadBlob(new Blob([arrayBuffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'snapshot-' + safeFileSegment(state.data.vehicle.name) + '.xlsx');
+      setMessage('');
+    } catch(e) {
+      setMessage(e.message || 'Excel export failed.', true);
+    }
   }
 
   // ── Register ──────────────────────────────────────────────────────────────────
