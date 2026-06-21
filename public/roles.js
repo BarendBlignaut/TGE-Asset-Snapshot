@@ -133,22 +133,20 @@
     renderRolesGrid();
   }
 
-  function renderRolesGrid() {
+ function renderRolesGrid() {
     var grid = TGE.el('roles-grid');
     if (!grid) return;
-
     var groupColors = { 1: 'badge-yellow', 2: 'badge-green', 3: 'badge-gray' };
-
     grid.innerHTML = state.roles.map(function (r) {
       var count = state.userCounts[r.id] || 0;
       var color = groupColors[r.id] || 'badge-gray';
-      return '<div class="card" style="cursor:default;">' +
+      return '<div class="card" style="cursor:default;display:flex;flex-direction:column;">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
           '<span class="badge ' + color + '" style="font-size:12px;padding:4px 12px;">' + r.name + '</span>' +
           '<span style="font-size:11px;color:var(--muted);">' + count + ' user' + (count !== 1 ? 's' : '') + '</span>' +
         '</div>' +
-        '<p style="font-size:12px;color:var(--muted);margin:0 0 14px;">' + (r.description || 'No description') + '</p>' +
-        '<button class="btn btn-primary" style="width:100%;" onclick="TGE.rolesEdit(' + r.id + ')">Edit Permissions</button>' +
+        '<p style="font-size:12px;color:var(--muted);margin:0 0 14px;flex:1;">' + (r.description || 'No description') + '</p>' +
+        '<button class="btn btn-primary" style="width:100%;margin-top:auto;" onclick="TGE.rolesEdit(' + r.id + ')">Edit Permissions</button>' +
       '</div>';
     }).join('') +
     '<div class="card" style="border:2px dashed var(--line);background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:140px;cursor:pointer;" onclick="TGE.rolesCreateNew()">' +
