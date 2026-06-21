@@ -35,7 +35,6 @@
 
     view.innerHTML = [
       '<div class="ud-shell">',
-
         '<div class="ud-header">',
           '<div class="ud-title-wrap">',
             '<div class="ud-logo-bars"><span></span><span></span><span></span></div>',
@@ -51,9 +50,7 @@
             '<span class="ud-refresh">Last Update:</span>',
           '</div>',
         '</div>',
-
         '<div class="ud-control-strip">',
-
           '<div class="ud-card ud-cutoff">',
             '<div class="ud-card-label">KM Cutoff</div>',
             '<div class="ud-card-value"><span id="ud-km-value">0</span> km</div>',
@@ -65,7 +62,6 @@
               '<option value="above">Above Cutoff Only</option>',
             '</select>',
           '</div>',
-
           '<div class="ud-card ud-date">',
             '<div class="ud-card-label">Date Range</div>',
             '<button class="ud-date-btn" id="ud-date-btn" type="button">Select Date Range ▾</button>',
@@ -76,30 +72,24 @@
               '<button type="button" data-days="28">28</button>',
             '</div>',
           '</div>',
-
           '<div class="ud-card ud-metric">',
             '<div><span>Active</span><strong>0</strong></div>',
             '<div><span>Workshop</span><strong>0</strong></div>',
             '<div><span>EXM</span><strong>0</strong></div>',
             '<div><span>No Telematics</span><strong>0</strong></div>',
           '</div>',
-
           renderFilterCards(),
-
         '</div>',
-
         '<div class="ud-status-row">',
           '<button type="button">Filters: All selected</button>',
           '<span id="ud-range-summary">Date Range:</span>',
         '</div>',
-
         '<div class="ud-table-wrap">',
           '<table class="ud-table">',
             '<thead id="ud-table-head"></thead>',
             '<tbody id="ud-table-body"></tbody>',
           '</table>',
         '</div>',
-
         '<div class="ud-date-modal" id="ud-date-modal">',
           '<div class="ud-date-panel">',
             '<div class="ud-date-panel-head">',
@@ -115,7 +105,6 @@
             '</div>',
           '</div>',
         '</div>',
-
       '</div>'
     ].join('');
 
@@ -141,52 +130,41 @@
       state.kmCutoff = parseInt(e.target.value, 10) || 0;
       TGE.setText('ud-km-value', state.kmCutoff);
     });
-
     TGE.on('ud-cutoff-mode', 'change', function (e) {
       state.cutoffMode = e.target.value;
     });
-
     TGE.on('ud-history-btn', 'click', function () {
       state.history = !state.history;
       var btn = TGE.el('ud-history-btn');
       btn.textContent = 'History: ' + (state.history ? 'On' : 'Off');
       btn.classList.toggle('ud-primary', state.history);
     });
-
     TGE.on('ud-date-btn', 'click', function () {
       TGE.el('ud-date-modal').classList.add('open');
     });
-
     TGE.on('ud-date-close', 'click', function () {
       TGE.el('ud-date-modal').classList.remove('open');
     });
-
     document.querySelectorAll('[data-days]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         document.querySelectorAll('[data-days]').forEach(function (b) { b.classList.remove('active'); });
         btn.classList.add('active');
-
         state.days = parseInt(btn.dataset.days, 10);
         state.endDate = startOfDay(new Date());
         state.startDate = addDays(state.endDate, -(state.days - 1));
-
         updateDateSummary();
         renderTable();
       });
     });
-
     TGE.on('ud-date-apply', 'click', function () {
       var s = TGE.el('ud-start-date').value;
       var e = TGE.el('ud-end-date').value;
       if (!s || !e) return;
-
       state.startDate = new Date(s + 'T00:00:00');
       state.endDate = new Date(e + 'T00:00:00');
       state.days = daysBetween(state.startDate, state.endDate) + 1;
-
       document.querySelectorAll('[data-days]').forEach(function (b) { b.classList.remove('active'); });
       TGE.el('ud-date-modal').classList.remove('open');
-
       updateDateSummary();
       renderTable();
     });
@@ -204,18 +182,14 @@
     var head = TGE.el('ud-table-head');
     var body = TGE.el('ud-table-body');
     if (!head || !body) return;
-
     var top = '<tr>';
     top += '<th rowspan="2" class="ud-pin-left">Legacy<br>Number</th>';
-
     dates.forEach(function (d) {
       top += '<th colspan="3" class="ud-date-hdr">' + fmtDateHeader(d) + '</th>';
     });
-
     top += '<th rowspan="2" class="ud-pin-total">Total KM</th>';
     top += '<th rowspan="2" class="ud-pin-avg">Avg/Day</th>';
     top += '</tr>';
-
     var sub = '<tr>';
     dates.forEach(function () {
       sub += '<th class="ud-sub-hdr ud-dcol">KM</th>';
@@ -223,18 +197,15 @@
       sub += '<th class="ud-sub-hdr ud-dcol">EXM</th>';
     });
     sub += '</tr>';
-
     head.innerHTML = top + sub;
     body.innerHTML = '';
   }
 
   function ensureSidebarLegend() {
     if (document.getElementById('ud-sidebar-legend')) return;
-
     var sidebar = document.querySelector('.sidebar');
     var footer = document.querySelector('.sidebar-footer');
     if (!sidebar) return;
-
     var legend = document.createElement('div');
     legend.id = 'ud-sidebar-legend';
     legend.innerHTML = [
@@ -248,7 +219,6 @@
       '<div class="ud-side-swatch"><i class="ud-red"></i><em>Below KM cutoff</em></div>',
       '<div class="ud-side-swatch"><i class="ud-hist"></i><em>Historical / inactive</em></div>',
     ].join('');
-
     if (footer && footer.parentNode) footer.parentNode.insertBefore(legend, footer);
     else sidebar.appendChild(legend);
   }
@@ -258,9 +228,7 @@
       var active = TGE.el('view-utilisation') && TGE.el('view-utilisation').classList.contains('active');
       document.body.classList.toggle('ud-util-active', !!active);
     }
-
     update();
-
     if (window.__udViewObserver) return;
     window.__udViewObserver = new MutationObserver(update);
     document.querySelectorAll('.view').forEach(function (v) {
@@ -316,7 +284,6 @@
 
   function injectStyles() {
     if (document.getElementById('ud-style')) return;
-
     var style = document.createElement('style');
     style.id = 'ud-style';
     style.textContent = [
