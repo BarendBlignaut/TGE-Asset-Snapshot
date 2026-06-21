@@ -1,20 +1,5 @@
 // TGE Asset Snapshot — Fleet Utilisation: Static Fleet List
 // src/utilisation-static-fleet.js
-//
-// Two endpoints for this slice:
-//   POST /api/utilisation/static-fleet/import  — Power Automate -> Worker -> D1
-//   GET  /api/utilisation/static-fleet          — dashboard read (replaces SAMPLE data)
-//
-// Plus the field-definitions and exclusion-rules admin endpoints that sit
-// behind the Static Fleet sanitising/field-mapping screens.
-//
-// Import auth: this endpoint is called by Power Automate, not by a logged-in
-// user, so it cannot use the existing cookie-based requireSession() check.
-// It instead checks a shared secret sent in the X-Import-Key header against
-// env.UTILISATION_IMPORT_KEY (a Worker secret you set with:
-//   wrangler secret put UTILISATION_IMPORT_KEY
-// and paste the same value into the Power Automate flow's HTTP action header
-// when you build that flow). Never log, return, or display this key anywhere.
 
 function nowIso() {
   return new Date().toISOString();
@@ -27,8 +12,6 @@ function jsonResponse(data, status = 200) {
   });
 }
 
-// Constant-time-ish comparison so a failed match doesn't leak timing info
-// proportional to how many characters matched before the first mismatch.
 function safeEqual(a, b) {
   if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
   let mismatch = 0;
@@ -49,8 +32,6 @@ async function requireImportKey(request, env) {
   return { ok: true };
 }
 
-// ── Field definitions ──────────────────────────────────────────────────────
-
 async function getFieldDefs(env) {
   const rows = await env.DB.prepare(
     "SELECT * FROM utilisation_static_field_defs ORDER BY display_order ASC, id ASC"
@@ -62,17 +43,16 @@ async function ensureFieldDef(env, sourceColumn) {
   const existing = await env.DB.prepare(
     "SELECT id FROM utilisation_static_field_defs WHERE source_column = ?"
   ).bind(sourceColumn).first();
-  if (existing) return false; // already known, not new
+  if (existing) return false;
 
   await env.DB.prepare(
     `INSERT INTO utilisation_static_field_defs
       (source_column, display_label, save_to_db, is_identity, use_as_filter, filter_type, display_order, enabled, created_at, updated_at)
      VALUES (?, ?, 0, 0, 0, 'select', 999, 1, ?, ?)`
   ).bind(sourceColumn, sourceColumn, nowIso(), nowIso()).run();
-  return true; // newly created
+  return true;
 }
 
-// GET /api/utilisation/static-fields
 async function handleGetStaticFields(request, env, auth) {
   const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "manage-field-mappings");
   if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
@@ -81,8 +61,6 @@ async function handleGetStaticFields(request, env, auth) {
   return jsonResponse({ ok: true, fields: defs });
 }
 
-// PUT /api/utilisation/static-fields
-// Body: { fields: [ { id, saveToDb, isIdentity, useAsFilter, filterLabel, filterType, displayOrder, enabled }, ... ] }
 async function handleUpdateStaticFields(request, env, auth) {
   const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "manage-field-mappings");
   if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
@@ -114,9 +92,6 @@ async function handleUpdateStaticFields(request, env, auth) {
   return jsonResponse({ ok: true });
 }
 
-// ── Exclusion rules (draft / publish) ──────────────────────────────────────
-
-// GET /api/utilisation/static-exclusions?status=draft|published
 async function handleGetStaticExclusions(request, env, auth) {
   const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "manage-static-sanitising");
   if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
@@ -131,10 +106,6 @@ async function handleGetStaticExclusions(request, env, auth) {
   return jsonResponse({ ok: true, rules: rows.results || [] });
 }
 
-// PUT /api/utilisation/static-exclusions/draft
-// Body: { rules: [ { sourceColumn, matchType, matchValue, reason }, ... ] }
-// Replaces the entire draft set in one call — simplest model for a screen
-// that's edited as a whole list rather than row-by-row CRUD.
 async function handleSaveStaticExclusionsDraft(request, env, auth) {
   const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "manage-static-sanitising");
   if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
@@ -157,10 +128,6 @@ async function handleSaveStaticExclusionsDraft(request, env, auth) {
   return jsonResponse({ ok: true });
 }
 
-// POST /api/utilisation/static-exclusions/preview
-// Body: { rules: [ ... ] } — uses the SAME shape as draft rules, but doesn't
-// save anything. Lets the admin screen show "X of Y assets will be shown"
-// for a hypothetical rule set before committing it as the draft.
 async function handlePreviewStaticExclusions(request, env, auth) {
   const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "manage-static-sanitising");
   if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
@@ -181,10 +148,6 @@ async function handlePreviewStaticExclusions(request, env, auth) {
   return jsonResponse({ ok: true, total, excluded, wouldShow: total - excluded });
 }
 
-// POST /api/utilisation/static-exclusions/publish
-// Promotes the current draft set to published, replacing whatever was
-// published before. Published rules are what the import endpoint actually
-// applies to every future Static Fleet List import.
 async function handlePublishStaticExclusions(request, env, auth) {
   const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "manage-static-sanitising");
   if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
@@ -219,10 +182,6 @@ function rowMatchesAnyRule(fieldValues, rules) {
   return false;
 }
 
-// ── Import ──────────────────────────────────────────────────────────────────
-
-// POST /api/utilisation/static-fleet/import
-// Body: { sourceFile: string, rows: [ { "Legacy Number": "...", ... }, ... ] }
 async function handleImportStaticFleet(request, env) {
   const keyCheck = await requireImportKey(request, env);
   if (!keyCheck.ok) return keyCheck.response;
@@ -241,14 +200,12 @@ async function handleImportStaticFleet(request, env) {
   ).bind(sourceFile, rows.length, startedAt).run();
   const importRunId = runInsert.meta.last_row_id;
 
-  // Load current field defs once, build a lookup by source_column.
   const defs = await getFieldDefs(env);
   const defByColumn = {};
   defs.forEach((d) => { defByColumn[d.source_column] = d; });
 
   let identityColumn = defs.find((d) => d.is_identity === 1)?.source_column || "Legacy Number";
 
-  // Load published exclusion rules once.
   const exclusionRows = await env.DB.prepare(
     "SELECT source_column, match_type, match_value FROM utilisation_static_exclusion_rules WHERE status = 'published'"
   ).all();
@@ -262,9 +219,6 @@ async function handleImportStaticFleet(request, env) {
   let skippedNoIdentity = 0;
 
   for (const row of rows) {
-    // Discover any column not yet known, create a disabled definition for
-    // it, and record it for the "new columns detected" notification — but
-    // never store its value on this import, per the agreed rule.
     for (const sourceColumn of Object.keys(row)) {
       if (!defByColumn[sourceColumn]) {
         const wasNew = await ensureFieldDef(env, sourceColumn);
@@ -276,7 +230,6 @@ async function handleImportStaticFleet(request, env) {
     const legacyNumber = row[identityColumn] != null ? String(row[identityColumn]).trim() : "";
     if (!legacyNumber) { skippedNoIdentity++; continue; }
 
-    // Stage 1 — admin sanitising. Excluded rows are intentional, not errors.
     if (rowMatchesAnyRule(row, exclusionRules.map((r) => ({
       sourceColumn: r.source_column, matchType: r.match_type, matchValue: r.match_value,
     })))) {
@@ -284,12 +237,11 @@ async function handleImportStaticFleet(request, env) {
       continue;
     }
 
-    // Build field_values from only the columns tagged save_to_db = 1.
     const fieldValues = {};
-    for (const [sourceColumn, value] of Object.entries(row)) {
+    for (const sourceColumn of Object.keys(row)) {
       const def = defByColumn[sourceColumn];
       if (def && def.save_to_db === 1) {
-        fieldValues[sourceColumn] = value;
+        fieldValues[sourceColumn] = row[sourceColumn];
       }
     }
 
@@ -301,27 +253,58 @@ async function handleImportStaticFleet(request, env) {
 
     if (existing) {
       await env.DB.prepare(
-        `UPDATE utilisation_static_fleet SET
-          status = 'active', field_values = ?, source_file = ?, last_seen_at = ?, updated_at = ?
-         WHERE legacy_number = ?`
-      ).bind(JSON.stringify(fieldValues), sourceFile, startedAt, nowIso(), legacyNumber).run();
+        "UPDATE utilisation_static_fleet SET field_values = ?, import_run_id = ?, updated_at = ? WHERE legacy_number = ?"
+      ).bind(JSON.stringify(fieldValues), importRunId, nowIso(), legacyNumber).run();
       updatedCount++;
     } else {
       await env.DB.prepare(
-        `INSERT INTO utilisation_static_fleet
-          (legacy_number, status, field_values, source_file, first_seen_at, last_seen_at, created_at, updated_at)
-         VALUES (?, 'active', ?, ?, ?, ?, ?, ?)`
-      ).bind(legacyNumber, JSON.stringify(fieldValues), sourceFile, startedAt, startedAt, nowIso(), nowIso()).run();
+        "INSERT INTO utilisation_static_fleet (legacy_number, field_values, import_run_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+      ).bind(legacyNumber, JSON.stringify(fieldValues), importRunId, nowIso(), nowIso()).run();
       insertedCount++;
     }
   }
 
-  // Anything previously active but not seen in this import is now inactive.
-  let deactivatedCount = 0;
-  if (seenLegacyNumbers.length) {
-    const placeholders = seenLegacyNumbers.map(() => "?").join(",");
-    const result = await env.DB.prepare(
-      `UPDATE utilisation_static_fleet SET status = 'inactive', updated_at = ?
-       WHERE status = 'active' AND legacy_number NOT IN (${placeholders})`
-    ).bind(nowIso(), ...seenLegacyNumbers).run();
-    deactivatedCount = result.meta.changes
+  return jsonResponse({
+    ok: true,
+    importRunId,
+    inserted: insertedCount,
+    updated: updatedCount,
+    excluded: excludedCount,
+    skippedNoIdentity,
+    newColumnsDetected,
+  });
+}
+
+async function handleGetStaticFleet(request, env, auth) {
+  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
+
+  const rows = await env.DB.prepare(
+    "SELECT legacy_number, field_values, created_at, updated_at FROM utilisation_static_fleet ORDER BY legacy_number ASC"
+  ).all();
+
+  const exclusionRows = await env.DB.prepare(
+    "SELECT source_column, match_type, match_value FROM utilisation_static_exclusion_rules WHERE status = 'published'"
+  ).all();
+
+  const fleet = (rows.results || []).map(row => {
+    let values;
+    try { values = JSON.parse(row.field_values); } catch { values = {}; }
+    return { legacyNumber: row.legacy_number, fields: values, createdAt: row.created_at, updatedAt: row.updated_at };
+  }).filter(row => !rowMatchesAnyRule(row.fields, (exclusionRows.results || []).map(r => ({
+    sourceColumn: r.source_column, matchType: r.match_type, matchValue: r.match_value,
+  }))));
+
+  return jsonResponse({ ok: true, fleet });
+}
+
+export {
+  handleGetStaticFields,
+  handleUpdateStaticFields,
+  handleGetStaticExclusions,
+  handleSaveStaticExclusionsDraft,
+  handlePreviewStaticExclusions,
+  handlePublishStaticExclusions,
+  handleImportStaticFleet,
+  handleGetStaticFleet,
+};
