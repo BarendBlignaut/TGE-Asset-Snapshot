@@ -150,24 +150,28 @@
     });
 
     // Sidebar toggle
-    var COLLAPSE_KEY = 'tge_sidebar_collapsed';
-    var sidebar      = TGE.el('sidebar');
-    var toggleBtn    = TGE.el('sidebar-toggle');
+var COLLAPSE_KEY = 'tge_sidebar_collapsed';
+var sidebar      = TGE.el('sidebar');
+var toggleBtn    = TGE.el('sidebar-toggle');
+var mainContent  = TGE.el('main-content'); // ← add this (use your actual main content element ID)
 
-    try {
-      if (localStorage.getItem(COLLAPSE_KEY) === '1' && sidebar) {
-        sidebar.style.width = '0';
-      }
-    } catch (e) {}
+var SIDEBAR_WIDTH = '190px'; // ← match your sidebar's open width
 
-    if (toggleBtn && sidebar) {
-      toggleBtn.addEventListener('click', function () {
-        var collapsed = sidebar.style.width === '0px' || sidebar.style.width === '0';
-        sidebar.style.width = collapsed ? '' : '0';
-        try { localStorage.setItem(COLLAPSE_KEY, collapsed ? '0' : '1'); } catch (e) {}
-      });
-    }
+try {
+  if (localStorage.getItem(COLLAPSE_KEY) === '1' && sidebar) {
+    sidebar.style.width = '0';
+    if (mainContent) mainContent.style.marginLeft = '0';
   }
+} catch (e) {}
+
+if (toggleBtn && sidebar) {
+  toggleBtn.addEventListener('click', function () {
+    var collapsed = sidebar.style.width === '0px' || sidebar.style.width === '0';
+    sidebar.style.width = collapsed ? SIDEBAR_WIDTH : '0';
+    if (mainContent) mainContent.style.marginLeft = collapsed ? SIDEBAR_WIDTH : '0';
+    try { localStorage.setItem(COLLAPSE_KEY, collapsed ? '0' : '1'); } catch (e) {}
+  });
+}
 
   // ── Login ─────────────────────────────────────────────────────────────────────
   function initLogin() {
