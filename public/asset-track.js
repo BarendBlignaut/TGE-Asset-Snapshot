@@ -589,12 +589,16 @@
     };
   }
 
-  async function buildAssetTrackAttachment() {
-    if (!ensureRowsLoaded()) return null;
-
-    var result = await TGE.api('POST', '/api/snapshot-pdf', {
-      asset: buildAssetTrackPdfPayload()
-    });
+var result = await TGE.api('POST', '/api/asset-track-pdf', {
+  rows: assetTrackRows(),
+  summary: {
+    generated: new Date().toLocaleString('en-AU'),
+    totalAssets: state.rows.length,
+    withTracker: state.rows.filter(function (r) { return r.imei !== '—'; }).length,
+    reporting: state.rows.filter(function (r) { return r.status === 'Reporting'; }).length,
+    notReporting: state.rows.filter(function (r) { return r.status !== 'Reporting'; }).length
+  }
+});
 
     if (!result.ok) {
       throw new Error((result.data && result.data.error) || 'Asset Track PDF generation failed.');
