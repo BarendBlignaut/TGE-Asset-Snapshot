@@ -266,7 +266,7 @@ async function handleGetUsers(request, env) {
   if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
 
   const users = await env.DB.prepare(
-    "SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.status, u.created_at, u.updated_at, r.name as role_name FROM users u JOIN roles r ON r.id = u.role_id ORDER BY u.first_name"
+    "SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.status, u.login_type, u.role_id, u.created_at, u.updated_at, r.name as role_name FROM users u JOIN roles r ON r.id = u.role_id ORDER BY u.first_name"
   ).all();
 
   return jsonResponse({ users: users.results || [] });
@@ -343,8 +343,8 @@ async function handleUpdateUser(request, env, userId) {
   const debugInfo = { userId, firstName, lastName, username, email, roleId, status };
 
   const loginType = ["db_only","db_vendor"].includes(body.loginType) ? body.loginType : "db_only";
-  let sql    = "UPDATE users SET first_name=?, last_name=?, username=?, email=?, role_id=?, status=?, login_type=?, updated_at=?";
-  let params = [firstName, lastName, username, email || null, roleId, status, loginType, nowIso()];
+let sql = "UPDATE users SET first_name=?, last_name=?, username=?, email=?, role_id=?, status=?, login_type=?, updated_at=?";
+let params = [firstName, lastName, username, email || null, roleId, status, loginType, nowIso()];
   
   console.log("[Worker] UPDATE params:", JSON.stringify({ sql, params, userId }));
 
