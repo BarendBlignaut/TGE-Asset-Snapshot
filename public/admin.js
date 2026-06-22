@@ -217,7 +217,7 @@
       username:  username,
       email:     email,
       roleId:    roleId,
-      loginType: loginType
+      loginType: loginType,
       status:    status
     };
     if (password) body.password = password;
