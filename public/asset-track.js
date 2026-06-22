@@ -39,11 +39,9 @@
             '<button class="hero-action-btn" id="at-Refresh-btn" type="button">Clear</button>',
           '</div>',
           '<div class="hero-bar-right">',
-            '<div class="hero-divider"></div>',
-            TGE.can('asset-track','export-csv') ? '<button class="hero-export-btn" id="at-csv-btn" type="button">CSV</button>' : '',
-            TGE.can('asset-track','export-xlsx') ? '<button class="hero-export-btn" id="at-xlsx-btn" type="button">XLSX</button>' : '',
-            TGE.can('asset-track','export-json') ? '<button class="hero-export-btn" id="at-json-btn" type="button">JSON</button>' : '',
-          '</div>',
+          '<div class="hero-divider"></div>',
+            buildExportMenu(),
+        '</div>',
         '</div>',
         '<p class="hero-message" id="at-message"></p>',
       '</div>',
@@ -285,6 +283,29 @@
     };
   }
 
+  function buildExportMenu() {
+  var items = [
+    TGE.can('asset-track','export-pdf')       ? '<button class="hero-menu-item" id="at-pdf-btn" type="button"><span>Asset Track PDF</span><span>PDF</span></button>' : '',
+    TGE.can('asset-track','export-email-pdf') ? '<button class="hero-menu-item" id="at-email-btn" type="button"><span>Email PDF</span><span>Send</span></button>' : '',
+    TGE.can('asset-track','export-csv')       ? '<button class="hero-menu-item" id="at-csv-btn" type="button"><span>CSV</span><span>.csv</span></button>' : '',
+    TGE.can('asset-track','export-xlsx')      ? '<button class="hero-menu-item" id="at-xlsx-btn" type="button"><span>Excel</span><span>.xlsx</span></button>' : '',
+    TGE.can('asset-track','export-json')      ? '<button class="hero-menu-item" id="at-json-btn" type="button"><span>JSON</span><span>.json</span></button>' : '',
+  ].filter(Boolean).join('');
+
+  if (!items) return '';
+
+  return '<div class="hero-menu" id="at-export-menu">' +
+    '<button class="hero-menu-trigger" id="at-export-trigger" type="button" aria-haspopup="true" aria-expanded="false" title="Export">' +
+      '<svg class="hero-menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">' +
+        '<path d="M8 1.5v8M5 6.5l3 3 3-3M2.5 11.5v2A1 1 0 0 0 3.5 14.5h9a1 1 0 0 0 1-1v-2"/>' +
+      '</svg>' +
+      '<span>Export</span>' +
+      '<svg class="hero-menu-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><path d="M4 6l4 4 4-4"/></svg>' +
+    '</button>' +
+    '<div class="hero-menu-panel" role="menu">' + items + '</div>' +
+  '</div>';
+}
+  
   function renderRows() {
     TGE.hide('at-empty');
     TGE.show('at-summary');
