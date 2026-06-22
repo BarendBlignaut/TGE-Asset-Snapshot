@@ -15,33 +15,55 @@
   var userLimit = 500;
   var canUser = false;
   var canFleet = false;
+  var _xlsxLoading = null;
+
+  function injectStyles() {
+    if (document.getElementById('asset-track-styles')) return;
+
+    var style = document.createElement('style');
+    style.id = 'asset-track-styles';
+    style.textContent = [
+      '.hero-menu{position:relative;display:inline-flex;}',
+      '.hero-menu-trigger{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.10);color:#fff;font:inherit;font-size:12px;font-weight:700;cursor:pointer;}',
+      '.hero-menu-trigger:hover{background:rgba(255,255,255,0.16);}',
+      '.hero-menu-icon{color:var(--yellow);}',
+      '.hero-menu-caret{opacity:.75;}',
+      '.hero-menu-panel{display:none;position:fixed;z-index:9999;min-width:190px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.22);padding:6px;}',
+      '.hero-menu.open .hero-menu-panel{display:block;}',
+      '.hero-menu-item{width:100%;display:flex;align-items:center;justify-content:space-between;gap:14px;border:0;background:transparent;color:var(--ink);font:inherit;font-size:12px;cursor:pointer;padding:9px 10px;border-radius:9px;text-align:left;}',
+      '.hero-menu-item:hover{background:var(--surface-2);}',
+      '.hero-menu-item span:last-child{color:var(--muted);font-size:11px;}'
+    ].join('');
+    document.head.appendChild(style);
+  }
 
   function render() {
     var view = TGE.el('view-asset-track');
     if (!view) return;
 
+    injectStyles();
+
     userLimit = TGE.limit('asset-track', 'user-mode') || 500;
     canUser = TGE.can('asset-track', 'user-mode');
     canFleet = TGE.can('asset-track', 'fleet-mode');
-
     state.mode = canUser ? 'user' : 'fleet';
 
     view.innerHTML = [
       '<div class="hero">',
         '<div class="hero-kicker">Operations</div>',
         '<div class="hero-title">Asset Track</div>',
-        '<div class="hero-sub">Load ATRACKER location, battery, last seen and tracker status by fleet number or fleet-wide search.</div>',
+        '<div class="hero-sub">Load ATRACKER battery, last seen and tracker status by fleet number or fleet-wide search.</div>',
         '<div class="hero-bar">',
           '<div class="hero-bar-left">',
             canUser ? '<button class="hero-mode-btn active" id="at-mode-user" type="button">User Mode</button>' : '',
             canFleet ? '<button class="hero-mode-btn' + (!canUser ? ' active' : '') + '" id="at-mode-fleet" type="button">Fleet Mode</button>' : '',
-            '<button class="hero-action-btn" id="at-run-btn" type="button">Run</button>',
+            '<button class="hero-run-btn" id="at-run-btn" type="button">Run</button>',
             '<button class="hero-action-btn" id="at-refresh-btn" type="button">Refresh</button>',
           '</div>',
           '<div class="hero-bar-right">',
-          '<div class="hero-divider"></div>',
+            '<div class="hero-divider"></div>',
             buildExportMenu(),
-        '</div>',
+          '</div>',
         '</div>',
         '<p class="hero-message" id="at-message"></p>',
       '</div>',
@@ -72,7 +94,7 @@
       '<div id="at-results" style="display:none;">',
         '<div class="card" style="padding:0;overflow:hidden;">',
           '<div style="overflow-x:auto;">',
-            '<table style="width:100%;border-collapse:collapse;min-width:1100px;">',
+            '<table style="width:100%;border-collapse:collapse;min-width:950px;">',
               '<thead>',
                 '<tr>',
                   '<th>Fleet No</th>',
@@ -95,48 +117,32 @@
     wireEvents();
   }
 
-  function wireExportMenu() {
-  var exportTrigger = TGE.el('at-export-trigger');
-  var exportMenu    = TGE.el('at-export-menu');
-  var exportPanel   = exportMenu ? exportMenu.querySelector('.hero-menu-panel') : null;
+  function buildExportMenu() {
+    var items = [
+      TGE.can('asset-track','export-pdf')       ? '<button class="hero-menu-item" id="at-pdf-btn" type="button"><span>Asset Track PDF</span><span>PDF</span></button>' : '',
+      TGE.can('asset-track','export-email-pdf') ? '<button class="hero-menu-item" id="at-email-btn" type="button"><span>Email PDF</span><span>Send</span></button>' : '',
+      TGE.can('asset-track','export-csv')       ? '<button class="hero-menu-item" id="at-csv-btn" type="button"><span>CSV</span><span>.csv</span></button>' : '',
+      TGE.can('asset-track','export-xlsx')      ? '<button class="hero-menu-item" id="at-xlsx-btn" type="button"><span>Excel</span><span>.xlsx</span></button>' : '',
+      TGE.can('asset-track','export-json')      ? '<button class="hero-menu-item" id="at-json-btn" type="button"><span>JSON</span><span>.json</span></button>' : ''
+    ].filter(Boolean).join('');
 
-  function positionExportPanel() {
-    if (!exportTrigger || !exportPanel) return;
-    var rect = exportTrigger.getBoundingClientRect();
-    exportPanel.style.top = (rect.bottom + 8) + 'px';
-    exportPanel.style.left = 'auto';
-    exportPanel.style.right = (window.innerWidth - rect.right) + 'px';
+    if (!items) return '';
+
+    return '<div class="hero-menu" id="at-export-menu">' +
+      '<button class="hero-menu-trigger" id="at-export-trigger" type="button" aria-haspopup="true" aria-expanded="false" title="Export">' +
+        '<svg class="hero-menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">' +
+          '<path d="M8 1.5v8M5 6.5l3 3 3-3M2.5 11.5v2A1 1 0 0 0 3.5 14.5h9a1 1 0 0 0 1-1v-2"/>' +
+        '</svg>' +
+        '<span>Export</span>' +
+        '<svg class="hero-menu-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><path d="M4 6l4 4 4-4"/></svg>' +
+      '</button>' +
+      '<div class="hero-menu-panel" role="menu">' + items + '</div>' +
+    '</div>';
   }
 
-  if (exportTrigger && exportMenu) {
-    exportTrigger.onclick = function(e) {
-      e.stopPropagation();
-      var open = !exportMenu.classList.contains('open');
-      if (open) positionExportPanel();
-      exportMenu.classList.toggle('open', open);
-      exportTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
-    };
-
-    document.addEventListener('click', function(e) {
-      if (!exportMenu.contains(e.target)) {
-        exportMenu.classList.remove('open');
-        exportTrigger.setAttribute('aria-expanded', 'false');
-      }
-    });
-
-    window.addEventListener('scroll', function() {
-      if (exportMenu.classList.contains('open')) positionExportPanel();
-    }, true);
-
-    window.addEventListener('resize', function() {
-      if (exportMenu.classList.contains('open')) positionExportPanel();
-    });
-  }
-}
-  
   function wireEvents() {
     TGE.on('at-run-btn', 'click', runAssetTrack);
-    TGE.on('at-Refresh-btn', 'click', clearPage);
+    TGE.on('at-refresh-btn', 'click', clearPage);
 
     var userBtn = TGE.el('at-mode-user');
     var fleetBtn = TGE.el('at-mode-fleet');
@@ -147,16 +153,50 @@
     var input = TGE.el('at-fleet-input');
     if (input) input.addEventListener('input', updateInputCount);
 
-    var csvBtn = TGE.el('at-csv-btn');
-    var jsonBtn = TGE.el('at-json-btn');
+    wireExportMenu();
+    activateExports();
+  }
 
-    if (csvBtn) csvBtn.onclick = exportCsv;
-if (jsonBtn) jsonBtn.onclick = exportJson;
+  function wireExportMenu() {
+    var exportTrigger = TGE.el('at-export-trigger');
+    var exportMenu = TGE.el('at-export-menu');
+    var exportPanel = exportMenu ? exportMenu.querySelector('.hero-menu-panel') : null;
 
-wireExportMenu();
-}
+    function positionExportPanel() {
+      if (!exportTrigger || !exportPanel) return;
+      var rect = exportTrigger.getBoundingClientRect();
+      exportPanel.style.top = (rect.bottom + 8) + 'px';
+      exportPanel.style.left = 'auto';
+      exportPanel.style.right = (window.innerWidth - rect.right) + 'px';
+    }
 
-function setMode(mode) {
+    if (exportTrigger && exportMenu) {
+      exportTrigger.onclick = function (e) {
+        e.stopPropagation();
+        var open = !exportMenu.classList.contains('open');
+        if (open) positionExportPanel();
+        exportMenu.classList.toggle('open', open);
+        exportTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+      };
+    }
+  }
+
+  function closeExportMenu() {
+    var exportMenu = TGE.el('at-export-menu');
+    var exportTrigger = TGE.el('at-export-trigger');
+    if (exportMenu) exportMenu.classList.remove('open');
+    if (exportTrigger) exportTrigger.setAttribute('aria-expanded', 'false');
+  }
+
+  document.addEventListener('click', function (e) {
+    var exportMenu = TGE.el('at-export-menu');
+    if (exportMenu && !exportMenu.contains(e.target)) closeExportMenu();
+  });
+
+  window.addEventListener('scroll', closeExportMenu, true);
+  window.addEventListener('resize', closeExportMenu);
+
+  function setMode(mode) {
     state.mode = mode;
 
     var userBtn = TGE.el('at-mode-user');
@@ -194,10 +234,12 @@ function setMode(mode) {
 
     if (state.mode === 'user') {
       requested = parseFleetNumbers((TGE.el('at-fleet-input') || {}).value || '');
+
       if (!requested.length) {
         setMessage('Enter at least one fleet number.', true);
         return;
       }
+
       if (requested.length > userLimit) {
         setMessage('Maximum ' + userLimit + ' assets allowed.', true);
         return;
@@ -229,9 +271,11 @@ function setMode(mode) {
 
       if (!vehicles.length) throw new Error('No matching vehicles found.');
 
+      setMessage('Loading meter data...', false);
+
       var metersRes = await TGE.api('GET', '/api/tn360/v1/vehicles/meters?pruning=B2B');
-      var allMetersByVehicle = metersRes.data || {};
-   
+      var allMetersByVehicle = metersRes.ok && metersRes.data ? metersRes.data : {};
+
       setMessage('Checking ' + vehicles.length + ' vehicles for asset trackers...', false);
 
       var checked = 0;
@@ -239,11 +283,12 @@ function setMode(mode) {
         return TGE.api('GET', '/api/tn360/v1/vehicles/' + vehicle.id + '/devices?pruning=B2B')
           .then(function (r) {
             checked++;
+
             if (checked % 10 === 0 || checked === vehicles.length) {
               setMessage('Checking devices... ' + checked + '/' + vehicles.length, false);
             }
 
-            if (!r.ok) return makeRow(vehicle, null, null);
+            if (!r.ok) return { vehicle: vehicle, tracker: null };
 
             var devices = Array.isArray(r.data) ? r.data : [];
             var tracker = devices.find(function (d) {
@@ -257,15 +302,14 @@ function setMode(mode) {
           });
       }, 5, 300);
 
-var finalRows = results.map(function (item) {
-  var vehicleMeters = allMetersByVehicle[String(item.vehicle.id)] || [];
-  return makeRow(item.vehicle, item.tracker, null, vehicleMeters);
-});
+      var finalRows = results.map(function (item) {
+        var vehicleMeters = allMetersByVehicle[String(item.vehicle.id)] || [];
+        return makeRow(item.vehicle, item.tracker, vehicleMeters);
+      });
 
       state.rows = finalRows;
       renderRows();
       updateSummary();
-      activateExports();
       setMessage('');
 
     } catch (e) {
@@ -276,26 +320,17 @@ var finalRows = results.map(function (item) {
     }
   }
 
-  function makeRow(vehicle, tracker, detail, meters) {
-    var ds = detail && detail.deviceStats ? detail.deviceStats : {};
+  function makeRow(vehicle, tracker, meters) {
     meters = meters || [];
 
-var batteryMeter = meters.find(function(m) {
-  return m.type === 'battery';
-});
-
-    var attrs = ds.attrs || {};
-    var gps = ds.gps || {};
-
-    var lat = gps.Lat != null ? gps.Lat : null;
-    var lng = gps.Lng != null ? gps.Lng : null;
-
-    var lastSeen = batteryMeter ? batteryMeter.updatedAt : null;
+    var batteryMeter = meters.find(function (m) {
+      return m.type === 'battery';
+    });
 
     var battery = batteryMeter ? batteryMeter.computed : null;
-
+    var lastSeen = batteryMeter ? batteryMeter.updatedAt : null;
     var battStatus = getBatteryStatus(battery, tracker);
-    
+
     var status = tracker
       ? (lastSeen ? 'Reporting' : 'No recent data')
       : 'No ATRACKER';
@@ -305,7 +340,7 @@ var batteryMeter = meters.find(function(m) {
       registration: vehicle && vehicle.registration ? vehicle.registration : '—',
       vehicleId: vehicle && vehicle.id ? vehicle.id : null,
       imei: tracker && tracker.imei ? tracker.imei : '—',
-      model: tracker && tracker.model && tracker.model.name ? tracker.model.name : '—',
+      model: getTrackerModelName(tracker),
       serial: tracker && tracker.serialNumber ? tracker.serialNumber : '—',
       battery: battery,
       battStatus: battStatus,
@@ -314,29 +349,41 @@ var batteryMeter = meters.find(function(m) {
     };
   }
 
-  function buildExportMenu() {
-  var items = [
-    TGE.can('asset-track','export-pdf')       ? '<button class="hero-menu-item" id="at-pdf-btn" type="button"><span>Asset Track PDF</span><span>PDF</span></button>' : '',
-    TGE.can('asset-track','export-email-pdf') ? '<button class="hero-menu-item" id="at-email-btn" type="button"><span>Email PDF</span><span>Send</span></button>' : '',
-    TGE.can('asset-track','export-csv')       ? '<button class="hero-menu-item" id="at-csv-btn" type="button"><span>CSV</span><span>.csv</span></button>' : '',
-    TGE.can('asset-track','export-xlsx')      ? '<button class="hero-menu-item" id="at-xlsx-btn" type="button"><span>Excel</span><span>.xlsx</span></button>' : '',
-    TGE.can('asset-track','export-json')      ? '<button class="hero-menu-item" id="at-json-btn" type="button"><span>JSON</span><span>.json</span></button>' : '',
-  ].filter(Boolean).join('');
+  function getTrackerModelName(tracker) {
+    if (!tracker) return '—';
+    if (tracker.model && tracker.model.name) return tracker.model.name;
+    if (tracker.modelId) return 'Model ' + tracker.modelId;
+    if (tracker.model && tracker.model.id) return 'Model ' + tracker.model.id;
+    return '—';
+  }
 
-  if (!items) return '';
+  function isAt301Tracker(tracker) {
+    if (!tracker) return false;
 
-  return '<div class="hero-menu" id="at-export-menu">' +
-    '<button class="hero-menu-trigger" id="at-export-trigger" type="button" aria-haspopup="true" aria-expanded="false" title="Export">' +
-      '<svg class="hero-menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">' +
-        '<path d="M8 1.5v8M5 6.5l3 3 3-3M2.5 11.5v2A1 1 0 0 0 3.5 14.5h9a1 1 0 0 0 1-1v-2"/>' +
-      '</svg>' +
-      '<span>Export</span>' +
-      '<svg class="hero-menu-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><path d="M4 6l4 4 4-4"/></svg>' +
-    '</button>' +
-    '<div class="hero-menu-panel" role="menu">' + items + '</div>' +
-  '</div>';
-}
-  
+    var modelName = tracker.model && tracker.model.name
+      ? String(tracker.model.name).toLowerCase()
+      : '';
+
+    var modelId = tracker.modelId || (tracker.model && tracker.model.id);
+
+    return modelName.indexOf('at301') !== -1 ||
+      modelName.indexOf('oyster') !== -1 ||
+      String(modelId) === '85';
+  }
+
+  function getBatteryStatus(voltage, tracker) {
+    if (!isAt301Tracker(tracker)) return 'N/A';
+    if (voltage == null || voltage === '') return 'Unknown';
+
+    var v = Number(voltage);
+    if (isNaN(v)) return 'Unknown';
+
+    if (v >= 5.2) return 'Fresh';
+    if (v >= 4.85) return 'Good';
+    if (v >= 3.8) return 'Low';
+    return 'Critical';
+  }
+
   function renderRows() {
     TGE.hide('at-empty');
     TGE.show('at-summary');
@@ -350,16 +397,10 @@ var batteryMeter = meters.find(function(m) {
       var badgeClass = isReporting ? 'badge-green' : (r.status === 'No ATRACKER' ? 'badge-gray' : 'badge-red');
 
       var battClass = 'badge-gray';
-
-          if (r.battStatus === 'Fresh') {
-            battClass = 'badge-green';
-          } else if (r.battStatus === 'Good') {
-            battClass = 'badge-green';
-          } else if (r.battStatus === 'Low') {
-            battClass = 'badge-yellow';
-          } else if (r.battStatus === 'Critical') {
-            battClass = 'badge-red';
-}
+      if (r.battStatus === 'Fresh') battClass = 'badge-green';
+      else if (r.battStatus === 'Good') battClass = 'badge-green';
+      else if (r.battStatus === 'Low') battClass = 'badge-yellow';
+      else if (r.battStatus === 'Critical') battClass = 'badge-red';
 
       return '<tr>' +
         '<td><strong>' + esc(r.fleetNo) + '</strong></td>' +
@@ -367,7 +408,7 @@ var batteryMeter = meters.find(function(m) {
         '<td style="font-family:monospace;font-size:12px;">' + esc(r.imei) + '</td>' +
         '<td>' + esc(r.model) + '</td>' +
         '<td>' + esc(formatBattery(r.battery)) + '</td>' +
-       '<td><span class="badge ' + battClass + '">' + esc(r.battStatus) + '</span></td>' +
+        '<td><span class="badge ' + battClass + '">' + esc(r.battStatus) + '</span></td>' +
         '<td>' + esc(formatTs(r.lastSeen)) + '</td>' +
         '<td><span class="badge ' + badgeClass + '">' + esc(r.status) + '</span></td>' +
       '</tr>';
@@ -387,11 +428,27 @@ var batteryMeter = meters.find(function(m) {
   }
 
   function clearPage() {
+    if (state.running) return;
+
     state.rows = [];
-    setMessage('');
+
+    var input = TGE.el('at-fleet-input');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+
+    updateInputCount();
+
+    var tbody = TGE.el('at-tbody');
+    if (tbody) tbody.innerHTML = '';
+
     TGE.hide('at-summary');
     TGE.hide('at-results');
     TGE.show('at-empty');
+
+    setMessage('');
+    closeExportMenu();
   }
 
   function setMessage(msg, isError) {
@@ -410,69 +467,230 @@ var batteryMeter = meters.find(function(m) {
   }
 
   function activateExports() {
-    ['at-csv-btn', 'at-xlsx-btn', 'at-json-btn'].forEach(function (id) {
-      var btn = TGE.el(id);
-      if (btn) btn.classList.add('active');
+    var csvBtn = TGE.el('at-csv-btn');
+    var jsonBtn = TGE.el('at-json-btn');
+    var xlsxBtn = TGE.el('at-xlsx-btn');
+    var pdfBtn = TGE.el('at-pdf-btn');
+    var emailBtn = TGE.el('at-email-btn');
+
+    if (csvBtn) csvBtn.onclick = function () { closeExportMenu(); exportCsv(); };
+    if (jsonBtn) jsonBtn.onclick = function () { closeExportMenu(); exportJson(); };
+    if (xlsxBtn) xlsxBtn.onclick = function () { closeExportMenu(); exportXlsx(); };
+    if (pdfBtn) pdfBtn.onclick = function () { closeExportMenu(); exportPdf(); };
+    if (emailBtn) emailBtn.onclick = function () { closeExportMenu(); openEmailPdfComposer(); };
+  }
+
+  function ensureRowsLoaded() {
+    if (state.rows && state.rows.length) return true;
+    setMessage('Run Asset Track before exporting.', true);
+    return false;
+  }
+
+  function assetTrackRows() {
+    return state.rows.map(function (r) {
+      return {
+        fleetNo: r.fleetNo,
+        registration: r.registration,
+        imei: r.imei,
+        model: r.model,
+        battery: formatBattery(r.battery),
+        battStatus: r.battStatus,
+        lastSeen: formatTs(r.lastSeen),
+        status: r.status
+      };
     });
   }
 
-  function exportJson() {
-    downloadFile('asset-track.json', JSON.stringify(state.rows, null, 2), 'application/json');
+  function assetTrackSheetRows() {
+    var rows = [
+      ['Fleet No', 'Registration', 'Tracker IMEI', 'Model', 'Battery', 'Batt Status', 'Last Seen', 'Status']
+    ];
+
+    assetTrackRows().forEach(function (r) {
+      rows.push([r.fleetNo, r.registration, r.imei, r.model, r.battery, r.battStatus, r.lastSeen, r.status]);
+    });
+
+    return rows;
   }
 
   function exportCsv() {
-    var cols = ['fleetNo','registration','imei','model','battery','lastSeen','location','lat','lng','status'];
-    var csv = [
-      cols.join(','),
-      state.rows.map(function (r) {
-        return cols.map(function (c) {
-          return '"' + String(r[c] == null ? '' : r[c]).replace(/"/g, '""') + '"';
-        }).join(',');
-      }).join('\n')
-    ].join('\n');
+    if (!ensureRowsLoaded()) return;
 
-    downloadFile('asset-track.csv', csv, 'text/csv');
+    var rows = assetTrackSheetRows();
+    var csv = rows.map(function (row) {
+      return row.map(function (cell) {
+        return '"' + String(cell == null ? '' : cell).replace(/"/g, '""') + '"';
+      }).join(',');
+    }).join('\n');
+
+    downloadBlob(new Blob([csv], { type: 'text/csv' }), 'asset-track.csv');
   }
 
-  function downloadFile(name, content, type) {
-    var blob = new Blob([content], { type: type });
+  function loadXlsxLib() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    if (_xlsxLoading) return _xlsxLoading;
+
+    _xlsxLoading = new Promise(function (resolve, reject) {
+      var script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      script.onload = function () { resolve(window.XLSX); };
+      script.onerror = function () { reject(new Error('Could not load the Excel export library.')); };
+      document.head.appendChild(script);
+    });
+
+    return _xlsxLoading;
+  }
+
+  async function exportXlsx() {
+    if (!ensureRowsLoaded()) return;
+
+    try {
+      var XLSX = await loadXlsxLib();
+      var ws = XLSX.utils.aoa_to_sheet(assetTrackSheetRows());
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Asset Track');
+      XLSX.writeFile(wb, 'asset-track.xlsx');
+    } catch (e) {
+      setMessage(e.message || 'XLSX export failed.', true);
+    }
+  }
+
+  function exportJson() {
+    if (!ensureRowsLoaded()) return;
+    downloadBlob(new Blob([JSON.stringify(assetTrackRows(), null, 2)], { type: 'application/json' }), 'asset-track.json');
+  }
+
+  function buildAssetTrackPdfPayload() {
+    return {
+      legacyNo: 'asset-track',
+      sections: [
+        {
+          kicker: 'Operations',
+          title: 'Asset Track',
+          rows: [
+            { label: 'Generated', value: new Date().toLocaleString('en-AU') },
+            { label: 'Total Assets', value: state.rows.length },
+            { label: 'With Tracker', value: state.rows.filter(function (r) { return r.imei !== '—'; }).length },
+            { label: 'Reporting', value: state.rows.filter(function (r) { return r.status === 'Reporting'; }).length }
+          ]
+        },
+        {
+          kicker: 'Results',
+          title: 'Tracker Battery Status',
+          rows: assetTrackRows().reduce(function (acc, r) {
+            acc.push({ label: r.fleetNo + ' Reg', value: r.registration });
+            acc.push({ label: r.fleetNo + ' IMEI', value: r.imei });
+            acc.push({ label: r.fleetNo + ' Battery', value: r.battery + ' / ' + r.battStatus });
+            acc.push({ label: r.fleetNo + ' Last Seen', value: r.lastSeen });
+            return acc;
+          }, [])
+        }
+      ]
+    };
+  }
+
+  async function buildAssetTrackAttachment() {
+    if (!ensureRowsLoaded()) return null;
+
+    var result = await TGE.api('POST', '/api/snapshot-pdf', {
+      asset: buildAssetTrackPdfPayload()
+    });
+
+    if (!result.ok) {
+      throw new Error((result.data && result.data.error) || 'Asset Track PDF generation failed.');
+    }
+
+    return {
+      fileName: result.data.fileName || 'asset-track.pdf',
+      base64: result.data.base64,
+      contentType: 'application/pdf'
+    };
+  }
+
+  async function exportPdf() {
+    if (!ensureRowsLoaded()) return;
+
+    try {
+      var attachment = await buildAssetTrackAttachment();
+      if (!attachment || !attachment.base64) return;
+
+      var bytes = base64ToBytes(attachment.base64);
+      downloadBlob(new Blob([bytes], { type: 'application/pdf' }), attachment.fileName || 'asset-track.pdf');
+    } catch (e) {
+      setMessage(e.message || 'PDF export failed.', true);
+    }
+  }
+
+  function openEmailPdfComposer() {
+    if (!ensureRowsLoaded()) return;
+
+    if (typeof TGE.openEmailComposer !== 'function') {
+      setMessage('Email Composer is not available.', true);
+      return;
+    }
+
+    TGE.openEmailComposer({
+      rows: assetTrackRows(),
+      fields: [
+        { key: 'fleetNo', label: 'Fleet No' },
+        { key: 'registration', label: 'Registration' },
+        { key: 'imei', label: 'Tracker IMEI' },
+        { key: 'model', label: 'Model' },
+        { key: 'battery', label: 'Battery' },
+        { key: 'battStatus', label: 'Batt Status' },
+        { key: 'lastSeen', label: 'Last Seen' },
+        { key: 'status', label: 'Status' }
+      ],
+      attachmentBuilder: function () {
+        return buildAssetTrackAttachment();
+      },
+      attachmentLabel: 'Attach Asset Track PDF',
+      attachByDefault: true,
+      onSent: function () {
+        setMessage('Asset Track email sent.', false);
+      }
+    });
+  }
+
+  function downloadBlob(blob, fileName) {
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = name;
+    a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
   }
 
-  function getBatteryStatus(voltage, tracker) {
-  if (voltage == null || voltage === '') return 'Unknown';
+  function base64ToBytes(base64) {
+    var bin = atob(base64);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
 
-  var model = tracker && tracker.model && tracker.model.name
-    ? String(tracker.model.name).toLowerCase()
-    : '';
-
-  var isAt301 = model.indexOf('at301') !== -1 || model.indexOf('oyster') !== -1;
-
-  if (!isAt301) return 'N/A';
-
-  var v = Number(voltage);
-  if (isNaN(v)) return 'Unknown';
-
-  if (v >= 5.2) return 'Fresh';
-  if (v >= 4.85) return 'Good';
-  if (v >= 3.0) return 'Low';
-  return 'Critical';
-}
   function formatTs(iso) {
     if (!iso) return '—';
-    try { return TGE.formatDate(iso); } catch (e) { return iso; }
+    try {
+      return new Date(iso).toLocaleString('en-AU', {
+        timeZone: 'Australia/Sydney',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (e) {
+      return iso;
+    }
   }
- 
+
   function formatBattery(v) {
     if (v == null || v === '—') return '—';
+    var n = Number(v);
+    if (!isNaN(n)) return n.toFixed(2) + ' V';
     var s = String(v);
     if (/v$/i.test(s)) return s;
-    if (!isNaN(Number(s))) return s + ' V';
     return s;
   }
 
@@ -498,7 +716,10 @@ var batteryMeter = meters.find(function(m) {
     }
 
     var runners = [];
-    for (var i = 0; i < Math.min(concurrency, items.length); i++) runners.push(next());
+    for (var i = 0; i < Math.min(concurrency, items.length); i++) {
+      runners.push(next());
+    }
+
     await Promise.all(runners);
     return results;
   }
