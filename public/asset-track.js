@@ -156,8 +156,9 @@
 if (jsonBtn) jsonBtn.onclick = exportJson;
 
 wireExportMenu();
+}
 
-  function setMode(mode) {
+function setMode(mode) {
     state.mode = mode;
 
     var userBtn = TGE.el('at-mode-user');
