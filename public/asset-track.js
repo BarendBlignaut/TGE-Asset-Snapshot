@@ -256,14 +256,10 @@ function setMode(mode) {
           });
       }, 5, 300);
 
-      var withTrackers = results.filter(function (r) { return r && r.tracker; });
-
-      setMessage('Loading tracker stats... ' + withTrackers.length + ' tracker(s) found.', false);
-
-    var finalRows = results.map(function (item) {
+var finalRows = results.map(function (item) {
   var vehicleMeters = allMetersByVehicle[String(item.vehicle.id)] || [];
-    return String(m.vehicleId) === String(item.vehicle.id);
-  });
+  return makeRow(item.vehicle, item.tracker, null, vehicleMeters);
+});
 
   return makeRow(item.vehicle, item.tracker, null, vehicleMeters);
 });
