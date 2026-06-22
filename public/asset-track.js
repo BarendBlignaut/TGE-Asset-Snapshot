@@ -490,4 +490,4 @@ function setMode(mode) {
 
   TGE.onShow['asset-track'] = render;
 
-}();
+})();
