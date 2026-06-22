@@ -90,7 +90,7 @@
           '<div class="field"><label>Email</label><input id="user-email" type="email" placeholder="email@example.com" /></div>',
           '<div class="field"><label>Password</label><input id="user-password" type="password" placeholder="Set password" /></div>',
           '<div class="field"><label>Role</label><select id="user-role"></select></div>',
-          '<div class="field"><label>Login Type</label><select id="user-login-type"><option value="db_only">DB only</option><option value="db_vendor">DB + TN360</option></select></div>',
+          '<div class="field"><label>LoginType</label><select id="user-login-type"><option value="db_only">DB only</option><option value="db_vendor">DB + TN360</option></select></div>',
           '<div class="field"><label>Status</label><select id="user-status"><option value="active">Active</option><option value="inactive">Inactive</option></select></div>',
         '</div>',
         '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">',
