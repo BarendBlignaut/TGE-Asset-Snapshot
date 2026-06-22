@@ -35,7 +35,7 @@
           '<div class="hero-bar-left">',
             canUser ? '<button class="hero-mode-btn active" id="at-mode-user" type="button">User Mode</button>' : '',
             canFleet ? '<button class="hero-mode-btn' + (!canUser ? ' active' : '') + '" id="at-mode-fleet" type="button">Fleet Mode</button>' : '',
-            '<button class="hero--btn" id="at--btn" type="button">Refresh</button>',
+            '<button class="hero-action-btn" id="at-run-btn" type="button">Refresh</button>',
             '<button class="hero-action-btn" id="at-Refresh-btn" type="button">Clear</button>',
           '</div>',
           '<div class="hero-bar-right">',
