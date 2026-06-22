@@ -114,8 +114,9 @@
     var jsonBtn = TGE.el('at-json-btn');
 
     if (csvBtn) csvBtn.onclick = exportCsv;
-    if (jsonBtn) jsonBtn.onclick = exportJson;
-  }
+if (jsonBtn) jsonBtn.onclick = exportJson;
+
+wireExportMenu();
 
   function setMode(mode) {
     state.mode = mode;
