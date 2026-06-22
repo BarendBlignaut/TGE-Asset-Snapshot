@@ -1307,6 +1307,121 @@ async function handleSnapshotPdf(request, env) {
   }
 }
 
+async function handleAssetTrackPdf(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const body = await safeJson(request);
+  const rows = Array.isArray(body.rows) ? body.rows : [];
+
+  if (!rows.length) {
+    return jsonResponse({ error: "rows array is required." }, 400);
+  }
+
+  try {
+    const pdfDoc = await PDFDocument.create();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    let page = pdfDoc.addPage([841.89, 595.28]);
+    const pageWidth = page.getWidth();
+    const pageHeight = page.getHeight();
+
+    const title = "Asset Tracker Report";
+    const titleWidth = fontBold.widthOfTextAtSize(title, 16);
+
+    page.drawText(title, {
+      x: (pageWidth - titleWidth) / 2,
+      y: pageHeight - 40,
+      size: 16,
+      font: fontBold
+    });
+
+    let y = pageHeight - 80;
+
+    const headers = [
+      "Fleet",
+      "Registration",
+      "IMEI",
+      "Model",
+      "Battery",
+      "Battery Status",
+      "Last Seen",
+      "Status"
+    ];
+
+    const widths = [60, 80, 110, 120, 60, 90, 120, 70];
+
+    let x = 20;
+
+    headers.forEach((h, i) => {
+      page.drawText(h, {
+        x,
+        y,
+        size: 8,
+        font: fontBold
+      });
+      x += widths[i];
+    });
+
+    y -= 15;
+
+    for (const row of rows) {
+
+      if (y < 40) {
+        page = pdfDoc.addPage([841.89, 595.28]);
+        y = page.getHeight() - 40;
+      }
+
+      const values = [
+        row.fleetNo || '',
+        row.registration || '',
+        row.imei || '',
+        row.model || '',
+        row.battery || '',
+        row.battStatus || '',
+        row.lastSeen || '',
+        row.status || ''
+      ];
+
+      x = 20;
+
+      values.forEach((v, i) => {
+        page.drawText(String(v).substring(0, 25), {
+          x,
+          y,
+          size: 7,
+          font
+        });
+        x += widths[i];
+      });
+
+      y -= 12;
+    }
+
+    const pdfBytes = await pdfDoc.save();
+
+    let binary = "";
+    const bytes = new Uint8Array(pdfBytes);
+
+    for (let i = 0; i < bytes.length; i += 8192) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+    }
+
+    return jsonResponse({
+      ok: true,
+      base64: btoa(binary),
+      fileName: "Asset Tracker Report.pdf",
+      sizeBytes: pdfBytes.length
+    });
+
+  } catch (e) {
+    return jsonResponse({
+      error: "Asset Track PDF generation failed: " + e.message
+    }, 500);
+  }
+}
+
 // POST /api/camera-fault-pdf — builds the PDF and returns it base64-encoded
 // so the caller (email composer) can attach it to the Power Automate payload.
 async function handleCameraFaultPdf(request, env) {
@@ -1507,6 +1622,7 @@ export default {
       }
       if (method === "POST" && path === "/api/camera-fault-pdf") return handleCameraFaultPdf(request, env);
       if (method === "POST" && path === "/api/snapshot-pdf") return handleSnapshotPdf(request, env);
+      if (method === "POST" && path === "/api/asset-track-pdf") return handleAssetTrackPdf(request, env);
       if (method === "POST" && path === "/api/send-email") return handleSendEmail(request, env);
 
       // Utilisation — Static Fleet List import (Power Automate, key-auth, no session)
