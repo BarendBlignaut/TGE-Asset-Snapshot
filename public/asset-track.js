@@ -324,7 +324,7 @@
     TGE.setText('at-sum-not-reporting', notReporting);
   }
 
-  function RefreshPage() {
+  function clearPage() {
     state.rows = [];
     setMessage('');
     TGE.hide('at-summary');
