@@ -290,9 +290,8 @@
 
             if (!r.ok) return { vehicle: vehicle, tracker: null };
 
-            var devices = Array.isArray(r.data) ? r.data : [];
             var tracker = devices.find(function (d) {
-              return d.type && d.type.code === DEVICE_CODE && !d.outServiceAt;
+            return d.type && d.type.code === DEVICE_CODE;
             });
 
             return { vehicle: vehicle, tracker: tracker || null };
@@ -300,12 +299,16 @@
           .catch(function () {
             return { vehicle: vehicle, tracker: null };
           });
-      }, 5, 300);
+            }, 5, 300);
 
-      var finalRows = results.map(function (item) {
-        var vehicleMeters = allMetersByVehicle[String(item.vehicle.id)] || [];
-        return makeRow(item.vehicle, item.tracker, vehicleMeters);
-      });
+          var finalRows = results
+          .filter(function (item) {
+          return item && item.tracker;
+  })
+  .map(function (item) {
+    var vehicleMeters = allMetersByVehicle[String(item.vehicle.id)] || [];
+    return makeRow(item.vehicle, item.tracker, vehicleMeters);
+  });
 
       state.rows = finalRows;
       renderRows();
