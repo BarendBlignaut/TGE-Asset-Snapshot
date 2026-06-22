@@ -1038,6 +1038,45 @@
 
   function buildSnapshotPdfPayload() {
     var v = state.data.vehicle || {};
+
+    // Build camera photos array from state.data.cameras if available.
+    // Each photo gets a label (slot name) and a proxied URL the Worker can fetch.
+    // Camera Diagnostics (fault grid) is deliberately excluded per user request.
+    var cam     = state.devices.camera;
+    var model   = cam && cam.model && cam.model.name;
+    var slots   = model === 'MultiIQ' ? 5 : 2;
+    var mediaFiles = state.data.cameras;
+    var photos = [];
+    if (Array.isArray(mediaFiles) && mediaFiles.length) {
+      var activeSlots = CAMERA_SLOTS.slice(0, slots);
+      activeSlots.forEach(function(slot) {
+        var file = findCameraFile(mediaFiles, slot);
+        if (file && file.mediaFile) {
+          // Use the raw TN360 URL directly — the Worker fetches images from
+          // the CDN itself via fetchImageForPdf(), the same way camera-fault-pdf
+          // does. The proxied URL (/api/image-proxy) requires a browser session
+          // cookie and can't be used in server-side fetches.
+          photos.push({
+            label: slot.label,
+            url: file.mediaFile,
+          });
+        } else {
+          photos.push({ label: slot.label, url: null });
+        }
+      });
+    }
+
+    // SD Card Health — scrape directly from the individual field elements
+    // rather than the whole snap-camera-card (which also contains the fault
+    // grid we're deliberately excluding).
+    var sdRows = [
+      { label: 'SD Card 1',      value: (TGE.el('snap-sd1')        || {}).textContent || '—' },
+      { label: 'SD Card 2',      value: (TGE.el('snap-sd2')        || {}).textContent || '—' },
+      { label: 'Overall Status', value: (TGE.el('snap-sd-overall') || {}).textContent || '—' },
+      { label: 'SD Card 1 Size', value: (TGE.el('snap-sd1-size')   || {}).textContent || '—' },
+      { label: 'SD Card 2 Size', value: (TGE.el('snap-sd2-size')   || {}).textContent || '—' },
+    ].filter(function(r) { return r.value && r.value !== '—' && r.value !== 'No data'; });
+
     var sections = [
       collectCardSection('snap-vehicle-card', 'Vehicle Information'),
       collectCardSection('snap-driver-card',  'Driver'),
@@ -1045,6 +1084,15 @@
       collectCardSection('snap-vpm-card',     'Engine Metrics'),
       collectCardSection('snap-gpio-card',    'GPIO'),
       collectCardSection('snap-map-card',     'Location'),
+      // Evidence — camera snapshots + SD card health
+      // Photos are embedded as images by the Worker; SD rows as label/value cells.
+      // Camera Diagnostics fault grid is intentionally excluded.
+      (photos.length || sdRows.length) ? {
+        kicker: 'Evidence',
+        title:  'Camera Snapshots',
+        rows:   sdRows,
+        photos: photos,
+      } : null,
     ].filter(Boolean);
 
     return {
