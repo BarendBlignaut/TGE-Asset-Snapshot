@@ -349,13 +349,25 @@ var batteryMeter = meters.find(function(m) {
       var isReporting = r.status === 'Reporting';
       var badgeClass = isReporting ? 'badge-green' : (r.status === 'No ATRACKER' ? 'badge-gray' : 'badge-red');
 
+      var battClass = 'badge-gray';
+
+          if (r.battStatus === 'Fresh') {
+            battClass = 'badge-green';
+          } else if (r.battStatus === 'Good') {
+            battClass = 'badge-green';
+          } else if (r.battStatus === 'Low') {
+            battClass = 'badge-yellow';
+          } else if (r.battStatus === 'Critical') {
+            battClass = 'badge-red';
+}
+
       return '<tr>' +
         '<td><strong>' + esc(r.fleetNo) + '</strong></td>' +
         '<td>' + esc(r.registration) + '</td>' +
         '<td style="font-family:monospace;font-size:12px;">' + esc(r.imei) + '</td>' +
         '<td>' + esc(r.model) + '</td>' +
         '<td>' + esc(formatBattery(r.battery)) + '</td>' +
-        '<td>' + esc(r.battStatus) + '</td>' +
+       '<td><span class="badge ' + battClass + '">' + esc(r.battStatus) + '</span></td>' +
         '<td>' + esc(formatTs(r.lastSeen)) + '</td>' +
         '<td><span class="badge ' + badgeClass + '">' + esc(r.status) + '</span></td>' +
       '</tr>';
