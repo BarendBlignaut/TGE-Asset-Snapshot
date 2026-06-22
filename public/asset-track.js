@@ -230,6 +230,9 @@ function setMode(mode) {
 
       var metersRes = await TGE.api('GET', '/api/tn360/v1/vehicles/meters?pruning=B2B');
 var allMeters = metersRes.ok && Array.isArray(metersRes.data) ? metersRes.data : [];
+      console.log('[Asset Track] metersRes:', metersRes);
+console.log('[Asset Track] allMeters count:', allMeters.length);
+console.log('[Asset Track] first meter:', allMeters[0]);
       
       setMessage('Checking ' + vehicles.length + ' vehicles for asset trackers...', false);
 
