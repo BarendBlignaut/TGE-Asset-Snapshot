@@ -90,6 +90,7 @@
           '<div class="field"><label>Email</label><input id="user-email" type="email" placeholder="email@example.com" /></div>',
           '<div class="field"><label>Password</label><input id="user-password" type="password" placeholder="Set password" /></div>',
           '<div class="field"><label>Role</label><select id="user-role"></select></div>',
+          <div class="field"><label>Login Type</label><select id="user-login-type"><option value="db_only">DB only</option><option value="db_vendor">DB + TN360</option></select></div>
           '<div class="field"><label>Status</label><select id="user-status"><option value="active">Active</option><option value="inactive">Inactive</option></select></div>',
         '</div>',
         '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">',
@@ -197,6 +198,7 @@
     var status    = document.getElementById('user-status').value;
     var roleSel   = document.getElementById('user-role');
     var roleId    = roleSel ? parseInt(roleSel.value, 10) : 3;
+    var loginType = document.getElementById('user-login-type').value;
     if (!roleId || roleId < 1) roleId = 3;
 
     var editId = state.editingUser;
@@ -215,6 +217,7 @@
       username:  username,
       email:     email,
       roleId:    roleId,
+      loginType: loginType
       status:    status
     };
     if (password) body.password = password;
@@ -271,6 +274,7 @@
     TGE.el('user-username').value   = user.username   || '';
     TGE.el('user-email').value      = user.email      || '';
     TGE.el('user-password').value   = '';
+    TGE.el('user-login-type').value = user.login_type || 'db_only';
     TGE.el('user-status').value     = user.status     || 'active';
 
     // Ensure roles are loaded before setting dropdown
@@ -315,6 +319,7 @@
     TGE.el('user-form-title').textContent = 'Add New User';
     TGE.hide('user-cancel-btn');
     TGE.el('user-save-btn').textContent = 'Save User';
+    TGE.el('user-login-type').value = 'db_only';
     TGE.el('user-form-message').textContent = '';
   }
 
