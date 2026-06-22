@@ -36,7 +36,7 @@
             canUser ? '<button class="hero-mode-btn active" id="at-mode-user" type="button">User Mode</button>' : '',
             canFleet ? '<button class="hero-mode-btn' + (!canUser ? ' active' : '') + '" id="at-mode-fleet" type="button">Fleet Mode</button>' : '',
             '<button class="hero-run-btn" id="at-run-btn" type="button">Run</button>',
-            '<button class="hero-action-btn" id="at-clear-btn" type="button">Clear</button>',
+            '<button class="hero-action-btn" id="at-Refresh-btn" type="button">Clear</button>',
           '</div>',
           '<div class="hero-bar-right">',
             '<div class="hero-divider"></div>',
@@ -101,7 +101,7 @@
 
   function wireEvents() {
     TGE.on('at-run-btn', 'click', runAssetTrack);
-    TGE.on('at-clear-btn', 'click', clearPage);
+    TGE.on('at-Refresh-btn', 'click', clearPage);
 
     var userBtn = TGE.el('at-mode-user');
     var fleetBtn = TGE.el('at-mode-fleet');
@@ -324,7 +324,7 @@
     TGE.setText('at-sum-not-reporting', notReporting);
   }
 
-  function clearPage() {
+  function RefreshPage() {
     state.rows = [];
     setMessage('');
     TGE.hide('at-summary');
