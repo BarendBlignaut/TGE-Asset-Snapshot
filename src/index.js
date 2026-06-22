@@ -1038,6 +1038,275 @@ async function buildCameraFaultPdf(assets) {
   return await pdfDoc.save();
 }
 
+// ── Asset Snapshot PDF generation ────────────────────────────────────────────
+//
+// Builds a single-asset report with variable-length sections (Vehicle Info,
+// Driver, Live Status, VPM, GPIO, Location). Unlike buildCameraFaultPdf
+// (fixed-height repeating bands, pure-arithmetic pagination), this uses a
+// measured-content cursor: each section's height is calculated before drawing
+// so a whole section always moves to a new page together — never split mid-
+// section across a page break.
+//
+// Reuses from the existing camera-fault-pdf code above: PDFDocument, rgb,
+// StandardFonts, PDF_PAGE_W, PDF_PAGE_H, PDF_BRAND_GREEN, fetchImageForPdf,
+// PDF_PHOTO_BOX_H, PDF_PHOTO_GAP_X — no redefinitions needed.
+
+const SNAP_MARGIN_TOP    = 50;
+const SNAP_MARGIN_BOTTOM = 34;
+const SNAP_MARGIN_LEFT   = 30;
+const SNAP_MARGIN_RIGHT  = 30;
+
+const SNAP_ROW_COLS   = 4;   // 4 columns per row-line, matching app's data-grid-4
+const SNAP_ROW_H      = 30;  // fixed height per data row cell (label + value)
+const SNAP_ROW_GAP_X  = 8;
+const SNAP_ROW_GAP_Y  = 6;
+const SNAP_SECTION_GAP = 18;
+
+function snapUsableW() {
+  return PDF_PAGE_W - SNAP_MARGIN_LEFT - SNAP_MARGIN_RIGHT;
+}
+
+// Measures how tall a section will be when drawn, so we can decide before
+// drawing whether it fits on the current page.
+function snapMeasureSection(section) {
+  const rowCount = (section.rows || []).length;
+  const rowLines = Math.max(1, Math.ceil(rowCount / SNAP_ROW_COLS));
+  const kickerH  = section.kicker ? 9 + 3  : 0;
+  const titleH   = section.title  ? 11 + 10 : 0;
+  const rowsH    = rowLines * SNAP_ROW_H + Math.max(0, rowLines - 1) * SNAP_ROW_GAP_Y;
+  const photosH  = (section.photos && section.photos.length)
+    ? PDF_PHOTO_BOX_H + 10 + 10  // box + label + gap
+    : 0;
+  return kickerH + titleH + rowsH + photosH + SNAP_SECTION_GAP;
+}
+
+// Draws one section's label/value rows as a 4-column grid, matching the
+// app's existing data-grid-4 card style.
+function snapDrawRows(page, fontR, fontB, rows, startX, startY, usableW) {
+  const colW = (usableW - (SNAP_ROW_COLS - 1) * SNAP_ROW_GAP_X) / SNAP_ROW_COLS;
+  rows.forEach((row, i) => {
+    const col  = i % SNAP_ROW_COLS;
+    const line = Math.floor(i / SNAP_ROW_COLS);
+    const x    = startX + col * (colW + SNAP_ROW_GAP_X);
+    const y    = startY - line * (SNAP_ROW_H + SNAP_ROW_GAP_Y);
+
+    // Light card background, matching .data-item style
+    page.drawRectangle({
+      x, y: y - SNAP_ROW_H, width: colW, height: SNAP_ROW_H,
+      color: rgb(0.960, 0.976, 0.965),
+      borderColor: rgb(0.920, 0.950, 0.940), borderWidth: 0.75,
+    });
+
+    // Label — small uppercase muted text
+    const label = String(row.label || "").toUpperCase().slice(0, 32);
+    page.drawText(label, {
+      x: x + 6, y: y - 11, size: 6.5, font: fontB,
+      color: rgb(0.35, 0.43, 0.38),
+    });
+
+    // Value — bold, truncated if long
+    let value = (row.value == null || row.value === "") ? "—" : String(row.value);
+    if (value.length > 28) value = value.slice(0, 27) + "…";
+    page.drawText(value, {
+      x: x + 6, y: y - 23, size: 9.5, font: fontR,
+      color: rgb(0.06, 0.10, 0.075),
+    });
+  });
+}
+
+// Embeds camera photo boxes for a section that includes photos (Evidence
+// section). Reuses PDF_PHOTO_BOX_H and PDF_PHOTO_GAP_X from the existing
+// camera-fault-pdf constants — deliberately kept the same to save space.
+async function snapDrawPhotos(pdfDoc, page, fontR, fontB, photos, startX, startY, usableW) {
+  const n = Math.min(photos.length, 5);
+  if (!n) return;
+  const totalGap = (n - 1) * PDF_PHOTO_GAP_X;
+  const boxW     = (usableW - totalGap) / n;
+
+  const fetched = await Promise.all(
+    photos.slice(0, n).map(p => (p && p.url) ? fetchImageForPdf(p.url) : Promise.resolve(null))
+  );
+
+  for (let i = 0; i < n; i++) {
+    const photo = photos[i];
+    const bx    = startX + i * (boxW + PDF_PHOTO_GAP_X);
+    const by    = startY - PDF_PHOTO_BOX_H;
+    let embedded = null;
+
+    if (fetched[i]) {
+      try {
+        embedded = fetched[i].format === "png"
+          ? await pdfDoc.embedPng(fetched[i].bytes)
+          : await pdfDoc.embedJpg(fetched[i].bytes);
+      } catch (e) { embedded = null; }
+    }
+
+    if (embedded) {
+      const scaled  = embedded.scaleToFit(boxW, PDF_PHOTO_BOX_H);
+      const offsetX = bx + (boxW - scaled.width) / 2;
+      const offsetY = by + (PDF_PHOTO_BOX_H - scaled.height) / 2;
+      page.drawRectangle({ x: bx, y: by, width: boxW, height: PDF_PHOTO_BOX_H, color: rgb(0.96, 0.96, 0.97) });
+      page.drawImage(embedded, { x: offsetX, y: offsetY, width: scaled.width, height: scaled.height });
+      page.drawRectangle({ x: bx, y: by, width: boxW, height: PDF_PHOTO_BOX_H, borderColor: rgb(0.82, 0.84, 0.86), borderWidth: 1 });
+    } else {
+      page.drawRectangle({ x: bx, y: by, width: boxW, height: PDF_PHOTO_BOX_H, color: rgb(0.96, 0.96, 0.97), borderColor: rgb(0.82, 0.84, 0.86), borderWidth: 1 });
+      const noImgW = fontR.widthOfTextAtSize("no image", 7);
+      page.drawText("no image", { x: bx + boxW / 2 - noImgW / 2, y: by + PDF_PHOTO_BOX_H / 2 - 3, size: 7, font: fontR, color: rgb(0.61, 0.64, 0.69) });
+    }
+
+    const slotLabel = (photo && photo.label) || ("Camera " + (i + 1));
+    const slotLabelW = fontB.widthOfTextAtSize(slotLabel, 7.5);
+    page.drawText(slotLabel, {
+      x: bx + boxW / 2 - slotLabelW / 2, y: by - 8, size: 7.5, font: fontB, color: rgb(0.07, 0.07, 0.07),
+    });
+  }
+}
+
+// Builds the full Asset Snapshot PDF for a single asset.
+// asset: { legacyNo, title, generatedAt, sections: [{kicker, title, rows:[{label,value}], photos?:[{label,url}]}] }
+async function buildSnapshotPdf(asset) {
+  const pdfDoc   = await PDFDocument.create();
+  const fontR    = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontB    = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const usableW  = snapUsableW();
+  const usableH  = PDF_PAGE_H - SNAP_MARGIN_TOP - SNAP_MARGIN_BOTTOM;
+
+  const pages = [];
+  let page    = null;
+  let cursorY = 0;
+
+  const generatedAt = asset.generatedAt
+    ? new Date(asset.generatedAt).toLocaleString("en-AU", { timeZone:"Australia/Sydney", day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit", hour12:true })
+    : new Date().toLocaleString("en-AU", { timeZone:"Australia/Sydney", day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit", hour12:true });
+
+  function newPage(isFirst) {
+    page = pdfDoc.addPage([PDF_PAGE_W, PDF_PAGE_H]);
+    pages.push(page);
+    cursorY = PDF_PAGE_H - SNAP_MARGIN_TOP;
+
+    // Page border
+    page.drawRectangle({
+      x: SNAP_MARGIN_LEFT - 10, y: SNAP_MARGIN_BOTTOM - 10,
+      width: usableW + 20, height: usableH + 20,
+      borderColor: rgb(0.82, 0.84, 0.86), borderWidth: 1,
+    });
+
+    if (isFirst) {
+      // Report title
+      const docTitle = asset.title || ("Asset " + (asset.legacyNo || "—") + " Snapshot");
+      page.drawText(docTitle, {
+        x: SNAP_MARGIN_LEFT, y: PDF_PAGE_H - 28, size: 16, font: fontB,
+        color: rgb(0.07, 0.07, 0.07),
+      });
+      // Generated timestamp — right-aligned
+      const genText = "Generated " + generatedAt;
+      const genW    = fontR.widthOfTextAtSize(genText, 9);
+      page.drawText(genText, {
+        x: PDF_PAGE_W - SNAP_MARGIN_RIGHT - genW, y: PDF_PAGE_H - 28, size: 9, font: fontR,
+        color: rgb(0.42, 0.45, 0.50),
+      });
+      // Brand green rule under title
+      page.drawLine({
+        start: { x: SNAP_MARGIN_LEFT,                    y: PDF_PAGE_H - 36 },
+        end:   { x: PDF_PAGE_W - SNAP_MARGIN_RIGHT,      y: PDF_PAGE_H - 36 },
+        thickness: 1.5, color: PDF_BRAND_GREEN,
+      });
+    }
+  }
+
+  newPage(true);
+
+  for (const section of (asset.sections || [])) {
+    const sectionH = snapMeasureSection(section);
+
+    // Move whole section to next page if it won't fit — never split a section.
+    if (cursorY - sectionH < SNAP_MARGIN_BOTTOM) {
+      newPage(false);
+    }
+
+    // Kicker
+    if (section.kicker) {
+      page.drawText(String(section.kicker).toUpperCase(), {
+        x: SNAP_MARGIN_LEFT, y: cursorY - 9, size: 9, font: fontB,
+        color: PDF_BRAND_GREEN,
+      });
+      cursorY -= 12;
+    }
+
+    // Section title
+    if (section.title) {
+      page.drawText(String(section.title), {
+        x: SNAP_MARGIN_LEFT, y: cursorY - 11, size: 11, font: fontB,
+        color: rgb(0.07, 0.07, 0.07),
+      });
+      cursorY -= 21;
+    }
+
+    // Data rows
+    const rows = section.rows || [];
+    if (rows.length) {
+      const rowLines = Math.max(1, Math.ceil(rows.length / SNAP_ROW_COLS));
+      snapDrawRows(page, fontR, fontB, rows, SNAP_MARGIN_LEFT, cursorY, usableW);
+      cursorY -= rowLines * SNAP_ROW_H + Math.max(0, rowLines - 1) * SNAP_ROW_GAP_Y;
+    }
+
+    // Camera photos (Evidence section only)
+    if (section.photos && section.photos.length) {
+      cursorY -= 6;
+      await snapDrawPhotos(pdfDoc, page, fontR, fontB, section.photos, SNAP_MARGIN_LEFT, cursorY, usableW);
+      cursorY -= PDF_PHOTO_BOX_H + 10 + 4;
+    }
+
+    cursorY -= SNAP_SECTION_GAP;
+  }
+
+  // Footer — page X of Y + generated timestamp, centered, on every page
+  pages.forEach((pg, idx) => {
+    const footerText = `Page ${idx + 1} of ${pages.length}   —   Generated ${generatedAt}`;
+    const footerW    = fontR.widthOfTextAtSize(footerText, 7.5);
+    pg.drawText(footerText, {
+      x: (PDF_PAGE_W - footerW) / 2, y: SNAP_MARGIN_BOTTOM - 22, size: 7.5, font: fontR,
+      color: rgb(0.61, 0.64, 0.69),
+    });
+  });
+
+  return await pdfDoc.save();
+}
+
+// POST /api/snapshot-pdf
+// Builds the single-asset Snapshot PDF and returns it base64-encoded.
+// Response shape: { ok, base64, fileName, sizeBytes } — matches what
+// buildSnapshotAttachment() in snapshot.js already expects.
+async function handleSnapshotPdf(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const body  = await safeJson(request);
+  const asset = body && body.asset;
+  if (!asset || typeof asset !== "object") {
+    return jsonResponse({ error: "asset object is required." }, 400);
+  }
+  if (!Array.isArray(asset.sections) || !asset.sections.length) {
+    return jsonResponse({ error: "asset.sections must be a non-empty array." }, 400);
+  }
+
+  try {
+    const pdfBytes  = await buildSnapshotPdf(asset);
+    let binary      = "";
+    const chunkSize = 8192;
+    const bytes     = new Uint8Array(pdfBytes);
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    const base64       = btoa(binary);
+    const safeName     = String(asset.legacyNo || "asset").replace(/[\\/:*?"<>|]+/g, "-").trim() || "asset";
+    const fileName     = "Asset " + safeName + " snapshot.pdf";
+    return jsonResponse({ ok: true, base64, fileName, sizeBytes: pdfBytes.length });
+  } catch (e) {
+    return jsonResponse({ error: "Snapshot PDF generation failed: " + e.message }, 500);
+  }
+}
+
 // POST /api/camera-fault-pdf — builds the PDF and returns it base64-encoded
 // so the caller (email composer) can attach it to the Power Automate payload.
 async function handleCameraFaultPdf(request, env) {
@@ -1237,6 +1506,7 @@ export default {
         return handleUpdateSignature(request, env, sigId);
       }
       if (method === "POST" && path === "/api/camera-fault-pdf") return handleCameraFaultPdf(request, env);
+      if (method === "POST" && path === "/api/snapshot-pdf") return handleSnapshotPdf(request, env);
       if (method === "POST" && path === "/api/send-email") return handleSendEmail(request, env);
 
       // Utilisation — Static Fleet List import (Power Automate, key-auth, no session)
