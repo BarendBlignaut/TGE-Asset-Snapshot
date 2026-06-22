@@ -229,8 +229,11 @@ function setMode(mode) {
       if (!vehicles.length) throw new Error('No matching vehicles found.');
 
       var metersRes = await TGE.api('GET', '/api/tn360/v1/vehicles/meters?pruning=B2B');
-var allMeters = metersRes.ok && Array.isArray(metersRes.data) ? metersRes.data : [];
-      console.log('[Asset Track] metersRes:', metersRes);
+var allMeters = metersRes.data || [];
+
+console.log('[Asset Track] metersRes:', metersRes);
+console.log('[Asset Track] meters data:', metersRes.data);
+console.log('[Asset Track] meters isArray:', Array.isArray(allMeters));
 console.log('[Asset Track] allMeters count:', allMeters.length);
 console.log('[Asset Track] first meter:', allMeters[0]);
       
