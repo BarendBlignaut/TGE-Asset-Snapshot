@@ -231,6 +231,9 @@ function setMode(mode) {
 
       if (!vehicles.length) throw new Error('No matching vehicles found.');
 
+      var metersRes = await TGE.api('GET', '/api/tn360/v1/vehicles/meters?pruning=B2B');
+var allMeters = metersRes.ok && Array.isArray(metersRes.data) ? metersRes.data : [];
+      
       setMessage('Checking ' + vehicles.length + ' vehicles for asset trackers...', false);
 
       var checked = 0;
@@ -260,17 +263,13 @@ function setMode(mode) {
 
       setMessage('Loading tracker stats... ' + withTrackers.length + ' tracker(s) found.', false);
 
-      var finalRows = await batchRun(results, function (item) {
-        if (!item || !item.tracker) return Promise.resolve(makeRow(item.vehicle, null, null));
+    var finalRows = results.map(function (item) {
+  var vehicleMeters = allMeters.filter(function (m) {
+    return String(m.vehicleId) === String(item.vehicle.id);
+  });
 
-        return TGE.api('GET', '/api/tn360/v1/devices/' + item.tracker.imei + '?pruning=B2B&embed=devicestats')
-          .then(function (r) {
-            return makeRow(item.vehicle, item.tracker, r.ok ? r.data : null);
-          })
-          .catch(function () {
-            return makeRow(item.vehicle, item.tracker, null);
-          });
-      }, 5, 300);
+  return makeRow(item.vehicle, item.tracker, null, vehicleMeters);
+});
 
       state.rows = finalRows;
       renderRows();
@@ -286,8 +285,17 @@ function setMode(mode) {
     }
   }
 
-  function makeRow(vehicle, tracker, detail) {
+  function makeRow(vehicle, tracker, detail, meters) {
     var ds = detail && detail.deviceStats ? detail.deviceStats : {};
+    meters = meters || [];
+
+var batteryMeter = meters.find(function(m) {
+  return m.type === 'battery';
+});
+
+var chargeMeter = meters.find(function(m) {
+  return m.type === 'charge';
+});
     var attrs = ds.attrs || {};
     var gps = ds.gps || {};
 
@@ -296,13 +304,8 @@ function setMode(mode) {
 
     var lastSeen = ds.lastEventAt || ds.gpsAt || ds.updatedAt || null;
 
-    var battery =
-      attrs.battery ||
-      attrs.battery_voltage ||
-      attrs.batteryVoltage ||
-      attrs['battery.voltage'] ||
-      ds.battery ||
-      null;
+    var battery = batteryMeter ? batteryMeter.computed : null;
+var charge = chargeMeter ? chargeMeter.computed : null;
 
     var status = tracker
       ? (lastSeen ? 'Reporting' : 'No recent data')
@@ -315,7 +318,7 @@ function setMode(mode) {
       imei: tracker && tracker.imei ? tracker.imei : '—',
       model: tracker && tracker.model && tracker.model.name ? tracker.model.name : '—',
       serial: tracker && tracker.serialNumber ? tracker.serialNumber : '—',
-      battery: battery || '—',
+      battery: formatBatteryDisplay(battery, charge),
       lastSeen: lastSeen,
       location: ds.location || '—',
       lat: lat,
@@ -449,6 +452,20 @@ function setMode(mode) {
     try { return TGE.formatDate(iso); } catch (e) { return iso; }
   }
 
+  function formatBatteryDisplay(voltage, charge) {
+  var parts = [];
+
+  if (voltage != null && voltage !== '') {
+    parts.push(Number(voltage).toFixed(2) + ' V');
+  }
+
+  if (charge != null && charge !== '') {
+    parts.push(Number(charge).toFixed(0) + '%');
+  }
+
+  return parts.length ? parts.join(' / ') : '—';
+}
+  
   function formatBattery(v) {
     if (v == null || v === '—') return '—';
     var s = String(v);
