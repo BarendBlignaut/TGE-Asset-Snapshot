@@ -261,7 +261,7 @@ function setMode(mode) {
       setMessage('Loading tracker stats... ' + withTrackers.length + ' tracker(s) found.', false);
 
     var finalRows = results.map(function (item) {
-  var vehicleMeters = allMeters.filter(function (m) {
+  var vehicleMeters = allMetersByVehicle[String(item.vehicle.id)] || [];
     return String(m.vehicleId) === String(item.vehicle.id);
   });
 
