@@ -293,9 +293,6 @@ var batteryMeter = meters.find(function(m) {
   return m.type === 'battery';
 });
 
-var chargeMeter = meters.find(function(m) {
-  return m.type === 'charge';
-});
     var attrs = ds.attrs || {};
     var gps = ds.gps || {};
 
@@ -305,7 +302,6 @@ var chargeMeter = meters.find(function(m) {
     var lastSeen = ds.lastEventAt || ds.gpsAt || ds.updatedAt || null;
 
     var battery = batteryMeter ? batteryMeter.computed : null;
-var charge = chargeMeter ? chargeMeter.computed : null;
 
     var status = tracker
       ? (lastSeen ? 'Reporting' : 'No recent data')
@@ -318,7 +314,7 @@ var charge = chargeMeter ? chargeMeter.computed : null;
       imei: tracker && tracker.imei ? tracker.imei : '—',
       model: tracker && tracker.model && tracker.model.name ? tracker.model.name : '—',
       serial: tracker && tracker.serialNumber ? tracker.serialNumber : '—',
-      battery: formatBatteryDisplay(battery, charge),
+      battery: battery,
       lastSeen: lastSeen,
       location: ds.location || '—',
       lat: lat,
@@ -451,21 +447,7 @@ var charge = chargeMeter ? chargeMeter.computed : null;
     if (!iso) return '—';
     try { return TGE.formatDate(iso); } catch (e) { return iso; }
   }
-
-  function formatBatteryDisplay(voltage, charge) {
-  var parts = [];
-
-  if (voltage != null && voltage !== '') {
-    parts.push(Number(voltage).toFixed(2) + ' V');
-  }
-
-  if (charge != null && charge !== '') {
-    parts.push(Number(charge).toFixed(0) + '%');
-  }
-
-  return parts.length ? parts.join(' / ') : '—';
-}
-  
+ 
   function formatBattery(v) {
     if (v == null || v === '—') return '—';
     var s = String(v);
