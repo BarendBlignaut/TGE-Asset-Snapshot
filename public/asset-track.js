@@ -589,27 +589,30 @@
     };
   }
 
-var result = await TGE.api('POST', '/api/asset-track-pdf', {
-  rows: assetTrackRows(),
-  summary: {
-    generated: new Date().toLocaleString('en-AU'),
-    totalAssets: state.rows.length,
-    withTracker: state.rows.filter(function (r) { return r.imei !== '—'; }).length,
-    reporting: state.rows.filter(function (r) { return r.status === 'Reporting'; }).length,
-    notReporting: state.rows.filter(function (r) { return r.status !== 'Reporting'; }).length
-  }
-});
+async function buildAssetTrackAttachment() {
+  if (!ensureRowsLoaded()) return null;
 
-    if (!result.ok) {
-      throw new Error((result.data && result.data.error) || 'Asset Track PDF generation failed.');
+  var result = await TGE.api('POST', '/api/asset-track-pdf', {
+    rows: assetTrackRows(),
+    summary: {
+      generated: new Date().toLocaleString('en-AU'),
+      totalAssets: state.rows.length,
+      withTracker: state.rows.filter(function (r) { return r.imei !== '—'; }).length,
+      reporting: state.rows.filter(function (r) { return r.status === 'Reporting'; }).length,
+      notReporting: state.rows.filter(function (r) { return r.status !== 'Reporting'; }).length
     }
+  });
 
-    return {
-      fileName: result.data.fileName || 'asset-track.pdf',
-      base64: result.data.base64,
-      contentType: 'application/pdf'
-    };
+  if (!result.ok) {
+    throw new Error((result.data && result.data.error) || 'Asset Track PDF generation failed.');
   }
+
+  return {
+    fileName: result.data.fileName || 'asset-track.pdf',
+    base64: result.data.base64,
+    contentType: 'application/pdf'
+  };
+}
 
   async function exportPdf() {
     if (!ensureRowsLoaded()) return;
