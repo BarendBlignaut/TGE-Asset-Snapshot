@@ -261,9 +261,6 @@ var finalRows = results.map(function (item) {
   return makeRow(item.vehicle, item.tracker, null, vehicleMeters);
 });
 
-  return makeRow(item.vehicle, item.tracker, null, vehicleMeters);
-});
-
       state.rows = finalRows;
       renderRows();
       updateSummary();
