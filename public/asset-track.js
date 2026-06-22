@@ -80,6 +80,7 @@
                   '<th>Tracker IMEI</th>',
                   '<th>Model</th>',
                   '<th>Battery</th>',
+                  '<th>Batt Status</th>',
                   '<th>Last Seen</th>',
                   '<th>Status</th>',
                 '</tr>',
@@ -293,6 +294,8 @@ var batteryMeter = meters.find(function(m) {
 
     var battery = batteryMeter ? batteryMeter.computed : null;
 
+    var battStatus = getBatteryStatus(battery, tracker);
+    
     var status = tracker
       ? (lastSeen ? 'Reporting' : 'No recent data')
       : 'No ATRACKER';
@@ -305,6 +308,7 @@ var batteryMeter = meters.find(function(m) {
       model: tracker && tracker.model && tracker.model.name ? tracker.model.name : '—',
       serial: tracker && tracker.serialNumber ? tracker.serialNumber : '—',
       battery: battery,
+      battStatus: battStatus,
       lastSeen: lastSeen,
       status: status
     };
@@ -351,6 +355,7 @@ var batteryMeter = meters.find(function(m) {
         '<td style="font-family:monospace;font-size:12px;">' + esc(r.imei) + '</td>' +
         '<td>' + esc(r.model) + '</td>' +
         '<td>' + esc(formatBattery(r.battery)) + '</td>' +
+        '<td>' + esc(r.battStatus) + '</td>' +
         '<td>' + esc(formatTs(r.lastSeen)) + '</td>' +
         '<td><span class="badge ' + badgeClass + '">' + esc(r.status) + '</span></td>' +
       '</tr>';
@@ -427,6 +432,25 @@ var batteryMeter = meters.find(function(m) {
     URL.revokeObjectURL(url);
   }
 
+  function getBatteryStatus(voltage, tracker) {
+  if (voltage == null || voltage === '') return 'Unknown';
+
+  var model = tracker && tracker.model && tracker.model.name
+    ? String(tracker.model.name).toLowerCase()
+    : '';
+
+  var isAt301 = model.indexOf('at301') !== -1 || model.indexOf('oyster') !== -1;
+
+  if (!isAt301) return 'N/A';
+
+  var v = Number(voltage);
+  if (isNaN(v)) return 'Unknown';
+
+  if (v >= 5.2) return 'Fresh';
+  if (v >= 4.85) return 'Good';
+  if (v >= 3.0) return 'Low';
+  return 'Critical';
+}
   function formatTs(iso) {
     if (!iso) return '—';
     try { return TGE.formatDate(iso); } catch (e) { return iso; }
