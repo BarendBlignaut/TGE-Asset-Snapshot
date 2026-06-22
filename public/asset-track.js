@@ -97,6 +97,45 @@
     wireEvents();
   }
 
+  function wireExportMenu() {
+  var exportTrigger = TGE.el('at-export-trigger');
+  var exportMenu    = TGE.el('at-export-menu');
+  var exportPanel   = exportMenu ? exportMenu.querySelector('.hero-menu-panel') : null;
+
+  function positionExportPanel() {
+    if (!exportTrigger || !exportPanel) return;
+    var rect = exportTrigger.getBoundingClientRect();
+    exportPanel.style.top = (rect.bottom + 8) + 'px';
+    exportPanel.style.left = 'auto';
+    exportPanel.style.right = (window.innerWidth - rect.right) + 'px';
+  }
+
+  if (exportTrigger && exportMenu) {
+    exportTrigger.onclick = function(e) {
+      e.stopPropagation();
+      var open = !exportMenu.classList.contains('open');
+      if (open) positionExportPanel();
+      exportMenu.classList.toggle('open', open);
+      exportTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+
+    document.addEventListener('click', function(e) {
+      if (!exportMenu.contains(e.target)) {
+        exportMenu.classList.remove('open');
+        exportTrigger.setAttribute('aria-expanded', 'false');
+      }
+    });
+
+    window.addEventListener('scroll', function() {
+      if (exportMenu.classList.contains('open')) positionExportPanel();
+    }, true);
+
+    window.addEventListener('resize', function() {
+      if (exportMenu.classList.contains('open')) positionExportPanel();
+    });
+  }
+}
+  
   function wireEvents() {
     TGE.on('at-run-btn', 'click', runAssetTrack);
     TGE.on('at-clear-btn', 'click', clearPage);
