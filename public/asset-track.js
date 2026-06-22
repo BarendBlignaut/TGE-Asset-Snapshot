@@ -81,9 +81,6 @@
                   '<th>Model</th>',
                   '<th>Battery</th>',
                   '<th>Last Seen</th>',
-                  '<th>Location</th>',
-                  '<th>Latitude</th>',
-                  '<th>Longitude</th>',
                   '<th>Status</th>',
                 '</tr>',
               '</thead>',
@@ -299,7 +296,7 @@ var batteryMeter = meters.find(function(m) {
     var lat = gps.Lat != null ? gps.Lat : null;
     var lng = gps.Lng != null ? gps.Lng : null;
 
-    var lastSeen = ds.lastEventAt || ds.gpsAt || ds.updatedAt || null;
+    var lastSeen = batteryMeter ? batteryMeter.updatedAt : null;
 
     var battery = batteryMeter ? batteryMeter.computed : null;
 
@@ -316,9 +313,6 @@ var batteryMeter = meters.find(function(m) {
       serial: tracker && tracker.serialNumber ? tracker.serialNumber : '—',
       battery: battery,
       lastSeen: lastSeen,
-      location: ds.location || '—',
-      lat: lat,
-      lng: lng,
       status: status
     };
   }
@@ -365,9 +359,6 @@ var batteryMeter = meters.find(function(m) {
         '<td>' + esc(r.model) + '</td>' +
         '<td>' + esc(formatBattery(r.battery)) + '</td>' +
         '<td>' + esc(formatTs(r.lastSeen)) + '</td>' +
-        '<td style="max-width:260px;white-space:normal;">' + esc(r.location) + '</td>' +
-        '<td>' + esc(r.lat != null ? Number(r.lat).toFixed(6) : '—') + '</td>' +
-        '<td>' + esc(r.lng != null ? Number(r.lng).toFixed(6) : '—') + '</td>' +
         '<td><span class="badge ' + badgeClass + '">' + esc(r.status) + '</span></td>' +
       '</tr>';
     }).join('');
