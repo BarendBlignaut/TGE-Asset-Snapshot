@@ -118,7 +118,7 @@ async function handleLogin(request, env) {
 
   // Step 1 — find user by username + password hash
   const user = await env.DB.prepare(
-    "SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.role_id, u.status, u.login_type, r.name as role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.username = ? AND u.password_hash = ?"
+    "SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.status, u.login_type, u.role_id, u.created_at, u.updated_at, r.name as role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.username = ? AND u.password_hash = ?"
   ).bind(username, hash).first();
 
   if (!user) {
