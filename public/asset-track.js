@@ -101,7 +101,7 @@
 
   function wireEvents() {
     TGE.on('at-run-btn', 'click', runAssetTrack);
-    TGE.on('at-clear-btn', 'click', RefreshPage);
+    TGE.on('at-clear-btn', 'click', clearPage);
 
     var userBtn = TGE.el('at-mode-user');
     var fleetBtn = TGE.el('at-mode-fleet');
