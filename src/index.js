@@ -500,10 +500,15 @@ async function handleGetControlTables(request, env) {
     "SELECT * FROM control_table_rules ORDER BY control_table_id, sort_order, min_value"
   ).all();
 
+  const hardware = await env.DB.prepare(
+    "SELECT * FROM control_table_hardware ORDER BY control_table_id, hardware_match"
+  ).all();
+
   return jsonResponse({
     ok: true,
     tables: tables.results || [],
-    rules: rules.results || []
+    rules: rules.results || [],
+    hardware: hardware.results || []
   });
 }
 
