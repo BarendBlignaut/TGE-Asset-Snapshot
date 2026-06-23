@@ -682,7 +682,15 @@ TGE.editControlTable = function(id) {
     return;
   }
 
-  openControlTableEditor(table);
+ table.hardware = (window.controlTableHardwareCache || [])
+  .filter(function(h) {
+    return String(h.control_table_id) === String(id);
+  })
+  .map(function(h) {
+    return h.hardware_match;
+  });
+
+openControlTableEditor(table);
 };
   
   // ── API REFERENCE TAB ─────────────────────────────────────────────────────────
