@@ -517,14 +517,9 @@ function renderControlTablesList(tables, rules, hardware) {
         '<div class="table-wrap" style="margin-top:8px;">',
           '<table>',
             '<thead><tr><th>Min</th><th>Max</th><th>Output</th><th>Colour</th></tr></thead>',
-            '<tbody id="ct-rule-body">',
-              '<tr>',
-                '<td><input class="ct-rule-min" type="number" step="0.01" placeholder="5.20"></td>',
-                '<td><input class="ct-rule-max" type="number" step="0.01" placeholder="99.00"></td>',
-                '<td><input class="ct-rule-output" type="text" placeholder="Fresh"></td>',
-                '<td><select class="ct-rule-colour"><option value="green">Green</option><option value="lime">Lime</option><option value="amber">Amber</option><option value="red">Red</option><option value="gray">Gray</option></select></td>',
-              '</tr>',
-            '</tbody>',
+           '<tbody id="ct-rule-body">',
+  renderControlTableRuleRows(table),
+'</tbody>',
           '</table>',
         '</div>',
         '<button class="btn" id="ct-add-rule-btn" type="button" style="margin-top:10px;">+ Add Rule</button>',
@@ -559,6 +554,28 @@ function renderControlTablesList(tables, rules, hardware) {
       '<td><select class="ct-rule-colour"><option value="green">Green</option><option value="lime">Lime</option><option value="amber">Amber</option><option value="red">Red</option><option value="gray">Gray</option></select></td>' +
     '</tr>'
   );
+}
+  function renderControlTableRuleRows(table) {
+  var rules = table && Array.isArray(table.rules) && table.rules.length
+    ? table.rules
+    : [{ min_value: '', max_value: '', output_value: '', output_colour: 'green' }];
+
+  return rules.map(function (r) {
+    var colour = r.output_colour || 'gray';
+
+    return '<tr>' +
+      '<td><input class="ct-rule-min" type="number" step="0.01" placeholder="5.20" value="' + escCt(r.min_value) + '"></td>' +
+      '<td><input class="ct-rule-max" type="number" step="0.01" placeholder="99.00" value="' + escCt(r.max_value) + '"></td>' +
+      '<td><input class="ct-rule-output" type="text" placeholder="Fresh" value="' + escCt(r.output_value) + '"></td>' +
+      '<td><select class="ct-rule-colour">' +
+        '<option value="green"' + (colour === 'green' ? ' selected' : '') + '>Green</option>' +
+        '<option value="lime"' + (colour === 'lime' ? ' selected' : '') + '>Lime</option>' +
+        '<option value="amber"' + (colour === 'amber' ? ' selected' : '') + '>Amber</option>' +
+        '<option value="red"' + (colour === 'red' ? ' selected' : '') + '>Red</option>' +
+        '<option value="gray"' + (colour === 'gray' ? ' selected' : '') + '>Gray</option>' +
+      '</select></td>' +
+    '</tr>';
+  }).join('');
 }
 function addControlTableRuleRow() {
 
@@ -683,6 +700,14 @@ TGE.editControlTable = function(id) {
   }
 
  table.hardware = (window.controlTableHardwareCache || [])
+   
+  .filter(function(h) {
+    return String(h.control_table_id) === String(id);
+  })
+  .map(function(h) {
+    return h.hardware_match;
+  });
+table.hardware = (window.controlTableHardwareCache || [])
   .filter(function(h) {
     return String(h.control_table_id) === String(id);
   })
@@ -690,6 +715,15 @@ TGE.editControlTable = function(id) {
     return h.hardware_match;
   });
 
+table.rules = (window.controlTableRulesCache || [])
+  .filter(function(r) {
+    return String(r.control_table_id) === String(id);
+  })
+  .sort(function(a, b) {
+    return (a.sort_order || 0) - (b.sort_order || 0);
+  });
+
+openControlTableEditor(table);
 openControlTableEditor(table);
 };
   
