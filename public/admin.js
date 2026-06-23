@@ -423,10 +423,14 @@ function wireControlTablesTab() {
     return;
   }
 
-  var tables = res.data.tables || [];
-  var rules = res.data.rules || [];
-  var hardware = res.data.hardware || [];
+var tables = res.data.tables || [];
+var rules = res.data.rules || [];
+var hardware = res.data.hardware || [];
 
+window.controlTablesCache = tables;
+window.controlTableRulesCache = rules;
+window.controlTableHardwareCache = hardware;
+    
   renderControlTablesList(tables, rules, hardware);
 }
 
@@ -465,7 +469,7 @@ function renderControlTablesList(tables, rules, hardware) {
           '<div><strong style="color:var(--ink);">Rules:</strong> ' + tableRules.length + '</div>' +
         '</div>' +
 
-        '<button class="btn btn-primary" style="width:100%;margin-top:14px;" type="button">Edit Table</button>' +
+        '<button class="btn btn-primary" style="width:100%;margin-top:14px;" type="button" onclick="TGE.editControlTable(' + t.id + ')">Edit Table</button>' +
       '</div>';
     }).join('') +
   '</div>';
@@ -646,6 +650,20 @@ function renderControlTablesList(tables, rules, hardware) {
     }
   }, 500);
 }
+
+TGE.editControlTable = function(id) {
+  var table = window.controlTablesCache.find(function(t) {
+    return String(t.id) === String(id);
+  });
+
+  if (!table) {
+    alert('Unable to locate control table.');
+    return;
+  }
+
+  openControlTableEditor(table);
+};
+  
   // ── API REFERENCE TAB ─────────────────────────────────────────────────────────
   var API_REFS = [
     { id: 'API-1', method: 'GET', group: 'vehicle',  url: '/v1/vehicles',                               returns: 'All vehicles — vehicleId, name, registration, make, model',          usedBy: ['Asset Track fleet', 'Camera Snapshot fleet', 'SD Health fleet'] },
