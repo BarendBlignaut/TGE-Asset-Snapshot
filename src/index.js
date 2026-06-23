@@ -488,6 +488,70 @@ async function handleCreateRole(request, env) {
   return jsonResponse({ ok: true, roleId: result.meta.last_row_id });
 }
 
+async function handleGetControlTables(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const tables = await env.DB.prepare(
+    "SELECT * FROM control_tables ORDER BY feature, name"
+  ).all();
+
+  const rules = await env.DB.prepare(
+    "SELECT * FROM control_table_rules ORDER BY control_table_id, sort_order, min_value"
+  ).all();
+
+  return jsonResponse({
+    ok: true,
+    tables: tables.results || [],
+    rules: rules.results || []
+  });
+}
+
+async function handleSaveControlTable(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const body = await safeJson(request);
+
+  const name = String(body.name || "").trim();
+  const feature = String(body.feature || "").trim();
+  const outputField = String(body.outputField || "").trim();
+  const valueSource = String(body.valueSource || "").trim();
+  const hardwareMatch = String(body.hardwareMatch || "").trim();
+  const notes = String(body.notes || "").trim();
+  const active = body.active === false ? 0 : 1;
+  const rules = Array.isArray(body.rules) ? body.rules : [];
+
+  if (!name || !feature || !outputField || !valueSource || !hardwareMatch) {
+    return jsonResponse({ error: "Required fields are missing." }, 400);
+  }
+
+  const result = await env.DB.prepare(
+    "INSERT INTO control_tables (name, feature, output_field, value_source, hardware_match, active, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(name, feature, outputField, valueSource, hardwareMatch, active, notes || null, nowIso(), nowIso()).run();
+
+  const tableId = result.meta.last_row_id;
+
+  for (let i = 0; i < rules.length; i++) {
+    const r = rules[i];
+
+    await env.DB.prepare(
+      "INSERT INTO control_table_rules (control_table_id, min_value, max_value, output_value, sort_order, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(
+      tableId,
+      Number(r.minValue),
+      Number(r.maxValue),
+      String(r.outputValue || "").trim(),
+      i,
+      r.active === false ? 0 : 1,
+      nowIso(),
+      nowIso()
+    ).run();
+  }
+
+  return jsonResponse({ ok: true, id: tableId });
+}
+
 // ── Telematics API proxy ──────────────────────────────────────────────────────
 
 async function handleTelematicsProxy(request, env, path) {
@@ -1764,6 +1828,8 @@ export default {
 
       // Admin — activity log
       if (method === "GET" && path === "/api/admin/activity") return handleGetActivity(request, env);
+      if (method === "GET" && path === "/api/admin/control-tables") return handleGetControlTables(request, env);
+      if (method === "POST" && path === "/api/admin/control-tables") return handleSaveControlTable(request, env);
 
       // Camera history
       if (method === "GET" && path.startsWith("/api/camera-history/")) {
