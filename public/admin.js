@@ -482,14 +482,14 @@ function renderControlTablesList(tables, rules, hardware) {
 
   editor.innerHTML = [
     '<div class="card">',
-      '<div class="card-kicker">Control Table</div>',
-      '<div class="card-title">Create Control Table</div>',
+    '<div class="card-kicker">' + (table ? 'Edit Control Table' : 'Control Table') + '</div>',
+    '<div class="card-title">' + (table ? ('CT-' + String(table.id).padStart(3, '0') + ' — ' + TGE.safeText(table.name)) : 'Create Control Table') + '</div>',
       '<p style="font-size:13px;color:var(--muted);margin:6px 0 16px;">',
         'Define which field is evaluated, which output field is populated, and the rules used to create the result.',
       '</p>',
 
       '<div class="data-grid data-grid-2">',
-        '<div class="field"><label>Table Name</label><input id="ct-edit-name" type="text" placeholder="Oyster Battery Status"></div>',
+        '<div class="field"><label>Table Name</label><input id="ct-edit-name" type="text" placeholder="Oyster Battery Status" value="' + escCt(table ? table.name : '') + '"></div>',
         '<div class="field"><label>Feature</label><select id="ct-edit-feature"><option value="asset-track">Asset Track</option></select></div>',
         '<div class="field"><label>Output Field</label><select id="ct-edit-output"><option value="battStatus">Batt Status</option></select></div>',
         '<div class="field"><label>Evaluate Field</label><select id="ct-edit-source"><option value="battCurrent">Batt Current</option><option value="battBase">Batt Base</option></select></div>',
@@ -551,7 +551,19 @@ function renderControlTablesList(tables, rules, hardware) {
     '</tr>'
   );
 }
+function addControlTableRuleRow() {
+  ...
+}
 
+function escCt(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+  
   async function saveControlTable() {
   var msg = TGE.el('ct-message');
   if (msg) {
