@@ -1313,6 +1313,7 @@ async function handleAssetTrackPdf(request, env) {
 
   const body = await safeJson(request);
   const rows = Array.isArray(body.rows) ? body.rows : [];
+  const summary = body.summary || {};
 
   if (!rows.length) {
     return jsonResponse({ error: "rows array is required." }, 400);
@@ -1323,87 +1324,265 @@ async function handleAssetTrackPdf(request, env) {
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    let page = pdfDoc.addPage([841.89, 595.28]);
-    const pageWidth = page.getWidth();
-    const pageHeight = page.getHeight();
+    const pageW = 841.89;
+    const pageH = 595.28;
+    const margin = 28;
+    const brand = PDF_BRAND_GREEN;
+    const ink = rgb(0.07, 0.09, 0.08);
+    const muted = rgb(0.42, 0.45, 0.50);
+    const line = rgb(0.82, 0.84, 0.86);
+    const headerFill = rgb(0.94, 0.97, 0.95);
+    const zebraFill = rgb(0.985, 0.988, 0.990);
+    const issueFill = rgb(0.996, 0.953, 0.953);
 
-    const title = "Asset Tracker Report";
-    const titleWidth = fontBold.widthOfTextAtSize(title, 16);
-
-    page.drawText(title, {
-      x: (pageWidth - titleWidth) / 2,
-      y: pageHeight - 40,
-      size: 16,
-      font: fontBold
-    });
-
-    let y = pageHeight - 80;
-
-    const headers = [
-      "Fleet",
-      "Registration",
-      "IMEI",
-      "Model",
-      "Battery",
-      "Battery Status",
-      "Last Seen",
-      "Status"
+    const cols = [
+      { key: "fleetNo", label: "Fleet", w: 50 },
+      { key: "registration", label: "Registration", w: 72 },
+      { key: "imei", label: "IMEI", w: 105 },
+      { key: "model", label: "Model", w: 128 },
+      { key: "battBase", label: "Batt Base", w: 70 },
+      { key: "battCurrent", label: "Batt Current", w: 78 },
+      { key: "battStatus", label: "Batt Status", w: 76 },
+      { key: "lastSeen", label: "Last Seen", w: 112 },
+      { key: "status", label: "Status", w: 86 }
     ];
 
-    const widths = [60, 80, 110, 120, 60, 90, 120, 70];
+    const tableX = margin;
+    const tableW = pageW - margin * 2;
+    const rowH = 20;
+    const headerH = 22;
+    const footerY = 18;
+    const tableTopFirst = pageH - 145;
+    const tableTopNext = pageH - 78;
+    const tableBottom = 42;
 
-    let x = 20;
+    let pages = [];
+    let page = null;
+    let y = 0;
 
-    headers.forEach((h, i) => {
-      page.drawText(h, {
-        x,
-        y,
-        size: 8,
-        font: fontBold
-      });
-      x += widths[i];
+    const generatedAt = summary.generated || new Date().toLocaleString("en-AU", {
+      timeZone: "Australia/Sydney",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true
     });
 
-    y -= 15;
+    function textWidth(text, size, fnt) {
+      return fnt.widthOfTextAtSize(String(text || ""), size);
+    }
 
-    for (const row of rows) {
-
-      if (y < 40) {
-        page = pdfDoc.addPage([841.89, 595.28]);
-        y = page.getHeight() - 40;
+    function drawTextFit(pg, text, x, yy, maxW, size, fnt, color) {
+      let s = String(text == null || text === "" ? "—" : text);
+      while (s.length && textWidth(s, size, fnt) > maxW) {
+        s = s.slice(0, -1);
       }
+      if (s !== String(text == null || text === "" ? "—" : text)) {
+        s = s.length > 1 ? s.slice(0, -1) + "…" : "…";
+      }
+      pg.drawText(s, { x, y: yy, size, font: fnt, color });
+    }
 
-      const values = [
-        row.fleetNo || '',
-        row.registration || '',
-        row.imei || '',
-        row.model || '',
-        row.battery || '',
-        row.battStatus || '',
-        row.lastSeen || '',
-        row.status || ''
-      ];
+    function drawPageFrame(pg) {
+      pg.drawRectangle({
+        x: margin - 10,
+        y: 30,
+        width: pageW - (margin - 10) * 2,
+        height: pageH - 48,
+        borderColor: line,
+        borderWidth: 0.8
+      });
+    }
 
-      x = 20;
-
-      values.forEach((v, i) => {
-        page.drawText(String(v).substring(0, 25), {
-          x,
-          y,
-          size: 7,
-          font
-        });
-        x += widths[i];
+    function drawTitle(pg) {
+      const title = "Asset Track Report";
+      const titleW = textWidth(title, 17, fontBold);
+      pg.drawText(title, {
+        x: (pageW - titleW) / 2,
+        y: pageH - 34,
+        size: 17,
+        font: fontBold,
+        color: ink
       });
 
-      y -= 12;
+      const sub = "Asset Tracker device assignment, battery and reporting status";
+      const subW = textWidth(sub, 8.5, font);
+      pg.drawText(sub, {
+        x: (pageW - subW) / 2,
+        y: pageH - 49,
+        size: 8.5,
+        font,
+        color: muted
+      });
+
+      pg.drawLine({
+        start: { x: margin, y: pageH - 60 },
+        end: { x: pageW - margin, y: pageH - 60 },
+        thickness: 1.4,
+        color: brand
+      });
     }
+
+    function drawSummary(pg) {
+      const cards = [
+        ["Generated", generatedAt],
+        ["Total Rows", summary.totalAssets || rows.length],
+        ["With Tracker", summary.withTracker || rows.filter(r => r.imei && r.imei !== "—").length],
+        ["Reporting", summary.reporting || rows.filter(r => r.status === "Reporting").length],
+        ["Issues", summary.notReporting || rows.filter(r => r.status !== "Reporting").length]
+      ];
+
+      const gap = 8;
+      const cardW = (tableW - gap * (cards.length - 1)) / cards.length;
+      const cardH = 38;
+      let x = margin;
+
+      cards.forEach(card => {
+        pg.drawRectangle({
+          x,
+          y: pageH - 111,
+          width: cardW,
+          height: cardH,
+          color: rgb(0.960, 0.976, 0.965),
+          borderColor: rgb(0.900, 0.940, 0.920),
+          borderWidth: 0.7
+        });
+
+        pg.drawText(String(card[0]).toUpperCase(), {
+          x: x + 8,
+          y: pageH - 88,
+          size: 6.5,
+          font: fontBold,
+          color: rgb(0.32, 0.42, 0.36)
+        });
+
+        drawTextFit(pg, card[1], x + 8, pageH - 103, cardW - 16, 9, fontBold, ink);
+        x += cardW + gap;
+      });
+    }
+
+    function drawTableHeader(pg, yy) {
+      pg.drawRectangle({
+        x: tableX,
+        y: yy - headerH,
+        width: tableW,
+        height: headerH,
+        color: headerFill,
+        borderColor: line,
+        borderWidth: 0.7
+      });
+
+      let x = tableX;
+      cols.forEach(col => {
+        pg.drawText(col.label, {
+          x: x + 5,
+          y: yy - 14,
+          size: 7.2,
+          font: fontBold,
+          color: rgb(0.19, 0.31, 0.23)
+        });
+        x += col.w;
+      });
+
+      pg.drawLine({
+        start: { x: tableX, y: yy - headerH },
+        end: { x: tableX + tableW, y: yy - headerH },
+        thickness: 1,
+        color: brand
+      });
+    }
+
+    function newPage(isFirst) {
+      page = pdfDoc.addPage([pageW, pageH]);
+      pages.push(page);
+      drawPageFrame(page);
+
+      if (isFirst) {
+        drawTitle(page);
+        drawSummary(page);
+        y = tableTopFirst;
+      } else {
+        const title = "Asset Track Report";
+        page.drawText(title, {
+          x: margin,
+          y: pageH - 38,
+          size: 13,
+          font: fontBold,
+          color: ink
+        });
+        page.drawText("Continued", {
+          x: pageW - margin - textWidth("Continued", 8.5, font),
+          y: pageH - 36,
+          size: 8.5,
+          font,
+          color: muted
+        });
+        page.drawLine({
+          start: { x: margin, y: pageH - 50 },
+          end: { x: pageW - margin, y: pageH - 50 },
+          thickness: 1.2,
+          color: brand
+        });
+        y = tableTopNext;
+      }
+
+      drawTableHeader(page, y);
+      y -= headerH;
+    }
+
+    newPage(true);
+
+    rows.forEach((row, idx) => {
+      if (y - rowH < tableBottom) {
+        newPage(false);
+      }
+
+      const isIssue = row.status && row.status !== "Reporting";
+      const fill = isIssue ? issueFill : (idx % 2 === 1 ? zebraFill : rgb(1, 1, 1));
+
+      page.drawRectangle({
+        x: tableX,
+        y: y - rowH,
+        width: tableW,
+        height: rowH,
+        color: fill,
+        borderColor: rgb(0.90, 0.91, 0.92),
+        borderWidth: 0.35
+      });
+
+      let x = tableX;
+      cols.forEach(col => {
+        const value = row[col.key] == null || row[col.key] === "" ? "—" : row[col.key];
+        const isStatus = col.key === "status" || col.key === "battStatus";
+        const c = value === "Critical" || value === "Low" || value === "No Meter Data" || value === "Not Asset Tracker" || value === "No Device Assigned" || value === "Fleet Not Found"
+          ? rgb(0.75, 0.12, 0.12)
+          : (value === "Fresh" || value === "Good" || value === "Reporting" ? rgb(0.05, 0.42, 0.18) : ink);
+
+        drawTextFit(page, value, x + 5, y - 13, col.w - 8, isStatus ? 7.1 : 6.8, isStatus ? fontBold : font, c);
+        x += col.w;
+      });
+
+      y -= rowH;
+    });
+
+    pages.forEach((pg, idx) => {
+      const footer = `Page ${idx + 1} of ${pages.length}   —   Generated ${generatedAt}`;
+      const footerW = textWidth(footer, 7.5, font);
+      pg.drawText(footer, {
+        x: (pageW - footerW) / 2,
+        y: footerY,
+        size: 7.5,
+        font,
+        color: muted
+      });
+    });
 
     const pdfBytes = await pdfDoc.save();
 
     let binary = "";
     const bytes = new Uint8Array(pdfBytes);
-
     for (let i = 0; i < bytes.length; i += 8192) {
       binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
     }
@@ -1411,7 +1590,7 @@ async function handleAssetTrackPdf(request, env) {
     return jsonResponse({
       ok: true,
       base64: btoa(binary),
-      fileName: "Asset Tracker Report.pdf",
+      fileName: "Asset Track Report.pdf",
       sizeBytes: pdfBytes.length
     });
 
