@@ -490,9 +490,18 @@ function renderControlTablesList(tables, rules, hardware) {
 
       '<div class="data-grid data-grid-2">',
         '<div class="field"><label>Table Name</label><input id="ct-edit-name" type="text" placeholder="Oyster Battery Status" value="' + escCt(table ? table.name : '') + '"></div>',
-        '<div class="field"><label>Feature</label><select id="ct-edit-feature"><option value="asset-track">Asset Track</option></select></div>',
-        '<div class="field"><label>Output Field</label><select id="ct-edit-output"><option value="battStatus">Batt Status</option></select></div>',
-        '<div class="field"><label>Evaluate Field</label><select id="ct-edit-source"><option value="battCurrent">Batt Current</option><option value="battBase">Batt Base</option></select></div>',
+        '<div class="field"><label>Feature</label><select id="ct-edit-feature">' +
+  '<option value="asset-track"' + (table && table.feature === 'asset-track' ? ' selected' : '') + '>Asset Track</option>' +
+'</select></div>',
+
+'<div class="field"><label>Output Field</label><select id="ct-edit-output">' +
+  '<option value="battStatus"' + (table && table.output_field === 'battStatus' ? ' selected' : '') + '>Batt Status</option>' +
+'</select></div>',
+
+'<div class="field"><label>Evaluate Field</label><select id="ct-edit-source">' +
+  '<option value="battCurrent"' + (table && table.value_source === 'battCurrent' ? ' selected' : '') + '>Batt Current</option>' +
+  '<option value="battBase"' + (table && table.value_source === 'battBase' ? ' selected' : '') + '>Batt Base</option>' +
+'</select></div>',
       '</div>',
 
       '<div style="margin-top:16px;">',
