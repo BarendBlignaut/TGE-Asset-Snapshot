@@ -550,18 +550,9 @@ function renderControlTablesTab() {
 
     '</div>',
 
-    '<div id="ct-grid" class="data-grid data-grid-3" style="margin-top:16px;">',
-
-      '<div class="card" style="min-height:180px;display:flex;align-items:center;justify-content:center;border:2px dashed var(--line);cursor:pointer;" id="ct-create-card">',
-
-        '<div style="text-align:center;">',
-          '<div style="font-size:28px;margin-bottom:8px;">+</div>',
-          '<div style="font-weight:600;">Create Control Table</div>',
-        '</div>',
-
-      '</div>',
-
-    '</div>',
+    '<div id="ct-list" style="margin-top:16px;">',
+  '<div class="empty-state">No control tables configured.</div>',
+'</div>',
 
     '<div id="ct-editor" style="display:none;margin-top:16px;"></div>'
 
