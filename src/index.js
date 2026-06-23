@@ -1589,7 +1589,6 @@ page.drawText(cont, {
   font,
   color: muted
 });
-        });
         page.drawLine({
           start: { x: margin, y: pageH - 50 },
           end: { x: pageW - margin, y: pageH - 50 },
