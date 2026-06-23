@@ -552,7 +552,7 @@ function renderControlTablesList(tables, rules, hardware) {
   );
 }
 function addControlTableRuleRow() {
-  ...
+
 }
 
 function escCt(value) {
