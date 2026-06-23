@@ -507,8 +507,8 @@ function renderControlTablesList(tables, rules, hardware) {
       '<div style="margin-top:16px;">',
         '<div class="card-kicker">Assigned Hardware</div>',
         '<div class="data-grid data-grid-2" style="margin-top:8px;">',
-          '<label><input type="checkbox" class="ct-hardware" value="DMT Oyster Cellular 3"> DMT Oyster Cellular 3</label>',
-          '<label><input type="checkbox" class="ct-hardware" value="Flex Solar Tracker"> Flex Solar Tracker</label>',
+         '<label><input type="checkbox" class="ct-hardware" value="DMT Oyster Cellular 3"' + (table && table.hardware && table.hardware.indexOf('DMT Oyster Cellular 3') !== -1 ? ' checked' : '') + '> DMT Oyster Cellular 3</label>',
+'<label><input type="checkbox" class="ct-hardware" value="Flex Solar Tracker"' + (table && table.hardware && table.hardware.indexOf('Flex Solar Tracker') !== -1 ? ' checked' : '') + '> Flex Solar Tracker</label>',
         '</div>',
       '</div>',
 
