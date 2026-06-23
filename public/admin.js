@@ -129,6 +129,14 @@
     TGE.on('user-import-file', 'change', handleImport);
   }
 
+  function wireControlTablesTab() {
+  TGE.on('ct-new-btn', 'click', function () {
+    var form = TGE.el('ct-form');
+    if (form) {
+      form.style.display = '';
+    }
+  });
+}
   async function loadRoles() {
     var result = await api('GET', '/api/admin/roles');
     if (!result.ok) return;
