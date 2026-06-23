@@ -1504,20 +1504,27 @@ async function handleAssetTrackPdf(request, env) {
         drawSummary(page);
         y = tableTopFirst;
       } else {
-        const title = "Asset Track Report";
-        page.drawText(title, {
-          x: margin,
-          y: pageH - 38,
-          size: 13,
-          font: fontBold,
-          color: ink
+       const title = "Asset Track Report";
+const titleW = textWidth(title, 13, fontBold);
+
+page.drawText(title, {
+  x: (pageW - titleW) / 2,
+  y: pageH - 38,
+  size: 13,
+  font: fontBold,
+  color: ink
+});
         });
-        page.drawText("Continued", {
-          x: pageW - margin - textWidth("Continued", 8.5, font),
-          y: pageH - 36,
-          size: 8.5,
-          font,
-          color: muted
+const cont = "Continued";
+const contW = textWidth(cont, 8.5, font);
+
+page.drawText(cont, {
+  x: (pageW - contW) / 2,
+  y: pageH - 52,
+  size: 8.5,
+  font,
+  color: muted
+});
         });
         page.drawLine({
           start: { x: margin, y: pageH - 50 },
