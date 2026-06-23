@@ -540,9 +540,46 @@
           '<button class="btn btn-primary" id="ct-new-btn" type="button">Add Control Table</button>',
         '</div>',
 
-        '<div id="ct-list">',
-          '<div class="empty-state">No control tables configured.</div>',
-        '</div>',
+'<div id="ct-form" style="display:none;margin-bottom:16px;">',
+
+  '<div class="card" style="padding:16px;">',
+
+    '<div class="grid" style="display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:12px;">',
+
+      '<div>',
+        '<label>Table Name</label>',
+        '<input id="ct-name" class="input" type="text" placeholder="Oyster Battery Status">',
+      '</div>',
+
+      '<div>',
+        '<label>Feature</label>',
+        '<input id="ct-feature" class="input" type="text" value="asset-track">',
+      '</div>',
+
+      '<div>',
+        '<label>Hardware Match</label>',
+        '<input id="ct-hardware" class="input" type="text" placeholder="DMT Oyster Cellular 3">',
+      '</div>',
+
+      '<div>',
+        '<label>Value Source</label>',
+        '<input id="ct-source" class="input" type="text" value="battCurrent">',
+      '</div>',
+
+      '<div>',
+        '<label>Output Field</label>',
+        '<input id="ct-output" class="input" type="text" value="battStatus">',
+      '</div>',
+
+    '</div>',
+
+  '</div>',
+
+'</div>',
+
+'<div id="ct-list">',
+  '<div class="empty-state">No control tables configured.</div>',
+'</div>',
 
       '</div>',
     '</div>'
