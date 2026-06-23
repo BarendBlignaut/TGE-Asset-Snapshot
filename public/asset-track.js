@@ -17,31 +17,9 @@
   var canFleet = false;
   var _xlsxLoading = null;
 
-  function injectStyles() {
-    if (document.getElementById('asset-track-styles')) return;
-
-    var style = document.createElement('style');
-    style.id = 'asset-track-styles';
-    style.textContent = [
-      '.hero-menu{position:relative;display:inline-flex;}',
-      '.hero-menu-trigger{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.10);color:#fff;font:inherit;font-size:12px;font-weight:700;cursor:pointer;}',
-      '.hero-menu-trigger:hover{background:rgba(255,255,255,0.16);}',
-      '.hero-menu-icon{color:var(--yellow);}',
-      '.hero-menu-caret{opacity:.75;}',
-      '.hero-menu-panel{display:none;position:fixed;z-index:9999;min-width:190px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.22);padding:6px;}',
-      '.hero-menu.open .hero-menu-panel{display:block;}',
-      '.hero-menu-item{width:100%;display:flex;align-items:center;justify-content:space-between;gap:14px;border:0;background:transparent;color:var(--ink);font:inherit;font-size:12px;cursor:pointer;padding:9px 10px;border-radius:9px;text-align:left;}',
-      '.hero-menu-item:hover{background:var(--surface-2);}',
-      '.hero-menu-item span:last-child{color:var(--muted);font-size:11px;}'
-    ].join('');
-    document.head.appendChild(style);
-  }
-
   function render() {
     var view = TGE.el('view-asset-track');
     if (!view) return;
-
-    injectStyles();
 
     userLimit = TGE.limit('asset-track', 'user-mode') || 500;
     canUser = TGE.can('asset-track', 'user-mode');
@@ -52,7 +30,7 @@
       '<div class="hero">',
         '<div class="hero-kicker">Operations</div>',
         '<div class="hero-title">Asset Track</div>',
-        '<div class="hero-sub">Load asset tracker battery, last seen and status by fleet number or fleet-wide search.</div>',
+        '<div class="hero-sub">Load Asset Tracker battery, last seen and status by fleet number or fleet-wide search.</div>',
         '<div class="hero-bar">',
           '<div class="hero-bar-left">',
             canUser ? '<button class="hero-mode-btn active" id="at-mode-user" type="button">User Mode</button>' : '',
@@ -85,7 +63,7 @@
       '<div id="at-summary" class="card" style="display:none;">',
         '<div class="data-grid data-grid-4">',
           '<div class="data-item"><span>Total Rows</span><strong id="at-sum-total">—</strong></div>',
-          '<div class="data-item"><span>With Tracker</span><strong id="at-sum-trackers">—</strong></div>',
+          '<div class="data-item"><span>With Asset Tracker</span><strong id="at-sum-trackers">—</strong></div>',
           '<div class="data-item"><span>Reporting</span><strong id="at-sum-reporting" style="color:var(--green-600);">—</strong></div>',
           '<div class="data-item"><span>Issues</span><strong id="at-sum-not-reporting" style="color:var(--danger);">—</strong></div>',
         '</div>',
@@ -94,14 +72,15 @@
       '<div id="at-results" style="display:none;">',
         '<div class="card" style="padding:0;overflow:hidden;">',
           '<div style="overflow-x:auto;">',
-            '<table style="width:100%;border-collapse:collapse;min-width:950px;">',
+            '<table style="width:100%;border-collapse:collapse;min-width:1100px;">',
               '<thead>',
                 '<tr>',
                   '<th>Fleet No</th>',
                   '<th>Registration</th>',
                   '<th>Tracker IMEI</th>',
                   '<th>Model</th>',
-                  '<th>Battery</th>',
+                  '<th>Batt Base</th>',
+                  '<th>Batt Current</th>',
                   '<th>Batt Status</th>',
                   '<th>Last Seen</th>',
                   '<th>Status</th>',
@@ -130,9 +109,7 @@
 
     return '<div class="hero-menu" id="at-export-menu">' +
       '<button class="hero-menu-trigger" id="at-export-trigger" type="button" aria-haspopup="true" aria-expanded="false" title="Export">' +
-        '<svg class="hero-menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M8 1.5v8M5 6.5l3 3 3-3M2.5 11.5v2A1 1 0 0 0 3.5 14.5h9a1 1 0 0 0 1-1v-2"/></svg>' +
         '<span>Export</span>' +
-        '<svg class="hero-menu-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><path d="M4 6l4 4 4-4"/></svg>' +
       '</button>' +
       '<div class="hero-menu-panel" role="menu">' + items + '</div>' +
     '</div>';
@@ -156,39 +133,39 @@
   }
 
   function wireExportMenu() {
-    var exportTrigger = TGE.el('at-export-trigger');
-    var exportMenu = TGE.el('at-export-menu');
-    var exportPanel = exportMenu ? exportMenu.querySelector('.hero-menu-panel') : null;
+    var trigger = TGE.el('at-export-trigger');
+    var menu = TGE.el('at-export-menu');
+    var panel = menu ? menu.querySelector('.hero-menu-panel') : null;
 
-    function positionExportPanel() {
-      if (!exportTrigger || !exportPanel) return;
-      var rect = exportTrigger.getBoundingClientRect();
-      exportPanel.style.top = (rect.bottom + 8) + 'px';
-      exportPanel.style.left = 'auto';
-      exportPanel.style.right = (window.innerWidth - rect.right) + 'px';
+    function positionPanel() {
+      if (!trigger || !panel) return;
+      var rect = trigger.getBoundingClientRect();
+      panel.style.top = (rect.bottom + 8) + 'px';
+      panel.style.left = 'auto';
+      panel.style.right = (window.innerWidth - rect.right) + 'px';
     }
 
-    if (exportTrigger && exportMenu) {
-      exportTrigger.onclick = function (e) {
+    if (trigger && menu) {
+      trigger.onclick = function (e) {
         e.stopPropagation();
-        var open = !exportMenu.classList.contains('open');
-        if (open) positionExportPanel();
-        exportMenu.classList.toggle('open', open);
-        exportTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+        var open = !menu.classList.contains('open');
+        if (open) positionPanel();
+        menu.classList.toggle('open', open);
+        trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
       };
     }
   }
 
   function closeExportMenu() {
-    var exportMenu = TGE.el('at-export-menu');
-    var exportTrigger = TGE.el('at-export-trigger');
-    if (exportMenu) exportMenu.classList.remove('open');
-    if (exportTrigger) exportTrigger.setAttribute('aria-expanded', 'false');
+    var menu = TGE.el('at-export-menu');
+    var trigger = TGE.el('at-export-trigger');
+    if (menu) menu.classList.remove('open');
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
   }
 
   document.addEventListener('click', function (e) {
-    var exportMenu = TGE.el('at-export-menu');
-    if (exportMenu && !exportMenu.contains(e.target)) closeExportMenu();
+    var menu = TGE.el('at-export-menu');
+    if (menu && !menu.contains(e.target)) closeExportMenu();
   });
 
   window.addEventListener('scroll', closeExportMenu, true);
@@ -207,10 +184,7 @@
   }
 
   function parseFleetNumbers(raw) {
-    return String(raw || '')
-      .split(/[\n,]+/)
-      .map(function (s) { return s.trim(); })
-      .filter(Boolean);
+    return String(raw || '').split(/[\n,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
   }
 
   function updateInputCount() {
@@ -220,7 +194,6 @@
 
     var items = parseFleetNumbers(input.value);
     var over = items.length > userLimit;
-
     count.textContent = items.length + ' asset' + (items.length !== 1 ? 's' : '') + ' entered' + (over ? ' — max ' + userLimit + ' allowed' : '');
     count.style.color = over ? 'var(--danger)' : 'var(--muted)';
   }
@@ -262,11 +235,8 @@
             return String(v.name || '').trim().toLowerCase() === String(fleetNo).trim().toLowerCase();
           });
 
-          if (match) {
-            vehicles.push(match);
-          } else {
-            state.rows.push(makeMissingFleetRow(fleetNo));
-          }
+          if (match) vehicles.push(match);
+          else state.rows.push(makeExceptionRow(fleetNo, 'Fleet Not Found'));
         });
       } else {
         vehicles = allVehicles.filter(function (v) {
@@ -281,7 +251,7 @@
       var metersRes = await TGE.api('GET', '/api/tn360/v1/vehicles/meters?pruning=B2B');
       var allMetersByVehicle = metersRes.ok && metersRes.data ? metersRes.data : {};
 
-      setMessage('Checking ' + vehicles.length + ' vehicles for trackers...', false);
+      setMessage('Checking ' + vehicles.length + ' vehicles for Asset Tracker devices...', false);
 
       var checked = 0;
       var results = await batchRun(vehicles, function (vehicle) {
@@ -294,19 +264,31 @@
             }
 
             var devices = r.ok && Array.isArray(r.data) ? r.data : [];
-            var tracker = findTrackerDevice(devices);
+            var tracker = findAssetTrackerDevice(devices, vehicle);
 
-            return { vehicle: vehicle, tracker: tracker || null };
+            return {
+              vehicle: vehicle,
+              devices: devices,
+              tracker: tracker
+            };
           })
           .catch(function () {
-            return { vehicle: vehicle, tracker: null };
+            return {
+              vehicle: vehicle,
+              devices: [],
+              tracker: null
+            };
           });
       }, 5, 300);
 
-      var finalRows = results.map(function (item) {
-        var vehicleMeters = allMetersByVehicle[String(item.vehicle.id)] || [];
-        return makeRow(item.vehicle, item.tracker, vehicleMeters);
-      });
+      var finalRows = results
+        .filter(function (item) {
+          return state.mode === 'user' || item.tracker;
+        })
+        .map(function (item) {
+          var meters = allMetersByVehicle[String(item.vehicle.id)] || [];
+          return makeRow(item.vehicle, item.devices, item.tracker, meters);
+        });
 
       state.rows = state.rows.concat(finalRows);
       renderRows();
@@ -314,37 +296,40 @@
       setMessage('');
 
     } catch (e) {
-      setMessage(e.message || 'Failed to load asset tracker data.', true);
+      setMessage(e.message || 'Failed to load Asset Track data.', true);
     } finally {
       state.running = false;
       setBtnState(false);
     }
   }
 
-  function findTrackerDevice(devices) {
+  function findAssetTrackerDevice(devices, vehicle) {
     if (!Array.isArray(devices) || !devices.length) return null;
 
     return devices.find(function (d) {
-      return isTrackerDevice(d);
+      return isAssetTrackerDevice(d) && isDeviceAssignedToVehicle(d, vehicle);
     }) || null;
   }
 
-  function isTrackerDevice(d) {
+  function isAssetTrackerDevice(d) {
     if (!d) return false;
 
     var typeCode = d.type && d.type.code ? String(d.type.code).toUpperCase() : '';
     var typeName = d.type && d.type.name ? String(d.type.name).toLowerCase() : '';
-    var modelName = d.model && d.model.name ? String(d.model.name).toLowerCase() : '';
 
-    return typeCode === DEVICE_CODE ||
-      typeCode.indexOf('TRACK') !== -1 ||
-      typeName.indexOf('tracker') !== -1 ||
-      modelName.indexOf('oyster') !== -1 ||
-      modelName.indexOf('at301') !== -1 ||
-      modelName.indexOf('solar') !== -1;
+    return typeCode === DEVICE_CODE || typeName === 'asset tracker';
   }
 
-  function makeMissingFleetRow(fleetNo) {
+  function isDeviceAssignedToVehicle(d, vehicle) {
+    if (!d || !vehicle) return false;
+
+    if (String(d.vehicleId || '') === String(vehicle.id)) return true;
+    if (d.vehicle && String(d.vehicle.id || '') === String(vehicle.id)) return true;
+
+    return false;
+  }
+
+  function makeExceptionRow(fleetNo, status) {
     return {
       fleetNo: fleetNo,
       registration: '—',
@@ -352,83 +337,77 @@
       imei: '—',
       model: '—',
       serial: '—',
-      battery: null,
+      battBase: null,
+      battCurrent: null,
       battStatus: 'N/A',
       lastSeen: null,
-      status: 'Fleet Not Found'
+      status: status
     };
   }
 
-  function makeRow(vehicle, tracker, meters) {
+  function makeRow(vehicle, devices, tracker, meters) {
     meters = meters || [];
+    devices = devices || [];
 
     var batteryMeter = meters.find(function (m) {
       return m.type === 'battery';
     });
 
-    var meterDevice = batteryMeter && batteryMeter.device ? batteryMeter.device : null;
-
-    var battery = batteryMeter ? batteryMeter.computed : null;
+    var battBase = batteryMeter ? batteryMeter.base : null;
+    var battCurrent = batteryMeter ? batteryMeter.computed : null;
     var lastSeen = batteryMeter ? batteryMeter.updatedAt : null;
-    var deviceForBatteryRules = tracker || meterDevice;
-    var battStatus = getBatteryStatus(battery, deviceForBatteryRules);
+    var battStatus = getBatteryStatus(battCurrent, tracker);
 
-    var status = tracker
-      ? (lastSeen ? 'Reporting' : 'No recent data')
-      : 'No tracker device';
+    var status = 'Reporting';
+
+    if (!devices.length) {
+      status = 'No Device Assigned';
+    } else if (!tracker) {
+      status = 'Not Asset Tracker';
+    } else if (!batteryMeter) {
+      status = 'No Meter Data';
+    } else if (!lastSeen) {
+      status = 'No Recent Data';
+    }
 
     return {
       fleetNo: vehicle && vehicle.name ? vehicle.name : '—',
       registration: vehicle && vehicle.registration ? vehicle.registration : '—',
       vehicleId: vehicle && vehicle.id ? vehicle.id : null,
-      imei: getDeviceImei(tracker, meterDevice),
-      model: getTrackerModelName(tracker, meterDevice),
-      serial: getDeviceSerial(tracker, meterDevice),
-      battery: battery,
+      imei: tracker && tracker.imei ? tracker.imei : '—',
+      model: getTrackerModelName(tracker),
+      serial: tracker && tracker.serialNumber ? tracker.serialNumber : '—',
+      battBase: battBase,
+      battCurrent: battCurrent,
       battStatus: battStatus,
       lastSeen: lastSeen,
       status: status
     };
   }
 
-  function getDeviceImei(tracker, meterDevice) {
-    if (tracker && tracker.imei) return tracker.imei;
-    if (meterDevice && meterDevice.imei) return meterDevice.imei;
-    if (tracker && tracker.serialNumber) return tracker.serialNumber;
-    if (meterDevice && meterDevice.serialNumber) return meterDevice.serialNumber;
+  function getTrackerModelName(tracker) {
+    if (!tracker) return '—';
+    if (tracker.model && tracker.model.name) return tracker.model.name;
+    if (String(tracker.modelId) === '85') return 'AT301 / Oyster3';
+    if (tracker.modelId) return 'Model ' + tracker.modelId;
+    if (tracker.model && tracker.model.id) return 'Model ' + tracker.model.id;
     return '—';
   }
 
-  function getDeviceSerial(tracker, meterDevice) {
-    if (tracker && tracker.serialNumber) return tracker.serialNumber;
-    if (meterDevice && meterDevice.serialNumber) return meterDevice.serialNumber;
-    return '—';
-  }
-
-  function getTrackerModelName(tracker, meterDevice) {
-    var d = tracker || meterDevice;
-    if (!d) return '—';
-    if (d.model && d.model.name) return d.model.name;
-    if (String(d.modelId) === '85') return 'AT301 / Oyster3';
-    if (d.modelId) return 'Model ' + d.modelId;
-    if (d.model && d.model.id) return 'Model ' + d.model.id;
-    return '—';
-  }
-
-  function isAt301Tracker(device) {
+  function isOysterTracker(device) {
     if (!device) return false;
 
     var modelName = device.model && device.model.name ? String(device.model.name).toLowerCase() : '';
     var modelId = device.modelId || (device.model && device.model.id);
 
-    return modelName.indexOf('at301') !== -1 ||
-      modelName.indexOf('oyster') !== -1 ||
+    return modelName.indexOf('oyster') !== -1 ||
+      modelName.indexOf('at301') !== -1 ||
       String(modelId) === '85' ||
       String(modelId) === '433';
   }
 
-  function getBatteryStatus(voltage, device) {
-    if (!isAt301Tracker(device)) return 'N/A';
+  function getBatteryStatus(voltage, tracker) {
+    if (!isOysterTracker(tracker)) return 'N/A';
     if (voltage == null || voltage === '') return 'Unknown';
 
     var v = Number(voltage);
@@ -451,7 +430,7 @@
     tbody.innerHTML = state.rows.map(function (r) {
       var badgeClass = 'badge-gray';
       if (r.status === 'Reporting') badgeClass = 'badge-green';
-      else if (r.status === 'Fleet Not Found' || r.status === 'No tracker device' || r.status === 'No recent data') badgeClass = 'badge-red';
+      else if (r.status !== 'Reporting') badgeClass = 'badge-red';
 
       var battClass = 'badge-gray';
       if (r.battStatus === 'Fresh') battClass = 'badge-green';
@@ -464,7 +443,8 @@
         '<td>' + esc(r.registration) + '</td>' +
         '<td style="font-family:monospace;font-size:12px;">' + esc(r.imei) + '</td>' +
         '<td>' + esc(r.model) + '</td>' +
-        '<td>' + esc(formatBattery(r.battery)) + '</td>' +
+        '<td>' + esc(formatBattery(r.battBase)) + '</td>' +
+        '<td>' + esc(formatBattery(r.battCurrent)) + '</td>' +
         '<td><span class="badge ' + battClass + '">' + esc(r.battStatus) + '</span></td>' +
         '<td>' + esc(formatTs(r.lastSeen)) + '</td>' +
         '<td><span class="badge ' + badgeClass + '">' + esc(r.status) + '</span></td>' +
@@ -550,7 +530,8 @@
         registration: r.registration,
         imei: r.imei,
         model: r.model,
-        battery: formatBattery(r.battery),
+        battBase: formatBattery(r.battBase),
+        battCurrent: formatBattery(r.battCurrent),
         battStatus: r.battStatus,
         lastSeen: formatTs(r.lastSeen),
         status: r.status
@@ -559,10 +540,10 @@
   }
 
   function assetTrackSheetRows() {
-    var rows = [['Fleet No', 'Registration', 'Tracker IMEI', 'Model', 'Battery', 'Batt Status', 'Last Seen', 'Status']];
+    var rows = [['Fleet No', 'Registration', 'Tracker IMEI', 'Model', 'Batt Base', 'Batt Current', 'Batt Status', 'Last Seen', 'Status']];
 
     assetTrackRows().forEach(function (r) {
-      rows.push([r.fleetNo, r.registration, r.imei, r.model, r.battery, r.battStatus, r.lastSeen, r.status]);
+      rows.push([r.fleetNo, r.registration, r.imei, r.model, r.battBase, r.battCurrent, r.battStatus, r.lastSeen, r.status]);
     });
 
     return rows;
@@ -669,7 +650,8 @@
         { key: 'registration', label: 'Registration' },
         { key: 'imei', label: 'Tracker IMEI' },
         { key: 'model', label: 'Model' },
-        { key: 'battery', label: 'Battery' },
+        { key: 'battBase', label: 'Batt Base' },
+        { key: 'battCurrent', label: 'Batt Current' },
         { key: 'battStatus', label: 'Batt Status' },
         { key: 'lastSeen', label: 'Last Seen' },
         { key: 'status', label: 'Status' }
