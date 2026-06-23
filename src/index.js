@@ -1578,7 +1578,7 @@ page.drawText(title, {
   font: fontBold,
   color: ink
 });
-        });
+      
 const cont = "Continued";
 const contW = textWidth(cont, 8.5, font);
 
