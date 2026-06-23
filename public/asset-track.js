@@ -52,7 +52,7 @@
       '<div class="hero">',
         '<div class="hero-kicker">Operations</div>',
         '<div class="hero-title">Asset Track</div>',
-        '<div class="hero-sub">Load ATRACKER battery, last seen and tracker status by fleet number or fleet-wide search.</div>',
+        '<div class="hero-sub">Load asset tracker battery, last seen and status by fleet number or fleet-wide search.</div>',
         '<div class="hero-bar">',
           '<div class="hero-bar-left">',
             canUser ? '<button class="hero-mode-btn active" id="at-mode-user" type="button">User Mode</button>' : '',
@@ -84,10 +84,10 @@
 
       '<div id="at-summary" class="card" style="display:none;">',
         '<div class="data-grid data-grid-4">',
-          '<div class="data-item"><span>Total Assets</span><strong id="at-sum-total">—</strong></div>',
+          '<div class="data-item"><span>Total Rows</span><strong id="at-sum-total">—</strong></div>',
           '<div class="data-item"><span>With Tracker</span><strong id="at-sum-trackers">—</strong></div>',
           '<div class="data-item"><span>Reporting</span><strong id="at-sum-reporting" style="color:var(--green-600);">—</strong></div>',
-          '<div class="data-item"><span>Not Reporting</span><strong id="at-sum-not-reporting" style="color:var(--danger);">—</strong></div>',
+          '<div class="data-item"><span>Issues</span><strong id="at-sum-not-reporting" style="color:var(--danger);">—</strong></div>',
         '</div>',
       '</div>',
 
@@ -119,20 +119,18 @@
 
   function buildExportMenu() {
     var items = [
-      TGE.can('asset-track','export-pdf')       ? '<button class="hero-menu-item" id="at-pdf-btn" type="button"><span>Asset Track PDF</span><span>PDF</span></button>' : '',
+      TGE.can('asset-track','export-pdf') ? '<button class="hero-menu-item" id="at-pdf-btn" type="button"><span>Asset Track PDF</span><span>PDF</span></button>' : '',
       TGE.can('asset-track','export-email-pdf') ? '<button class="hero-menu-item" id="at-email-btn" type="button"><span>Email PDF</span><span>Send</span></button>' : '',
-      TGE.can('asset-track','export-csv')       ? '<button class="hero-menu-item" id="at-csv-btn" type="button"><span>CSV</span><span>.csv</span></button>' : '',
-      TGE.can('asset-track','export-xlsx')      ? '<button class="hero-menu-item" id="at-xlsx-btn" type="button"><span>Excel</span><span>.xlsx</span></button>' : '',
-      TGE.can('asset-track','export-json')      ? '<button class="hero-menu-item" id="at-json-btn" type="button"><span>JSON</span><span>.json</span></button>' : ''
+      TGE.can('asset-track','export-csv') ? '<button class="hero-menu-item" id="at-csv-btn" type="button"><span>CSV</span><span>.csv</span></button>' : '',
+      TGE.can('asset-track','export-xlsx') ? '<button class="hero-menu-item" id="at-xlsx-btn" type="button"><span>Excel</span><span>.xlsx</span></button>' : '',
+      TGE.can('asset-track','export-json') ? '<button class="hero-menu-item" id="at-json-btn" type="button"><span>JSON</span><span>.json</span></button>' : ''
     ].filter(Boolean).join('');
 
     if (!items) return '';
 
     return '<div class="hero-menu" id="at-export-menu">' +
       '<button class="hero-menu-trigger" id="at-export-trigger" type="button" aria-haspopup="true" aria-expanded="false" title="Export">' +
-        '<svg class="hero-menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">' +
-          '<path d="M8 1.5v8M5 6.5l3 3 3-3M2.5 11.5v2A1 1 0 0 0 3.5 14.5h9a1 1 0 0 0 1-1v-2"/>' +
-        '</svg>' +
+        '<svg class="hero-menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M8 1.5v8M5 6.5l3 3 3-3M2.5 11.5v2A1 1 0 0 0 3.5 14.5h9a1 1 0 0 0 1-1v-2"/></svg>' +
         '<span>Export</span>' +
         '<svg class="hero-menu-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><path d="M4 6l4 4 4-4"/></svg>' +
       '</button>' +
@@ -255,28 +253,35 @@
       var vRes = await TGE.api('GET', '/api/tn360/v1/vehicles?pruning=B2B');
       if (!vRes.ok) throw new Error('Vehicle lookup failed');
 
-      var vehicles = Array.isArray(vRes.data) ? vRes.data : [];
+      var allVehicles = Array.isArray(vRes.data) ? vRes.data : [];
+      var vehicles = [];
 
       if (state.mode === 'user') {
-        vehicles = vehicles.filter(function (v) {
-          return requested.some(function (fleetNo) {
+        requested.forEach(function (fleetNo) {
+          var match = allVehicles.find(function (v) {
             return String(v.name || '').trim().toLowerCase() === String(fleetNo).trim().toLowerCase();
           });
+
+          if (match) {
+            vehicles.push(match);
+          } else {
+            state.rows.push(makeMissingFleetRow(fleetNo));
+          }
         });
       } else {
-        vehicles = vehicles.filter(function (v) {
+        vehicles = allVehicles.filter(function (v) {
           return v.status === 'ENABLED';
         });
       }
 
-      if (!vehicles.length) throw new Error('No matching vehicles found.');
+      if (!vehicles.length && !state.rows.length) throw new Error('No matching vehicles found.');
 
       setMessage('Loading meter data...', false);
 
       var metersRes = await TGE.api('GET', '/api/tn360/v1/vehicles/meters?pruning=B2B');
       var allMetersByVehicle = metersRes.ok && metersRes.data ? metersRes.data : {};
 
-      setMessage('Checking ' + vehicles.length + ' vehicles for asset trackers...', false);
+      setMessage('Checking ' + vehicles.length + ' vehicles for trackers...', false);
 
       var checked = 0;
       var results = await batchRun(vehicles, function (vehicle) {
@@ -288,29 +293,22 @@
               setMessage('Checking devices... ' + checked + '/' + vehicles.length, false);
             }
 
-            if (!r.ok) return { vehicle: vehicle, tracker: null };
-
-            var tracker = devices.find(function (d) {
-            return d.type && d.type.code === DEVICE_CODE;
-            });
+            var devices = r.ok && Array.isArray(r.data) ? r.data : [];
+            var tracker = findTrackerDevice(devices);
 
             return { vehicle: vehicle, tracker: tracker || null };
           })
           .catch(function () {
             return { vehicle: vehicle, tracker: null };
           });
-            }, 5, 300);
+      }, 5, 300);
 
-          var finalRows = results
-          .filter(function (item) {
-          return item && item.tracker;
-  })
-  .map(function (item) {
-    var vehicleMeters = allMetersByVehicle[String(item.vehicle.id)] || [];
-    return makeRow(item.vehicle, item.tracker, vehicleMeters);
-  });
+      var finalRows = results.map(function (item) {
+        var vehicleMeters = allMetersByVehicle[String(item.vehicle.id)] || [];
+        return makeRow(item.vehicle, item.tracker, vehicleMeters);
+      });
 
-      state.rows = finalRows;
+      state.rows = state.rows.concat(finalRows);
       renderRows();
       updateSummary();
       setMessage('');
@@ -323,6 +321,44 @@
     }
   }
 
+  function findTrackerDevice(devices) {
+    if (!Array.isArray(devices) || !devices.length) return null;
+
+    return devices.find(function (d) {
+      return isTrackerDevice(d);
+    }) || null;
+  }
+
+  function isTrackerDevice(d) {
+    if (!d) return false;
+
+    var typeCode = d.type && d.type.code ? String(d.type.code).toUpperCase() : '';
+    var typeName = d.type && d.type.name ? String(d.type.name).toLowerCase() : '';
+    var modelName = d.model && d.model.name ? String(d.model.name).toLowerCase() : '';
+
+    return typeCode === DEVICE_CODE ||
+      typeCode.indexOf('TRACK') !== -1 ||
+      typeName.indexOf('tracker') !== -1 ||
+      modelName.indexOf('oyster') !== -1 ||
+      modelName.indexOf('at301') !== -1 ||
+      modelName.indexOf('solar') !== -1;
+  }
+
+  function makeMissingFleetRow(fleetNo) {
+    return {
+      fleetNo: fleetNo,
+      registration: '—',
+      vehicleId: null,
+      imei: '—',
+      model: '—',
+      serial: '—',
+      battery: null,
+      battStatus: 'N/A',
+      lastSeen: null,
+      status: 'Fleet Not Found'
+    };
+  }
+
   function makeRow(vehicle, tracker, meters) {
     meters = meters || [];
 
@@ -330,21 +366,24 @@
       return m.type === 'battery';
     });
 
+    var meterDevice = batteryMeter && batteryMeter.device ? batteryMeter.device : null;
+
     var battery = batteryMeter ? batteryMeter.computed : null;
     var lastSeen = batteryMeter ? batteryMeter.updatedAt : null;
-    var battStatus = getBatteryStatus(battery, tracker);
+    var deviceForBatteryRules = tracker || meterDevice;
+    var battStatus = getBatteryStatus(battery, deviceForBatteryRules);
 
     var status = tracker
       ? (lastSeen ? 'Reporting' : 'No recent data')
-      : 'No ATRACKER';
+      : 'No tracker device';
 
     return {
       fleetNo: vehicle && vehicle.name ? vehicle.name : '—',
       registration: vehicle && vehicle.registration ? vehicle.registration : '—',
       vehicleId: vehicle && vehicle.id ? vehicle.id : null,
-      imei: tracker && tracker.imei ? tracker.imei : '—',
-      model: getTrackerModelName(tracker),
-      serial: tracker && tracker.serialNumber ? tracker.serialNumber : '—',
+      imei: getDeviceImei(tracker, meterDevice),
+      model: getTrackerModelName(tracker, meterDevice),
+      serial: getDeviceSerial(tracker, meterDevice),
       battery: battery,
       battStatus: battStatus,
       lastSeen: lastSeen,
@@ -352,30 +391,44 @@
     };
   }
 
-  function getTrackerModelName(tracker) {
-    if (!tracker) return '—';
-    if (tracker.model && tracker.model.name) return tracker.model.name;
-    if (tracker.modelId) return 'Model ' + tracker.modelId;
-    if (tracker.model && tracker.model.id) return 'Model ' + tracker.model.id;
+  function getDeviceImei(tracker, meterDevice) {
+    if (tracker && tracker.imei) return tracker.imei;
+    if (meterDevice && meterDevice.imei) return meterDevice.imei;
+    if (tracker && tracker.serialNumber) return tracker.serialNumber;
+    if (meterDevice && meterDevice.serialNumber) return meterDevice.serialNumber;
     return '—';
   }
 
-  function isAt301Tracker(tracker) {
-    if (!tracker) return false;
+  function getDeviceSerial(tracker, meterDevice) {
+    if (tracker && tracker.serialNumber) return tracker.serialNumber;
+    if (meterDevice && meterDevice.serialNumber) return meterDevice.serialNumber;
+    return '—';
+  }
 
-    var modelName = tracker.model && tracker.model.name
-      ? String(tracker.model.name).toLowerCase()
-      : '';
+  function getTrackerModelName(tracker, meterDevice) {
+    var d = tracker || meterDevice;
+    if (!d) return '—';
+    if (d.model && d.model.name) return d.model.name;
+    if (String(d.modelId) === '85') return 'AT301 / Oyster3';
+    if (d.modelId) return 'Model ' + d.modelId;
+    if (d.model && d.model.id) return 'Model ' + d.model.id;
+    return '—';
+  }
 
-    var modelId = tracker.modelId || (tracker.model && tracker.model.id);
+  function isAt301Tracker(device) {
+    if (!device) return false;
+
+    var modelName = device.model && device.model.name ? String(device.model.name).toLowerCase() : '';
+    var modelId = device.modelId || (device.model && device.model.id);
 
     return modelName.indexOf('at301') !== -1 ||
       modelName.indexOf('oyster') !== -1 ||
-      String(modelId) === '85';
+      String(modelId) === '85' ||
+      String(modelId) === '433';
   }
 
-  function getBatteryStatus(voltage, tracker) {
-    if (!isAt301Tracker(tracker)) return 'N/A';
+  function getBatteryStatus(voltage, device) {
+    if (!isAt301Tracker(device)) return 'N/A';
     if (voltage == null || voltage === '') return 'Unknown';
 
     var v = Number(voltage);
@@ -396,8 +449,9 @@
     if (!tbody) return;
 
     tbody.innerHTML = state.rows.map(function (r) {
-      var isReporting = r.status === 'Reporting';
-      var badgeClass = isReporting ? 'badge-green' : (r.status === 'No ATRACKER' ? 'badge-gray' : 'badge-red');
+      var badgeClass = 'badge-gray';
+      if (r.status === 'Reporting') badgeClass = 'badge-green';
+      else if (r.status === 'Fleet Not Found' || r.status === 'No tracker device' || r.status === 'No recent data') badgeClass = 'badge-red';
 
       var battClass = 'badge-gray';
       if (r.battStatus === 'Fresh') battClass = 'badge-green';
@@ -422,12 +476,12 @@
     var total = state.rows.length;
     var trackers = state.rows.filter(function (r) { return r.imei !== '—'; }).length;
     var reporting = state.rows.filter(function (r) { return r.status === 'Reporting'; }).length;
-    var notReporting = total - reporting;
+    var issues = total - reporting;
 
     TGE.setText('at-sum-total', total);
     TGE.setText('at-sum-trackers', trackers);
     TGE.setText('at-sum-reporting', reporting);
-    TGE.setText('at-sum-not-reporting', notReporting);
+    TGE.setText('at-sum-not-reporting', issues);
   }
 
   function clearPage() {
@@ -505,9 +559,7 @@
   }
 
   function assetTrackSheetRows() {
-    var rows = [
-      ['Fleet No', 'Registration', 'Tracker IMEI', 'Model', 'Battery', 'Batt Status', 'Last Seen', 'Status']
-    ];
+    var rows = [['Fleet No', 'Registration', 'Tracker IMEI', 'Model', 'Battery', 'Batt Status', 'Last Seen', 'Status']];
 
     assetTrackRows().forEach(function (r) {
       rows.push([r.fleetNo, r.registration, r.imei, r.model, r.battery, r.battStatus, r.lastSeen, r.status]);
@@ -563,59 +615,30 @@
     downloadBlob(new Blob([JSON.stringify(assetTrackRows(), null, 2)], { type: 'application/json' }), 'asset-track.json');
   }
 
-  function buildAssetTrackPdfPayload() {
+  async function buildAssetTrackAttachment() {
+    if (!ensureRowsLoaded()) return null;
+
+    var result = await TGE.api('POST', '/api/asset-track-pdf', {
+      rows: assetTrackRows(),
+      summary: {
+        generated: new Date().toLocaleString('en-AU'),
+        totalAssets: state.rows.length,
+        withTracker: state.rows.filter(function (r) { return r.imei !== '—'; }).length,
+        reporting: state.rows.filter(function (r) { return r.status === 'Reporting'; }).length,
+        notReporting: state.rows.filter(function (r) { return r.status !== 'Reporting'; }).length
+      }
+    });
+
+    if (!result.ok) {
+      throw new Error((result.data && result.data.error) || 'Asset Track PDF generation failed.');
+    }
+
     return {
-      legacyNo: 'asset-track',
-      sections: [
-        {
-          kicker: 'Operations',
-          title: 'Asset Track',
-          rows: [
-            { label: 'Generated', value: new Date().toLocaleString('en-AU') },
-            { label: 'Total Assets', value: state.rows.length },
-            { label: 'With Tracker', value: state.rows.filter(function (r) { return r.imei !== '—'; }).length },
-            { label: 'Reporting', value: state.rows.filter(function (r) { return r.status === 'Reporting'; }).length }
-          ]
-        },
-        {
-          kicker: 'Results',
-          title: 'Tracker Battery Status',
-          rows: assetTrackRows().reduce(function (acc, r) {
-            acc.push({ label: r.fleetNo + ' Reg', value: r.registration });
-            acc.push({ label: r.fleetNo + ' IMEI', value: r.imei });
-            acc.push({ label: r.fleetNo + ' Battery', value: r.battery + ' / ' + r.battStatus });
-            acc.push({ label: r.fleetNo + ' Last Seen', value: r.lastSeen });
-            return acc;
-          }, [])
-        }
-      ]
+      fileName: result.data.fileName || 'asset-track.pdf',
+      base64: result.data.base64,
+      contentType: 'application/pdf'
     };
   }
-
-async function buildAssetTrackAttachment() {
-  if (!ensureRowsLoaded()) return null;
-
-  var result = await TGE.api('POST', '/api/asset-track-pdf', {
-    rows: assetTrackRows(),
-    summary: {
-      generated: new Date().toLocaleString('en-AU'),
-      totalAssets: state.rows.length,
-      withTracker: state.rows.filter(function (r) { return r.imei !== '—'; }).length,
-      reporting: state.rows.filter(function (r) { return r.status === 'Reporting'; }).length,
-      notReporting: state.rows.filter(function (r) { return r.status !== 'Reporting'; }).length
-    }
-  });
-
-  if (!result.ok) {
-    throw new Error((result.data && result.data.error) || 'Asset Track PDF generation failed.');
-  }
-
-  return {
-    fileName: result.data.fileName || 'asset-track.pdf',
-    base64: result.data.base64,
-    contentType: 'application/pdf'
-  };
-}
 
   async function exportPdf() {
     if (!ensureRowsLoaded()) return;
@@ -680,6 +703,7 @@ async function buildAssetTrackAttachment() {
 
   function formatTs(iso) {
     if (!iso) return '—';
+
     try {
       return new Date(iso).toLocaleString('en-AU', {
         timeZone: 'Australia/Sydney',
