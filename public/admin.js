@@ -526,8 +526,8 @@ function renderControlTablesList(tables, rules, hardware) {
   ].join('');
 
   TGE.el('ct-add-rule-btn').onclick = addControlTableRuleRow;
+      TGE.el('ct-save-btn').onclick = saveControlTable;
   TGE.el('ct-cancel-btn').onclick = function () {
-  TGE.el('ct-save-btn').onclick = saveControlTable;
     editor.style.display = 'none';
     editor.innerHTML = '';
   };
