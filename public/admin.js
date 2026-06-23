@@ -29,6 +29,7 @@
             '<button class="hero-mode-btn" id="admin-tab-history" type="button">Access History</button>',
             '<button class="hero-mode-btn" id="admin-tab-api" type="button">API Reference</button>',
             '<button class="hero-mode-btn" id="admin-tab-mailer" type="button">Mailer Data</button>',
+            '<button class="hero-mode-btn" id="admin-tab-controls" type="button">Control Tables</button>',
           '</div>',
           '<div class="hero-bar-right">',
             '<div class="hero-divider"></div>',
@@ -41,6 +42,7 @@
       '<div id="admin-content-history" style="display:none;">', renderHistoryTab(), '</div>',
       '<div id="admin-content-api" style="display:none;">',     renderApiTab(),     '</div>',
       '<div id="admin-content-mailer" style="display:none;">',  renderMailerTab(),  '</div>',
+      '<div id="admin-content-controls" style="display:none;">', renderControlTablesTab(), '</div>',
     ].join('');
 
     wireAdminTabs();
@@ -56,6 +58,7 @@
       { btn: 'admin-tab-history', content: 'admin-content-history' },
       { btn: 'admin-tab-api',     content: 'admin-content-api' },
       { btn: 'admin-tab-mailer',  content: 'admin-content-mailer' },
+      { btn: 'admin-tab-controls', content: 'admin-content-controls' },
     ];
     tabs.forEach(function (t) {
       TGE.on(t.btn, 'click', function () {
@@ -73,6 +76,7 @@
         if (state.activeTab === 'history') loadActivity();
         if (state.activeTab === 'api') wireApiFilters();
         if (state.activeTab === 'mailer') loadSignatures();
+        if (state.activeTab === 'controls') loadControlTables();
       });
     });
   }
@@ -402,6 +406,22 @@
     }).join('');
   }
 
+  async function loadControlTables() {
+  var res = await api('GET', '/api/admin/control-tables');
+
+  if (!res.ok) {
+    var el = TGE.el('ct-list');
+    if (el) {
+      el.innerHTML = '<div class="empty-state">Failed to load control tables.</div>';
+    }
+    return;
+  }
+
+  var tables = res.data.tables || [];
+  var rules = res.data.rules || [];
+
+  console.log('[Control Tables]', tables, rules);
+}
   // ── API REFERENCE TAB ─────────────────────────────────────────────────────────
   var API_REFS = [
     { id: 'API-1', method: 'GET', group: 'vehicle',  url: '/v1/vehicles',                               returns: 'All vehicles — vehicleId, name, registration, make, model',          usedBy: ['Asset Track fleet', 'Camera Snapshot fleet', 'SD Health fleet'] },
@@ -449,6 +469,34 @@
     ].join('');
   }
 
+  function renderControlTablesTab() {
+  return [
+    '<div class="card">',
+      '<div class="card-header">',
+        '<h3>Control Tables</h3>',
+        '<p style="margin:6px 0 0;color:var(--muted);">',
+          'Create reusable control tables that drive status outputs for Asset Track and future modules.',
+        '</p>',
+      '</div>',
+
+      '<div style="padding:16px;">',
+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">',
+          '<div>',
+            '<strong>Configured Control Tables</strong>',
+          '</div>',
+          '<button class="btn btn-primary" id="ct-new-btn" type="button">Add Control Table</button>',
+        '</div>',
+
+        '<div id="ct-list">',
+          '<div class="empty-state">No control tables configured.</div>',
+        '</div>',
+
+      '</div>',
+    '</div>'
+  ].join('');
+}
+  
   async function loadSignatures() {
     var r = await api('GET', '/api/mailer/signatures?all=1');
     mailerState.signatures = (r.ok && r.data && r.data.signatures) ? r.data.signatures : [];
