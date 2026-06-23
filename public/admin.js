@@ -129,12 +129,9 @@
     TGE.on('user-import-file', 'change', handleImport);
   }
 
-  function wireControlTablesTab() {
+function wireControlTablesTab() {
   TGE.on('ct-new-btn', 'click', function () {
-    var form = TGE.el('ct-form');
-    if (form) {
-      form.style.display = '';
-    }
+    openControlTableEditor(null);
   });
 }
   async function loadRoles() {
@@ -472,6 +469,82 @@ function renderControlTablesList(tables, rules, hardware) {
       '</div>';
     }).join('') +
   '</div>';
+}
+  function openControlTableEditor(table) {
+  var editor = TGE.el('ct-editor');
+  if (!editor) return;
+
+  editor.style.display = '';
+
+  editor.innerHTML = [
+    '<div class="card">',
+      '<div class="card-kicker">Control Table</div>',
+      '<div class="card-title">Create Control Table</div>',
+      '<p style="font-size:13px;color:var(--muted);margin:6px 0 16px;">',
+        'Define which field is evaluated, which output field is populated, and the rules used to create the result.',
+      '</p>',
+
+      '<div class="data-grid data-grid-2">',
+        '<div class="field"><label>Table Name</label><input id="ct-edit-name" type="text" placeholder="Oyster Battery Status"></div>',
+        '<div class="field"><label>Feature</label><select id="ct-edit-feature"><option value="asset-track">Asset Track</option></select></div>',
+        '<div class="field"><label>Output Field</label><select id="ct-edit-output"><option value="battStatus">Batt Status</option></select></div>',
+        '<div class="field"><label>Evaluate Field</label><select id="ct-edit-source"><option value="battCurrent">Batt Current</option><option value="battBase">Batt Base</option></select></div>',
+      '</div>',
+
+      '<div style="margin-top:16px;">',
+        '<div class="card-kicker">Assigned Hardware</div>',
+        '<div class="data-grid data-grid-2" style="margin-top:8px;">',
+          '<label><input type="checkbox" class="ct-hardware" value="DMT Oyster Cellular 3"> DMT Oyster Cellular 3</label>',
+          '<label><input type="checkbox" class="ct-hardware" value="Flex Solar Tracker"> Flex Solar Tracker</label>',
+        '</div>',
+      '</div>',
+
+      '<div style="margin-top:18px;">',
+        '<div class="card-kicker">Rules</div>',
+        '<div class="table-wrap" style="margin-top:8px;">',
+          '<table>',
+            '<thead><tr><th>Min</th><th>Max</th><th>Output</th><th>Colour</th></tr></thead>',
+            '<tbody id="ct-rule-body">',
+              '<tr>',
+                '<td><input class="ct-rule-min" type="number" step="0.01" placeholder="5.20"></td>',
+                '<td><input class="ct-rule-max" type="number" step="0.01" placeholder="99.00"></td>',
+                '<td><input class="ct-rule-output" type="text" placeholder="Fresh"></td>',
+                '<td><select class="ct-rule-colour"><option value="green">Green</option><option value="lime">Lime</option><option value="amber">Amber</option><option value="red">Red</option><option value="gray">Gray</option></select></td>',
+              '</tr>',
+            '</tbody>',
+          '</table>',
+        '</div>',
+        '<button class="btn" id="ct-add-rule-btn" type="button" style="margin-top:10px;">+ Add Rule</button>',
+      '</div>',
+
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:18px;">',
+        '<button class="btn btn-primary" id="ct-save-btn" type="button">Save Control Table</button>',
+        '<button class="btn" id="ct-cancel-btn" type="button">Cancel</button>',
+        '<p id="ct-message" style="margin:0;font-size:12px;"></p>',
+      '</div>',
+    '</div>'
+  ].join('');
+
+  TGE.el('ct-add-rule-btn').onclick = addControlTableRuleRow;
+  TGE.el('ct-cancel-btn').onclick = function () {
+    editor.style.display = 'none';
+    editor.innerHTML = '';
+  };
+
+  editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+  function addControlTableRuleRow() {
+  var tbody = TGE.el('ct-rule-body');
+  if (!tbody) return;
+
+  tbody.insertAdjacentHTML('beforeend',
+    '<tr>' +
+      '<td><input class="ct-rule-min" type="number" step="0.01" placeholder="0.00"></td>' +
+      '<td><input class="ct-rule-max" type="number" step="0.01" placeholder="0.00"></td>' +
+      '<td><input class="ct-rule-output" type="text" placeholder="Output"></td>' +
+      '<td><select class="ct-rule-colour"><option value="green">Green</option><option value="lime">Lime</option><option value="amber">Amber</option><option value="red">Red</option><option value="gray">Gray</option></select></td>' +
+    '</tr>'
+  );
 }
 
   // ── API REFERENCE TAB ─────────────────────────────────────────────────────────
