@@ -518,35 +518,95 @@ async function handleSaveControlTable(request, env) {
 
   const body = await safeJson(request);
 
+  const id = body.id ? parseInt(body.id, 10) : null;
   const name = String(body.name || "").trim();
   const feature = String(body.feature || "").trim();
   const outputField = String(body.outputField || "").trim();
   const valueSource = String(body.valueSource || "").trim();
-  const hardwareMatch = String(body.hardwareMatch || "").trim();
   const notes = String(body.notes || "").trim();
   const active = body.active === false ? 0 : 1;
+  const hardware = Array.isArray(body.hardware) ? body.hardware : [];
   const rules = Array.isArray(body.rules) ? body.rules : [];
 
-  if (!name || !feature || !outputField || !valueSource || !hardwareMatch) {
-    return jsonResponse({ error: "Required fields are missing." }, 400);
+  if (!name || !feature || !outputField || !valueSource) {
+    return jsonResponse({ error: "name, feature, outputField and valueSource are required." }, 400);
   }
 
-  const result = await env.DB.prepare(
-    "INSERT INTO control_tables (name, feature, output_field, value_source, hardware_match, active, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).bind(name, feature, outputField, valueSource, hardwareMatch, active, notes || null, nowIso(), nowIso()).run();
+  if (!hardware.length) {
+    return jsonResponse({ error: "At least one hardware assignment is required." }, 400);
+  }
 
-  const tableId = result.meta.last_row_id;
+  if (!rules.length) {
+    return jsonResponse({ error: "At least one rule is required." }, 400);
+  }
+
+  let tableId = id;
+
+  if (tableId) {
+    await env.DB.prepare(
+      "UPDATE control_tables SET name=?, feature=?, output_field=?, value_source=?, hardware_match=?, active=?, notes=?, updated_at=? WHERE id=?"
+    ).bind(
+      name,
+      feature,
+      outputField,
+      valueSource,
+      hardware.join("|"),
+      active,
+      notes || null,
+      nowIso(),
+      tableId
+    ).run();
+
+    await env.DB.prepare("DELETE FROM control_table_rules WHERE control_table_id=?").bind(tableId).run();
+    await env.DB.prepare("DELETE FROM control_table_hardware WHERE control_table_id=?").bind(tableId).run();
+
+  } else {
+    const result = await env.DB.prepare(
+      "INSERT INTO control_tables (name, feature, output_field, value_source, hardware_match, active, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(
+      name,
+      feature,
+      outputField,
+      valueSource,
+      hardware.join("|"),
+      active,
+      notes || null,
+      nowIso(),
+      nowIso()
+    ).run();
+
+    tableId = result.meta.last_row_id;
+  }
+
+  for (let i = 0; i < hardware.length; i++) {
+    const h = String(hardware[i] || "").trim();
+    if (!h) continue;
+
+    await env.DB.prepare(
+      "INSERT INTO control_table_hardware (control_table_id, hardware_match, active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)"
+    ).bind(tableId, h, nowIso(), nowIso()).run();
+  }
 
   for (let i = 0; i < rules.length; i++) {
     const r = rules[i];
 
+    const minValue = Number(r.minValue);
+    const maxValue = Number(r.maxValue);
+    const outputValue = String(r.outputValue || "").trim();
+    const outputColour = String(r.outputColour || "gray").trim().toLowerCase();
+
+    if (isNaN(minValue) || isNaN(maxValue) || !outputValue) {
+      return jsonResponse({ error: "Each rule requires minValue, maxValue and outputValue." }, 400);
+    }
+
     await env.DB.prepare(
-      "INSERT INTO control_table_rules (control_table_id, min_value, max_value, output_value, sort_order, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO control_table_rules (control_table_id, min_value, max_value, output_value, output_colour, sort_order, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ).bind(
       tableId,
-      Number(r.minValue),
-      Number(r.maxValue),
-      String(r.outputValue || "").trim(),
+      minValue,
+      maxValue,
+      outputValue,
+      outputColour,
       i,
       r.active === false ? 0 : 1,
       nowIso(),
@@ -1835,6 +1895,17 @@ export default {
       if (method === "GET" && path === "/api/admin/control-tables") return handleGetControlTables(request, env);
       if (method === "POST" && path === "/api/admin/control-tables") return handleSaveControlTable(request, env);
 
+      if (method === "PUT" && path.match(/^\/api\/admin\/control-tables\/\d+$/)) {
+  const id = parseInt(path.split("/").pop(), 10);
+  const body = await safeJson(request);
+  body.id = id;
+  return handleSaveControlTable(new Request(request.url, {
+    method: "POST",
+    headers: request.headers,
+    body: JSON.stringify(body)
+  }), env);
+}
+    
       // Camera history
       if (method === "GET" && path.startsWith("/api/camera-history/")) {
         const vid = path.split('/').pop();
