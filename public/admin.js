@@ -529,68 +529,42 @@
     ].join('');
   }
 
-  function renderControlTablesTab() {
+function renderControlTablesTab() {
   return [
     '<div class="card">',
-      '<div class="card-header">',
-        '<h3>Control Tables</h3>',
-        '<p style="margin:6px 0 0;color:var(--muted);">',
+
+      '<div class="card-kicker">Management</div>',
+      '<div class="card-title">Control Tables</div>',
+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;">',
+
+        '<div style="color:var(--muted);font-size:13px;">',
           'Create reusable control tables that drive status outputs for Asset Track and future modules.',
-        '</p>',
-      '</div>',
-
-      '<div style="padding:16px;">',
-
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">',
-          '<div>',
-            '<strong>Configured Control Tables</strong>',
-          '</div>',
-          '<button class="btn btn-primary" id="ct-new-btn" type="button">Add Control Table</button>',
         '</div>',
 
-'<div id="ct-form" style="display:none;margin-bottom:16px;">',
+        '<button class="btn btn-primary" id="ct-new-btn" type="button">',
+          '+ Create Control Table',
+        '</button>',
 
-  '<div class="card" style="padding:16px;">',
-
-    '<div class="grid" style="display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:12px;">',
-
-      '<div>',
-        '<label>Table Name</label>',
-        '<input id="ct-name" class="input" type="text" placeholder="Oyster Battery Status">',
-      '</div>',
-
-      '<div>',
-        '<label>Feature</label>',
-        '<input id="ct-feature" class="input" type="text" value="asset-track">',
-      '</div>',
-
-      '<div>',
-        '<label>Hardware Match</label>',
-        '<input id="ct-hardware" class="input" type="text" placeholder="DMT Oyster Cellular 3">',
-      '</div>',
-
-      '<div>',
-        '<label>Value Source</label>',
-        '<input id="ct-source" class="input" type="text" value="battCurrent">',
-      '</div>',
-
-      '<div>',
-        '<label>Output Field</label>',
-        '<input id="ct-output" class="input" type="text" value="battStatus">',
       '</div>',
 
     '</div>',
 
-  '</div>',
+    '<div id="ct-grid" class="data-grid data-grid-3" style="margin-top:16px;">',
 
-'</div>',
+      '<div class="card" style="min-height:180px;display:flex;align-items:center;justify-content:center;border:2px dashed var(--line);cursor:pointer;" id="ct-create-card">',
 
-'<div id="ct-list">',
-  '<div class="empty-state">No control tables configured.</div>',
-'</div>',
+        '<div style="text-align:center;">',
+          '<div style="font-size:28px;margin-bottom:8px;">+</div>',
+          '<div style="font-weight:600;">Create Control Table</div>',
+        '</div>',
 
       '</div>',
-    '</div>'
+
+    '</div>',
+
+    '<div id="ct-editor" style="display:none;margin-top:16px;"></div>'
+
   ].join('');
 }
   
