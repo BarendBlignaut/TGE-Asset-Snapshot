@@ -527,6 +527,7 @@ function renderControlTablesList(tables, rules, hardware) {
 
   TGE.el('ct-add-rule-btn').onclick = addControlTableRuleRow;
   TGE.el('ct-cancel-btn').onclick = function () {
+  TGE.el('ct-save-btn').onclick = saveControlTable;
     editor.style.display = 'none';
     editor.innerHTML = '';
   };
@@ -547,6 +548,104 @@ function renderControlTablesList(tables, rules, hardware) {
   );
 }
 
+  async function saveControlTable() {
+  var msg = TGE.el('ct-message');
+  if (msg) {
+    msg.textContent = '';
+    msg.style.color = 'var(--muted)';
+  }
+
+  var name = (TGE.el('ct-edit-name') || {}).value || '';
+  var feature = (TGE.el('ct-edit-feature') || {}).value || '';
+  var outputField = (TGE.el('ct-edit-output') || {}).value || '';
+  var valueSource = (TGE.el('ct-edit-source') || {}).value || '';
+
+  var hardware = Array.prototype.slice.call(document.querySelectorAll('.ct-hardware:checked'))
+    .map(function (el) { return el.value; });
+
+  var mins = Array.prototype.slice.call(document.querySelectorAll('.ct-rule-min'));
+  var maxs = Array.prototype.slice.call(document.querySelectorAll('.ct-rule-max'));
+  var outputs = Array.prototype.slice.call(document.querySelectorAll('.ct-rule-output'));
+  var colours = Array.prototype.slice.call(document.querySelectorAll('.ct-rule-colour'));
+
+  var rules = mins.map(function (el, i) {
+    return {
+      minValue: el.value,
+      maxValue: maxs[i] ? maxs[i].value : '',
+      outputValue: outputs[i] ? outputs[i].value : '',
+      outputColour: colours[i] ? colours[i].value : 'gray'
+    };
+  }).filter(function (r) {
+    return r.minValue !== '' || r.maxValue !== '' || r.outputValue !== '';
+  });
+
+  if (!name.trim()) {
+    if (msg) {
+      msg.textContent = 'Table name is required.';
+      msg.style.color = 'var(--danger)';
+    }
+    return;
+  }
+
+  if (!hardware.length) {
+    if (msg) {
+      msg.textContent = 'Select at least one hardware model.';
+      msg.style.color = 'var(--danger)';
+    }
+    return;
+  }
+
+  if (!rules.length) {
+    if (msg) {
+      msg.textContent = 'Add at least one rule.';
+      msg.style.color = 'var(--danger)';
+    }
+    return;
+  }
+
+  var btn = TGE.el('ct-save-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+  }
+
+  var res = await api('POST', '/api/admin/control-tables', {
+    name: name,
+    feature: feature,
+    outputField: outputField,
+    valueSource: valueSource,
+    hardware: hardware,
+    rules: rules
+  });
+
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = 'Save Control Table';
+  }
+
+  if (!res.ok) {
+    if (msg) {
+      msg.textContent = (res.data && res.data.error) || 'Save failed.';
+      msg.style.color = 'var(--danger)';
+    }
+    return;
+  }
+
+  if (msg) {
+    msg.textContent = 'Control table saved.';
+    msg.style.color = 'var(--green-600)';
+  }
+
+  await loadControlTables();
+
+  setTimeout(function () {
+    var editor = TGE.el('ct-editor');
+    if (editor) {
+      editor.style.display = 'none';
+      editor.innerHTML = '';
+    }
+  }, 500);
+}
   // ── API REFERENCE TAB ─────────────────────────────────────────────────────────
   var API_REFS = [
     { id: 'API-1', method: 'GET', group: 'vehicle',  url: '/v1/vehicles',                               returns: 'All vehicles — vehicleId, name, registration, make, model',          usedBy: ['Asset Track fleet', 'Camera Snapshot fleet', 'SD Health fleet'] },
