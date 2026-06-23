@@ -479,6 +479,7 @@ function renderControlTablesList(tables, rules, hardware) {
   if (!editor) return;
 
   editor.style.display = '';
+    editor.dataset.tableId = table && table.id ? String(table.id) : '';
 
   editor.innerHTML = [
     '<div class="card">',
@@ -651,7 +652,12 @@ function escCt(value) {
     btn.textContent = 'Saving...';
   }
 
-  var res = await api('POST', '/api/admin/control-tables', {
+  var editId = (TGE.el('ct-editor') || {}).dataset ? (TGE.el('ct-editor').dataset.tableId || '') : '';
+var method = editId ? 'PUT' : 'POST';
+var url = editId ? '/api/admin/control-tables/' + editId : '/api/admin/control-tables';
+
+var res = await api(method, url, {
+  
     name: name,
     feature: feature,
     outputField: outputField,
