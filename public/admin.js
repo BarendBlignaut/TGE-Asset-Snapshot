@@ -47,6 +47,7 @@
 
     wireAdminTabs();
     wireUsersTab();
+    wireControlTablesTab();
     wireExportBtns();
     loadRoles().then(function() { loadUsers(); });
   }
@@ -420,7 +421,58 @@
   var tables = res.data.tables || [];
   var rules = res.data.rules || [];
 
-  console.log('[Control Tables]', tables, rules);
+ renderControlTablesList(tables, rules);
+}
+  function renderControlTablesList(tables, rules) {
+  var el = TGE.el('ct-list');
+  if (!el) return;
+
+  if (!tables.length) {
+    el.innerHTML = '<div class="empty-state">No control tables configured.</div>';
+    return;
+  }
+
+  el.innerHTML = tables.map(function (t) {
+    var tableRules = rules.filter(function (r) {
+      return String(r.control_table_id) === String(t.id);
+    });
+
+    return '<div class="card" style="margin-bottom:12px;">' +
+      '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">' +
+        '<div>' +
+          '<div style="font-weight:700;">' + TGE.safeText(t.name) + '</div>' +
+          '<div style="font-size:12px;color:var(--muted);margin-top:4px;">' +
+            'Feature: ' + TGE.safeText(t.feature) +
+            ' | Hardware: ' + TGE.safeText(t.hardware_match) +
+            ' | Source: ' + TGE.safeText(t.value_source) +
+            ' | Output: ' + TGE.safeText(t.output_field) +
+          '</div>' +
+        '</div>' +
+        '<span class="badge ' + (t.active ? 'badge-green' : 'badge-gray') + '">' + (t.active ? 'Active' : 'Inactive') + '</span>' +
+      '</div>' +
+
+      '<table style="width:100%;border-collapse:collapse;margin-top:12px;">' +
+        '<thead>' +
+          '<tr>' +
+            '<th>Min</th>' +
+            '<th>Max</th>' +
+            '<th>Output</th>' +
+            '<th>Active</th>' +
+          '</tr>' +
+        '</thead>' +
+        '<tbody>' +
+          (tableRules.length ? tableRules.map(function (r) {
+            return '<tr>' +
+              '<td>' + TGE.safeText(r.min_value) + '</td>' +
+              '<td>' + TGE.safeText(r.max_value) + '</td>' +
+              '<td><strong>' + TGE.safeText(r.output_value) + '</strong></td>' +
+              '<td>' + (r.active ? 'Yes' : 'No') + '</td>' +
+            '</tr>';
+          }).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:12px;">No rules configured.</td></tr>') +
+        '</tbody>' +
+      '</table>' +
+    '</div>';
+  }).join('');
 }
   // ── API REFERENCE TAB ─────────────────────────────────────────────────────────
   var API_REFS = [
