@@ -394,17 +394,22 @@
     return '—';
   }
 
-  function isOysterTracker(device) {
-    if (!device) return false;
+function isOysterTracker(device) {
+  if (!device) return false;
 
-    var modelName = device.model && device.model.name ? String(device.model.name).toLowerCase() : '';
-    var modelId = device.modelId || (device.model && device.model.id);
+  var modelName = device.model && device.model.name
+    ? String(device.model.name).toLowerCase()
+    : '';
 
-    return modelName.indexOf('oyster') !== -1 ||
-      modelName.indexOf('at301') !== -1 ||
-      String(modelId) === '85' ||
-      String(modelId) === '433';
-  }
+  var modelId = device.modelId || (device.model && device.model.id);
+
+  if (modelName.indexOf('solar') !== -1) return false;
+
+  return modelName.indexOf('oyster') !== -1 ||
+    modelName.indexOf('at301') !== -1 ||
+    String(modelId) === '85' ||
+    String(modelId) === '433';
+}
 
   function getBatteryStatus(voltage, tracker) {
     if (!isOysterTracker(tracker)) return 'N/A';
