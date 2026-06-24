@@ -1097,35 +1097,26 @@ async function startAlignTest() {
 
 function buildHistoryWindows() {
   var end = new Date();
-  end.setHours(23, 59, 59, 999);
+  var start = new Date();
 
-  var start = new Date(end);
-  start.setDate(start.getDate() - 27);
-  start.setHours(0, 0, 0, 0);
+  start.setDate(end.getDate() - 28);
 
   var windows = [];
-  var cursor = new Date(start);
 
-  while (cursor <= end) {
-    var from = new Date(cursor);
-    var to = new Date(cursor);
+  for (var i = 0; i < 4; i++) {
+    var from = new Date(start);
+    from.setDate(start.getDate() + (i * 7));
 
-    to.setDate(to.getDate() + 6);
-    to.setHours(23, 59, 59, 999);
-
-    if (to > end) {
-      to = new Date(end);
-    }
+    var to = new Date(start);
+    to.setDate(start.getDate() + ((i + 1) * 7));
 
     windows.push({
       from: from.toISOString(),
       to: to.toISOString()
     });
-
-    cursor = new Date(to);
-    cursor.setDate(cursor.getDate() + 1);
-    cursor.setHours(0, 0, 0, 0);
   }
+
+  console.log('History Windows', windows);
 
   return windows;
 }
