@@ -373,9 +373,9 @@ async function openSnapshotHistoryPanel() {
           (i + 1) + ' of ' + windows.length + '...</div>';
       }
 
-      var url = '/api/tn360/v1/events?pruning=B2B&types=camera' +
-        '&from=' + encodeURIComponent(windows[i].from) +
-        '&to=' + encodeURIComponent(windows[i].to);
+var url = '/api/camera-history-events' +
+  '?from=' + encodeURIComponent(windows[i].from) +
+  '&to=' + encodeURIComponent(windows[i].to);
 
       var r = await TGE.api('GET', url);
       if (!r.ok) continue;
