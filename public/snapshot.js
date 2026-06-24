@@ -181,6 +181,7 @@
             '<button class="btn" id="snap-align-btn" style="height:32px;font-size:12px;background:var(--green-100);color:var(--green-700);border-color:var(--green-600);">⚙ Alignment Test</button>',
             '<button class="btn" id="snap-history-btn" style="height:32px;font-size:12px;">History</button>',
           '</div>',
+       '</div>',
           '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px;" id="snap-cam-pre-label">Current Snapshots</div>',
           '<div id="snap-camera-grid" style="display:grid;gap:10px;grid-template-columns:repeat(5,minmax(0,1fr));"></div>',
           '<p id="snap-cam-time" style="margin-top:6px;margin-bottom:16px;font-size:11px;color:var(--muted);"></p>',
