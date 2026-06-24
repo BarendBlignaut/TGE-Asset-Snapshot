@@ -364,30 +364,60 @@ async function openSnapshotHistoryPanel() {
   if (panel) panel.style.display = 'flex';
 
   try {
-    var r = await TGE.api('GET', '/api/camera-history/' + vehicle.id);
-    if (!r.ok) throw new Error('Failed to load camera history');
+    var windows = buildHistoryWindows();
+    var allEvents = [];
 
-    var history = Array.isArray(r.data) ? r.data : [];
+    for (var i = 0; i < windows.length; i++) {
+      if (body) {
+        body.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Loading history window ' +
+          (i + 1) + ' of ' + windows.length + '...</div>';
+      }
 
-    if (!history.length) {
+      var url = '/api/tn360/v1/events?pruning=B2B&types=camera' +
+        '&from=' + encodeURIComponent(windows[i].from) +
+        '&to=' + encodeURIComponent(windows[i].to);
+
+      var r = await TGE.api('GET', url);
+      if (!r.ok) continue;
+
+      var events = Array.isArray(r.data) ? r.data : [];
+      events.forEach(function(e) {
+        if (
+          String(e.vehicleId) === String(vehicle.id) &&
+          e.attributes &&
+          e.attributes.status === 'available'
+        ) {
+          allEvents.push(e);
+        }
+      });
+    }
+
+    if (!allEvents.length) {
       body.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">No snapshot history available.</div>';
       return;
     }
+
+    allEvents.sort(function(a, b) {
+      return new Date(b.timeAt) - new Date(a.timeAt);
+    });
 
     var cam = state.devices.camera;
     var model = cam && cam.model && cam.model.name;
     var slots = model === 'MultiIQ' ? 5 : 2;
     var activeSlots = CAMERA_SLOTS.slice(0, slots);
 
-    body.innerHTML = history.map(function(h) {
+    body.innerHTML = allEvents.map(function(e) {
       var mediaFiles = [];
+
       try {
-        var ctx = JSON.parse(h.snapshot_data || '{}');
-        if (ctx && ctx.response && ctx.response.mediaFiles) mediaFiles = ctx.response.mediaFiles;
-      } catch(e) {}
+        var ctx = JSON.parse(e.attributes.context || '{}');
+        if (ctx && ctx.response && ctx.response.mediaFiles) {
+          mediaFiles = ctx.response.mediaFiles;
+        }
+      } catch(err) {}
 
       return '<div style="margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--line-2);">' +
-        '<div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px;">' + formatTs(h.captured_at) + '</div>' +
+        '<div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px;">' + formatTs(e.timeAt) + '</div>' +
         '<div style="display:grid;gap:10px;grid-template-columns:repeat(' + slots + ',minmax(0,1fr));">' +
           buildCameraGrid(mediaFiles, activeSlots) +
         '</div>' +
@@ -395,7 +425,11 @@ async function openSnapshotHistoryPanel() {
     }).join('');
 
   } catch(e) {
-    if (body) body.innerHTML = '<div style="text-align:center;color:var(--danger);padding:40px;">' + e.message + '</div>';
+    if (body) {
+      body.innerHTML = '<div style="text-align:center;color:var(--danger);padding:40px;">' +
+        (e.message || 'Failed to load camera history') +
+      '</div>';
+    }
   }
 }
   
@@ -1061,6 +1095,32 @@ async function startAlignTest() {
     } catch(e) { return ts; }
   }
 
+  function buildHistoryWindows() {
+  var end = new Date();
+  var start = new Date();
+  start.setDate(end.getDate() - 28);
+
+  var windows = [];
+  var cursor = new Date(start);
+
+  while (cursor < end) {
+    var from = new Date(cursor);
+    var to = new Date(cursor);
+    to.setDate(to.getDate() + 7);
+
+    if (to > end) to = new Date(end);
+
+    windows.push({
+      from: from.toISOString(),
+      to: to.toISOString()
+    });
+
+    cursor = new Date(to);
+  }
+
+  return windows;
+}
+  
   function ensureSnapshotLoaded() {
     if (state.data && state.data.vehicle) return true;
     setMessage('Run an asset snapshot before exporting.', true);
