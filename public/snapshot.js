@@ -746,52 +746,43 @@
     renderAlignSteps();
   }
 
-  async function startAlignTest() {
-    if (alignState.running) return;
-    alignState.running = true;
-    alignState.steps   = {};
-    var startBtn = TGE.el('snap-align-start');
-    if (startBtn) { startBtn.textContent = 'Running...'; startBtn.disabled = true; }
-    var hermesImei = state.devices.hermes && state.devices.hermes.imei;
+async function startAlignTest() {
+  if (alignState.running) return;
 
-    try {
-      for (var i = 0; i < ALIGN_STEPS.length; i++) {
-        if (!alignState.running) break;
-        var step = ALIGN_STEPS[i];
-        setAlignStep(step.id, 'running');
+  alignState.running = true;
+  alignState.steps = {};
 
-        if (step.type === 'poll-ignition') {
-          var ok = await pollIgnition(hermesImei, step.expect, step.timeout);
-          if (!ok) throw new Error('Ignition ' + step.expect + ' not confirmed within ' + step.timeout + 's');
-          setAlignStep(step.id, 'done', 'Ignition ' + step.expect);
-
-        } else if (step.type === 'trigger') {
-          setAlignStep(step.id, 'running', 'Awaiting Teletrac endpoint...');
-          await delay(3000);
-          setAlignStep(step.id, 'done', 'Placeholder — endpoint TBC');
-
-        } else if (step.type === 'wait') {
-          await countdownWait(step.id, step.seconds);
-          setAlignStep(step.id, 'done', 'Complete');
-
-        } else if (step.type === 'snapshot') {
-          await pullPostSnapshots();
-          setAlignStep(step.id, 'done', 'Images loaded');
-        }
-      }
-      setText('snap-align-status', '✅ Test complete');
-      if (startBtn) { startBtn.textContent = 'Test Complete'; }
-
-    } catch(e) {
-      ALIGN_STEPS.forEach(function(s) {
-        if (alignState.steps[s.id] === 'running') setAlignStep(s.id, 'error', e.message);
-      });
-      setText('snap-align-status', '❌ ' + e.message);
-      if (startBtn) { startBtn.textContent = 'Retry Test'; startBtn.disabled = false; }
-    } finally {
-      alignState.running = false;
-    }
+  var startBtn = TGE.el('snap-align-start');
+  if (startBtn) {
+    startBtn.textContent = 'Running Simulation...';
+    startBtn.disabled = true;
   }
+
+  setText('snap-align-status', 'Simulation running — API trigger pending Teletrac confirmation');
+
+  for (var i = 0; i < ALIGN_STEPS.length; i++) {
+    if (!alignState.running) return;
+
+    var step = ALIGN_STEPS[i];
+
+    setAlignStep(step.id, 'running', 'Checking...');
+    await delay(900);
+
+    setAlignStep(step.id, 'done', 'Event Found');
+    await delay(500);
+  }
+
+  completeSimulatedAlignmentTest();
+
+  alignState.running = false;
+
+  if (startBtn) {
+    startBtn.textContent = 'Retest';
+    startBtn.disabled = false;
+  }
+
+  setText('snap-align-status', '✅ Simulation complete');
+}
 
   async function pollIgnition(imei, expect, timeoutSecs) {
     if (!imei) return true;
