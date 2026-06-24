@@ -177,7 +177,9 @@
           '<div class="card-kicker">Evidence</div>',
           '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">',
             '<div class="card-title" style="margin:0;">Camera Snapshots</div>',
+            '<div style="display:flex;gap:8px;">',
             '<button class="btn" id="snap-align-btn" style="height:32px;font-size:12px;background:var(--green-100);color:var(--green-700);border-color:var(--green-600);">⚙ Alignment Test</button>',
+            '<button class="btn" id="snap-history-btn" style="height:32px;font-size:12px;">History</button>',
           '</div>',
           '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px;" id="snap-cam-pre-label">Current Snapshots</div>',
           '<div id="snap-camera-grid" style="display:grid;gap:10px;grid-template-columns:repeat(5,minmax(0,1fr));"></div>',
@@ -591,6 +593,13 @@
 
     var alignBtn = TGE.el('snap-align-btn');
     if (alignBtn) alignBtn.onclick = openAlignPanel;
+    TGE.el('snap-history-btn').onclick = function () {
+  if (typeof TGE.showCameraHistory === 'function') {
+    TGE.showCameraHistory();
+  } else {
+    alert('Camera History viewer not yet connected.');
+    }
+   };
   }
 
   function findCameraFile(mediaFiles, slot) {
