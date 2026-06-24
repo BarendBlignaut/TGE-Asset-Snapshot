@@ -616,7 +616,45 @@ async function handleSaveControlTable(request, env) {
 
   return jsonResponse({ ok: true, id: tableId });
 }
+async function handleCameraHistoryEvents(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
 
+  if (!env.TN360_API_KEY) {
+    return jsonResponse({ error: "Telematics API key not configured." }, 503);
+  }
+
+  const url = new URL(request.url);
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+
+  if (!from || !to) {
+    return jsonResponse({ error: "from and to are required." }, 400);
+  }
+
+  const upstream =
+    "https://api-au.telematics.com/v1/events" +
+    "?key=" + encodeURIComponent(env.TN360_API_KEY) +
+    "&types=camera" +
+    "&from=" + encodeURIComponent(from) +
+    "&to=" + encodeURIComponent(to);
+
+  const res = await fetch(upstream, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" }
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    return jsonResponse({
+      error: "Camera history upstream error: HTTP " + res.status,
+      detail: text.slice(0, 300)
+    }, 502);
+  }
+
+  const data = await res.json();
+  return jsonResponse(data);
+}
 // ── Telematics API proxy ──────────────────────────────────────────────────────
 
 async function handleTelematicsProxy(request, env, path) {
