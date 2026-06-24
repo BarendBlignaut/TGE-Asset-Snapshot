@@ -772,50 +772,18 @@ async function startAlignTest() {
     await delay(500);
   }
 
-function completeSimulatedAlignmentTest() {
-  var beforeGrid = TGE.el('snap-align-before');
-  var afterGrid  = TGE.el('snap-align-after');
-  var currentGrid = TGE.el('snap-camera-grid');
+  completeSimulatedAlignmentTest();
 
-  var html = beforeGrid ? beforeGrid.innerHTML : '';
-  var columns = currentGrid && currentGrid.style.gridTemplateColumns
-    ? currentGrid.style.gridTemplateColumns
-    : 'repeat(5,minmax(0,1fr))';
+  alignState.running = false;
 
-  if (afterGrid) {
-    afterGrid.innerHTML = html;
-    afterGrid.style.display = 'grid';
-    afterGrid.style.gap = '6px';
-    afterGrid.style.gridTemplateColumns = columns;
+  if (startBtn) {
+    startBtn.textContent = 'Retest';
+    startBtn.disabled = false;
   }
 
-  var afterMsg = TGE.el('snap-align-after-msg');
-  if (afterMsg) afterMsg.style.display = 'none';
-
-  var postGrid = TGE.el('snap-camera-grid-post');
-  if (postGrid) {
-    postGrid.innerHTML = html;
-    postGrid.style.display = 'grid';
-    postGrid.style.gap = '10px';
-    postGrid.style.gridTemplateColumns = columns;
-  }
-
-  var postSection = TGE.el('snap-cam-post-section');
-  if (postSection) postSection.style.display = '';
-
-  var postTime = TGE.el('snap-cam-post-time');
-  if (postTime) postTime.textContent = 'Post alignment — simulated: ' + formatTs(new Date().toISOString());
-
-  var preLabel = TGE.el('snap-cam-pre-label');
-  if (preLabel) preLabel.textContent = 'PRE — Alignment Test';
-
-  setTimeout(function () {
-    var confirmed = confirm('Alignment Test Complete.\n\nPress OK to confirm, or Cancel to retest.');
-    if (!confirmed) {
-      startAlignTest();
-    }
-  }, 300);
+  setText('snap-align-status', '✅ Simulation complete');
 }
+
   async function pollIgnition(imei, expect, timeoutSecs) {
     if (!imei) return true;
     var deadline = Date.now() + timeoutSecs * 1000;
