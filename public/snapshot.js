@@ -233,6 +233,7 @@
 
     wireEvents();
     injectAlignPanel();
+    injectSnapshotHistoryPanel();
     resetCameraGrid();
   }
 
@@ -321,6 +322,83 @@
     document.body.appendChild(panel);
   }
 
+function injectSnapshotHistoryPanel() {
+  var existing = document.getElementById('snap-history-panel');
+  if (existing) existing.remove();
+
+  var panel = document.createElement('div');
+  panel.id = 'snap-history-panel';
+  panel.style.cssText = 'display:none;position:fixed;bottom:0;left:0;right:0;height:85vh;background:var(--surface);border-top:3px solid var(--green-600);z-index:400;flex-direction:column;box-shadow:0 -8px 32px rgba(0,0,0,0.2);';
+
+  panel.innerHTML = [
+    '<div style="padding:14px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">',
+      '<div>',
+        '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:rgba(212,240,38,0.7);">Camera History</div>',
+        '<div style="font-size:15px;font-weight:700;color:#fff;" id="snap-history-title">Snapshot History</div>',
+      '</div>',
+      '<button id="snap-history-close" style="border:none;background:rgba(255,255,255,0.1);border-radius:6px;color:#fff;font-size:16px;cursor:pointer;width:30px;height:30px;">✕</button>',
+    '</div>',
+    '<div style="flex:1;overflow-y:auto;padding:16px;" id="snap-history-body">',
+      '<div style="text-align:center;color:var(--muted);padding:40px;">No snapshot history available.</div>',
+    '</div>'
+  ].join('');
+
+  document.body.appendChild(panel);
+
+  var close = TGE.el('snap-history-close');
+  if (close) close.onclick = function () {
+    panel.style.display = 'none';
+  };
+}
+
+async function openSnapshotHistoryPanel() {
+  var vehicle = state.data.vehicle;
+  if (!vehicle) return;
+
+  var panel = TGE.el('snap-history-panel');
+  var body = TGE.el('snap-history-body');
+  var title = TGE.el('snap-history-title');
+
+  if (title) title.textContent = vehicle.name + ' — Snapshot History';
+  if (body) body.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Loading history...</div>';
+  if (panel) panel.style.display = 'flex';
+
+  try {
+    var r = await TGE.api('GET', '/api/camera-history/' + vehicle.id);
+    if (!r.ok) throw new Error('Failed to load camera history');
+
+    var history = Array.isArray(r.data) ? r.data : [];
+
+    if (!history.length) {
+      body.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">No snapshot history available.</div>';
+      return;
+    }
+
+    var cam = state.devices.camera;
+    var model = cam && cam.model && cam.model.name;
+    var slots = model === 'MultiIQ' ? 5 : 2;
+    var activeSlots = CAMERA_SLOTS.slice(0, slots);
+
+    body.innerHTML = history.map(function(h) {
+      var mediaFiles = [];
+      try {
+        var ctx = JSON.parse(h.snapshot_data || '{}');
+        if (ctx && ctx.response && ctx.response.mediaFiles) mediaFiles = ctx.response.mediaFiles;
+      } catch(e) {}
+
+      return '<div style="margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--line-2);">' +
+        '<div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px;">' + formatTs(h.captured_at) + '</div>' +
+        '<div style="display:grid;gap:10px;grid-template-columns:repeat(' + slots + ',minmax(0,1fr));">' +
+          buildCameraGrid(mediaFiles, activeSlots) +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+  } catch(e) {
+    if (body) body.innerHTML = '<div style="text-align:center;color:var(--danger);padding:40px;">' + e.message + '</div>';
+  }
+}
+  
   // ── Wire events ───────────────────────────────────────────────────────────────
   function wireEvents() {
     TGE.on('snap-run-btn',     'click', runSnapshot);
@@ -592,15 +670,11 @@
     var camTime = TGE.el('snap-cam-time');
     if (camTime) camTime.textContent = 'Snapshot captured: ' + formatTs(latest.timeAt);
 
-    var alignBtn = TGE.el('snap-align-btn');
+     var alignBtn = TGE.el('snap-align-btn');
     if (alignBtn) alignBtn.onclick = openAlignPanel;
-    TGE.el('snap-history-btn').onclick = function () {
-  if (typeof TGE.showCameraHistory === 'function') {
-    TGE.showCameraHistory();
-  } else {
-    alert('Camera History viewer not yet connected.');
-    }
-   };
+
+    var historyBtn = TGE.el('snap-history-btn');
+    if (historyBtn) historyBtn.onclick = openSnapshotHistoryPanel;
   }
 
   function findCameraFile(mediaFiles, slot) {
