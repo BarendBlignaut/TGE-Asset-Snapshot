@@ -783,6 +783,40 @@ async function startAlignTest() {
 
   setText('snap-align-status', '✅ Simulation complete');
 }
+  function completeSimulatedAlignmentTest() {
+  var beforeGrid = TGE.el('snap-align-before');
+  var afterGrid  = TGE.el('snap-align-after');
+
+  if (beforeGrid && afterGrid) {
+    afterGrid.innerHTML = beforeGrid.innerHTML;
+    afterGrid.style.gridTemplateColumns = beforeGrid.style.gridTemplateColumns;
+  }
+
+  var afterMsg = TGE.el('snap-align-after-msg');
+  if (afterMsg) afterMsg.style.display = 'none';
+
+  var postGrid = TGE.el('snap-camera-grid-post');
+  if (postGrid && beforeGrid) {
+    postGrid.innerHTML = beforeGrid.innerHTML;
+    postGrid.style.gridTemplateColumns = beforeGrid.style.gridTemplateColumns;
+  }
+
+  var postSection = TGE.el('snap-cam-post-section');
+  if (postSection) postSection.style.display = '';
+
+  var postTime = TGE.el('snap-cam-post-time');
+  if (postTime) postTime.textContent = 'Post alignment — simulated: ' + formatTs(new Date().toISOString());
+
+  var preLabel = TGE.el('snap-cam-pre-label');
+  if (preLabel) preLabel.textContent = 'PRE — Alignment Test';
+
+  setTimeout(function () {
+    var retest = confirm('Alignment Test Complete.\n\nPress OK to confirm, or Cancel to retest.');
+    if (!retest) {
+      startAlignTest();
+    }
+  }, 300);
+}
 
   async function pollIgnition(imei, expect, timeoutSecs) {
     if (!imei) return true;
