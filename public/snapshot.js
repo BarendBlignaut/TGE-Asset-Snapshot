@@ -772,33 +772,32 @@ async function startAlignTest() {
     await delay(500);
   }
 
-  completeSimulatedAlignmentTest();
-
-  alignState.running = false;
-
-  if (startBtn) {
-    startBtn.textContent = 'Retest';
-    startBtn.disabled = false;
-  }
-
-  setText('snap-align-status', '✅ Simulation complete');
-}
-  function completeSimulatedAlignmentTest() {
+function completeSimulatedAlignmentTest() {
   var beforeGrid = TGE.el('snap-align-before');
   var afterGrid  = TGE.el('snap-align-after');
+  var currentGrid = TGE.el('snap-camera-grid');
 
-  if (beforeGrid && afterGrid) {
-    afterGrid.innerHTML = beforeGrid.innerHTML;
-    afterGrid.style.gridTemplateColumns = beforeGrid.style.gridTemplateColumns;
+  var html = beforeGrid ? beforeGrid.innerHTML : '';
+  var columns = currentGrid && currentGrid.style.gridTemplateColumns
+    ? currentGrid.style.gridTemplateColumns
+    : 'repeat(5,minmax(0,1fr))';
+
+  if (afterGrid) {
+    afterGrid.innerHTML = html;
+    afterGrid.style.display = 'grid';
+    afterGrid.style.gap = '6px';
+    afterGrid.style.gridTemplateColumns = columns;
   }
 
   var afterMsg = TGE.el('snap-align-after-msg');
   if (afterMsg) afterMsg.style.display = 'none';
 
   var postGrid = TGE.el('snap-camera-grid-post');
-  if (postGrid && beforeGrid) {
-    postGrid.innerHTML = beforeGrid.innerHTML;
-    postGrid.style.gridTemplateColumns = beforeGrid.style.gridTemplateColumns;
+  if (postGrid) {
+    postGrid.innerHTML = html;
+    postGrid.style.display = 'grid';
+    postGrid.style.gap = '10px';
+    postGrid.style.gridTemplateColumns = columns;
   }
 
   var postSection = TGE.el('snap-cam-post-section');
@@ -811,13 +810,12 @@ async function startAlignTest() {
   if (preLabel) preLabel.textContent = 'PRE — Alignment Test';
 
   setTimeout(function () {
-    var retest = confirm('Alignment Test Complete.\n\nPress OK to confirm, or Cancel to retest.');
-    if (!retest) {
+    var confirmed = confirm('Alignment Test Complete.\n\nPress OK to confirm, or Cancel to retest.');
+    if (!confirmed) {
       startAlignTest();
     }
   }, 300);
 }
-
   async function pollIgnition(imei, expect, timeoutSecs) {
     if (!imei) return true;
     var deadline = Date.now() + timeoutSecs * 1000;
