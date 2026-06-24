@@ -1943,7 +1943,9 @@ export default {
     body: JSON.stringify(body)
   }), env);
 }
-    
+    if (method === "GET" && path === "/api/camera-history-events") {
+  return handleCameraHistoryEvents(request, env);
+}
       // Camera history
       if (method === "GET" && path.startsWith("/api/camera-history/")) {
         const vid = path.split('/').pop();
