@@ -1895,24 +1895,47 @@ const BACKFILL_START = '2024-02-01';
 
 // ── Shared: fetch one 6-day chunk of camera events via existing API key ───────
 async function fetchCameraEventsChunk(env, fromIso, toIso) {
-  // Uses TN360_API_KEY — standard events endpoint, no vehicle filter
-  // Returns all camera events across all assets for the date range
-  const url = `https://api-au.telematics.com/v1/events` +
-    `?key=${env.TN360_API_KEY}&types=camera` +
-    `&from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`;
+  const allEvents = [];
+  let rowOffset   = 0;
+  const rowLimit  = 100;
 
-  const res = await fetch(url);
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`TN360 events fetch failed: HTTP ${res.status} — ${text.slice(0, 200)}`);
+  const fromEnc = fromIso.replace(/\+/g, '%2B').replace(/:/g, '%3A');
+  const toEnc   = toIso.replace(/\+/g, '%2B').replace(/:/g, '%3A');
+
+  while (true) {
+    const res = await fetch(
+      `https://api-au.telematics.com/v1/devices/events/camera/snapshots?from=${fromEnc}&to=${toEnc}`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token token="${env.TN360_API_KEY}"`,
+          'Content-Type':  'application/json',
+        },
+        body: JSON.stringify({
+          orderField:     'EventTime',
+          orderDirection: 'asc',
+          latestOnly:     false,
+          rowCountLimit:  rowLimit,
+          rowOffset:      rowOffset,
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`TN360 snapshots fetch failed: HTTP ${res.status} — ${text.slice(0, 200)}`);
+    }
+
+    const data   = await res.json();
+    const events = Array.isArray(data.events) ? data.events : [];
+    allEvents.push(...events);
+
+    const total = data.totalCount || 0;
+    rowOffset  += rowLimit;
+    if (rowOffset >= total || events.length < rowLimit) break;
   }
-  const data = await res.json();
 
-  // Normalise — endpoint returns array or { events: [...] }
-  if (Array.isArray(data))               return data;
-  if (Array.isArray(data.events))        return data.events;
-  if (Array.isArray(data.data))          return data.data;
-  return [];
+  return allEvents;
 }
 
 // ── Shared: save events to D1 ─────────────────────────────────────────────────
