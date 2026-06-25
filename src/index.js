@@ -2503,7 +2503,7 @@ async function handleHistoricalSnapshotsAttachments(request, env) {
 
         if (!imgRes.ok) {
           return { position: position, url: '' };
-        }
+        } 
 
         const contentType = imgRes.headers.get('content-type') || '';
         if (contentType.includes('image/')) {
