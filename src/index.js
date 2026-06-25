@@ -2404,8 +2404,7 @@ async function handleHistoricalSnapshots(request, env) {
           }
 
           // Try JSON response containing URL
-          try {
-try {
+         try {
   const json = await imgRes.json();
   console.log('[HistSnap] json keys:', Object.keys(json), 'attachmentLink:', json.attachmentLink ? json.attachmentLink.slice(0,50) : 'none');
   const url  = json.attachmentLink || json.url || json.mediaFile || json.contentUrl || imgRes.url || '';
