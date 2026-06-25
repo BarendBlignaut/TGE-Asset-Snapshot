@@ -2430,6 +2430,84 @@ async function handleHistoricalSnapshots(request, env) {
 //   return handleGetVehicleCameraHistory(request, env, vehicleId);
 // }
 
+// ── POST /api/historical-snapshots/attachments ────────────────────────────────
+// Takes an array of stored attachment metadata from D1 and returns fresh URLs.
+// Uses TN360_SNAPSHOT_KEY (personal token).
+//
+// Body: { attachments: [{ attachmentId, position, timeAt }] }
+// Returns: { attachments: [{ position, url }] }
+
+async function handleHistoricalSnapshotsAttachments(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  if (!env.TN360_SNAPSHOT_KEY) {
+    return jsonResponse({
+      error: 'TN360_SNAPSHOT_KEY not configured.',
+    }, 503);
+  }
+
+  const body        = await safeJson(request);
+  const attachments = Array.isArray(body.attachments) ? body.attachments : [];
+
+  if (!attachments.length) {
+    return jsonResponse({ attachments: [] });
+  }
+
+  const authHeader = `Token token="${env.TN360_SNAPSHOT_KEY}"`;
+
+  const results = await Promise.all(
+    attachments.map(async function(att) {
+      const attachmentId = att.attachmentId;
+      const position     = att.position || '';
+      const timeAt       = new Date(att.timeAt || '');
+      const year         = timeAt.getFullYear();
+      const month        = timeAt.getMonth() + 1; // no leading zero
+
+      if (!attachmentId || !year || !month) {
+        return { position: position, url: '' };
+      }
+
+      try {
+        const imgRes = await fetch(
+          `https://api-au.telematics.com/v1/attachments/${attachmentId}/content` +
+          `?pruning=WEB&thumbnail=false&year=${year}&month=${month}&presigned=true`,
+          {
+            headers: { 'Authorization': authHeader },
+            redirect: 'follow',
+          }
+        );
+
+        if (!imgRes.ok) {
+          return { position: position, url: '' };
+        }
+
+        const contentType = imgRes.headers.get('content-type') || '';
+        if (contentType.includes('image/')) {
+          return { position: position, url: imgRes.url };
+        }
+
+        try {
+          const json = await imgRes.json();
+          const url  = json.url || json.mediaFile || json.contentUrl || imgRes.url || '';
+          return { position: position, url: url };
+        } catch(e) {
+          return { position: position, url: imgRes.url };
+        }
+
+      } catch(e) {
+        console.warn('[HistSnap/attachments]', attachmentId, 'error:', e.message);
+        return { position: position, url: '' };
+      }
+    })
+  );
+
+  return jsonResponse({ attachments: results });
+}
+
+// Add this route to src/index.js main fetch handler:
+// if (method === 'POST' && path === '/api/historical-snapshots/attachments') return handleHistoricalSnapshotsAttachments(request, env);
+
 // ── Main fetch handler ────────────────────────────────────────────────────────
 
 export default {
