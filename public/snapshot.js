@@ -373,6 +373,7 @@
       '</div>',
     ].join('');
     document.body.appendChild(panel);
+    document.getElementById('snap-hist-close').onclick = closeHistoryPanel;
   }
 
   // ── Wire events ───────────────────────────────────────────────────────────────
@@ -397,8 +398,6 @@
       });
     }
 
-    // History close
-    TGE.on('snap-hist-close', 'click', closeHistoryPanel);
   }
 
   // ── Vehicle resolution (improved — checklist item) ────────────────────────────
@@ -1118,6 +1117,9 @@
     var panel = TGE.el('snap-history-panel');
     if (!panel) return;
 
+    var closeBtn = document.getElementById('snap-hist-close');
+    if (closeBtn) closeBtn.onclick = closeHistoryPanel;
+
     setText('snap-hist-title', vehicle.name + ' — Snapshot History');
     panel.style.display = 'flex';
 
@@ -1258,7 +1260,7 @@
     }).join('');
   }
 
-  // Convert Date to AEST ISO string with URL-safe encoding
+  // Convert Date to AEST ISO string with URL-safe encoding (kept for reference)
   function toAestIso(d) {
     // Format as YYYY-MM-DDTHH:mm:ss+10:00 then encode + and :
     var pad = function(n) { return String(n).padStart(2,'0'); };
@@ -1393,3 +1395,4 @@
   };
 
 })();
+      
