@@ -6,6 +6,22 @@
 
   var DEVICE = { HERMES:'HERMES', CAMERA:'CAMERA', IFACE:'IFACE', ATRACKER:'ATRACKER' };
 
+  // Camera position map — matches the new historical snapshots API response
+  var POSITION_MAP = {
+    'FRONT':          'road',
+    'ROAD':           'road',
+    'ROAD_FACING':    'road',
+    'DRIVER':         'driver',
+    'DRIVER_FACING':  'driver',
+    'LEFT_PASSENGER': 'ext2',
+    'LEFT':           'ext2',
+    'TVI1':           'ext2',
+    'RIGHT_DRIVER':   'ext1',
+    'RIGHT':          'ext1',
+    'TVI2':           'ext1',
+    'UVC':            'incab',
+  };
+
   var CAMERA_SLOTS = [
     { id:'road',   label:'Road Facing',    source:'ROAD_FACING',  sources:['ROAD']   },
     { id:'driver', label:'Driver Facing',  source:'DRIVER_FACING',sources:['DRIVER'] },
@@ -15,20 +31,20 @@
   ];
 
   var state = {
-    running: false,
-    asset:   null,
-    devices: { hermes:null, camera:null, iface:null, tracker:null },
-    data:    defaultData(),
+    running:          false,
+    asset:            null,
+    devices:          { hermes:null, camera:null, iface:null, tracker:null },
+    data:             { vehicle:null, deviceStats:null, vpm:null, gpio:null, cameras:null },
+    cameraSlots:      [],       // active slots for this device (2 or 5)
+    cameraCapturedAt: null,     // frozen — never updated after initial load
+    alignCompleted:   false,    // true only when test ran to completion and panel closed
+    alignAfterSlots:  null,     // after-images from completed alignment test
+    alignCompletedAt: null,     // timestamp of completed alignment test
   };
 
-  // ── Alignment test ───────────────────────────────────────────────────────────
-  // NOTE: This feature is intentionally frozen/inert. The UI (button, panel,
-  // BEFORE/AFTER comparison, Test Procedure steps) stays exactly as-is, but no
-  // backend actions run from it, pending the correct trigger process being
-  // confirmed with the Teletrac vendor. Do not wire, unwire, or modify any of
-  // this code as part of unrelated fixes — revisit only once that process
-  // exists.
   var alignState = { running:false, steps:{}, vehicleId:null };
+
+  var historyState = { loading:false };
 
   var ALIGN_STEPS = [
     { id:'step-ign-on',   label:'Confirm ignition ON',           type:'poll-ignition', expect:'ON',  timeout:120 },
@@ -39,48 +55,51 @@
     { id:'step-snapshot', label:'Pull new camera snapshots',      type:'snapshot'                                },
   ];
 
-  // ── Styles (Standard 1: export dropdown — rounded trigger, yellow icon) ────
-  // Injected once per session, the same pattern utilisation.js uses for its
-  // own page-specific styles. Reuses the app's existing CSS variables
-  // (--green-*, --yellow, --surface, --ink, --muted, --line, --radius) so it
-  // matches the established theme rather than introducing new colors.
+  // ── Styles ────────────────────────────────────────────────────────────────────
   function injectStyles() {
     if (document.getElementById('snap-styles')) return;
     var style = document.createElement('style');
     style.id = 'snap-styles';
     style.textContent = [
-      '.hero-menu{position:relative;display:inline-flex;}',
-      '.hero-menu-trigger{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.10);color:#fff;font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:background 0.15s ease;}',
-      '.hero-menu-trigger:hover{background:rgba(255,255,255,0.18);}',
-      '.hero-menu-trigger:focus-visible{outline:2px solid var(--yellow,#d4f026);outline-offset:2px;}',
-      '.hero-menu-icon{color:var(--yellow,#d4f026);flex-shrink:0;}',
-      '.hero-menu-caret{transition:transform 0.15s ease;flex-shrink:0;}',
-      '.hero-menu.open .hero-menu-caret{transform:rotate(180deg);}',
-      // position:fixed (not absolute) so the panel escapes any ancestor's
-      // overflow:hidden (the .hero banner clips its own decorative circle
-      // this way) — its exact top/left coordinates are set in JS each time
-      // it opens, based on the trigger button's real screen position.
-      '.hero-menu-panel{display:none;position:fixed;min-width:200px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 12px 32px rgba(0,0,0,0.28);z-index:300;overflow:hidden;padding:6px;}',
-      '.hero-menu.open .hero-menu-panel{display:block;}',
-      '.hero-menu-item{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;height:36px;padding:0 10px;border:none;background:transparent;border-radius:7px;color:var(--ink);font:inherit;font-size:13px;text-align:left;cursor:pointer;transition:background 0.12s ease;}',
-      '.hero-menu-item:hover{background:var(--surface-2);}',
-      '.hero-menu-item span:last-child{font-size:11px;color:var(--muted);}',
+      // Export dropdown
+      '.snap-hero-menu{position:relative;display:inline-flex;align-items:center;}',
+      '.snap-menu-trigger{height:34px;display:inline-flex;align-items:center;gap:8px;padding:0 11px;border-radius:999px;border:1px solid rgba(255,255,255,0.20);background:rgba(255,255,255,0.10);color:rgba(255,255,255,0.82);font-size:11px;font-weight:700;cursor:pointer;transition:background 140ms,border-color 140ms,color 140ms;}',
+      '.snap-menu-trigger:hover,.snap-hero-menu.open .snap-menu-trigger{background:rgba(255,255,255,0.18);border-color:rgba(255,255,255,0.34);color:#fff;}',
+      '.snap-menu-caret{width:10px;height:10px;opacity:0.75;transition:transform 140ms;}',
+      '.snap-hero-menu.open .snap-menu-caret{transform:rotate(180deg);}',
+      '.snap-menu-panel{position:fixed;min-width:190px;padding:6px;border-radius:12px;background:#fff;border:1px solid rgba(15,26,19,0.10);box-shadow:0 18px 42px rgba(10,45,20,0.22);display:none;z-index:500;}',
+      '.snap-hero-menu.open .snap-menu-panel{display:block;}',
+      '.snap-menu-item{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px;border:none;border-radius:9px;background:transparent;color:var(--ink-2);font-size:12px;font-weight:600;text-align:left;cursor:pointer;opacity:0.4;pointer-events:none;}',
+      '.snap-menu-item.active{opacity:1;pointer-events:auto;}',
+      '.snap-menu-item.active:hover{background:var(--green-50);color:var(--green-800);}',
+      // History panel image grid
+      '.snap-hist-group{margin-bottom:24px;}',
+      '.snap-hist-time{font-size:12px;font-weight:700;color:var(--ink);margin-bottom:8px;}',
+      '.snap-hist-grid{display:grid;gap:8px;}',
+      '.snap-hist-thumb{aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;}',
+      '.snap-hist-thumb img{width:100%;height:100%;object-fit:cover;}',
+      '.snap-hist-label{font-size:10px;font-weight:600;color:var(--ink-2);padding-top:4px;}',
+      '.snap-hist-status{font-size:10px;color:var(--muted);}',
+      // History loading bar
+      '.snap-hist-progress{margin-bottom:16px;padding:12px 14px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;}',
+      '.snap-hist-progress-bar{height:4px;background:var(--line);border-radius:999px;margin-top:8px;overflow:hidden;}',
+      '.snap-hist-progress-fill{height:100%;background:var(--green-600);border-radius:999px;transition:width 300ms;}',
     ].join('');
     document.head.appendChild(style);
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────────
   function render() {
-    injectStyles();
     var view = TGE.el('view-snapshot');
     if (!view) return;
+    injectStyles();
 
     view.innerHTML = [
       '<div class="hero">',
         '<div class="hero-kicker">Operations</div>',
         '<div class="hero-title">Asset Snapshot</div>',
-        '<div class="hero-sub">Enter a fleet number to load current location, metrics, diagnostics and camera evidence.</div>',
-        '<div class="hero-bar">',
+        '<div class="hero-sub" style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:2px;">Enter a fleet number to load current location, metrics, diagnostics and camera evidence.</div>',
+        '<div class="hero-bar" style="margin-top:12px;">',
           '<div class="hero-bar-left">',
             '<input id="snap-fleet-input" type="text" placeholder="Fleet number e.g. 82050" autocomplete="off" style="height:34px;border:1px solid rgba(255,255,255,0.25);border-radius:7px;padding:0 12px;background:rgba(255,255,255,0.10);color:#fff;font:inherit;font-size:13px;min-width:180px;" />',
             '<button class="hero-run-btn" id="snap-run-btn" type="button">Run</button>',
@@ -102,8 +121,8 @@
 
       '<div id="snap-results" style="display:none;">',
 
-        // 1 — Vehicle Info (always shown once a snapshot has run — not device-gated)
-        '<div class="card" id="snap-vehicle-card">',
+        // 1 — Vehicle Info
+        '<div class="card">',
           '<div class="card-kicker">Vehicle Information</div>',
           '<div id="snap-vehicle-title" class="card-title">—</div>',
           '<div class="data-grid data-grid-4" style="margin-bottom:14px;">',
@@ -119,8 +138,8 @@
           '<div class="data-grid data-grid-3" id="snap-device-cards"></div>',
         '</div>',
 
-        // 2 — Driver (locked layout: always visible, "No data" if iFace absent/empty)
-        '<div class="card" id="snap-driver-card">',
+        // 2 — Driver (iFace only)
+        '<div class="card" id="snap-driver-card" style="display:none;">',
           '<div class="card-kicker">Driver</div>',
           '<div class="card-title">Currently Logged In</div>',
           '<div class="data-grid data-grid-4">',
@@ -131,8 +150,8 @@
           '</div>',
         '</div>',
 
-        // 3 — Live Status (locked layout: always visible)
-        '<div class="card" id="snap-status-card">',
+        // 3 — Live Status (HERMES only)
+        '<div class="card" id="snap-status-card" style="display:none;">',
           '<div class="card-kicker">Live Status</div>',
           '<div class="card-title">Current Position &amp; State</div>',
           '<div class="data-grid data-grid-4">',
@@ -147,8 +166,8 @@
           '</div>',
         '</div>',
 
-        // 4 — VPM (locked layout: always visible)
-        '<div class="card" id="snap-vpm-card">',
+        // 4 — VPM (HERMES only)
+        '<div class="card" id="snap-vpm-card" style="display:none;">',
           '<div class="card-kicker">Engine Metrics</div>',
           '<div class="card-title">VPM — Last Reading</div>',
           '<div class="data-grid data-grid-4">',
@@ -163,37 +182,40 @@
           '</div>',
         '</div>',
 
-        // 5 — GPIO (locked layout: always visible)
-        '<div class="card" id="snap-gpio-card">',
+        // 5 — GPIO (HERMES only)
+        '<div class="card" id="snap-gpio-card" style="display:none;">',
           '<div class="card-kicker">GPIO</div>',
           '<div class="card-title">Input / Output Status</div>',
           '<div class="data-grid data-grid-4" id="snap-gpio-grid">',
-            '<div class="data-item" style="color:var(--muted);font-size:12px;grid-column:span 4;">No GPIO data.</div>',
+            '<div class="data-item" style="color:var(--muted);font-size:12px;grid-column:span 4;">Loading GPIO...</div>',
           '</div>',
         '</div>',
 
-        // 6 — Cameras (locked layout: always visible)
-        '<div class="card" id="snap-camera-card">',
+        // 6 — Cameras (CAMERA device only)
+        '<div class="card" id="snap-camera-card" style="display:none;">',
           '<div class="card-kicker">Evidence</div>',
           '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">',
             '<div class="card-title" style="margin:0;">Camera Snapshots</div>',
             '<div style="display:flex;gap:8px;">',
-            '<button class="btn" id="snap-align-btn" style="height:32px;font-size:12px;background:var(--green-100);color:var(--green-700);border-color:var(--green-600);">⚙ Alignment Test</button>',
-            '<button class="btn" id="snap-history-btn" style="height:32px;font-size:12px;">History</button>',
+              '<button class="btn" id="snap-align-btn" style="height:32px;font-size:12px;background:var(--green-100);color:var(--green-700);border-color:var(--green-600);">⚙ Alignment Test</button>',
+              '<button class="btn" id="snap-history-btn" style="height:32px;font-size:12px;">History</button>',
+            '</div>',
           '</div>',
-       '</div>',
-          '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px;" id="snap-cam-pre-label">Current Snapshots</div>',
-          '<div id="snap-camera-grid" style="display:grid;gap:10px;grid-template-columns:repeat(5,minmax(0,1fr));"></div>',
-          '<p id="snap-cam-time" style="margin-top:6px;margin-bottom:16px;font-size:11px;color:var(--muted);"></p>',
-          '<div id="snap-cam-post-section" style="display:none;">',
+          // Current Snapshots — frozen after first load, never updated
+          '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px;">Current Snapshots</div>',
+          '<div id="snap-camera-grid" style="display:grid;gap:10px;"></div>',
+          '<p id="snap-cam-time" style="margin-top:6px;margin-bottom:0;font-size:11px;color:var(--muted);"></p>',
+
+          // Alignment result section — only shown after test completes and panel closes
+          '<div id="snap-align-result-section" style="display:none;margin-top:16px;">',
             '<div style="border-top:2px dashed var(--green-600);margin:0 0 16px;"></div>',
-            '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--green-600);margin-bottom:8px;">Post Alignment Test</div>',
-            '<div id="snap-camera-grid-post" style="display:grid;gap:10px;"></div>',
-            '<p id="snap-cam-post-time" style="margin-top:6px;font-size:11px;color:var(--muted);"></p>',
+            '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--green-600);margin-bottom:4px;">Alignment Test — After</div>',
+            '<p id="snap-align-result-time" style="font-size:11px;color:var(--muted);margin-bottom:8px;"></p>',
+            '<div id="snap-align-result-grid" style="display:grid;gap:10px;"></div>',
           '</div>',
 
-          // SD Card health (locked layout: always visible)
-          '<div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px;" id="snap-sd-section">',
+          // SD Card health
+          '<div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px;" id="snap-sd-section" style="display:none;">',
             '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px;">SD Card Health</div>',
             '<div class="data-grid data-grid-3">',
               di('snap-sd1',        'SD Card 1'),
@@ -204,17 +226,15 @@
             '</div>',
           '</div>',
 
-          // Camera faults (locked layout: always visible)
-          '<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:14px;" id="snap-faults-section">',
+          // Camera faults
+          '<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:14px;" id="snap-faults-section" style="display:none;">',
             '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px;">Camera Diagnostics</div>',
-            '<div class="data-grid data-grid-3" id="snap-faults-grid">',
-              '<div class="data-item" style="color:var(--muted);font-size:12px;grid-column:span 3;">No fault data reported.</div>',
-            '</div>',
+            '<div class="data-grid data-grid-3" id="snap-faults-grid"></div>',
           '</div>',
         '</div>',
 
-        // 7 — Map (locked layout: always visible)
-        '<div class="card" id="snap-map-card">',
+        // 7 — Map (HERMES only)
+        '<div class="card" id="snap-map-card" style="display:none;">',
           '<div class="card-kicker">Location</div>',
           '<div class="card-title">Last Known Position</div>',
           '<div class="data-grid data-grid-3" style="margin-bottom:12px;">',
@@ -223,8 +243,23 @@
             di('snap-map-lng',     'Longitude'),
           '</div>',
           '<div id="snap-map" style="height:300px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);background:var(--surface-2);display:flex;align-items:center;justify-content:center;">',
-            '<span style="color:var(--muted);font-size:13px;">No map data for this asset</span>',
+            '<span style="color:var(--muted);font-size:13px;">Map loads after fetch</span>',
           '</div>',
+        '</div>',
+
+        // 8 — Asset tracker (ATRACKER only)
+        '<div class="card" id="snap-tracker-card" style="display:none;">',
+          '<div class="card-kicker">Asset Tracker</div>',
+          '<div class="card-title">Last Known Position</div>',
+          '<div class="data-grid data-grid-3" style="margin-bottom:14px;">',
+            di('snap-tracker-address', 'Location'),
+            di('snap-tracker-lat',     'Latitude'),
+            di('snap-tracker-lng',     'Longitude'),
+            di('snap-tracker-time',    'Last Seen'),
+            di('snap-tracker-battery', 'Battery'),
+            di('snap-tracker-model',   'Device Model'),
+          '</div>',
+          '<div id="snap-tracker-map" style="height:280px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);background:var(--surface-2);"></div>',
         '</div>',
 
       '</div>',// end snap-results
@@ -233,58 +268,50 @@
 
     wireEvents();
     injectAlignPanel();
-    injectSnapshotHistoryPanel();
-    resetCameraGrid();
-  }
-
-  // Renders five empty camera slot placeholders (the maximum slot count,
-  // matching MultiIQ) so the locked layout always shows real slot boxes
-  // rather than a generic text message — even before any data has loaded
-  // or when an asset genuinely has no camera device.
-  function resetCameraGrid() {
-    var grid = TGE.el('snap-camera-grid');
-    if (grid) {
-      grid.style.gridTemplateColumns = 'repeat(5,minmax(0,1fr))';
-      grid.innerHTML = buildCameraGrid([], CAMERA_SLOTS.slice(0, 5));
-    }
+    injectHistoryPanel();
   }
 
   function di(id, label) {
     return '<div class="data-item"><span>' + label + '</span><strong id="' + id + '">—</strong></div>';
   }
 
-  function defaultData() {
-    return {
-      vehicle: null,
-      deviceStats: null,
-      vpm: null,
-      gpio: null,
-      cameras: null,
-    };
-  }
-
-  // ── Export menu (Standard 1: export actions grouped under one dropdown) ───────
+  // ── Export menu (Export Standard 1) ───────────────────────────────────────────
   function buildExportMenu() {
     var items = [
-      TGE.can('snapshot','export-pdf')       ? '<button class="hero-menu-item" id="snap-pdf-btn" type="button"><span>Snapshot PDF</span><span>PDF</span></button>' : '',
-      TGE.can('snapshot','export-email-pdf') ? '<button class="hero-menu-item" id="snap-email-btn" type="button"><span>Email PDF</span><span>Send</span></button>' : '',
-      TGE.can('snapshot','export-csv')       ? '<button class="hero-menu-item" id="snap-csv-btn" type="button"><span>CSV</span><span>.csv</span></button>' : '',
-      TGE.can('snapshot','export-xlsx')      ? '<button class="hero-menu-item" id="snap-xlsx-btn" type="button"><span>Excel</span><span>.xlsx</span></button>' : '',
-      TGE.can('snapshot','export-json')      ? '<button class="hero-menu-item" id="snap-json-btn" type="button"><span>JSON</span><span>.json</span></button>' : '',
+      TGE.can('snapshot','export-pdf')       ? '<button class="snap-menu-item" id="snap-pdf-btn" type="button"><span>Snapshot PDF</span><span style="color:var(--muted);font-size:10px;">PDF</span></button>' : '',
+      TGE.can('snapshot','export-email-pdf') ? '<button class="snap-menu-item" id="snap-email-btn" type="button"><span>Email PDF</span><span style="color:var(--muted);font-size:10px;">Send</span></button>' : '',
+      TGE.can('snapshot','export-csv')       ? '<button class="snap-menu-item" id="snap-csv-btn" type="button"><span>CSV</span><span style="color:var(--muted);font-size:10px;">.csv</span></button>' : '',
+      TGE.can('snapshot','export-xlsx')      ? '<button class="snap-menu-item" id="snap-xlsx-btn" type="button"><span>Excel</span><span style="color:var(--muted);font-size:10px;">.xlsx</span></button>' : '',
+      TGE.can('snapshot','export-json')      ? '<button class="snap-menu-item" id="snap-json-btn" type="button"><span>JSON</span><span style="color:var(--muted);font-size:10px;">.json</span></button>' : '',
     ].filter(Boolean).join('');
     if (!items) return '';
-    return '<div class="hero-menu" id="snap-export-menu">' +
-        '<button class="hero-menu-trigger" id="snap-export-trigger" type="button" aria-haspopup="true" aria-expanded="false" title="Export">' +
-          '<svg class="hero-menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">' +
-            '<path d="M8 1.5v8M5 6.5l3 3 3-3M2.5 11.5v2A1 1 0 0 0 3.5 14.5h9a1 1 0 0 0 1-1v-2"/>' +
-          '</svg>' +
-          '<span>Export</span>' +
-          '<svg class="hero-menu-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><path d="M4 6l4 4 4-4"/></svg>' +
-        '</button>' +
-        '<div class="hero-menu-panel" role="menu">' + items + '</div>' +
-      '</div>';
+    return '<div class="snap-hero-menu" id="snap-export-menu">' +
+      '<button class="snap-menu-trigger" id="snap-export-trigger" type="button" aria-haspopup="true" aria-expanded="false">' +
+        '<span style="width:16px;height:16px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--yellow);color:var(--green-900);font-size:12px;">↓</span>' +
+        '<span>Export</span>' +
+        '<svg class="snap-menu-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>' +
+      '</button>' +
+      '<div class="snap-menu-panel" id="snap-menu-panel" role="menu">' + items + '</div>' +
+    '</div>';
   }
 
+  function positionExportPanel() {
+    var trigger = TGE.el('snap-export-trigger');
+    var panel   = TGE.el('snap-menu-panel');
+    if (!trigger || !panel) return;
+    var rect = trigger.getBoundingClientRect();
+    panel.style.top   = (rect.bottom + 8) + 'px';
+    panel.style.right = (window.innerWidth - rect.right) + 'px';
+  }
+
+  function closeExportMenu() {
+    var menu    = TGE.el('snap-export-menu');
+    var trigger = TGE.el('snap-export-trigger');
+    if (menu)    menu.classList.remove('open');
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+  }
+
+  // ── Inject panels ──────────────────────────────────────────────────────────────
   function injectAlignPanel() {
     var existing = document.getElementById('snap-align-panel');
     if (existing) existing.remove();
@@ -301,11 +328,16 @@
       '</div>',
       '<div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px;">',
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">',
-          '<div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">BEFORE</div>',
-          '<div id="snap-align-before" style="display:grid;gap:6px;"></div></div>',
-          '<div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--green-600);margin-bottom:8px;">AFTER</div>',
-          '<div id="snap-align-after" style="display:grid;gap:6px;"></div>',
-          '<p id="snap-align-after-msg" style="font-size:12px;color:var(--muted);margin-top:8px;font-style:italic;">Images will appear after test completes</p>',
+          // BEFORE — frozen copy of current snapshots
+          '<div>',
+            '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">BEFORE</div>',
+            '<div id="snap-align-before" style="display:grid;gap:6px;"></div>',
+          '</div>',
+          // AFTER — pre-rendered empty slots, fill when test completes
+          '<div>',
+            '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--green-600);margin-bottom:8px;">AFTER</div>',
+            '<div id="snap-align-after" style="display:grid;gap:6px;"></div>',
+            '<p id="snap-align-after-msg" style="font-size:12px;color:var(--muted);margin-top:8px;font-style:italic;">Images will appear after test completes</p>',
           '</div>',
         '</div>',
         '<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:16px;">',
@@ -322,157 +354,110 @@
     document.body.appendChild(panel);
   }
 
-function injectSnapshotHistoryPanel() {
-  var existing = document.getElementById('snap-history-panel');
-  if (existing) existing.remove();
-
-  var panel = document.createElement('div');
-  panel.id = 'snap-history-panel';
-  panel.style.cssText = 'display:none;position:fixed;bottom:0;left:0;right:0;height:85vh;background:var(--surface);border-top:3px solid var(--green-600);z-index:400;flex-direction:column;box-shadow:0 -8px 32px rgba(0,0,0,0.2);';
-
-  panel.innerHTML = [
-    '<div style="padding:14px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">',
-      '<div>',
-        '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:rgba(212,240,38,0.7);">Camera History</div>',
-        '<div style="font-size:15px;font-weight:700;color:#fff;" id="snap-history-title">Snapshot History</div>',
+  function injectHistoryPanel() {
+    var existing = document.getElementById('snap-history-panel');
+    if (existing) existing.remove();
+    var panel = document.createElement('div');
+    panel.id = 'snap-history-panel';
+    panel.style.cssText = 'display:none;position:fixed;bottom:0;left:0;right:0;height:90vh;background:var(--surface);border-top:3px solid var(--green-600);z-index:400;flex-direction:column;box-shadow:0 -8px 32px rgba(0,0,0,0.2);';
+    panel.innerHTML = [
+      '<div style="padding:14px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">',
+        '<div>',
+          '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:rgba(212,240,38,0.7);">Camera History</div>',
+          '<div style="font-size:15px;font-weight:700;color:#fff;" id="snap-hist-title">Fleet — Snapshot History</div>',
+        '</div>',
+        '<button id="snap-hist-close" style="border:none;background:rgba(255,255,255,0.1);border-radius:6px;color:#fff;font-size:16px;cursor:pointer;width:30px;height:30px;">✕</button>',
       '</div>',
-      '<button id="snap-history-close" style="border:none;background:rgba(255,255,255,0.1);border-radius:6px;color:#fff;font-size:16px;cursor:pointer;width:30px;height:30px;">✕</button>',
-    '</div>',
-    '<div style="flex:1;overflow-y:auto;padding:16px;" id="snap-history-body">',
-      '<div style="text-align:center;color:var(--muted);padding:40px;">No snapshot history available.</div>',
-    '</div>'
-  ].join('');
-
-  document.body.appendChild(panel);
-
-  var close = TGE.el('snap-history-close');
-  if (close) close.onclick = function () {
-    panel.style.display = 'none';
-  };
-}
-
-async function openSnapshotHistoryPanel() {
-  var vehicle = state.data.vehicle;
-  if (!vehicle) return;
-
-  var panel = TGE.el('snap-history-panel');
-  var body = TGE.el('snap-history-body');
-  var title = TGE.el('snap-history-title');
-
-  if (title) title.textContent = vehicle.name + ' — Snapshot History';
-  if (body) body.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Loading history...</div>';
-  if (panel) panel.style.display = 'flex';
-
-  try {
-    var windows = buildHistoryWindows();
-    var allEvents = [];
-
-    for (var i = 0; i < windows.length; i++) {
-      if (body) {
-        body.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Loading history window ' +
-          (i + 1) + ' of ' + windows.length + '...</div>';
-      }
-
-var url = '/api/camera-history-events' +
-  '?from=' + encodeURIComponent(windows[i].from) +
-  '&to=' + encodeURIComponent(windows[i].to);
-
-      var r = await TGE.api('GET', url);
-      if (!r.ok) continue;
-
-      var events = Array.isArray(r.data) ? r.data : [];
-      events.forEach(function(e) {
-        if (
-          String(e.vehicleId) === String(vehicle.id) &&
-          e.attributes &&
-          e.attributes.status === 'available'
-        ) {
-          allEvents.push(e);
-        }
-      });
-    }
-
-    if (!allEvents.length) {
-      body.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">No snapshot history available.</div>';
-      return;
-    }
-
-    allEvents.sort(function(a, b) {
-      return new Date(b.timeAt) - new Date(a.timeAt);
-    });
-
-    var cam = state.devices.camera;
-    var model = cam && cam.model && cam.model.name;
-    var slots = model === 'MultiIQ' ? 5 : 2;
-    var activeSlots = CAMERA_SLOTS.slice(0, slots);
-
-    body.innerHTML = allEvents.map(function(e) {
-      var mediaFiles = [];
-
-      try {
-        var ctx = JSON.parse(e.attributes.context || '{}');
-        if (ctx && ctx.response && ctx.response.mediaFiles) {
-          mediaFiles = ctx.response.mediaFiles;
-        }
-      } catch(err) {}
-
-      return '<div style="margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--line-2);">' +
-        '<div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px;">' + formatTs(e.timeAt) + '</div>' +
-        '<div style="display:grid;gap:10px;grid-template-columns:repeat(' + slots + ',minmax(0,1fr));">' +
-          buildCameraGrid(mediaFiles, activeSlots) +
-        '</div>' +
-      '</div>';
-    }).join('');
-
-  } catch(e) {
-    if (body) {
-      body.innerHTML = '<div style="text-align:center;color:var(--danger);padding:40px;">' +
-        (e.message || 'Failed to load camera history') +
-      '</div>';
-    }
+      '<div style="flex:1;overflow-y:auto;padding:20px;" id="snap-hist-body">',
+        '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px;">Loading history...</div>',
+      '</div>',
+    ].join('');
+    document.body.appendChild(panel);
   }
-}
-  
+
   // ── Wire events ───────────────────────────────────────────────────────────────
   function wireEvents() {
     TGE.on('snap-run-btn',     'click', runSnapshot);
-    // Refresh = full reset only. It must NOT re-run the lookup — it clears
-    // the screen so the user can run a fresh asset. To reload the SAME asset
-    // with updated data, the user just clicks Run again.
-    TGE.on('snap-refresh-btn', 'click', resetSnapshot);
+    TGE.on('snap-refresh-btn', 'click', runSnapshot);
     TGE.on('snap-fleet-input', 'keydown', function(e) { if (e.key === 'Enter') runSnapshot(); });
 
-    var exportTrigger = TGE.el('snap-export-trigger');
-    var exportMenu    = TGE.el('snap-export-menu');
-    var exportPanel   = TGE.el('snap-export-menu') ? TGE.el('snap-export-menu').querySelector('.hero-menu-panel') : null;
-
-    function positionExportPanel() {
-      if (!exportTrigger || !exportPanel) return;
-      var rect = exportTrigger.getBoundingClientRect();
-      exportPanel.style.top   = (rect.bottom + 8) + 'px';
-      exportPanel.style.left  = 'auto';
-      // Align the panel's right edge with the trigger's right edge.
-      exportPanel.style.right = (window.innerWidth - rect.right) + 'px';
-    }
-
-    if (exportTrigger && exportMenu) {
-      exportTrigger.onclick = function(e) {
+    // Export dropdown
+    var trigger = TGE.el('snap-export-trigger');
+    var menu    = TGE.el('snap-export-menu');
+    if (trigger && menu) {
+      trigger.onclick = function(e) {
         e.stopPropagation();
-        var open = !exportMenu.classList.contains('open');
+        var open = !menu.classList.contains('open');
+        menu.classList.toggle('open', open);
+        trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
         if (open) positionExportPanel();
-        exportMenu.classList.toggle('open', open);
-        exportTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
       };
       document.addEventListener('click', function(e) {
-        if (!exportMenu.contains(e.target)) closeExportMenu();
-      });
-      window.addEventListener('scroll', function() {
-        if (exportMenu.classList.contains('open')) positionExportPanel();
-      }, true);
-      window.addEventListener('resize', function() {
-        if (exportMenu.classList.contains('open')) positionExportPanel();
+        if (menu && !menu.contains(e.target)) closeExportMenu();
       });
     }
+
+    // History close
+    TGE.on('snap-hist-close', 'click', closeHistoryPanel);
+  }
+
+  // ── Vehicle resolution (improved — checklist item) ────────────────────────────
+  function normaliseSearch(s) { return String(s == null ? '' : s).trim().toLowerCase(); }
+
+  function vehicleIdsMatch(a, b) {
+    var sa = String(a).trim(), sb = String(b).trim();
+    if (!sa || !sb) return false;
+    if (sa.toLowerCase() === sb.toLowerCase()) return true;
+    // Numeric leading-zero normalisation
+    if (/^\d+$/.test(sa) && /^\d+$/.test(sb)) {
+      return parseInt(sa, 10) === parseInt(sb, 10);
+    }
+    return false;
+  }
+
+  function resolveVehicle(query, vehicles) {
+    var search = normaliseSearch(query);
+    if (!search || !Array.isArray(vehicles)) return { vehicle: null, ambiguous: [] };
+    var i, v, name, reg;
+
+    // 1 — exact name or registration match
+    for (i = 0; i < vehicles.length; i++) {
+      v = vehicles[i];
+      name = normaliseSearch(v.name);
+      reg  = normaliseSearch(v.registration);
+      if (name === search || reg === search) return { vehicle: v, ambiguous: [] };
+    }
+
+    // 2 — numeric ID match
+    if (/^\d+$/.test(query)) {
+      for (i = 0; i < vehicles.length; i++) {
+        v = vehicles[i];
+        if (vehicleIdsMatch(String(v.id), query)) return { vehicle: v, ambiguous: [] };
+        // Name is purely numeric — compare as fleet number
+        if (/^\d+$/.test(String(v.name || '')) && vehicleIdsMatch(v.name, query)) return { vehicle: v, ambiguous: [] };
+      }
+      // Digit boundary match — "82050" should not match "182050"
+      var hits = vehicles.filter(function(vv) {
+        var nm = String(vv.name || '').trim();
+        return nm && new RegExp('(?:^|[^0-9])' + query.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(?:[^0-9]|$)').test(nm);
+      });
+      if (hits.length === 1) return { vehicle: hits[0], ambiguous: [] };
+      if (hits.length > 1) {
+        return { vehicle: null, ambiguous: hits.map(function(hv) {
+          return (hv.name || ('ID ' + hv.id)) + (hv.registration ? ' (' + hv.registration + ')' : '');
+        })};
+      }
+    }
+
+    // 3 — partial name fallback (minimum 2 chars)
+    if (search.length >= 2) {
+      for (i = 0; i < vehicles.length; i++) {
+        v = vehicles[i];
+        if (normaliseSearch(v.name).indexOf(search) !== -1) return { vehicle: v, ambiguous: [] };
+      }
+    }
+
+    return { vehicle: null, ambiguous: [] };
   }
 
   // ── Run snapshot ──────────────────────────────────────────────────────────────
@@ -482,22 +467,38 @@ var url = '/api/camera-history-events' +
     fleetNo = fleetNo.trim();
     if (!fleetNo) { setMessage('Enter a fleet number first.', true); return; }
 
-    state.running = true;
-    state.devices = { hermes:null, camera:null, iface:null, tracker:null };
-    state.data    = defaultData();
-    resetCardContent();
+    state.running        = false; // reset
+    state.running        = true;
+    state.devices        = { hermes:null, camera:null, iface:null, tracker:null };
+    state.data           = { vehicle:null, deviceStats:null, vpm:null, gpio:null, cameras:null };
+    state.cameraSlots    = [];
+    state.cameraCapturedAt = null;
+    state.alignCompleted = false;
+    state.alignAfterSlots = null;
+    state.alignCompletedAt = null;
+
     setMessage('Looking up fleet ' + fleetNo + '...', false);
     setBtnState(true);
 
+    // Reset alignment result section
+    var alignResult = TGE.el('snap-align-result-section');
+    if (alignResult) alignResult.style.display = 'none';
+
     try {
-      // Step 1 — Find vehicle
+      // Step 1 — Find vehicle (improved resolution)
       var vRes = await TGE.api('GET', '/api/tn360/v1/vehicles?pruning=B2B');
-      if (!vRes.ok) throw new Error('Vehicle lookup failed');
+      if (!vRes.ok) throw new Error('Vehicle lookup failed — ' + (vRes.data && vRes.data.error ? vRes.data.error : 'HTTP ' + vRes.status));
       var vehicles = Array.isArray(vRes.data) ? vRes.data : [];
-      var vehicle  = vehicles.find(function(v) {
-        return String(v.name || '').trim().toLowerCase() === fleetNo.toLowerCase();
-      });
-      if (!vehicle) throw new Error('Fleet number ' + fleetNo + ' not found');
+      if (!vehicles.length) throw new Error('No vehicles returned from TN360.');
+
+      var resolved = resolveVehicle(fleetNo, vehicles);
+      if (!resolved.vehicle) {
+        if (resolved.ambiguous.length) {
+          throw new Error('Multiple vehicles match "' + fleetNo + '" — be more specific: ' + resolved.ambiguous.join('; '));
+        }
+        throw new Error('Fleet number "' + fleetNo + '" not found. Check the fleet number and try again.');
+      }
+      var vehicle = resolved.vehicle;
 
       state.data.vehicle = vehicle;
       populateVehicle(vehicle);
@@ -506,7 +507,7 @@ var url = '/api/camera-history-events' +
 
       // Step 2 — Get devices
       var dRes = await TGE.api('GET', '/api/tn360/v1/vehicles/' + vehicle.id + '/devices?pruning=B2B');
-      if (!dRes.ok) throw new Error('Device lookup failed');
+      if (!dRes.ok) throw new Error('Device lookup failed — ' + (dRes.data && dRes.data.error ? dRes.data.error : 'HTTP ' + dRes.status));
       var devices = (Array.isArray(dRes.data) ? dRes.data : []).filter(function(d) { return !d.outServiceAt; });
 
       devices.forEach(function(d) {
@@ -547,9 +548,17 @@ var url = '/api/camera-history-events' +
         );
       }
 
+      if (state.devices.tracker) {
+        promises.push(
+          TGE.api('GET', '/api/tn360/v1/devices/' + state.devices.tracker.imei + '?pruning=B2B&embed=devicestats')
+            .then(function(r) { if (r.ok) processTrackerStats(r.data); })
+        );
+      }
+
       await Promise.all(promises);
       setMessage('');
-      TGE.el('snap-refresh-btn').style.display = '';
+      var refreshBtn = TGE.el('snap-refresh-btn');
+      if (refreshBtn) refreshBtn.style.display = '';
       activateExports();
 
     } catch(e) {
@@ -561,16 +570,32 @@ var url = '/api/camera-history-events' +
   }
 
   // ── Process functions ─────────────────────────────────────────────────────────
-  // NOTE: locked layout means these functions no longer call show()/hide() on
-  // their card containers — every card is always visible once results exist.
-  // Each function still only writes data when the relevant device/data
-  // exists; fields fall back to their existing "No data" states otherwise,
-  // so a genuinely absent device still surfaces as a visible "No data" card
-  // rather than disappearing — by design, so missing data on assets that
-  // should report it doesn't go unnoticed.
+  function extractGpsCoords(ds, lastPr) {
+    // Defensively check many possible field name/casing variations
+    ds = ds || {}; lastPr = lastPr || {};
+    var gps = ds.gps || {};
+    var pos = ds.position || {};
+    function firstFinite(vals) {
+      for (var i = 0; i < vals.length; i++) {
+        var n = parseFloat(vals[i]);
+        if (isFinite(n) && !isNaN(n)) return n;
+      }
+      return null;
+    }
+    var lat = firstFinite([gps.Lat, gps.lat, gps.latitude, gps.Latitude, pos.Lat, pos.lat, ds.Lat, ds.lat, lastPr.Lat, lastPr.lat]);
+    var lng = firstFinite([gps.Lng, gps.lng, gps.lon, gps.long, gps.longitude, gps.Longitude, pos.Lng, pos.lng, ds.Lng, ds.lng, lastPr.Lng, lastPr.lng]);
+    if (lat == null || lng == null) return null;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    return { lat: lat, lng: lng };
+  }
+
   function processHermesStats(d) {
     var ds = d.deviceStats || {};
     state.data.deviceStats = ds;
+
+    show('snap-status-card');
+    show('snap-vpm-card');
+    show('snap-gpio-card');
 
     setText('snap-ignition', ds.ignition, 'No data');
     setText('snap-movement', ds.movement, 'No data');
@@ -578,20 +603,18 @@ var url = '/api/camera-history-events' +
     setText('snap-gps-time', ds.gpsAt ? formatTs(ds.gpsAt) : null, 'No GPS fix');
     setText('snap-odometer', ds.odometer ? Number(ds.odometer).toLocaleString() + ' km' : null, 'No odometer data');
 
-    var gps = ds.gps || {};
-    if (gps.Lat != null && gps.Lng != null) {
-      setText('snap-lat', Number(gps.Lat).toFixed(6));
-      setText('snap-lng', Number(gps.Lng).toFixed(6));
-      try {
-        var pr = JSON.parse(ds.attrs && ds.attrs.last_pr || '{}');
-        setText('snap-speed', pr.Spd ? pr.Spd + ' km/h' : null, 'No data');
-      } catch(e) { setText('snap-speed', null, 'No data'); }
-      setText('snap-map-address', ds.location || null, 'No data');
-      setText('snap-map-lat', Number(gps.Lat).toFixed(6));
-      setText('snap-map-lng', Number(gps.Lng).toFixed(6));
-      renderMap('snap-map', gps.Lat, gps.Lng);
-    } else {
-      setText('snap-speed', null, 'No data');
+    var lastPr = {};
+    try { lastPr = JSON.parse(ds.attrs && (ds.attrs.last_pr || ds.attrs.lastPr) || '{}'); } catch(e) {}
+    var coords = extractGpsCoords(ds, lastPr);
+    if (coords) {
+      setText('snap-lat', coords.lat.toFixed(6));
+      setText('snap-lng', coords.lng.toFixed(6));
+      setText('snap-speed', lastPr.Spd != null && lastPr.Spd !== '' ? lastPr.Spd + ' km/h' : '—');
+      show('snap-map-card');
+      setText('snap-map-address', ds.location || '—');
+      setText('snap-map-lat', coords.lat.toFixed(6));
+      setText('snap-map-lng', coords.lng.toFixed(6));
+      renderMap('snap-map', coords.lat, coords.lng);
     }
 
     try {
@@ -618,10 +641,11 @@ var url = '/api/camera-history-events' +
     var ds = d.deviceStats || {};
     var cu = ds.currentUser;
     if (!cu) return;
-    setText('snap-driver-name',    ((cu.firstName || '') + ' ' + (cu.lastName || '')).trim(), 'No data');
-    setText('snap-driver-user',    cu.username || null, 'No data');
-    setText('snap-driver-licence', cu.licenceNumber || null, 'No data');
-    setText('snap-driver-state',   cu.licenceState || null, 'No data');
+    show('snap-driver-card');
+    setText('snap-driver-name',    (cu.firstName || '') + ' ' + (cu.lastName || ''));
+    setText('snap-driver-user',    cu.username || '—');
+    setText('snap-driver-licence', cu.licenceNumber || '—');
+    setText('snap-driver-state',   cu.licenceState || '—');
   }
 
   function processCameraDeviceStats(d) {
@@ -634,51 +658,80 @@ var url = '/api/camera-history-events' +
     var sdOver  = attrs['lm.sd_card.overall_status']     || '';
 
     function fmtSd(val) {
-      if (!val) return null;
+      if (!val) return 'No data';
       if (val === 'sdCardPresent') return 'Present';
       if (val === 'sdCardAbsent')  return 'Not Present';
       if (val === 'sdCardFailed')  return 'Failed';
       return val;
     }
     function fmtBytes(b) {
-      if (!b) return null;
+      if (!b) return '—';
       var n = parseFloat(b);
-      if (isNaN(n)) return null;
+      if (isNaN(n)) return '—';
       if (n >= 1e12) return (n/1e12).toFixed(1) + ' TB';
       if (n >= 1e9)  return (n/1e9).toFixed(1)  + ' GB';
       if (n >= 1e6)  return (n/1e6).toFixed(1)  + ' MB';
       return n + ' B';
     }
 
-    setText('snap-sd1',        fmtSd(sd1),    'No data');
-    setText('snap-sd2',        fmtSd(sd2),    'No data');
-    setText('snap-sd-overall', sdOver ? sdOver.toUpperCase() : null, 'No data');
-    setText('snap-sd1-size',   fmtBytes(sd1size), 'No data');
-    setText('snap-sd2-size',   fmtBytes(sd2size), 'No data');
+    setText('snap-sd1',        fmtSd(sd1));
+    setText('snap-sd2',        fmtSd(sd2));
+    setText('snap-sd-overall', sdOver ? sdOver.toUpperCase() : '—');
+    setText('snap-sd1-size',   fmtBytes(sd1size));
+    setText('snap-sd2-size',   fmtBytes(sd2size));
 
-    var faultKeys = Object.keys(attrs).filter(function(k) { return k.indexOf('lm.ongoing_faults.') === 0 && !k.endsWith('_at'); });
-    var faultsGrid = TGE.el('snap-faults-grid');
-    if (faultsGrid) {
-      if (faultKeys.length) {
+    var sdSection = TGE.el('snap-sd-section');
+    if (sdSection) sdSection.style.display = '';
+
+    var faultKeys = Object.keys(attrs).filter(function(k) { return k.indexOf('lm.ongoing_faults.') === 0; });
+    if (faultKeys.length) {
+      var faultsGrid    = TGE.el('snap-faults-grid');
+      var faultsSection = TGE.el('snap-faults-section');
+      if (faultsGrid) {
         faultsGrid.innerHTML = faultKeys.map(function(k) {
-          var label = k.replace('lm.ongoing_faults.', '').replace(/_/g,' ').replace(/\w/g, function(c){ return c.toUpperCase(); });
+          if (k.endsWith('_at')) return '';
+          var label = k.replace('lm.ongoing_faults.', '').replace(/_/g,' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); });
           var val   = attrs[k];
           var isBad = val === 'true' || (val && val !== 'false' && val !== 'CLOSED' && val !== 'ok');
           var color = isBad ? 'var(--danger)' : 'var(--green-600)';
           var icon  = isBad ? '⚠️' : '✅';
           return '<div class="data-item"><span>' + label + '</span>' +
             '<strong style="color:' + color + ';">' + icon + ' ' + val + '</strong></div>';
-        }).join('');
-      } else {
-        faultsGrid.innerHTML = '<div class="data-item" style="color:var(--muted);font-size:12px;grid-column:span 3;">No fault data reported.</div>';
+        }).filter(Boolean).join('');
       }
+      if (faultsSection) faultsSection.style.display = '';
+    }
+  }
+
+  function processTrackerStats(d) {
+    var ds = d.deviceStats || {};
+    show('snap-tracker-card');
+    setText('snap-tracker-address', ds.location || '—');
+    setText('snap-tracker-time',    ds.lastEventAt ? formatTs(ds.lastEventAt) : '—');
+    setText('snap-tracker-model',   (d.model && d.model.name) || '—');
+
+    var lastPr = {};
+    try { lastPr = JSON.parse(ds.attrs && (ds.attrs.last_pr || ds.attrs.lastPr) || '{}'); } catch(e) {}
+    var coords = extractGpsCoords(ds, lastPr);
+    if (coords) {
+      setText('snap-tracker-lat', coords.lat.toFixed(6));
+      setText('snap-tracker-lng', coords.lng.toFixed(6));
+      renderMap('snap-tracker-map', coords.lat, coords.lng);
     }
   }
 
   function processCameraEvents(events, vehicleId) {
-    var grid = TGE.el('snap-camera-grid');
     if (!Array.isArray(events) || !events.length) return;
-    var available = events.filter(function(e) {
+
+    // Deduplicate by event ID (checklist item)
+    var seen = {}, deduped = [];
+    events.forEach(function(e) {
+      if (e.id != null && seen[e.id]) return;
+      if (e.id != null) seen[e.id] = true;
+      deduped.push(e);
+    });
+
+    var available = deduped.filter(function(e) {
       return String(e.vehicleId) === String(vehicleId) &&
              e.attributes && e.attributes.status === 'available';
     });
@@ -696,19 +749,61 @@ var url = '/api/camera-history-events' +
     var mediaFiles  = ctx.response.mediaFiles;
     state.data.cameras = mediaFiles;
     var activeSlots = CAMERA_SLOTS.slice(0, slots);
+    state.cameraSlots = activeSlots;
+    state.cameraCapturedAt = latest.timeAt;
 
+    show('snap-camera-card');
+    var alignBtn = TGE.el('snap-align-btn');
+    if (alignBtn) alignBtn.onclick = openAlignPanel;
+    var histBtn = TGE.el('snap-history-btn');
+    if (histBtn) histBtn.onclick = openHistoryPanel;
+
+    // Render current snapshots — these are now frozen and never updated
+    var grid = TGE.el('snap-camera-grid');
     if (grid) {
       grid.style.gridTemplateColumns = 'repeat(' + slots + ',minmax(0,1fr))';
       grid.innerHTML = buildCameraGrid(mediaFiles, activeSlots);
     }
     var camTime = TGE.el('snap-cam-time');
     if (camTime) camTime.textContent = 'Snapshot captured: ' + formatTs(latest.timeAt);
+  }
 
-     var alignBtn = TGE.el('snap-align-btn');
-    if (alignBtn) alignBtn.onclick = openAlignPanel;
+  function buildCameraGrid(mediaFiles, activeSlots) {
+    return activeSlots.map(function(slot) {
+      var file = findCameraFile(mediaFiles, slot);
+      var hasImage = file && file.mediaFile;
+      return '<div>' +
+        '<div style="aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;">' +
+          (hasImage
+            ? '<img src="/api/image-proxy?url=' + encodeURIComponent(file.mediaFile) + '" style="width:100%;height:100%;object-fit:cover;" alt="' + slot.label + '" onerror="this.parentElement.innerHTML=\'<span style=&quot;font-size:11px;color:var(--muted);&quot;>Unavailable</span>\'" />'
+            : '<span style="font-size:11px;color:var(--muted);">No image</span>') +
+        '</div>' +
+        '<div style="padding-top:5px;font-size:11px;font-weight:600;color:var(--ink-2);">' + slot.label + '</div>' +
+        '<div style="font-size:10px;color:var(--muted);">' + (hasImage ? 'FINISHED' : 'Unavailable') + '</div>' +
+      '</div>';
+    }).join('');
+  }
 
-    var historyBtn = TGE.el('snap-history-btn');
-    if (historyBtn) historyBtn.onclick = openSnapshotHistoryPanel;
+  // Build camera grid from fresh-URL attachments (history/alignment after)
+  function buildCameraGridFromAttachments(attachments, activeSlots) {
+    // attachments: array of { position, url }
+    var bySlotId = {};
+    attachments.forEach(function(att) {
+      var slotId = POSITION_MAP[String(att.position || '').toUpperCase()];
+      if (slotId) bySlotId[slotId] = att.url;
+    });
+    return activeSlots.map(function(slot) {
+      var url = bySlotId[slot.id];
+      return '<div>' +
+        '<div style="aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;">' +
+          (url
+            ? '<img src="/api/image-proxy?url=' + encodeURIComponent(url) + '" style="width:100%;height:100%;object-fit:cover;" alt="' + slot.label + '" onerror="this.parentElement.innerHTML=\'<span style=&quot;font-size:11px;color:var(--muted);&quot;>Unavailable</span>\'" />'
+            : '<span style="font-size:11px;color:var(--muted);">No image</span>') +
+        '</div>' +
+        '<div style="padding-top:5px;font-size:11px;font-weight:600;color:var(--ink-2);">' + slot.label + '</div>' +
+        '<div style="font-size:10px;color:var(--muted);">' + (url ? 'FINISHED' : 'Unavailable') + '</div>' +
+      '</div>';
+    }).join('');
   }
 
   function findCameraFile(mediaFiles, slot) {
@@ -722,20 +817,6 @@ var url = '/api/camera-history-events' +
       }) || null;
     }
     return mediaFiles.find(function(f) { return f.source === slot.source && f.status === 'FINISHED'; }) || null;
-  }
-
-  function buildCameraGrid(mediaFiles, activeSlots) {
-    return activeSlots.map(function(slot) {
-      var file = findCameraFile(mediaFiles, slot);
-      var hasImage = file && file.mediaFile;
-      return '<div>' +
-        '<div style="aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;">' +
-          (hasImage ? '<img src="/api/image-proxy?url=' + encodeURIComponent(file.mediaFile) + '" style="width:100%;height:100%;object-fit:cover;" alt="' + slot.label + '" onerror="this.parentElement.innerHTML=\'<span style=&quot;font-size:11px;color:var(--muted);&quot;>Unavailable</span>\'" />' : '<span style="font-size:11px;color:var(--muted);">No image</span>') +
-        '</div>' +
-        '<div style="padding-top:5px;font-size:11px;font-weight:600;color:var(--ink-2);">' + slot.label + '</div>' +
-        '<div style="font-size:10px;color:var(--muted);">' + (hasImage ? 'FINISHED' : 'Unavailable') + '</div>' +
-      '</div>';
-    }).join('');
   }
 
   function populateGpio(gpio) {
@@ -778,10 +859,6 @@ var url = '/api/camera-history-events' +
   function populateDeviceCards(devices) {
     var el = TGE.el('snap-device-cards');
     if (!el) return;
-    if (!devices.length) {
-      el.innerHTML = '<div class="data-item" style="color:var(--muted);font-size:12px;grid-column:span 3;">No active devices on this asset.</div>';
-      return;
-    }
     el.innerHTML = devices.map(function(d) {
       var code  = (d.type && d.type.code)  || '—';
       var model = (d.model && d.model.name) || '—';
@@ -793,7 +870,7 @@ var url = '/api/camera-history-events' +
     }).join('');
   }
 
-  // ── Alignment test — UNCHANGED, frozen pending vendor trigger process ───────
+  // ── Alignment test ────────────────────────────────────────────────────────────
   function openAlignPanel() {
     var vehicle = state.data.vehicle;
     if (!vehicle) return;
@@ -804,9 +881,11 @@ var url = '/api/camera-history-events' +
     var cam   = state.devices.camera;
     var model = cam && cam.model && cam.model.name;
     var slots = model === 'MultiIQ' ? 5 : 2;
+    var activeSlots = CAMERA_SLOTS.slice(0, slots);
 
-    setText('snap-align-title', vehicle.name + ' — ' + (vehicle.make || ''));
+    setText('snap-align-title', vehicle.name + ' — Alignment Test');
 
+    // BEFORE — clone frozen current snapshots grid
     var beforeGrid  = TGE.el('snap-align-before');
     var currentGrid = TGE.el('snap-camera-grid');
     if (beforeGrid && currentGrid) {
@@ -814,10 +893,19 @@ var url = '/api/camera-history-events' +
       beforeGrid.style.gridTemplateColumns = 'repeat(' + slots + ',minmax(0,1fr))';
     }
 
+    // AFTER — pre-render empty placeholder slots (correct count for device)
     var afterGrid = TGE.el('snap-align-after');
     if (afterGrid) {
-      afterGrid.innerHTML = '';
       afterGrid.style.gridTemplateColumns = 'repeat(' + slots + ',minmax(0,1fr))';
+      afterGrid.innerHTML = activeSlots.map(function(slot) {
+        return '<div>' +
+          '<div style="aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;">' +
+            '<span style="font-size:11px;color:var(--muted-2);">Waiting...</span>' +
+          '</div>' +
+          '<div style="padding-top:5px;font-size:11px;font-weight:600;color:var(--ink-2);">' + slot.label + '</div>' +
+          '<div style="font-size:10px;color:var(--muted);">Pending</div>' +
+        '</div>';
+      }).join('');
     }
 
     var afterMsg = TGE.el('snap-align-after-msg');
@@ -837,9 +925,30 @@ var url = '/api/camera-history-events' +
   }
 
   function closeAlignPanel() {
+    // Stop any running polls immediately
     alignState.running = false;
+
     var panel = TGE.el('snap-align-panel');
     if (panel) panel.style.display = 'none';
+
+    // If test completed, show after images on main page
+    if (state.alignCompleted && state.alignAfterSlots) {
+      var cam     = state.devices.camera;
+      var model   = cam && cam.model && cam.model.name;
+      var slots   = model === 'MultiIQ' ? 5 : 2;
+      var activeSlots = CAMERA_SLOTS.slice(0, slots);
+
+      var resultGrid = TGE.el('snap-align-result-grid');
+      if (resultGrid) {
+        resultGrid.style.gridTemplateColumns = 'repeat(' + slots + ',minmax(0,1fr))';
+        resultGrid.innerHTML = buildCameraGridFromAttachments(state.alignAfterSlots, activeSlots);
+      }
+      var resultTime = TGE.el('snap-align-result-time');
+      if (resultTime) resultTime.textContent = 'Captured: ' + formatTs(state.alignCompletedAt);
+
+      var resultSection = TGE.el('snap-align-result-section');
+      if (resultSection) resultSection.style.display = '';
+    }
   }
 
   function renderAlignSteps() {
@@ -864,48 +973,83 @@ var url = '/api/camera-history-events' +
     renderAlignSteps();
   }
 
-async function startAlignTest() {
-  if (alignState.running) return;
+  async function startAlignTest() {
+    if (alignState.running) return;
+    alignState.running    = true;
+    alignState.steps      = {};
+    state.alignCompleted  = false;
+    state.alignAfterSlots = null;
 
-  alignState.running = true;
-  alignState.steps = {};
+    var startBtn = TGE.el('snap-align-start');
+    if (startBtn) { startBtn.textContent = 'Running...'; startBtn.disabled = true; }
+    var hermesImei = state.devices.hermes && state.devices.hermes.imei;
 
-  var startBtn = TGE.el('snap-align-start');
-  if (startBtn) {
-    startBtn.textContent = 'Running Simulation...';
-    startBtn.disabled = true;
+    try {
+      for (var i = 0; i < ALIGN_STEPS.length; i++) {
+        if (!alignState.running) break;
+        var step = ALIGN_STEPS[i];
+        setAlignStep(step.id, 'running');
+
+        if (step.type === 'poll-ignition') {
+          var ok = await pollIgnition(hermesImei, step.expect, step.timeout);
+          if (!alignState.running) break; // cancelled while polling
+          if (!ok) throw new Error('Ignition ' + step.expect + ' not confirmed within ' + step.timeout + 's');
+          setAlignStep(step.id, 'done', 'Ignition ' + step.expect);
+
+        } else if (step.type === 'trigger') {
+          setAlignStep(step.id, 'running', 'Awaiting Teletrac endpoint...');
+          await delay(3000);
+          if (!alignState.running) break;
+          setAlignStep(step.id, 'done', 'Placeholder — endpoint TBC');
+
+        } else if (step.type === 'wait') {
+          await countdownWait(step.id, step.seconds);
+          if (!alignState.running) break;
+          setAlignStep(step.id, 'done', 'Complete');
+
+        } else if (step.type === 'snapshot') {
+          var afterData = await pullAlignmentSnapshots();
+          if (!alignState.running) break;
+          // Populate AFTER grid in panel
+          var afterGrid = TGE.el('snap-align-after');
+          var cam       = state.devices.camera;
+          var model     = cam && cam.model && cam.model.name;
+          var slots     = model === 'MultiIQ' ? 5 : 2;
+          var activeSlots = CAMERA_SLOTS.slice(0, slots);
+          if (afterGrid) {
+            afterGrid.style.gridTemplateColumns = 'repeat(' + slots + ',minmax(0,1fr))';
+            afterGrid.innerHTML = buildCameraGridFromAttachments(afterData.attachments, activeSlots);
+          }
+          var afterMsg = TGE.el('snap-align-after-msg');
+          if (afterMsg) afterMsg.style.display = 'none';
+          // Store for display on main page after close
+          state.alignAfterSlots  = afterData.attachments;
+          state.alignCompletedAt = afterData.timeAt;
+          state.alignCompleted   = true;
+          setAlignStep(step.id, 'done', 'Images loaded');
+        }
+      }
+
+      if (alignState.running) {
+        setText('snap-align-status', '✅ Test complete');
+        if (startBtn) { startBtn.textContent = 'Test Complete'; }
+      }
+
+    } catch(e) {
+      ALIGN_STEPS.forEach(function(s) {
+        if (alignState.steps[s.id] === 'running') setAlignStep(s.id, 'error', e.message);
+      });
+      setText('snap-align-status', '❌ ' + e.message);
+      if (startBtn) { startBtn.textContent = 'Retry Test'; startBtn.disabled = false; }
+    } finally {
+      alignState.running = false;
+    }
   }
-
-  setText('snap-align-status', 'Simulation running — API trigger pending Teletrac confirmation');
-
-  for (var i = 0; i < ALIGN_STEPS.length; i++) {
-    if (!alignState.running) return;
-
-    var step = ALIGN_STEPS[i];
-
-    setAlignStep(step.id, 'running', 'Checking...');
-    await delay(900);
-
-    setAlignStep(step.id, 'done', 'Event Found');
-    await delay(500);
-  }
-
-  completeSimulatedAlignmentTest();
-
-  alignState.running = false;
-
-  if (startBtn) {
-    startBtn.textContent = 'Retest';
-    startBtn.disabled = false;
-  }
-
-  setText('snap-align-status', '✅ Simulation complete');
-}
 
   async function pollIgnition(imei, expect, timeoutSecs) {
     if (!imei) return true;
     var deadline = Date.now() + timeoutSecs * 1000;
-    while (Date.now() < deadline) {
+    while (alignState.running && Date.now() < deadline) {
       try {
         var r = await TGE.api('GET', '/api/tn360/v1/devices/' + imei + '?pruning=B2B&embed=devicestats');
         if (r.ok && r.data.deviceStats && r.data.deviceStats.ignition === expect) return true;
@@ -924,45 +1068,209 @@ async function startAlignTest() {
     }
   }
 
-  async function pullPostSnapshots() {
-    var vid = alignState.vehicleId;
+  // Pull snapshots for alignment AFTER — uses standard events endpoint for now
+  // (will switch to historical snapshots API once TN360 trigger endpoint is confirmed)
+  async function pullAlignmentSnapshots() {
+    var vehicle = state.data.vehicle;
+    var vid     = vehicle && vehicle.id;
     var r = await TGE.api('GET', '/api/tn360/v1/events?pruning=B2B&types=camera&vehicle_ids=' + vid);
-    if (!r.ok) throw new Error('Camera fetch failed');
+    if (!r.ok) throw new Error('Camera fetch failed — ' + (r.data && r.data.error ? r.data.error : 'HTTP ' + r.status));
 
     var available = (Array.isArray(r.data) ? r.data : []).filter(function(e) {
       return String(e.vehicleId) === String(vid) && e.attributes && e.attributes.status === 'available';
     });
-    if (!available.length) throw new Error('No new snapshots available yet');
+    // Only use snapshots newer than the original current snapshot
+    if (state.cameraCapturedAt) {
+      var originalTime = new Date(state.cameraCapturedAt).getTime();
+      available = available.filter(function(e) { return new Date(e.timeAt).getTime() > originalTime; });
+    }
+    if (!available.length) throw new Error('No new snapshots available yet — the camera may need more time');
     available.sort(function(a,b) { return new Date(b.timeAt) - new Date(a.timeAt); });
     var latest = available[0];
 
     var ctx;
     try { ctx = JSON.parse(latest.attributes.context); } catch(e) { throw new Error('Could not parse camera context'); }
-    if (!ctx || !ctx.response || !ctx.response.mediaFiles) throw new Error('No media files in response');
+    if (!ctx || !ctx.response || !ctx.response.mediaFiles) throw new Error('No media files in snapshot response');
 
     var mediaFiles  = ctx.response.mediaFiles;
     var cam         = state.devices.camera;
     var model       = cam && cam.model && cam.model.name;
     var slots       = model === 'MultiIQ' ? 5 : 2;
     var activeSlots = CAMERA_SLOTS.slice(0, slots);
-    var html        = buildCameraGrid(mediaFiles, activeSlots);
 
-    var afterGrid = TGE.el('snap-align-after');
-    if (afterGrid) { afterGrid.innerHTML = html; afterGrid.style.gridTemplateColumns = 'repeat(' + slots + ',minmax(0,1fr))'; }
-    var afterMsg = TGE.el('snap-align-after-msg');
-    if (afterMsg) afterMsg.style.display = 'none';
+    // Map to { position, url } shape matching buildCameraGridFromAttachments
+    var attachments = activeSlots.map(function(slot) {
+      var file = findCameraFile(mediaFiles, slot);
+      return { position: slot.id.toUpperCase(), url: file && file.mediaFile ? file.mediaFile : '' };
+    });
 
-    var postGrid = TGE.el('snap-camera-grid-post');
-    if (postGrid) { postGrid.innerHTML = html; postGrid.style.gridTemplateColumns = 'repeat(' + slots + ',minmax(0,1fr))'; }
-    var postSection = TGE.el('snap-cam-post-section');
-    if (postSection) postSection.style.display = '';
-    var postTime = TGE.el('snap-cam-post-time');
-    if (postTime) postTime.textContent = 'Post alignment — captured: ' + formatTs(latest.timeAt);
-    var preLabel = TGE.el('snap-cam-pre-label');
-    if (preLabel) preLabel.textContent = 'PRE — Alignment Test';
+    return { attachments: attachments, timeAt: latest.timeAt };
   }
 
   function delay(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+  // ── History panel ─────────────────────────────────────────────────────────────
+  function openHistoryPanel() {
+    var vehicle = state.data.vehicle;
+    var cam     = state.devices.camera;
+    if (!vehicle || !cam) return;
+
+    var panel = TGE.el('snap-history-panel');
+    if (!panel) return;
+
+    setText('snap-hist-title', vehicle.name + ' — Snapshot History');
+    panel.style.display = 'flex';
+
+    loadHistory(vehicle, cam);
+  }
+
+  function closeHistoryPanel() {
+    historyState.loading = false;
+    var panel = TGE.el('snap-history-panel');
+    if (panel) panel.style.display = 'none';
+  }
+
+  async function loadHistory(vehicle, cam) {
+    if (historyState.loading) return;
+    historyState.loading = true;
+
+    var body = TGE.el('snap-hist-body');
+    if (!body) return;
+
+    var model       = cam && cam.model && cam.model.name;
+    var slots       = model === 'MultiIQ' ? 5 : 2;
+    var activeSlots = CAMERA_SLOTS.slice(0, slots);
+
+    // Show loading state
+    body.innerHTML = [
+      '<div class="snap-hist-progress" id="snap-hist-prog">',
+        '<div style="font-size:12px;font-weight:600;color:var(--ink);" id="snap-hist-prog-text">Loading history from database...</div>',
+        '<div class="snap-hist-progress-bar"><div class="snap-hist-progress-fill" id="snap-hist-prog-fill" style="width:0%"></div></div>',
+      '</div>',
+      '<div id="snap-hist-results"></div>',
+    ].join('');
+
+    // ── Step 1: Read stored events from D1 ───────────────────────────────────
+    // Cut-off: 28 days ago
+    var cutoff = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString();
+    var d1Result = await TGE.api('GET',
+      '/api/camera-history/vehicle/' + vehicle.id + '?action=SNAPSHOT&limit=200&before=' + encodeURIComponent(new Date().toISOString())
+    );
+
+    if (!historyState.loading) return; // panel closed while loading
+
+    var storedEvents = (d1Result.ok && d1Result.data && Array.isArray(d1Result.data.events))
+      ? d1Result.data.events.filter(function(ev) {
+          return ev.capturedAt >= cutoff;
+        })
+      : [];
+
+    if (!storedEvents.length) {
+      var prog = TGE.el('snap-hist-prog');
+      if (prog) prog.style.display = 'none';
+      var results = TGE.el('snap-hist-results');
+      if (results) results.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px;">No snapshot history found for this vehicle in the last 28 days.</div>';
+      historyState.loading = false;
+      return;
+    }
+
+    // Update progress
+    var fill = TGE.el('snap-hist-prog-fill');
+    var text = TGE.el('snap-hist-prog-text');
+    if (fill) fill.style.width = '30%';
+    if (text) text.textContent = storedEvents.length + ' snapshots found — fetching images...';
+
+    // ── Step 2: Fetch fresh image URLs per event ──────────────────────────────
+    // Process in batches of 5 to keep it responsive
+    var allGroups = [];
+    var batchSize = 5;
+
+    for (var i = 0; i < storedEvents.length; i += batchSize) {
+      if (!historyState.loading) break;
+
+      var batch = storedEvents.slice(i, i + batchSize);
+
+      var batchResults = await Promise.all(batch.map(async function(ev) {
+        // Only process SNAPSHOT events with attachments
+        if (!Array.isArray(ev.attachments) || !ev.attachments.length) return null;
+
+        // Fetch fresh URLs for this event's attachments via the worker
+        try {
+          var urlResult = await TGE.api('POST', '/api/historical-snapshots/attachments', {
+            attachments: ev.attachments,
+          });
+
+          if (urlResult.ok && urlResult.data && Array.isArray(urlResult.data.attachments)) {
+            return {
+              eventId:     ev.eventId,
+              timeAt:      ev.capturedAt,
+              attachments: urlResult.data.attachments,
+            };
+          }
+        } catch(e) {
+          console.warn('[History] failed to fetch URLs for event', ev.eventId, ':', e.message);
+        }
+        return null;
+      }));
+
+      // Add successful results
+      batchResults.forEach(function(group) {
+        if (group && group.attachments && group.attachments.some(function(a) { return !!a.url; })) {
+          allGroups.push(group);
+        }
+      });
+
+      // Sort newest first and render progressively
+      var sorted = allGroups.slice().sort(function(a,b) {
+        return new Date(b.timeAt) - new Date(a.timeAt);
+      });
+      renderHistoryGroups(sorted, activeSlots, slots);
+
+      // Update progress
+      var pct = Math.round(30 + ((i + batch.length) / storedEvents.length) * 70);
+      if (fill) fill.style.width = pct + '%';
+      if (text) text.textContent = 'Fetching images... ' + Math.min(i + batchSize, storedEvents.length) + ' of ' + storedEvents.length + ' events';
+    }
+
+    // Hide progress bar
+    var prog = TGE.el('snap-hist-prog');
+    if (prog) prog.style.display = 'none';
+
+    if (!allGroups.length) {
+      var resultsEl = TGE.el('snap-hist-results');
+      if (resultsEl) resultsEl.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px;">Snapshots found in database but images could not be loaded. Try again shortly.</div>';
+    }
+
+    historyState.loading = false;
+  }
+
+  function renderHistoryGroups(groups, activeSlots, slots) {
+    var results = TGE.el('snap-hist-results');
+    if (!results) return;
+    results.innerHTML = groups.map(function(group) {
+      var gridHtml = buildCameraGridFromAttachments(group.attachments, activeSlots);
+      return '<div class="snap-hist-group">' +
+        '<div class="snap-hist-time">' + formatTs(group.timeAt) + '</div>' +
+        '<div class="snap-hist-grid" style="grid-template-columns:repeat(' + slots + ',minmax(0,1fr));gap:8px;">' +
+          gridHtml +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  // Convert Date to AEST ISO string with URL-safe encoding
+  function toAestIso(d) {
+    // Format as YYYY-MM-DDTHH:mm:ss+10:00 then encode + and :
+    var pad = function(n) { return String(n).padStart(2,'0'); };
+    var aest = new Date(d.getTime() + 10 * 60 * 60 * 1000); // rough AEST offset
+    var s = aest.getUTCFullYear() + '-' +
+            pad(aest.getUTCMonth() + 1) + '-' +
+            pad(aest.getUTCDate()) + 'T' +
+            pad(aest.getUTCHours()) + '%3A' +
+            pad(aest.getUTCMinutes()) + '%3A' +
+            pad(aest.getUTCSeconds()) + '%2B10%3A00';
+    return s;
+  }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
   function setText(id, val, noDataMsg) {
@@ -976,6 +1284,8 @@ async function startAlignTest() {
       el.style.color = 'var(--muted)';
     }
   }
+
+  function show(id) { var el = TGE.el(id); if (el) el.style.display = ''; }
 
   function setMessage(msg, isError) {
     var el = TGE.el('snap-message');
@@ -991,74 +1301,12 @@ async function startAlignTest() {
 
   function showResults() { TGE.hide('snap-empty'); TGE.show('snap-results'); }
 
-  function closeExportMenu() {
-    var exportMenu    = TGE.el('snap-export-menu');
-    var exportTrigger = TGE.el('snap-export-trigger');
-    if (exportMenu)    exportMenu.classList.remove('open');
-    if (exportTrigger) exportTrigger.setAttribute('aria-expanded', 'false');
-  }
-
-  // Resets every card's inner content back to its empty/"No data" state,
-  // without hiding the cards themselves — used before a fresh run starts,
-  // so stale data from a previous asset never lingers while the new lookup
-  // is in flight.
-  function resetCardContent() {
-    var driverFields = ['snap-driver-name','snap-driver-user','snap-driver-licence','snap-driver-state'];
-    var statusFields  = ['snap-ignition','snap-movement','snap-speed','snap-odometer','snap-address','snap-gps-time','snap-lat','snap-lng'];
-    var vpmFields     = ['snap-rpm','snap-engine-speed','snap-engine-hrs','snap-fuel-total','snap-oil-temp','snap-oil-press','snap-engine-load','snap-vpm-time'];
-    var mapFields     = ['snap-map-address','snap-map-lat','snap-map-lng'];
-    var sdFields      = ['snap-sd1','snap-sd2','snap-sd-overall','snap-sd1-size','snap-sd2-size'];
-
-    driverFields.concat(statusFields, vpmFields, mapFields, sdFields).forEach(function(id) {
-      setText(id, null, 'No data');
-    });
-
-    var gpioGrid = TGE.el('snap-gpio-grid');
-    if (gpioGrid) gpioGrid.innerHTML = '<div class="data-item" style="color:var(--muted);font-size:12px;grid-column:span 4;">No GPIO data.</div>';
-
-    var faultsGrid = TGE.el('snap-faults-grid');
-    if (faultsGrid) faultsGrid.innerHTML = '<div class="data-item" style="color:var(--muted);font-size:12px;grid-column:span 3;">No fault data reported.</div>';
-
-    var cameraGrid = TGE.el('snap-camera-grid');
-    if (cameraGrid) resetCameraGrid();
-
-    var camTime = TGE.el('snap-cam-time');
-    if (camTime) camTime.textContent = '';
-
-    var postSection = TGE.el('snap-cam-post-section');
-    if (postSection) postSection.style.display = 'none';
-
-    var map = TGE.el('snap-map');
-    if (map) map.innerHTML = '<span style="color:var(--muted);font-size:13px;">No map data for this asset</span>';
-
-    var deviceCards = TGE.el('snap-device-cards');
-    if (deviceCards) deviceCards.innerHTML = '';
-  }
-
-  // Refresh button: full reset back to the pre-run empty state. Does NOT
-  // call the API — the user re-runs by typing a fleet number and clicking
-  // Run again.
-  function resetSnapshot() {
-    if (state.running) return;
-    state.devices = { hermes:null, camera:null, iface:null, tracker:null };
-    state.data    = defaultData();
-    alignState     = { running:false, steps:{}, vehicleId:null };
-
-    var input = TGE.el('snap-fleet-input');
-    if (input) { input.value = ''; input.focus(); }
-
-    resetCardContent();
-    TGE.hide('snap-results');
-    TGE.show('snap-empty');
-
-    var refreshBtn = TGE.el('snap-refresh-btn');
-    if (refreshBtn) refreshBtn.style.display = 'none';
-
-    setMessage('');
-    closeExportMenu();
-  }
-
   function activateExports() {
+    // Activate all export menu items
+    ['snap-pdf-btn','snap-email-btn','snap-csv-btn','snap-xlsx-btn','snap-json-btn'].forEach(function(id) {
+      var el = TGE.el(id);
+      if (el) el.classList.add('active');
+    });
     var csvBtn   = TGE.el('snap-csv-btn');
     var jsonBtn  = TGE.el('snap-json-btn');
     var pdfBtn   = TGE.el('snap-pdf-btn');
@@ -1066,23 +1314,24 @@ async function startAlignTest() {
     var emailBtn = TGE.el('snap-email-btn');
     if (csvBtn)   csvBtn.onclick   = function() { closeExportMenu(); exportCsv(); };
     if (jsonBtn)  jsonBtn.onclick  = function() { closeExportMenu(); exportJson(); };
-    if (pdfBtn)   pdfBtn.onclick   = function() { closeExportMenu(); exportPdf(); };
-    if (xlsxBtn)  xlsxBtn.onclick  = function() { closeExportMenu(); exportXlsx(); };
-    if (emailBtn) emailBtn.onclick = function() { closeExportMenu(); openEmailPdfComposer(); };
+    if (pdfBtn)   pdfBtn.onclick   = function() { closeExportMenu(); window.print(); };
+    if (xlsxBtn)  xlsxBtn.onclick  = function() { closeExportMenu(); exportCsv(); };
+    if (emailBtn) emailBtn.onclick = function() { closeExportMenu(); alert('Email PDF — coming soon.'); };
   }
 
   function renderMap(containerId, lat, lng) {
     var el = TGE.el(containerId);
     if (!el) return;
-    lat = Number(lat); lng = Number(lng);
-    if (!isFinite(lat) || !isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    if (lat == null || lng == null || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
       el.innerHTML = '<span style="color:var(--muted);font-size:13px;">Map unavailable — invalid coordinates</span>';
       return;
     }
-    el.innerHTML = '<iframe title="Last known position map" style="width:100%;height:100%;border:none;" loading="lazy" ' +
-      'src="https://www.openstreetmap.org/export/embed.html?bbox=' +
-      (lng-0.02) + '%2C' + (lat-0.02) + '%2C' + (lng+0.02) + '%2C' + (lat+0.02) +
-      '&layer=mapnik&marker=' + lat + '%2C' + lng + '"></iframe>';
+    var latS = lat.toFixed(6), lngS = lng.toFixed(6);
+    var src = 'https://www.openstreetmap.org/export/embed.html?bbox=' +
+      (lng-0.02).toFixed(6) + '%2C' + (lat-0.02).toFixed(6) + '%2C' +
+      (lng+0.02).toFixed(6) + '%2C' + (lat+0.02).toFixed(6) +
+      '&layer=mapnik&marker=' + latS + '%2C' + lngS + '&_=' + Date.now();
+    el.innerHTML = '<iframe title="Last known position map" src="' + src + '" style="width:100%;height:100%;border:none;display:block;" loading="eager"></iframe>';
   }
 
   function formatTs(ts) {
@@ -1095,230 +1344,22 @@ async function startAlignTest() {
     } catch(e) { return ts; }
   }
 
-function buildHistoryWindows() {
-  var end = new Date();
-  end.setHours(23, 59, 59, 999);
-
-  var start = new Date(end);
-  start.setDate(start.getDate() - 27);
-  start.setHours(0, 0, 0, 0);
-
-  var windows = [];
-
-  for (var i = 0; i < 4; i++) {
-    var from = new Date(start);
-    from.setDate(start.getDate() + (i * 7));
-    from.setHours(0, 0, 0, 0);
-
-    var to = new Date(start);
-    to.setDate(start.getDate() + (i * 7) + 6);
-    to.setHours(23, 59, 59, 999);
-
-    if (to > end) {
-      to = new Date(end);
-    }
-
-    windows.push({
-      from: from.toISOString(),
-      to: to.toISOString()
-    });
-  }
-
-  console.table(windows);
-
-  return windows;
-}
-  
-  function ensureSnapshotLoaded() {
-    if (state.data && state.data.vehicle) return true;
-    setMessage('Run an asset snapshot before exporting.', true);
-    return false;
-  }
-
-  function safeFileSegment(name) {
-    return String(name || 'asset').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'asset';
-  }
-
-  function downloadBlob(blob, filename) {
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    URL.revokeObjectURL(a.href);
-    a.remove();
-  }
-
-  // ── Snapshot PDF payload — scrapes the rendered cards into structured data
-  // for the server-side PDF builder. Reused by both exportPdf() and the
-  // Email PDF composer's attachment builder, so the two stay in sync.
-  function collectCardRows(cardId) {
-    var card = TGE.el(cardId);
-    if (!card) return [];
-    return Array.prototype.slice.call(card.querySelectorAll('.data-item')).map(function(item) {
-      var labelEl = item.querySelector('span');
-      var valueEl = item.querySelector('strong');
-      return {
-        label: labelEl ? labelEl.textContent.trim() : '',
-        value: valueEl ? valueEl.textContent.trim() : '—',
-      };
-    }).filter(function(row) { return row.label; });
-  }
-
-  function collectCardSection(cardId, fallbackTitle) {
-    var card = TGE.el(cardId);
-    if (!card) return null;
-    var kicker = card.querySelector('.card-kicker');
-    var title  = card.querySelector('.card-title');
-    var rows   = collectCardRows(cardId);
-    if (!rows.length) return null;
-    return {
-      kicker: kicker ? kicker.textContent.trim() : fallbackTitle,
-      title:  title  ? title.textContent.trim()  : fallbackTitle,
-      rows:   rows,
-    };
-  }
-
-  function buildSnapshotPdfPayload() {
-    var v = state.data.vehicle || {};
-
-    // Build camera photos array from state.data.cameras if available.
-    // Each photo gets a label (slot name) and a proxied URL the Worker can fetch.
-    // Camera Diagnostics (fault grid) is deliberately excluded per user request.
-    var cam     = state.devices.camera;
-    var model   = cam && cam.model && cam.model.name;
-    var slots   = model === 'MultiIQ' ? 5 : 2;
-    var mediaFiles = state.data.cameras;
-    var photos = [];
-    if (Array.isArray(mediaFiles) && mediaFiles.length) {
-      var activeSlots = CAMERA_SLOTS.slice(0, slots);
-      activeSlots.forEach(function(slot) {
-        var file = findCameraFile(mediaFiles, slot);
-        if (file && file.mediaFile) {
-          // Use the raw TN360 URL directly — the Worker fetches images from
-          // the CDN itself via fetchImageForPdf(), the same way camera-fault-pdf
-          // does. The proxied URL (/api/image-proxy) requires a browser session
-          // cookie and can't be used in server-side fetches.
-          photos.push({
-            label: slot.label,
-            url: file.mediaFile,
-          });
-        } else {
-          photos.push({ label: slot.label, url: null });
-        }
-      });
-    }
-
-    // SD Card Health — scrape directly from the individual field elements
-    // rather than the whole snap-camera-card (which also contains the fault
-    // grid we're deliberately excluding).
-    var sdRows = [
-      { label: 'SD Card 1',      value: (TGE.el('snap-sd1')        || {}).textContent || '—' },
-      { label: 'SD Card 2',      value: (TGE.el('snap-sd2')        || {}).textContent || '—' },
-      { label: 'Overall Status', value: (TGE.el('snap-sd-overall') || {}).textContent || '—' },
-      { label: 'SD Card 1 Size', value: (TGE.el('snap-sd1-size')   || {}).textContent || '—' },
-      { label: 'SD Card 2 Size', value: (TGE.el('snap-sd2-size')   || {}).textContent || '—' },
-    ].filter(function(r) { return r.value && r.value !== '—' && r.value !== 'No data'; });
-
-    var sections = [
-      collectCardSection('snap-vehicle-card', 'Vehicle Information'),
-      collectCardSection('snap-driver-card',  'Driver'),
-      collectCardSection('snap-status-card',  'Live Status'),
-      collectCardSection('snap-vpm-card',     'Engine Metrics'),
-      collectCardSection('snap-gpio-card',    'GPIO'),
-      collectCardSection('snap-map-card',     'Location'),
-      // Evidence — camera snapshots + SD card health
-      // Photos are embedded as images by the Worker; SD rows as label/value cells.
-      // Camera Diagnostics fault grid is intentionally excluded.
-      (photos.length || sdRows.length) ? {
-        kicker: 'Evidence',
-        title:  'Camera Snapshots',
-        rows:   sdRows,
-        photos: photos,
-      } : null,
-    ].filter(Boolean);
-
-    return {
-      legacyNo:    v.name || 'asset',
-      title:       'Asset ' + (v.name || '—') + ' Snapshot',
-      generatedAt: new Date().toISOString(),
-      sections:    sections,
-    };
-  }
-
-  // Calls the server-side PDF builder. NOTE: this endpoint (/api/snapshot-pdf)
-  // needs to exist in the Worker for this to succeed — if it returns an
-  // error or isn't deployed yet, this surfaces a clear message rather than
-  // failing silently.
-  async function buildSnapshotAttachment(rows) {
-    var row = rows && rows[0];
-    var payload = row && row.pdfPayload ? row.pdfPayload : buildSnapshotPdfPayload();
-    var r = await TGE.api('POST', '/api/snapshot-pdf', { asset: payload });
-    if (!r.ok || !r.data || !r.data.base64) {
-      throw new Error(r.data && r.data.error ? r.data.error : 'Snapshot PDF generation failed — the snapshot-pdf endpoint may not be deployed yet.');
-    }
-    return { base64: r.data.base64, name: r.data.fileName || ('Asset ' + safeFileSegment(payload.legacyNo) + ' snapshot.pdf') };
-  }
-
-  function base64ToBlob(base64, type) {
-    var bin = atob(base64);
-    var bytes = new Uint8Array(bin.length);
-    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return new Blob([bytes], { type: type });
-  }
-
-  async function exportPdf() {
-    if (!ensureSnapshotLoaded()) return;
-    setMessage('Building snapshot PDF...', false);
-    try {
-      var attachment = await buildSnapshotAttachment([{ pdfPayload: buildSnapshotPdfPayload() }]);
-      downloadBlob(base64ToBlob(attachment.base64, 'application/pdf'), attachment.name);
-      setMessage('Snapshot PDF downloaded.', false);
-    } catch(e) {
-      setMessage(e.message || 'PDF export failed.', true);
-    }
-  }
-
-  function openEmailPdfComposer() {
-    if (!ensureSnapshotLoaded()) return;
-    var v  = state.data.vehicle || {};
-    var ds = state.data.deviceStats || {};
-    var row = {
-      legacyNo:     v.name || '—',
-      registration: v.registration || '—',
-      state:        v.registrationState || '—',
-      location:     ds.location || '—',
-      lastGps:      (TGE.el('snap-gps-time') || {}).textContent || '—',
-      pdfPayload:   buildSnapshotPdfPayload(),
-    };
-
-    TGE.openEmailComposer({
-      rows: [row],
-      fields: [
-        { key:'legacyNo',     label:'Legacy No' },
-        { key:'registration', label:'Registration' },
-        { key:'state',        label:'State' },
-        { key:'location',     label:'Location' },
-        { key:'lastGps',      label:'Last GPS' },
-      ],
-      attachmentBuilder: buildSnapshotAttachment,
-      attachmentLabel:   'Attach asset snapshot PDF',
-      attachByDefault:   true,
-      onSent: function() { setMessage('Snapshot email sent.', false); },
-    });
-  }
-
+  // ── Exports ───────────────────────────────────────────────────────────────────
   function exportJson() {
-    if (!ensureSnapshotLoaded()) return;
+    if (!state.data.vehicle) return;
     var json = JSON.stringify(state.data, null, 2);
-    downloadBlob(new Blob([json], { type:'application/json' }), 'snapshot-' + safeFileSegment(state.data.vehicle.name) + '.json');
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([json], { type:'application/json' }));
+    a.download = 'snapshot-' + (state.data.vehicle.name || 'asset') + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
   }
 
-  function snapshotRows() {
+  function exportCsv() {
+    if (!state.data.vehicle) return;
     var v   = state.data.vehicle;
     var ds  = state.data.deviceStats || {};
     var vpm = state.data.vpm || {};
-    return [
+    var rows = [
       ['Field','Value'],
       ['Fleet Number', v.name], ['Registration', v.registration], ['State', v.registrationState],
       ['VIN', v.vin], ['Make', v.make], ['Model', v.model],
@@ -1327,50 +1368,13 @@ function buildHistoryWindows() {
       ['Engine Hours', vpm.hours], ['Oil Temp (C)', vpm.oiltemp],
       ['Oil Pressure (kPa)', vpm.oilpressure], ['Fuel Used (L)', vpm.fuelconsumption],
     ];
-  }
-
-  function exportCsv() {
-    if (!ensureSnapshotLoaded()) return;
-    var rows = snapshotRows();
     var csv = rows.map(function(r) {
-      return r.map(function(c) { return '"' + String(c==null?'':c).replace(/"/g,'""') + '"'; }).join(',');
+      return r.map(function(c) { return '"' + String(c||'').replace(/"/g,'""') + '"'; }).join(',');
     }).join('\n');
-    downloadBlob(new Blob([csv], { type:'text/csv' }), 'snapshot-' + safeFileSegment(state.data.vehicle.name) + '.csv');
-  }
-
-  // XLSX export — client-side via SheetJS, matching the same "no server
-  // round-trip" approach already used for CSV. Loads the library from CDN
-  // on first use only (not bundled), so pages that never export XLSX never
-  // pay the load cost.
-  var _xlsxLoading = null;
-  function loadXlsxLib() {
-    if (window.XLSX) return Promise.resolve(window.XLSX);
-    if (_xlsxLoading) return _xlsxLoading;
-    _xlsxLoading = new Promise(function(resolve, reject) {
-      var script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-      script.onload = function() { resolve(window.XLSX); };
-      script.onerror = function() { reject(new Error('Could not load the Excel export library.')); };
-      document.head.appendChild(script);
-    });
-    return _xlsxLoading;
-  }
-
-  async function exportXlsx() {
-    if (!ensureSnapshotLoaded()) return;
-    setMessage('Preparing Excel file...', false);
-    try {
-      var XLSX = await loadXlsxLib();
-      var rows = snapshotRows();
-      var sheet = XLSX.utils.aoa_to_sheet(rows);
-      var workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, sheet, 'Snapshot');
-      var arrayBuffer = XLSX.write(workbook, { bookType:'xlsx', type:'array' });
-      downloadBlob(new Blob([arrayBuffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'snapshot-' + safeFileSegment(state.data.vehicle.name) + '.xlsx');
-      setMessage('');
-    } catch(e) {
-      setMessage(e.message || 'Excel export failed.', true);
-    }
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv' }));
+    a.download = 'snapshot-' + v.name + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
   }
 
   // ── Register ──────────────────────────────────────────────────────────────────
@@ -1381,6 +1385,9 @@ function buildHistoryWindows() {
   };
 
   TGE.onShow['snapshot'] = function() {
+    // Stop any running history load when navigating away
+    historyState.loading = false;
+    alignState.running   = false;
     var inp = TGE.el('snap-fleet-input');
     if (inp) inp.focus();
   };
