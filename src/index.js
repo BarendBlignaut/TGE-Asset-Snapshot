@@ -1948,7 +1948,7 @@ async function saveCameraEvents(env, events) {
     const eventId   = String(ev.id || '').trim();
     if (!vehicleId || !eventId) continue;
 
-    const action   = String(ev.action || ev.actionType || ev.subType || ev.category || 'UNKNOWN').toUpperCase();
+    const action = String(ev.type || ev.action || ev.actionType || ev.subType || 'UNKNOWN').toUpperCase();
     const provider = String(ev.provider || ev.providerType || '').toUpperCase();
     const capturedAt = ev.timeAt || ev.eventTime || ev.createdAt || '';
 
