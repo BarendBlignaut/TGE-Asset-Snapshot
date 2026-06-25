@@ -17,5 +17,14 @@
   ],
   "triggers": {
     "crons": ["0 20 * * *"]
+  },
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    },
+    "traces": {
+      "enabled": false
+    }
   }
 }
