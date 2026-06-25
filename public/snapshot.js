@@ -1146,117 +1146,44 @@
     // Show loading state
     body.innerHTML = [
       '<div class="snap-hist-progress" id="snap-hist-prog">',
-        '<div style="font-size:12px;font-weight:600;color:var(--ink);" id="snap-hist-prog-text">Loading history...</div>',
-        '<div class="snap-hist-progress-bar"><div class="snap-hist-progress-fill" id="snap-hist-prog-fill" style="width:0%"></div></div>',
+        '<div style="font-size:12px;font-weight:600;color:var(--ink);" id="snap-hist-prog-text">Loading snapshot history...</div>',
+        '<div class="snap-hist-progress-bar"><div class="snap-hist-progress-fill" id="snap-hist-prog-fill" style="width:30%"></div></div>',
       '</div>',
       '<div id="snap-hist-results"></div>',
     ].join('');
 
-    var fill = TGE.el('snap-hist-prog-fill');
-    var text = TGE.el('snap-hist-prog-text');
+    // Single call — 6 days to today
+    var now  = new Date();
+    var from = toAestIso(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000));
+    var to   = toAestIso(now);
 
-    // ── Step 1: Read event IDs from D1 for last 28 days ──────────────────────
-    var cutoff = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString();
-    var d1Result = await TGE.api('GET',
-      '/api/camera-history/vehicle/' + vehicle.id + '?action=SNAPSHOT&limit=200'
-    );
+    try {
+      var result = await TGE.api('POST', '/api/historical-snapshots', {
+        vehicleId: String(vehicle.id),
+        deviceId:  String(cam.id),
+        from:      from,
+        to:        to,
+      });
 
-    if (!historyState.loading) return;
+      if (!historyState.loading) return;
 
-    var storedEvents = (d1Result.ok && d1Result.data && Array.isArray(d1Result.data.events))
-      ? d1Result.data.events.filter(function(ev) { return ev.capturedAt >= cutoff; })
-      : [];
-
-    if (!storedEvents.length) {
       var prog = TGE.el('snap-hist-prog');
       if (prog) prog.style.display = 'none';
-      var results = TGE.el('snap-hist-results');
-      if (results) results.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px;">No snapshot history found for this vehicle in the last 28 days.</div>';
-      historyState.loading = false;
-      return;
-    }
 
-    if (text) text.textContent = storedEvents.length + ' events found in database — fetching images...';
-    if (fill) fill.style.width = '10%';
-
-    // Build event ID lookup map for matching
-    var eventIdMap = {};
-    storedEvents.forEach(function(ev) { eventIdMap[String(ev.eventId)] = ev; });
-
-    // ── Step 2: Build 4 x 6-day chunks covering last 28 days ─────────────────
-    var now    = new Date();
-    var chunks = [];
-    for (var c = 3; c >= 0; c--) {
-      var toD   = new Date(now.getTime() - (c * 7) * 24 * 60 * 60 * 1000);
-      var fromD = new Date(toD.getTime() - 6 * 24 * 60 * 60 * 1000);
-      // Only include chunks that have events in D1
-      var chunkFrom = fromD.toISOString();
-      var chunkTo   = toD.toISOString();
-      var hasEvents = storedEvents.some(function(ev) {
-        return ev.capturedAt >= chunkFrom && ev.capturedAt <= chunkTo;
-      });
-      if (hasEvents) {
-        chunks.push({ from: toAestIso(fromD), to: toAestIso(toD) });
+      if (result.ok && result.data && Array.isArray(result.data.groups) && result.data.groups.length) {
+        var sorted = result.data.groups.slice().sort(function(a,b) {
+          return new Date(b.timeAt) - new Date(a.timeAt);
+        });
+        renderHistoryGroups(sorted, activeSlots, slots);
+      } else {
+        var resEl = TGE.el('snap-hist-results');
+        if (resEl) resEl.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px;">No snapshot history found for this vehicle in the last 28 days.</div>';
       }
-    }
-
-    if (!chunks.length) {
+    } catch(e) {
       var prog2 = TGE.el('snap-hist-prog');
       if (prog2) prog2.style.display = 'none';
-      var res2 = TGE.el('snap-hist-results');
-      if (res2) res2.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px;">No snapshot history found in the last 28 days.</div>';
-      historyState.loading = false;
-      return;
-    }
-
-    // ── Step 3: Call /api/historical-snapshots per chunk (uses TN360_SNAPSHOT_KEY) ──
-    var allGroups  = [];
-    var totalChunks = chunks.length;
-
-    for (var i = 0; i < chunks.length; i++) {
-      if (!historyState.loading) break;
-
-      var chunk = chunks[i];
-      if (text) text.textContent = 'Fetching images — window ' + (i + 1) + ' of ' + totalChunks + '...';
-
-      try {
-        var result = await TGE.api('POST', '/api/historical-snapshots', {
-          vehicleId: String(vehicle.id),
-          deviceId:  String(cam.id),
-          from:      chunk.from,
-          to:        chunk.to,
-        });
-
-        if (result.ok && result.data && Array.isArray(result.data.groups)) {
-          // Only include groups whose event ID exists in D1
-          result.data.groups.forEach(function(group) {
-            if (eventIdMap[String(group.eventId)]) {
-              allGroups.push(group);
-            }
-          });
-
-          // Sort newest first and render progressively
-          var sorted = allGroups.slice().sort(function(a,b) {
-            return new Date(b.timeAt) - new Date(a.timeAt);
-          });
-          renderHistoryGroups(sorted, activeSlots, slots);
-        }
-      } catch(e) {
-        console.warn('[History] chunk ' + (i+1) + ' failed:', e.message);
-      }
-
-      // Update progress bar
-      var pct = Math.round(10 + ((i + 1) / totalChunks) * 90);
-      if (fill) fill.style.width = pct + '%';
-    }
-
-    // Hide progress bar
-    var progEl = TGE.el('snap-hist-prog');
-    if (progEl) progEl.style.display = 'none';
-
-    if (!allGroups.length) {
-      var resEl = TGE.el('snap-hist-results');
-      if (resEl) resEl.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px;">No images available for this vehicle in the last 28 days.</div>';
+      var resEl2 = TGE.el('snap-hist-results');
+      if (resEl2) resEl2.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px;">Failed to load history. Please try again.</div>';
     }
 
     historyState.loading = false;
