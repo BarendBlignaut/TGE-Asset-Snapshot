@@ -567,6 +567,10 @@
             <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 9l-2 2 2 2M16 9l2 2-2 2M12 5l-4 10"/></svg>
             API Registry
           </button>
+          <button class="nav-item" id="nav-diagnostics" type="button" data-view="diagnostics" data-group="management" data-title="Snapshot Diagnostics">
+  <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7"/><path d="M10 7v3l2 2"/></svg>
+  Snapshot Diagnostics
+</button>
         </div>
 
       </nav>
@@ -651,6 +655,9 @@
         <div class="view" id="view-api">
           <!-- Populated by api.js -->
         </div>
+        <div class="view" id="view-diagnostics">
+  <!-- Populated by diagnostics.js -->
+</div>
 
       </div>
     </main>
@@ -672,6 +679,7 @@
   <script src="./merge-mail.js?v=3" defer></script>
   <script src="./roles.js?v=3" defer></script>
   <script src="./api.js?v=3" defer></script>
+  <script src="./diagnostics.js?v=1" defer></script>
 
 </body>
 </html>
