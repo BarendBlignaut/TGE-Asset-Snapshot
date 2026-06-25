@@ -2577,6 +2577,7 @@ export default {
 
 // Historical snapshots (fresh URLs via personal key)
 if (method === "POST" && path === "/api/historical-snapshots") return handleHistoricalSnapshots(request, env);
+if (method === "POST" && path === "/api/historical-snapshots/attachments") return handleHistoricalSnapshotsAttachments(request, env);      
 
 // Camera history — admin
 if (method === "GET"    && path === "/api/admin/camera-history/status")   return handleCameraHistoryStatus(request, env);
