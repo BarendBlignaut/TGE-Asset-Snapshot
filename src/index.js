@@ -1885,6 +1885,588 @@ async function handleImageSize(request, env) {
     return jsonResponse({ error: e.message }, 502);
   }
 }
+// ── Camera History Routes ─────────────────────────────────────────────────────
+// Add these to src/index.js
+//
+// Uses TN360_API_KEY (existing) for fetching event metadata
+// Uses TN360_SNAPSHOT_KEY (new) for fresh image URLs on demand
+//
+// D1 Schema — run these migrations:
+// ─────────────────────────────────────────────────────────────────────────────
+// DROP TABLE IF EXISTS camera_history;
+//
+// CREATE TABLE camera_history (
+//   id          INTEGER PRIMARY KEY AUTOINCREMENT,
+//   vehicle_id  TEXT NOT NULL,
+//   event_id    TEXT NOT NULL,
+//   event_type  TEXT NOT NULL DEFAULT 'CAMERA',
+//   action      TEXT NOT NULL DEFAULT 'SNAPSHOT',
+//   provider    TEXT,
+//   captured_at TEXT NOT NULL,
+//   attachments TEXT NOT NULL,
+//   created_at  TEXT NOT NULL,
+//   UNIQUE(event_id)
+// );
+// CREATE INDEX idx_ch_vehicle ON camera_history(vehicle_id, captured_at DESC);
+// CREATE INDEX idx_ch_action  ON camera_history(vehicle_id, action, captured_at DESC);
+//
+// CREATE TABLE IF NOT EXISTS camera_history_sync (
+//   id            INTEGER PRIMARY KEY CHECK (id = 1),
+//   backfill_from TEXT,
+//   backfill_to   TEXT,
+//   last_sync_at  TEXT,
+//   total_events  INTEGER DEFAULT 0,
+//   status        TEXT DEFAULT 'idle',
+//   current_chunk TEXT,
+//   chunks_done   INTEGER DEFAULT 0,
+//   chunks_total  INTEGER DEFAULT 0
+// );
+// INSERT OR IGNORE INTO camera_history_sync (id) VALUES (1);
+//
+// wrangler.toml — add cron trigger:
+// [[triggers.crons]]
+// cron = "0 20 * * *"   # runs daily at 6am AEST (20:00 UTC)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Earliest possible backfill date — February 2024
+const BACKFILL_START = '2024-02-01';
+
+// ── Shared: fetch one 6-day chunk of camera events via existing API key ───────
+async function fetchCameraEventsChunk(env, fromIso, toIso) {
+  // Uses TN360_API_KEY — standard events endpoint, no vehicle filter
+  // Returns all camera events across all assets for the date range
+  const url = `https://api-au.telematics.com/v1/events` +
+    `?key=${env.TN360_API_KEY}&types=camera` +
+    `&from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`TN360 events fetch failed: HTTP ${res.status} — ${text.slice(0, 200)}`);
+  }
+  const data = await res.json();
+
+  // Normalise — endpoint returns array or { events: [...] }
+  if (Array.isArray(data))               return data;
+  if (Array.isArray(data.events))        return data.events;
+  if (Array.isArray(data.data))          return data.data;
+  return [];
+}
+
+// ── Shared: save events to D1 ─────────────────────────────────────────────────
+async function saveCameraEvents(env, events) {
+  if (!events.length) return 0;
+  let saved = 0;
+
+  for (const ev of events) {
+    const vehicleId = String(ev.vehicleId || ev.vehicleID || '').trim();
+    const eventId   = String(ev.id || '').trim();
+    if (!vehicleId || !eventId) continue;
+
+    const action   = String(ev.action || ev.actionType || ev.subType || ev.category || 'UNKNOWN').toUpperCase();
+    const provider = String(ev.provider || ev.providerType || '').toUpperCase();
+    const capturedAt = ev.timeAt || ev.eventTime || ev.createdAt || '';
+
+    // Extract attachment metadata only — no URLs
+    const attachments = Array.isArray(ev.attachments)
+      ? ev.attachments
+          .filter(function(att) { return att.attachmentId != null; })
+          .map(function(att) {
+            return {
+              attachmentId: att.attachmentId,
+              position:     att.cameraPosition || att.position || '',
+              timeAt:       att.timeAt || capturedAt,
+              status:       att.attachmentStatus || att.status || '',
+            };
+          })
+      : [];
+
+    try {
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO camera_history
+         (vehicle_id, event_id, event_type, action, provider, captured_at, attachments, created_at)
+         VALUES (?, ?, 'CAMERA', ?, ?, ?, ?, ?)`
+      ).bind(
+        vehicleId,
+        eventId,
+        action,
+        provider || null,
+        capturedAt,
+        JSON.stringify(attachments),
+        nowIso()
+      ).run();
+      saved++;
+    } catch(e) {
+      console.error('[CameraHistory] insert error for event', eventId, ':', e.message);
+    }
+  }
+  return saved;
+}
+
+// ── Shared: update sync state ─────────────────────────────────────────────────
+async function updateSyncState(env, fields) {
+  const sets   = Object.keys(fields).map(function(k) { return k + ' = ?'; }).join(', ');
+  const values = Object.values(fields);
+  await env.DB.prepare(
+    `UPDATE camera_history_sync SET ${sets} WHERE id = 1`
+  ).bind(...values).run();
+}
+
+// ── GET /api/admin/camera-history/status ─────────────────────────────────────
+async function handleCameraHistoryStatus(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const perm = await hasPermission(env, auth.session.role_id, 'admin', 'view');
+  if (!perm.allowed) return jsonResponse({ error: 'Access denied.' }, 403);
+
+  const sync   = await env.DB.prepare('SELECT * FROM camera_history_sync WHERE id = 1').first();
+  const counts = await env.DB.prepare(
+    `SELECT
+       COUNT(*)                                          as total,
+       COUNT(DISTINCT vehicle_id)                        as vehicles,
+       COUNT(DISTINCT action)                            as action_types,
+       MIN(captured_at)                                  as oldest,
+       MAX(captured_at)                                  as newest,
+       SUM(CASE WHEN action = 'SNAPSHOT'     THEN 1 ELSE 0 END) as snapshots,
+       SUM(CASE WHEN action = 'DRIVER_INPUT' THEN 1 ELSE 0 END) as driver_inputs,
+       SUM(CASE WHEN action = 'VIDEO_REQUEST'THEN 1 ELSE 0 END) as video_requests
+     FROM camera_history`
+  ).first();
+
+  // Build action breakdown
+  const byAction = await env.DB.prepare(
+    `SELECT action, COUNT(*) as count FROM camera_history GROUP BY action ORDER BY count DESC`
+  ).all();
+
+  return jsonResponse({
+    sync:      sync || {},
+    counts:    counts || {},
+    byAction:  byAction.results || [],
+  });
+}
+
+// ── POST /api/admin/camera-history/backfill ───────────────────────────────────
+// Runs chunked backfill from BACKFILL_START to today
+// Safe to call multiple times — resumes from where it left off
+// Uses TN360_API_KEY only — no snapshot key needed for metadata
+async function handleCameraHistoryBackfill(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const perm = await hasPermission(env, auth.session.role_id, 'admin', 'run');
+  if (!perm.allowed) return jsonResponse({ error: 'Access denied.' }, 403);
+
+  if (!env.TN360_API_KEY) {
+    return jsonResponse({ error: 'TN360_API_KEY not configured.' }, 503);
+  }
+
+  const body   = await safeJson(request);
+  const reset  = body.reset === true; // pass reset:true to start over from beginning
+
+  // Get current sync state
+  const sync = await env.DB.prepare('SELECT * FROM camera_history_sync WHERE id = 1').first();
+
+  // Build list of all 6-day chunks from BACKFILL_START to today
+  const startDate = new Date(BACKFILL_START + 'T00:00:00.000Z');
+  const endDate   = new Date();
+  const chunkMs   = 6 * 24 * 60 * 60 * 1000;
+  const allChunks = [];
+
+  for (let t = startDate.getTime(); t < endDate.getTime(); t += chunkMs) {
+    allChunks.push({
+      from: new Date(t).toISOString(),
+      to:   new Date(Math.min(t + chunkMs - 1, endDate.getTime())).toISOString(),
+    });
+  }
+
+  // Find resume point — skip chunks we've already completed
+  // backfill_to tracks the latest chunk end date we've successfully processed
+  let startChunkIdx = 0;
+  if (!reset && sync && sync.backfill_to) {
+    const doneUntil = new Date(sync.backfill_to).getTime();
+    startChunkIdx   = allChunks.findIndex(function(c) {
+      return new Date(c.to).getTime() > doneUntil;
+    });
+    if (startChunkIdx === -1) {
+      // All chunks done
+      await updateSyncState(env, {
+        status:       'complete',
+        chunks_done:  allChunks.length,
+        chunks_total: allChunks.length,
+        current_chunk: null,
+      });
+      return jsonResponse({ ok: true, message: 'Backfill already complete.', chunksTotal: allChunks.length });
+    }
+  }
+
+  const remainingChunks = allChunks.slice(startChunkIdx);
+
+  // Update sync state — mark as running
+  await updateSyncState(env, {
+    status:       'running',
+    chunks_total: allChunks.length,
+    chunks_done:  startChunkIdx,
+    backfill_from: sync && sync.backfill_from ? sync.backfill_from : BACKFILL_START,
+  });
+
+  // Process chunks — Cloudflare Workers have a 30s CPU limit on free plan,
+  // 30 mins on paid. We process as many as possible and return progress.
+  // The frontend calls this repeatedly until complete.
+  const CHUNKS_PER_CALL = 10; // process 10 chunks per HTTP call (~10 weeks)
+  const chunksToProcess = remainingChunks.slice(0, CHUNKS_PER_CALL);
+  let totalSaved = 0;
+  let lastTo     = sync && sync.backfill_to ? sync.backfill_to : null;
+
+  for (let i = 0; i < chunksToProcess.length; i++) {
+    const chunk = chunksToProcess[i];
+    await updateSyncState(env, {
+      current_chunk: chunk.from.slice(0,10) + ' → ' + chunk.to.slice(0,10),
+      chunks_done:   startChunkIdx + i,
+    });
+
+    try {
+      const events = await fetchCameraEventsChunk(env, chunk.from, chunk.to);
+      const saved  = await saveCameraEvents(env, events);
+      totalSaved  += saved;
+      lastTo       = chunk.to;
+
+      await updateSyncState(env, {
+        backfill_to: lastTo,
+        chunks_done: startChunkIdx + i + 1,
+      });
+    } catch(e) {
+      console.error('[Backfill] chunk failed:', chunk.from, '—', e.message);
+      // Continue to next chunk rather than failing entire backfill
+    }
+
+    // Small delay between chunks to be respectful to TN360 rate limits
+    await new Promise(function(r) { setTimeout(r, 200); });
+  }
+
+  const chunksCompleted = startChunkIdx + chunksToProcess.length;
+  const isComplete      = chunksCompleted >= allChunks.length;
+
+  await updateSyncState(env, {
+    status:        isComplete ? 'complete' : 'idle',
+    current_chunk: null,
+    chunks_done:   chunksCompleted,
+    backfill_to:   lastTo || (sync && sync.backfill_to),
+  });
+
+  return jsonResponse({
+    ok:             true,
+    savedThisCall:  totalSaved,
+    chunksProcessed: chunksToProcess.length,
+    chunksCompleted: chunksCompleted,
+    chunksTotal:    allChunks.length,
+    isComplete:     isComplete,
+    percentComplete: Math.round((chunksCompleted / allChunks.length) * 100),
+  });
+}
+
+// ── POST /api/admin/camera-history/sync ──────────────────────────────────────
+// Fetches last 7 days — used by daily cron AND manual "Sync Today" button
+// Uses TN360_API_KEY only
+async function handleCameraHistorySync(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  if (!env.TN360_API_KEY) {
+    return jsonResponse({ error: 'TN360_API_KEY not configured.' }, 503);
+  }
+
+  const now     = new Date();
+  const from7   = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const fromIso = from7.toISOString();
+  const toIso   = now.toISOString();
+
+  await updateSyncState(env, { status: 'running', current_chunk: 'Last 7 days' });
+
+  try {
+    const events = await fetchCameraEventsChunk(env, fromIso, toIso);
+    const saved  = await saveCameraEvents(env, events);
+
+    await updateSyncState(env, {
+      status:        'idle',
+      last_sync_at:  nowIso(),
+      current_chunk: null,
+      backfill_to:   toIso,
+    });
+
+    await logActivity(env, auth.session.user_id, 'admin', 'camera-history-sync',
+      `Synced last 7 days — ${events.length} events fetched, ${saved} new saved`, null);
+
+    return jsonResponse({
+      ok:       true,
+      fetched:  events.length,
+      saved:    saved,
+      from:     fromIso,
+      to:       toIso,
+    });
+  } catch(e) {
+    await updateSyncState(env, { status: 'idle', current_chunk: null });
+    return jsonResponse({ error: e.message }, 502);
+  }
+}
+
+// ── DELETE /api/admin/camera-history ─────────────────────────────────────────
+async function handleCameraHistoryClear(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const perm = await hasPermission(env, auth.session.role_id, 'admin', 'run');
+  if (!perm.allowed) return jsonResponse({ error: 'Access denied.' }, 403);
+
+  await env.DB.prepare('DELETE FROM camera_history').run();
+  await env.DB.prepare(
+    `UPDATE camera_history_sync SET
+       backfill_from = NULL, backfill_to = NULL, last_sync_at = NULL,
+       total_events = 0, status = 'idle', current_chunk = NULL,
+       chunks_done = 0, chunks_total = 0
+     WHERE id = 1`
+  ).run();
+
+  await logActivity(env, auth.session.user_id, 'admin', 'camera-history-clear',
+    'Cleared all camera history and reset sync state', null);
+
+  return jsonResponse({ ok: true });
+}
+
+// ── GET /api/camera-history/vehicle/:vehicleId ───────────────────────────────
+// Called by snapshot.js history panel — returns stored events for a vehicle
+// Frontend then fetches fresh URLs per attachmentId using TN360_SNAPSHOT_KEY
+async function handleGetVehicleCameraHistory(request, env, vehicleId) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const url    = new URL(request.url);
+  const action = url.searchParams.get('action') || null; // optional filter e.g. SNAPSHOT
+  const limit  = Math.min(parseInt(url.searchParams.get('limit') || '100'), 500);
+  const before = url.searchParams.get('before') || null; // for pagination
+
+  let sql    = 'SELECT event_id, action, provider, captured_at, attachments FROM camera_history WHERE vehicle_id = ?';
+  let params = [vehicleId];
+
+  if (action) { sql += ' AND action = ?'; params.push(action.toUpperCase()); }
+  if (before) { sql += ' AND captured_at < ?'; params.push(before); }
+
+  sql += ' ORDER BY captured_at DESC LIMIT ?';
+  params.push(limit);
+
+  const rows = await env.DB.prepare(sql).bind(...params).all();
+  const events = (rows.results || []).map(function(r) {
+    return {
+      eventId:    r.event_id,
+      action:     r.action,
+      provider:   r.provider,
+      capturedAt: r.captured_at,
+      attachments: JSON.parse(r.attachments || '[]'),
+    };
+  });
+
+  return jsonResponse({ events: events, count: events.length });
+}
+
+// ── Cron handler ──────────────────────────────────────────────────────────────
+// Add to export default in src/index.js:
+//
+// async scheduled(event, env, ctx) {
+//   ctx.waitUntil(runDailySync(env));
+// }
+//
+async function runDailySync(env) {
+  if (!env.TN360_API_KEY) return;
+  const now   = new Date();
+  const from7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  try {
+    const events = await fetchCameraEventsChunk(env, from7.toISOString(), now.toISOString());
+    const saved  = await saveCameraEvents(env, events);
+    await env.DB.prepare(
+      `UPDATE camera_history_sync SET last_sync_at = ?, status = 'idle', backfill_to = ? WHERE id = 1`
+    ).bind(now.toISOString(), now.toISOString()).run();
+    console.log('[DailySync] fetched:', events.length, 'saved:', saved);
+  } catch(e) {
+    console.error('[DailySync] failed:', e.message);
+  }
+}
+
+// ── Historical Snapshots ──────────────────────────────────────────────────────
+// POST /api/historical-snapshots
+//
+// Required Cloudflare Worker secret:
+//   TN360_SNAPSHOT_KEY — personal TN360 API token (Token token="...")
+//   Add via: Cloudflare Dashboard → Workers → tge-asset-snapshot → Settings
+//            → Variables → Secret variables → Add: TN360_SNAPSHOT_KEY
+//
+// This route handles both API steps server-side so the personal key
+// never touches the browser.
+//
+// Step 1: POST /v1/devices/events/camera/snapshots — get event list with attachmentIds
+// Step 2: GET  /v1/attachments/{id}/content?presigned=true — get fresh image URL per attachment
+//
+// Returns: { groups: [ { timeAt, attachments: [ { position, url } ] } ] }
+
+async function handleHistoricalSnapshots(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  // Require the personal snapshot key
+  if (!env.TN360_SNAPSHOT_KEY) {
+    return jsonResponse({
+      error: 'Snapshot history API key not configured.',
+      detail: 'Add TN360_SNAPSHOT_KEY as a Worker secret in the Cloudflare dashboard: Workers → tge-asset-snapshot → Settings → Variables → Secret variables.'
+    }, 503);
+  }
+
+  const body = await safeJson(request);
+  const vehicleId = String(body.vehicleId || '').trim();
+  const deviceId  = String(body.deviceId  || '').trim();
+  const from      = String(body.from      || '').trim(); // pre-encoded AEST ISO
+  const to        = String(body.to        || '').trim();
+
+  if (!vehicleId || !deviceId || !from || !to) {
+    return jsonResponse({ error: 'vehicleId, deviceId, from and to are required.' }, 400);
+  }
+
+  const authHeader = `Token token="${env.TN360_SNAPSHOT_KEY}"`;
+
+  // ── Step 1: Get events list ───────────────────────────────────────────────
+  let events = [];
+  try {
+    const eventsRes = await fetch(
+      `https://api-au.telematics.com/v1/devices/events/camera/snapshots?from=${from}&to=${to}`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type':  'application/json',
+        },
+        body: JSON.stringify({
+          vehicles:       [vehicleId],
+          devices:        [deviceId],
+          orderField:     'EventTime',
+          orderDirection: 'desc',
+          latestOnly:     false,
+          rowCountLimit:  100,
+          rowOffset:      0,
+        }),
+      }
+    );
+
+    if (!eventsRes.ok) {
+      const errText = await eventsRes.text();
+      console.error('[HistSnap] Step 1 failed:', eventsRes.status, errText.slice(0, 200));
+      return jsonResponse({
+        error: 'Failed to fetch snapshot events from TN360.',
+        detail: errText.slice(0, 200),
+        status: eventsRes.status,
+      }, 502);
+    }
+
+    const eventsData = await eventsRes.json();
+    events = Array.isArray(eventsData.events) ? eventsData.events : [];
+  } catch(e) {
+    return jsonResponse({ error: 'Network error fetching snapshot events: ' + e.message }, 502);
+  }
+
+  if (!events.length) {
+    return jsonResponse({ groups: [], totalEvents: 0 });
+  }
+
+  // ── Step 2: Get fresh image URL for each attachment ───────────────────────
+  // Process events in parallel (up to 5 at a time to avoid rate limiting)
+  const groups = [];
+
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
+    if (!Array.isArray(ev.attachments) || !ev.attachments.length) continue;
+
+    // Only process AVAILABLE attachments
+    const availableAtts = ev.attachments.filter(function(att) {
+      return att.attachmentStatus === 'AVAILABLE';
+    });
+    if (!availableAtts.length) continue;
+
+    // Fetch fresh URLs for all attachments in this event concurrently
+    const attachmentResults = await Promise.all(
+      availableAtts.map(async function(att) {
+        const timeAt  = new Date(att.timeAt || ev.timeAt || '');
+        const year    = timeAt.getFullYear();
+        const month   = timeAt.getMonth() + 1; // no leading zero
+
+        try {
+          const imgRes = await fetch(
+            `https://api-au.telematics.com/v1/attachments/${att.attachmentId}/content` +
+            `?pruning=WEB&thumbnail=false&year=${year}&month=${month}&presigned=true`,
+            {
+              headers: { 'Authorization': authHeader },
+              redirect: 'follow',
+            }
+          );
+
+          if (!imgRes.ok) {
+            console.warn('[HistSnap] attachment', att.attachmentId, 'returned', imgRes.status);
+            return { position: att.cameraPosition, url: '' };
+          }
+
+          // The response is either a redirect (final URL is imgRes.url)
+          // or a JSON containing the URL — handle both
+          const contentType = imgRes.headers.get('content-type') || '';
+          if (contentType.includes('image/')) {
+            // It's the actual image — return the final URL after redirect
+            return { position: att.cameraPosition, url: imgRes.url };
+          }
+
+          // Try JSON response containing URL
+          try {
+            const json = await imgRes.json();
+            const url  = json.url || json.mediaFile || json.contentUrl || imgRes.url || '';
+            return { position: att.cameraPosition, url: url };
+          } catch(e) {
+            // Fallback — return the final URL after any redirects
+            return { position: att.cameraPosition, url: imgRes.url };
+          }
+
+        } catch(e) {
+          console.warn('[HistSnap] attachment', att.attachmentId, 'fetch error:', e.message);
+          return { position: att.cameraPosition, url: '' };
+        }
+      })
+    );
+
+    // Only include groups that have at least one image
+    const hasImage = attachmentResults.some(function(a) { return !!a.url; });
+    if (!hasImage) continue;
+
+    groups.push({
+      eventId:     ev.id,
+      timeAt:      ev.timeAt || (availableAtts[0] && availableAtts[0].timeAt) || '',
+      attachments: attachmentResults,
+    });
+  }
+
+  return jsonResponse({
+    groups:      groups,
+    totalEvents: events.length,
+    found:       groups.length,
+  });
+}
+
+// ── Route additions for main fetch handler ────────────────────────────────────
+// Add these inside the if (path.startsWith('/api/')) block in export default fetch():
+//
+// Camera history — admin management
+// if (method === 'GET'    && path === '/api/admin/camera-history/status')   return handleCameraHistoryStatus(request, env);
+// if (method === 'POST'   && path === '/api/admin/camera-history/backfill') return handleCameraHistoryBackfill(request, env);
+// if (method === 'POST'   && path === '/api/admin/camera-history/sync')     return handleCameraHistorySync(request, env);
+// if (method === 'DELETE' && path === '/api/admin/camera-history')          return handleCameraHistoryClear(request, env);
+//
+// Camera history — per vehicle (used by snapshot.js history panel)
+// if (method === 'GET' && path.match(/^\/api\/camera-history\/vehicle\/.+$/)) {
+//   const vehicleId = path.split('/').pop();
+//   return handleGetVehicleCameraHistory(request, env, vehicleId);
+// }
 
 // ── Main fetch handler ────────────────────────────────────────────────────────
 
@@ -1946,29 +2528,7 @@ export default {
     if (method === "GET" && path === "/api/camera-history-events") {
   return handleCameraHistoryEvents(request, env);
 }
-      // Camera history
-      if (method === "GET" && path.startsWith("/api/camera-history/")) {
-        const vid = path.split('/').pop();
-        const rows = await env.DB.prepare(
-          "SELECT * FROM camera_history WHERE vehicle_id = ? ORDER BY captured_at DESC LIMIT 30"
-        ).bind(vid).all();
-        return jsonResponse(rows.results || []);
-      }
 
-      if (method === "POST" && path.startsWith("/api/camera-history/")) {
-        const auth = await requireSession(request, env);
-        if (!auth.ok) return auth.response;
-        const vid  = path.split('/').pop();
-        const body = await safeJson(request);
-        if (!body.eventId || !body.capturedAt) return jsonResponse({ error: "eventId and capturedAt required" }, 400);
-        await env.DB.prepare(
-          "INSERT OR IGNORE INTO camera_history (vehicle_id, event_id, captured_at, snapshot_data) VALUES (?,?,?,?)"
-        ).bind(vid, body.eventId, body.capturedAt, body.snapshotData || null).run();
-        await env.DB.prepare(
-          "DELETE FROM camera_history WHERE vehicle_id = ? AND id NOT IN (SELECT id FROM camera_history WHERE vehicle_id = ? ORDER BY captured_at DESC LIMIT 30)"
-        ).bind(vid, vid).run();
-        return jsonResponse({ ok: true });
-      }
 
       // Registry
       if (method === "GET"    && path === "/api/registry/apis")                              return handleRegistryGetApis(request, env);
