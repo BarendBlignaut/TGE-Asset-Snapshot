@@ -1146,25 +1146,25 @@
     // Show loading state
     body.innerHTML = [
       '<div class="snap-hist-progress" id="snap-hist-prog">',
-        '<div style="font-size:12px;font-weight:600;color:var(--ink);" id="snap-hist-prog-text">Loading history from database...</div>',
+        '<div style="font-size:12px;font-weight:600;color:var(--ink);" id="snap-hist-prog-text">Loading history...</div>',
         '<div class="snap-hist-progress-bar"><div class="snap-hist-progress-fill" id="snap-hist-prog-fill" style="width:0%"></div></div>',
       '</div>',
       '<div id="snap-hist-results"></div>',
     ].join('');
 
-    // ── Step 1: Read stored events from D1 ───────────────────────────────────
-    // Cut-off: 28 days ago
+    var fill = TGE.el('snap-hist-prog-fill');
+    var text = TGE.el('snap-hist-prog-text');
+
+    // ── Step 1: Read event IDs from D1 for last 28 days ──────────────────────
     var cutoff = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString();
     var d1Result = await TGE.api('GET',
-      '/api/camera-history/vehicle/' + vehicle.id + '?action=SNAPSHOT&limit=200&before=' + encodeURIComponent(new Date().toISOString())
+      '/api/camera-history/vehicle/' + vehicle.id + '?action=SNAPSHOT&limit=200'
     );
 
-    if (!historyState.loading) return; // panel closed while loading
+    if (!historyState.loading) return;
 
     var storedEvents = (d1Result.ok && d1Result.data && Array.isArray(d1Result.data.events))
-      ? d1Result.data.events.filter(function(ev) {
-          return ev.capturedAt >= cutoff;
-        })
+      ? d1Result.data.events.filter(function(ev) { return ev.capturedAt >= cutoff; })
       : [];
 
     if (!storedEvents.length) {
@@ -1176,71 +1176,87 @@
       return;
     }
 
-    // Update progress
-    var fill = TGE.el('snap-hist-prog-fill');
-    var text = TGE.el('snap-hist-prog-text');
-    if (fill) fill.style.width = '30%';
-    if (text) text.textContent = storedEvents.length + ' snapshots found — fetching images...';
+    if (text) text.textContent = storedEvents.length + ' events found in database — fetching images...';
+    if (fill) fill.style.width = '10%';
 
-    // ── Step 2: Fetch fresh image URLs per event ──────────────────────────────
-    // Process in batches of 5 to keep it responsive
-    var allGroups = [];
-    var batchSize = 5;
+    // Build event ID lookup map for matching
+    var eventIdMap = {};
+    storedEvents.forEach(function(ev) { eventIdMap[String(ev.eventId)] = ev; });
 
-    for (var i = 0; i < storedEvents.length; i += batchSize) {
+    // ── Step 2: Build 4 x 6-day chunks covering last 28 days ─────────────────
+    var now    = new Date();
+    var chunks = [];
+    for (var c = 3; c >= 0; c--) {
+      var toD   = new Date(now.getTime() - (c * 7) * 24 * 60 * 60 * 1000);
+      var fromD = new Date(toD.getTime() - 6 * 24 * 60 * 60 * 1000);
+      // Only include chunks that have events in D1
+      var chunkFrom = fromD.toISOString();
+      var chunkTo   = toD.toISOString();
+      var hasEvents = storedEvents.some(function(ev) {
+        return ev.capturedAt >= chunkFrom && ev.capturedAt <= chunkTo;
+      });
+      if (hasEvents) {
+        chunks.push({ from: toAestIso(fromD), to: toAestIso(toD) });
+      }
+    }
+
+    if (!chunks.length) {
+      var prog2 = TGE.el('snap-hist-prog');
+      if (prog2) prog2.style.display = 'none';
+      var res2 = TGE.el('snap-hist-results');
+      if (res2) res2.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px;">No snapshot history found in the last 28 days.</div>';
+      historyState.loading = false;
+      return;
+    }
+
+    // ── Step 3: Call /api/historical-snapshots per chunk (uses TN360_SNAPSHOT_KEY) ──
+    var allGroups  = [];
+    var totalChunks = chunks.length;
+
+    for (var i = 0; i < chunks.length; i++) {
       if (!historyState.loading) break;
 
-      var batch = storedEvents.slice(i, i + batchSize);
+      var chunk = chunks[i];
+      if (text) text.textContent = 'Fetching images — window ' + (i + 1) + ' of ' + totalChunks + '...';
 
-      var batchResults = await Promise.all(batch.map(async function(ev) {
-        // Only process SNAPSHOT events with attachments
-        if (!Array.isArray(ev.attachments) || !ev.attachments.length) return null;
+      try {
+        var result = await TGE.api('POST', '/api/historical-snapshots', {
+          vehicleId: String(vehicle.id),
+          deviceId:  String(cam.id),
+          from:      chunk.from,
+          to:        chunk.to,
+        });
 
-        // Fetch fresh URLs for this event's attachments via the worker
-        try {
-          var urlResult = await TGE.api('POST', '/api/historical-snapshots/attachments', {
-            attachments: ev.attachments,
+        if (result.ok && result.data && Array.isArray(result.data.groups)) {
+          // Only include groups whose event ID exists in D1
+          result.data.groups.forEach(function(group) {
+            if (eventIdMap[String(group.eventId)]) {
+              allGroups.push(group);
+            }
           });
 
-          if (urlResult.ok && urlResult.data && Array.isArray(urlResult.data.attachments)) {
-            return {
-              eventId:     ev.eventId,
-              timeAt:      ev.capturedAt,
-              attachments: urlResult.data.attachments,
-            };
-          }
-        } catch(e) {
-          console.warn('[History] failed to fetch URLs for event', ev.eventId, ':', e.message);
+          // Sort newest first and render progressively
+          var sorted = allGroups.slice().sort(function(a,b) {
+            return new Date(b.timeAt) - new Date(a.timeAt);
+          });
+          renderHistoryGroups(sorted, activeSlots, slots);
         }
-        return null;
-      }));
+      } catch(e) {
+        console.warn('[History] chunk ' + (i+1) + ' failed:', e.message);
+      }
 
-      // Add successful results
-      batchResults.forEach(function(group) {
-        if (group && group.attachments && group.attachments.some(function(a) { return !!a.url; })) {
-          allGroups.push(group);
-        }
-      });
-
-      // Sort newest first and render progressively
-      var sorted = allGroups.slice().sort(function(a,b) {
-        return new Date(b.timeAt) - new Date(a.timeAt);
-      });
-      renderHistoryGroups(sorted, activeSlots, slots);
-
-      // Update progress
-      var pct = Math.round(30 + ((i + batch.length) / storedEvents.length) * 70);
+      // Update progress bar
+      var pct = Math.round(10 + ((i + 1) / totalChunks) * 90);
       if (fill) fill.style.width = pct + '%';
-      if (text) text.textContent = 'Fetching images... ' + Math.min(i + batchSize, storedEvents.length) + ' of ' + storedEvents.length + ' events';
     }
 
     // Hide progress bar
-    var prog = TGE.el('snap-hist-prog');
-    if (prog) prog.style.display = 'none';
+    var progEl = TGE.el('snap-hist-prog');
+    if (progEl) progEl.style.display = 'none';
 
     if (!allGroups.length) {
-      var resultsEl = TGE.el('snap-hist-results');
-      if (resultsEl) resultsEl.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px;">Snapshots found in database but images could not be loaded. Try again shortly.</div>';
+      var resEl = TGE.el('snap-hist-results');
+      if (resEl) resEl.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px;">No images available for this vehicle in the last 28 days.</div>';
     }
 
     historyState.loading = false;
@@ -1395,4 +1411,3 @@
   };
 
 })();
-      
