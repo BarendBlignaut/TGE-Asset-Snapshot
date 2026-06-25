@@ -2405,9 +2405,11 @@ async function handleHistoricalSnapshots(request, env) {
 
           // Try JSON response containing URL
           try {
-            const json = await imgRes.json();
-            const url  = json.attachmentLink || json.url || json.mediaFile || json.contentUrl || imgRes.url || '';
-            return { position: att.cameraPosition, url: url };
+try {
+  const json = await imgRes.json();
+  console.log('[HistSnap] json keys:', Object.keys(json), 'attachmentLink:', json.attachmentLink ? json.attachmentLink.slice(0,50) : 'none');
+  const url  = json.attachmentLink || json.url || json.mediaFile || json.contentUrl || imgRes.url || '';
+  return { position: att.cameraPosition, url: url };
           } catch(e) {
             // Fallback — return the final URL after any redirects
             return { position: att.cameraPosition, url: imgRes.url };
