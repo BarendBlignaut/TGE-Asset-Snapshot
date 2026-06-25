@@ -28,6 +28,7 @@
             '<button class="hero-mode-btn active" id="admin-tab-users" type="button">Users</button>',
             '<button class="hero-mode-btn" id="admin-tab-history" type="button">Access History</button>',
             '<button class="hero-mode-btn" id="admin-tab-api" type="button">API Reference</button>',
+             '<button class="hero-mode-btn" id="admin-tab-camera-history" type="button">Camera History</button>',
             '<button class="hero-mode-btn" id="admin-tab-mailer" type="button">Mailer Data</button>',
             '<button class="hero-mode-btn" id="admin-tab-controls" type="button">Control Tables</button>',
           '</div>',
@@ -41,6 +42,7 @@
       '<div id="admin-content-users">',   renderUsersTab(),   '</div>',
       '<div id="admin-content-history" style="display:none;">', renderHistoryTab(), '</div>',
       '<div id="admin-content-api" style="display:none;">',     renderApiTab(),     '</div>',
+      '<div id="admin-content-camera-history" style="display:none;">', renderCameraHistoryTab(), '</div>',
       '<div id="admin-content-mailer" style="display:none;">',  renderMailerTab(),  '</div>',
       '<div id="admin-content-controls" style="display:none;">', renderControlTablesTab(), '</div>',
     ].join('');
@@ -60,6 +62,7 @@
       { btn: 'admin-tab-api',     content: 'admin-content-api' },
       { btn: 'admin-tab-mailer',  content: 'admin-content-mailer' },
       { btn: 'admin-tab-controls', content: 'admin-content-controls' },
+      { btn: 'admin-tab-camera-history',  content: 'admin-content-camera-history' },
     ];
     tabs.forEach(function (t) {
       TGE.on(t.btn, 'click', function () {
@@ -76,6 +79,7 @@
         state.activeTab = t.btn.replace('admin-tab-', '');
         if (state.activeTab === 'history') loadActivity();
         if (state.activeTab === 'api') wireApiFilters();
+        if (state.activeTab === 'camera-history') loadCameraHistoryStatus();
         if (state.activeTab === 'mailer') loadSignatures();
         if (state.activeTab === 'controls') loadControlTables();
       });
@@ -978,6 +982,279 @@ function renderControlTablesTab() {
     document.body.appendChild(a); a.click(); a.remove();
   }
 
+// ── Camera History Tab — add to admin.js ──────────────────────────────────────
+// 1. Add tab button in renderUsersTab hero bar:
+//    '<button class="hero-mode-btn" id="admin-tab-camera-history" type="button">Camera History</button>'
+//
+// 2. Add content div in render():
+//    '<div id="admin-content-camera-history" style="display:none;">', renderCameraHistoryTab(), '</div>'
+//
+// 3. Add to wireAdminTabs() tabs array:
+//    { btn: 'admin-tab-camera-history', content: 'admin-content-camera-history' }
+//    And in the tab click handler:
+//    if (state.activeTab === 'camera-history') loadCameraHistoryStatus();
+//
+// 4. Paste the functions below into admin.js
+
+function renderCameraHistoryTab() {
+  return [
+    '<div class="card" style="margin-bottom:14px;">',
+      '<div class="card-kicker">Camera History Database</div>',
+      '<div class="card-title">Backfill & Sync Status</div>',
+
+      // Stats grid
+      '<div class="data-grid data-grid-4" id="ch-stats" style="margin-bottom:16px;">',
+        '<div class="data-item"><span>Total Events</span><strong id="ch-total">—</strong></div>',
+        '<div class="data-item"><span>Vehicles Covered</span><strong id="ch-vehicles">—</strong></div>',
+        '<div class="data-item"><span>Oldest Event</span><strong id="ch-oldest">—</strong></div>',
+        '<div class="data-item"><span>Newest Event</span><strong id="ch-newest">—</strong></div>',
+        '<div class="data-item"><span>Last Sync</span><strong id="ch-last-sync">—</strong></div>',
+        '<div class="data-item"><span>Status</span><strong id="ch-status">—</strong></div>',
+        '<div class="data-item"><span>Backfill From</span><strong id="ch-from">—</strong></div>',
+        '<div class="data-item"><span>Backfill To</span><strong id="ch-to">—</strong></div>',
+      '</div>',
+
+      // Action breakdown
+      '<div style="margin-bottom:16px;" id="ch-action-breakdown"></div>',
+
+      // Backfill progress bar — hidden until running
+      '<div id="ch-progress-wrap" style="display:none;margin-bottom:16px;">',
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">',
+          '<span style="font-size:12px;font-weight:700;color:var(--ink);" id="ch-progress-label">Processing...</span>',
+          '<span style="font-size:12px;color:var(--muted);" id="ch-progress-pct">0%</span>',
+        '</div>',
+        '<div style="height:8px;background:var(--line);border-radius:999px;overflow:hidden;">',
+          '<div id="ch-progress-fill" style="height:100%;background:var(--green-600);border-radius:999px;transition:width 300ms;width:0%;"></div>',
+        '</div>',
+        '<div style="font-size:11px;color:var(--muted);margin-top:4px;" id="ch-progress-chunk"></div>',
+      '</div>',
+
+      // Action buttons
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">',
+        '<button class="btn btn-primary" id="ch-backfill-btn" type="button">▶ Run Backfill</button>',
+        '<button class="btn" id="ch-sync-btn" type="button">↻ Sync Last 7 Days</button>',
+        '<button class="btn btn-danger" id="ch-clear-btn" type="button">✕ Clear All History</button>',
+        '<span id="ch-message" style="font-size:12px;color:var(--muted);margin-left:4px;"></span>',
+      '</div>',
+
+      // Info box
+      '<div style="margin-top:16px;padding:12px 14px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;font-size:12px;color:var(--muted);line-height:1.6;">',
+        '<strong style="color:var(--ink);">How it works:</strong> ',
+        'Backfill fetches all camera events from February 2024 to today in 6-day chunks using your existing TN360 API key. ',
+        'Only event metadata is stored (event ID, vehicle, action type, attachment IDs) — no image URLs. ',
+        'Fresh image URLs are fetched on demand when a user views history. ',
+        'Run Sync after backfill to pick up the last 7 days. Daily automatic sync runs at 6am AEST.',
+      '</div>',
+    '</div>',
+
+    // Action type breakdown table
+    '<div class="card" id="ch-breakdown-card" style="display:none;">',
+      '<div class="card-kicker">Event Breakdown</div>',
+      '<div class="card-title">Stored Events by Action Type</div>',
+      '<div class="table-wrap">',
+        '<table>',
+          '<thead><tr><th>Action Type</th><th>Count</th><th>% of Total</th><th>Use</th></tr></thead>',
+          '<tbody id="ch-breakdown-table"></tbody>',
+        '</table>',
+      '</div>',
+    '</div>',
+  ].join('');
+}
+
+// ── Load status ───────────────────────────────────────────────────────────────
+var chState = { polling: false, backfillRunning: false };
+
+async function loadCameraHistoryStatus() {
+  var result = await api('GET', '/api/admin/camera-history/status');
+  if (!result.ok) {
+    setCHMessage('Failed to load status: ' + (result.data && result.data.error ? result.data.error : 'unknown error'), true);
+    return;
+  }
+
+  var sync   = result.data.sync   || {};
+  var counts = result.data.counts || {};
+  var byAct  = result.data.byAction || [];
+
+  // Stats
+  TGE.setText('ch-total',     counts.total ? Number(counts.total).toLocaleString() : '0');
+  TGE.setText('ch-vehicles',  counts.vehicles ? Number(counts.vehicles).toLocaleString() : '0');
+  TGE.setText('ch-oldest',    counts.oldest ? formatCHDate(counts.oldest) : '—');
+  TGE.setText('ch-newest',    counts.newest ? formatCHDate(counts.newest) : '—');
+  TGE.setText('ch-last-sync', sync.last_sync_at ? formatCHDate(sync.last_sync_at) : 'Never');
+  TGE.setText('ch-from',      sync.backfill_from ? sync.backfill_from.slice(0,10) : 'Not started');
+  TGE.setText('ch-to',        sync.backfill_to   ? sync.backfill_to.slice(0,10)   : '—');
+
+  // Status badge
+  var statusEl = TGE.el('ch-status');
+  if (statusEl) {
+    var s = sync.status || 'idle';
+    var badge = s === 'complete' ? '<span class="badge badge-green">Complete</span>'
+              : s === 'running'  ? '<span class="badge badge-yellow">Running...</span>'
+              : '<span class="badge badge-gray">Idle</span>';
+    statusEl.innerHTML = badge;
+  }
+
+  // Progress bar
+  var progressWrap = TGE.el('ch-progress-wrap');
+  if (sync.chunks_total > 0) {
+    if (progressWrap) progressWrap.style.display = '';
+    var pct = sync.chunks_total > 0 ? Math.round((sync.chunks_done / sync.chunks_total) * 100) : 0;
+    var fill = TGE.el('ch-progress-fill');
+    var pctEl = TGE.el('ch-progress-pct');
+    var labelEl = TGE.el('ch-progress-label');
+    var chunkEl = TGE.el('ch-progress-chunk');
+    if (fill)    fill.style.width = pct + '%';
+    if (pctEl)   pctEl.textContent = pct + '%';
+    if (labelEl) labelEl.textContent = sync.chunks_done + ' of ' + sync.chunks_total + ' date windows processed';
+    if (chunkEl) chunkEl.textContent = sync.current_chunk ? 'Current: ' + sync.current_chunk : '';
+  } else {
+    if (progressWrap) progressWrap.style.display = 'none';
+  }
+
+  // Action breakdown table
+  var total = counts.total || 0;
+  if (byAct.length) {
+    var breakdownCard = TGE.el('ch-breakdown-card');
+    if (breakdownCard) breakdownCard.style.display = '';
+    var tbody = TGE.el('ch-breakdown-table');
+    if (tbody) {
+      tbody.innerHTML = byAct.map(function(row) {
+        var pct = total > 0 ? ((row.count / total) * 100).toFixed(1) : '0';
+        var use = {
+          'SNAPSHOT':     'Camera photos — current & history',
+          'DRIVER_INPUT': 'Driver ID / fatigue events',
+          'VIDEO_REQUEST':'On-demand video clips',
+        }[row.action] || 'Future use';
+        return '<tr>' +
+          '<td><strong>' + row.action + '</strong></td>' +
+          '<td>' + Number(row.count).toLocaleString() + '</td>' +
+          '<td>' + pct + '%</td>' +
+          '<td style="color:var(--muted);font-size:12px;">' + use + '</td>' +
+        '</tr>';
+      }).join('');
+    }
+  }
+
+  wireCHButtons();
+}
+
+// ── Wire buttons ──────────────────────────────────────────────────────────────
+function wireCHButtons() {
+  TGE.on('ch-backfill-btn', 'click', runBackfill);
+  TGE.on('ch-sync-btn',     'click', runSync);
+  TGE.on('ch-clear-btn',    'click', clearHistory);
+}
+
+// ── Backfill ──────────────────────────────────────────────────────────────────
+// Calls the backfill endpoint repeatedly until complete (10 chunks per call)
+async function runBackfill() {
+  if (chState.backfillRunning) return;
+  chState.backfillRunning = true;
+
+  var btn = TGE.el('ch-backfill-btn');
+  if (btn) { btn.textContent = 'Running...'; btn.disabled = true; }
+  setCHMessage('Starting backfill from February 2024...', false);
+
+  var progressWrap = TGE.el('ch-progress-wrap');
+  if (progressWrap) progressWrap.style.display = '';
+
+  var totalSaved = 0;
+  var done       = false;
+
+  while (!done) {
+    var result = await api('POST', '/api/admin/camera-history/backfill', {});
+    if (!result.ok) {
+      setCHMessage('Backfill error: ' + (result.data && result.data.error ? result.data.error : 'unknown'), true);
+      break;
+    }
+
+    var d = result.data;
+    totalSaved += (d.savedThisCall || 0);
+    done = d.isComplete;
+
+    // Update progress bar
+    var pct     = d.percentComplete || 0;
+    var fill    = TGE.el('ch-progress-fill');
+    var pctEl   = TGE.el('ch-progress-pct');
+    var labelEl = TGE.el('ch-progress-label');
+    if (fill)    fill.style.width = pct + '%';
+    if (pctEl)   pctEl.textContent = pct + '%';
+    if (labelEl) labelEl.textContent = (d.chunksCompleted || 0) + ' of ' + (d.chunksTotal || 0) + ' date windows';
+
+    setCHMessage(
+      done
+        ? '✅ Backfill complete — ' + totalSaved.toLocaleString() + ' new events saved.'
+        : 'Processing... ' + (d.chunksCompleted || 0) + ' of ' + (d.chunksTotal || 0) + ' chunks (' + totalSaved.toLocaleString() + ' saved so far)',
+      false
+    );
+
+    if (!done) {
+      // Small pause between calls to keep UI responsive
+      await new Promise(function(r) { setTimeout(r, 500); });
+    }
+  }
+
+  chState.backfillRunning = false;
+  if (btn) { btn.textContent = '▶ Run Backfill'; btn.disabled = false; }
+
+  // Refresh status
+  await loadCameraHistoryStatus();
+}
+
+// ── Sync ──────────────────────────────────────────────────────────────────────
+async function runSync() {
+  var btn = TGE.el('ch-sync-btn');
+  if (btn) { btn.textContent = 'Syncing...'; btn.disabled = true; }
+  setCHMessage('Fetching last 7 days...', false);
+
+  var result = await api('POST', '/api/admin/camera-history/sync', {});
+  if (!result.ok) {
+    setCHMessage('Sync failed: ' + (result.data && result.data.error ? result.data.error : 'unknown'), true);
+  } else {
+    var d = result.data;
+    setCHMessage('✅ Sync complete — ' + (d.fetched || 0) + ' events fetched, ' + (d.saved || 0) + ' new saved.', false);
+  }
+
+  if (btn) { btn.textContent = '↻ Sync Last 7 Days'; btn.disabled = false; }
+  await loadCameraHistoryStatus();
+}
+
+// ── Clear ─────────────────────────────────────────────────────────────────────
+async function clearHistory() {
+  if (!confirm('This will delete ALL stored camera history and reset the backfill progress. This cannot be undone. Continue?')) return;
+  var btn = TGE.el('ch-clear-btn');
+  if (btn) { btn.textContent = 'Clearing...'; btn.disabled = true; }
+
+  var result = await api('DELETE', '/api/admin/camera-history', {});
+  if (!result.ok) {
+    setCHMessage('Clear failed: ' + (result.data && result.data.error ? result.data.error : 'unknown'), true);
+  } else {
+    setCHMessage('History cleared and backfill reset.', false);
+  }
+
+  if (btn) { btn.textContent = '✕ Clear All History'; btn.disabled = false; }
+  await loadCameraHistoryStatus();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function setCHMessage(msg, isError) {
+  var el = TGE.el('ch-message');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = isError ? 'var(--danger)' : 'var(--muted)';
+}
+
+function formatCHDate(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('en-AU', {
+      timeZone: 'Australia/Sydney',
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: true,
+    });
+  } catch(e) { return iso; }
+}
+  
   // ── Register ──────────────────────────────────────────────────────────────────
   var _orig = TGE.onAppReady;
   TGE.onAppReady = function () {
