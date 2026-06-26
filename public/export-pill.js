@@ -32,6 +32,19 @@
   };
 
   TGE.outputFileName = function (opts) {
+    TGE.outputModule = function (opts) {
+  return {
+    module: opts.module,
+    reportType: opts.reportType || 'Report',
+    exportItems: opts.exportItems || [],
+    buildPdf: opts.buildPdf || null,
+    buildCsv: opts.buildCsv || null,
+    buildExcel: opts.buildExcel || null,
+    buildJson: opts.buildJson || null,
+    emailComposer: opts.emailComposer || null,
+    mergeMail: opts.mergeMail || null
+  };
+};
     opts = opts || {};
 
     var module = String(opts.module || 'Snapshot').replace(/\s+/g, '');
