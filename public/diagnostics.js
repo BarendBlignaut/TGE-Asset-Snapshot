@@ -415,8 +415,8 @@
     state.running = true;
     document.getElementById('diag-run-btn').disabled = true;
 
-    var fromISO = fromDate + 'T00:00:00+10:00';
-    var toISO   = toDate   + 'T23:59:59+10:00';
+var fromISO = fromDate + 'T00:00:00%2B10:00';
+var toISO   = toDate   + 'T23:59:59%2B10:00';
 
     try {
       // ── Step 1: snapshot events ──────────────────────────────────────────
