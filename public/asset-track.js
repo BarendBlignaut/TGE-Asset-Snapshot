@@ -26,7 +26,12 @@ var lastRenderedCount = 0;
     userLimit = TGE.limit('asset-track', 'user-mode') || 500;
     canUser = TGE.can('asset-track', 'user-mode');
     canFleet = TGE.can('asset-track', 'fleet-mode');
-    state.mode = canUser ? 'user' : 'fleet';
+   if (state.mode !== 'user' && state.mode !== 'fleet') {
+  state.mode = canUser ? 'user' : 'fleet';
+}
+
+if (state.mode === 'user' && !canUser) state.mode = 'fleet';
+if (state.mode === 'fleet' && !canFleet) state.mode = 'user';
 
     view.innerHTML = [
       '<div class="hero">',
@@ -35,8 +40,8 @@ var lastRenderedCount = 0;
         '<div class="hero-sub">Load Asset Tracker battery, last seen and status by fleet number or fleet-wide search.</div>',
         '<div class="hero-bar">',
           '<div class="hero-bar-left">',
-            canUser ? '<button class="hero-mode-btn active" id="at-mode-user" type="button">User Mode</button>' : '',
-            canFleet ? '<button class="hero-mode-btn' + (!canUser ? ' active' : '') + '" id="at-mode-fleet" type="button">Fleet Mode</button>' : '',
+           canUser ? '<button class="hero-mode-btn' + (state.mode === 'user' ? ' active' : '') + '" id="at-mode-user" type="button">User Mode</button>' : '',
+canFleet ? '<button class="hero-mode-btn' + (state.mode === 'fleet' ? ' active' : '') + '" id="at-mode-fleet" type="button">Fleet Mode</button>' : '',
             '<button class="hero-run-btn" id="at-run-btn" type="button">Run</button>',
             '<button class="hero-action-btn" id="at-refresh-btn" type="button">Refresh</button>',
           '</div>',
@@ -172,17 +177,12 @@ var lastRenderedCount = 0;
   window.addEventListener('scroll', closeExportMenu, true);
   window.addEventListener('resize', closeExportMenu);
 
-  function setMode(mode) {
-    state.mode = mode;
+function setMode(mode) {
+  if (state.mode === mode) return;
 
-    var userBtn = TGE.el('at-mode-user');
-    var fleetBtn = TGE.el('at-mode-fleet');
-    var userInput = TGE.el('at-user-input');
-
-    if (userBtn) userBtn.classList.toggle('active', mode === 'user');
-    if (fleetBtn) fleetBtn.classList.toggle('active', mode === 'fleet');
-    if (userInput) userInput.style.display = mode === 'user' ? '' : 'none';
-  }
+  state.mode = mode;
+  render();
+}
 
   function parseFleetNumbers(raw) {
     return String(raw || '').split(/[\n,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
@@ -305,9 +305,6 @@ return {
           });
       }, 5, 300);
 
-var assetRows = [];
-var exceptionRows = [];
-
 results.forEach(function (item) {
 
   // Fleet Mode - only Asset Track devices
@@ -334,11 +331,7 @@ results.forEach(function (item) {
     );
   }
 
-  // Hermes / Camera / Tablet only
-  // Ignore completely.
-});
-
-state.rows = state.rows.concat(exceptionRows);
+  state.rows = state.rows.concat(exceptionRows);
       renderRows();
       updateSummary();
       setMessage('');
