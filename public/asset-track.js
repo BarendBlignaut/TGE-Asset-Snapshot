@@ -746,31 +746,6 @@ function isOysterTracker(device) {
       .replace(/'/g, '&#039;');
   }
 
-  async function batchRun(items, worker, concurrency, delayMs) {
-    var results = [];
-    var index = 0;
-
-    async function next() {
-      while (index < items.length) {
-        var current = index++;
-        results[current] = await worker(items[current], current);
-        if (delayMs) await delay(delayMs);
-      }
-    }
-
-    var runners = [];
-    for (var i = 0; i < Math.min(concurrency, items.length); i++) {
-      runners.push(next());
-    }
-
-    await Promise.all(runners);
-    return results;
-  }
-
-  function delay(ms) {
-    return new Promise(function (resolve) { setTimeout(resolve, ms); });
-  }
-
   TGE.onShow['asset-track'] = render;
 
 })();
