@@ -311,14 +311,42 @@
     }) || null;
   }
 
-  function isAssetTrackerDevice(d) {
-    if (!d) return false;
+function isAssetTrackerDevice(d) {
+  if (!d) return false;
 
-    var typeCode = d.type && d.type.code ? String(d.type.code).toUpperCase() : '';
-    var typeName = d.type && d.type.name ? String(d.type.name).toLowerCase() : '';
+  var typeCode = d.type && d.type.code ? String(d.type.code).toUpperCase() : '';
+  var typeName = d.type && d.type.name ? String(d.type.name).toLowerCase() : '';
+  var modelName = d.model && d.model.name ? String(d.model.name).toLowerCase() : '';
+  var modelId = d.modelId || (d.model && d.model.id);
 
-    return typeCode === DEVICE_CODE || typeName === 'asset tracker';
-  }
+  // Exclude motorised, camera and tablet hardware
+  if (typeCode === 'HERMES') return false;
+  if (typeCode === 'CAMERA') return false;
+  if (typeCode === 'IFACE') return false;
+
+  if (typeName.indexOf('camera') !== -1) return false;
+  if (typeName.indexOf('tablet') !== -1) return false;
+  if (typeName.indexOf('hermes') !== -1) return false;
+
+  if (modelName.indexOf('vt102') !== -1) return false;
+  if (modelName.indexOf('vt202') !== -1) return false;
+  if (modelName.indexOf('iq') !== -1) return false;
+  if (modelName.indexOf('multi') !== -1) return false;
+  if (modelName.indexOf('camera') !== -1) return false;
+  if (modelName.indexOf('tablet') !== -1) return false;
+  if (modelName.indexOf('mt201') !== -1) return false;
+
+  // Include Asset Track hardware only
+  return (
+    typeCode === 'ATRACKER' ||
+    typeName.indexOf('asset tracker') !== -1 ||
+    modelName.indexOf('at301') !== -1 ||
+    modelName.indexOf('oyster') !== -1 ||
+    modelName.indexOf('solar') !== -1 ||
+    String(modelId) === '85' ||
+    String(modelId) === '433'
+  );
+}
 
   function isDeviceAssignedToVehicle(d, vehicle) {
     if (!d || !vehicle) return false;
