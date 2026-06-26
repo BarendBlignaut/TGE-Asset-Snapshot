@@ -1,305 +1,398 @@
-// TGE Asset Snapshot — Manual API Workbench
+// TGE Asset Snapshot — API Workbench
 // public/diag-manual.js
 
 (function () {
   'use strict';
 
-  // ── Styles ─────────────────────────────────────────────────────────────────
+  var resultSeq = 0;
+  var results   = []; // all result records
+
+  // ── Styles ──────────────────────────────────────────────────────────────────
   function injectStyles() {
     if (document.getElementById('dm-styles')) return;
     var s = document.createElement('style');
     s.id = 'dm-styles';
     s.textContent = [
-      // Layout
-      '.dm-wrap{display:flex;flex-direction:column;gap:0;margin:-20px;min-height:calc(100vh - 52px);}',
-      '.dm-token-bar{padding:12px 20px;background:var(--green-900);display:flex;align-items:center;gap:12px;border-bottom:2px solid var(--yellow);}',
-      '.dm-token-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:rgba(212,240,38,0.7);white-space:nowrap;}',
-      '.dm-token-input{flex:1;height:34px;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:0 12px;background:rgba(255,255,255,0.08);color:#fff;font:inherit;font-size:11px;font-family:monospace;}',
-      '.dm-token-input:focus{outline:none;border-color:var(--yellow);}',
-      '.dm-token-input::placeholder{color:rgba(255,255,255,0.3);}',
-      '.dm-token-hint{font-size:10px;color:rgba(255,255,255,0.4);white-space:nowrap;}',
-      '.dm-body{display:grid;grid-template-columns:440px 1fr;flex:1;min-height:0;}',
+      // Root layout
+      '.dm{display:grid;grid-template-columns:400px 1fr;margin:-20px;height:calc(100vh - 52px);overflow:hidden;font-size:13px;}',
 
-      // Left panel — call builder
-      '.dm-left{border-right:1px solid var(--line);overflow-y:auto;max-height:calc(100vh - 104px);background:var(--surface);}',
+      // Left — builder
+      '.dm-left{display:flex;flex-direction:column;border-right:2px solid var(--line);background:var(--surface);overflow:hidden;}',
+      '.dm-left-hdr{padding:12px 16px;background:var(--green-900);border-bottom:2px solid var(--yellow);flex-shrink:0;}',
+      '.dm-left-hdr h2{font-size:13px;font-weight:700;color:#fff;margin-bottom:2px;}',
+      '.dm-left-hdr p{font-size:10px;color:rgba(255,255,255,0.45);}',
+      '.dm-left-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:14px;}',
 
-      // Right panel — diagnostics
-      '.dm-right{overflow-y:auto;max-height:calc(100vh - 104px);background:var(--surface-2);display:flex;flex-direction:column;gap:0;}',
+      // Right — diagnostics
+      '.dm-right{display:flex;flex-direction:column;background:var(--surface-2);overflow:hidden;}',
+      '.dm-right-hdr{padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-shrink:0;}',
+      '.dm-right-hdr h2{font-size:13px;font-weight:700;color:var(--ink);flex:1;}',
+      '.dm-right-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;}',
 
-      // Call panels
-      '.dm-panel{border-bottom:2px solid var(--line);}',
-      '.dm-panel-hdr{padding:11px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--surface);user-select:none;transition:background 140ms;}',
-      '.dm-panel-hdr:hover{background:var(--surface-2);}',
-      '.dm-panel-num{width:24px;height:24px;border-radius:50%;background:var(--green-700);color:var(--yellow);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}',
-      '.dm-panel-title{font-size:13px;font-weight:700;color:var(--ink);flex:1;}',
-      '.dm-panel-subtitle{font-size:10px;color:var(--muted);font-family:monospace;}',
-      '.dm-panel-chev{color:var(--muted-2);transition:transform 0.2s;font-size:18px;line-height:1;}',
-      '.dm-panel.collapsed .dm-panel-chev{transform:rotate(-90deg);}',
-      '.dm-panel.collapsed .dm-panel-body{display:none;}',
-      '.dm-panel-body{padding:14px 16px;display:flex;flex-direction:column;gap:12px;background:var(--surface);}',
+      // Section blocks
+      '.dm-block{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;}',
+      '.dm-block-hdr{padding:8px 12px;background:var(--surface-2);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;}',
+      '.dm-block-hdr:hover{background:var(--surface-3);}',
+      '.dm-block-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);flex:1;}',
+      '.dm-block-chev{font-size:16px;color:var(--muted-2);transition:transform 0.15s;line-height:1;}',
+      '.dm-block.closed .dm-block-chev{transform:rotate(-90deg);}',
+      '.dm-block.closed .dm-block-body{display:none;}',
+      '.dm-block-body{padding:10px 12px;display:flex;flex-direction:column;gap:8px;}',
 
-      // Section labels inside panels
-      '.dm-sec{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:5px;margin-top:4px;}',
+      // Labels
+      '.dm-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);margin-bottom:3px;}',
 
-      // Method + URL row
-      '.dm-url-row{display:flex;gap:6px;align-items:stretch;}',
-      '.dm-method-sel{height:36px;padding:0 8px;border:1px solid var(--line);border-radius:7px;background:var(--surface-2);color:var(--ink);font:inherit;font-size:12px;font-weight:700;width:80px;flex-shrink:0;}',
-      '.dm-url-input{flex:1;height:36px;border:1px solid var(--line);border-radius:7px;padding:0 10px;font:inherit;font-size:11px;font-family:monospace;color:var(--ink);background:var(--surface);}',
-      '.dm-url-input:focus,.dm-method-sel:focus{outline:none;border-color:var(--green-600);}',
+      // Inputs
+      '.dm-input{width:100%;height:36px;border:1px solid var(--line);border-radius:7px;padding:0 10px;font:inherit;font-size:12px;color:var(--ink);background:var(--surface);transition:border-color 140ms;}',
+      '.dm-input:focus{outline:none;border-color:var(--green-600);}',
+      '.dm-input::placeholder{color:var(--muted-2);}',
+      '.dm-input.mono{font-family:monospace;font-size:11px;}',
+      '.dm-input.pass{font-family:monospace;font-size:11px;letter-spacing:0.05em;}',
+      '.dm-select{width:100%;height:36px;border:1px solid var(--line);border-radius:7px;padding:0 10px;font:inherit;font-size:12px;color:var(--ink);background:var(--surface);}',
+      '.dm-select:focus{outline:none;border-color:var(--green-600);}',
+      '.dm-textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:7px;padding:8px 10px;font:inherit;font-size:11px;font-family:monospace;color:var(--ink);background:var(--surface);resize:vertical;line-height:1.5;}',
+      '.dm-textarea:focus{outline:none;border-color:var(--green-600);}',
+
+      // Row
+      '.dm-row{display:flex;gap:6px;align-items:center;}',
+      '.dm-row .dm-input{flex:1;}',
+      '.dm-col{display:flex;flex-direction:column;gap:3px;}',
+      '.dm-grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}',
+
+      // Method badge
+      '.dm-method-wrap{display:flex;gap:6px;}',
+      '.dm-method-opt{flex:1;text-align:center;padding:6px 4px;border:1px solid var(--line);border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;transition:all 140ms;background:var(--surface-2);color:var(--muted);}',
+      '.dm-method-opt:hover{border-color:var(--green-600);color:var(--green-700);}',
+      '.dm-method-opt.active{background:var(--green-700);border-color:var(--green-700);color:var(--yellow);}',
 
       // KV table
-      '.dm-kv-wrap{border:1px solid var(--line);border-radius:8px;overflow:hidden;}',
-      '.dm-kv-table{width:100%;border-collapse:collapse;font-size:11px;}',
-      '.dm-kv-table thead tr{background:var(--surface-2);}',
-      '.dm-kv-table th{text-align:left;padding:5px 8px;color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid var(--line);}',
-      '.dm-kv-table td{padding:2px 4px;border-bottom:1px solid var(--line-2);}',
-      '.dm-kv-table tr:last-child td{border-bottom:none;}',
-      '.dm-kv-input{width:100%;border:1px solid transparent;border-radius:5px;padding:5px 7px;font:inherit;font-size:11px;font-family:monospace;background:transparent;color:var(--ink);}',
-      '.dm-kv-input:focus{outline:none;border-color:var(--green-600);background:var(--surface);}',
-      '.dm-kv-del{border:none;background:none;color:var(--muted-2);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px;line-height:1;}',
-      '.dm-kv-del:hover{color:var(--danger);background:var(--danger-bg);}',
-      '.dm-add-kv{font-size:11px;color:var(--green-600);cursor:pointer;border:none;background:none;padding:6px 8px;font-weight:600;display:block;width:100%;text-align:left;border-top:1px solid var(--line-2);}',
-      '.dm-add-kv:hover{background:var(--green-50);color:var(--green-700);}',
+      '.dm-kv{border:1px solid var(--line);border-radius:8px;overflow:hidden;}',
+      '.dm-kv-row{display:grid;grid-template-columns:1fr 1fr 28px;border-bottom:1px solid var(--line-2);}',
+      '.dm-kv-row:last-child{border-bottom:none;}',
+      '.dm-kv-row:first-child{background:var(--surface-2);}',
+      '.dm-kv-hdr{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);padding:5px 8px;}',
+      '.dm-kv-input{border:none;border-right:1px solid var(--line-2);padding:6px 8px;font:inherit;font-size:11px;font-family:monospace;color:var(--ink);background:transparent;width:100%;}',
+      '.dm-kv-input:focus{outline:none;background:var(--green-50);}',
+      '.dm-kv-del{border:none;background:none;color:var(--muted-2);cursor:pointer;font-size:16px;padding:0;display:flex;align-items:center;justify-content:center;}',
+      '.dm-kv-del:hover{color:var(--danger);}',
+      '.dm-kv-add{width:100%;border:none;background:none;padding:6px 10px;font-size:11px;color:var(--green-600);font-weight:600;cursor:pointer;text-align:left;border-top:1px solid var(--line-2);}',
+      '.dm-kv-add:hover{background:var(--green-50);}',
 
-      // Body textarea
-      '.dm-body-area{width:100%;min-height:100px;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:inherit;font-size:11px;font-family:monospace;color:var(--ink);background:var(--surface);resize:vertical;line-height:1.5;}',
-      '.dm-body-area:focus{outline:none;border-color:var(--green-600);}',
+      // Body type tabs
+      '.dm-body-tabs{display:flex;gap:4px;margin-bottom:6px;}',
+      '.dm-body-tab{padding:4px 10px;border-radius:6px;border:1px solid var(--line);font-size:11px;font-weight:600;cursor:pointer;color:var(--muted);background:var(--surface-2);}',
+      '.dm-body-tab.active{background:var(--green-700);border-color:var(--green-700);color:var(--yellow);}',
 
       // Send button
-      '.dm-send-btn{height:38px;padding:0 20px;border-radius:8px;border:none;background:var(--green-700);color:var(--yellow);font:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:background 140ms;align-self:flex-start;display:flex;align-items:center;gap:8px;}',
-      '.dm-send-btn:hover{background:var(--green-800);}',
-      '.dm-send-btn:disabled{opacity:0.4;cursor:not-allowed;}',
-      '.dm-send-spin{width:12px;height:12px;border:2px solid rgba(212,240,38,0.3);border-top-color:var(--yellow);border-radius:50%;animation:dm-spin 0.7s linear infinite;display:none;}',
-      '.dm-send-btn.loading .dm-send-spin{display:block;}',
-      '@keyframes dm-spin{to{transform:rotate(360deg);}}',
+      '.dm-send{width:100%;height:40px;border:none;border-radius:8px;background:var(--green-700);color:var(--yellow);font:inherit;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background 140ms;}',
+      '.dm-send:hover{background:var(--green-800);}',
+      '.dm-send:disabled{opacity:0.4;cursor:not-allowed;}',
+      '.dm-spin{width:13px;height:13px;border:2px solid rgba(212,240,38,0.3);border-top-color:var(--yellow);border-radius:50%;animation:dm-s 0.7s linear infinite;}',
+      '@keyframes dm-s{to{transform:rotate(360deg);}}',
 
-      // Right panel — diagnostics output
-      '.dm-diag-empty{text-align:center;padding:60px 20px;color:var(--muted-2);}',
-      '.dm-diag-empty-icon{font-size:36px;margin-bottom:10px;}',
+      // Inject buttons
+      '.dm-inject{font-size:10px;font-weight:700;padding:3px 8px;border-radius:5px;border:1px solid var(--green-600);background:var(--green-50);color:var(--green-700);cursor:pointer;white-space:nowrap;}',
+      '.dm-inject:hover{background:var(--green-100);}',
 
-      // Diagnostics result blocks
-      '.dm-result{border-bottom:2px solid var(--line);background:var(--surface);}',
-      '.dm-result-hdr{padding:12px 20px;display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;transition:background 140ms;}',
+      // Filter bar
+      '.dm-filter{display:flex;align-items:center;gap:8px;}',
+      '.dm-filter-input{flex:1;height:30px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font:inherit;font-size:11px;color:var(--ink);background:var(--surface);}',
+      '.dm-filter-input:focus{outline:none;border-color:var(--green-600);}',
+      '.dm-clear-btn{height:30px;padding:0 12px;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:11px;font-weight:600;cursor:pointer;background:var(--danger-bg);color:var(--danger);border-color:rgba(192,57,43,0.3);}',
+      '.dm-clear-btn:hover{background:rgba(192,57,43,0.12);}',
+
+      // Result cards
+      '.dm-result{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;}',
+      '.dm-result-hdr{padding:10px 14px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;transition:background 140ms;}',
       '.dm-result-hdr:hover{background:var(--surface-2);}',
-      '.dm-result.collapsed .dm-result-body{display:none;}',
-      '.dm-result.collapsed .dm-result-chev{transform:rotate(-90deg);}',
-      '.dm-result-chev{color:var(--muted-2);transition:transform 0.2s;font-size:18px;line-height:1;margin-left:auto;}',
-      '.dm-result-num{width:24px;height:24px;border-radius:50%;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}',
-      '.dm-result-num-ok{background:var(--green-100);color:var(--green-700);}',
-      '.dm-result-num-err{background:var(--danger-bg);color:var(--danger);}',
-      '.dm-result-num-pending{background:rgba(180,83,9,0.1);color:var(--warning);}',
-      '.dm-result-title{font-size:13px;font-weight:700;color:var(--ink);}',
-      '.dm-result-meta{font-size:11px;color:var(--muted);font-family:monospace;}',
-      '.dm-result-body{padding:0 20px 16px;}',
+      '.dm-result.closed .dm-result-body{display:none;}',
+      '.dm-result.closed .dm-rchev{transform:rotate(-90deg);}',
+      '.dm-rchev{font-size:16px;color:var(--muted-2);transition:transform 0.15s;line-height:1;margin-left:auto;}',
+      '.dm-result-body{border-top:1px solid var(--line);}',
 
-      // Badge
-      '.dm-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;}',
-      '.dm-badge-ok{background:var(--green-100);color:var(--green-700);}',
-      '.dm-badge-err{background:var(--danger-bg);color:var(--danger);}',
-      '.dm-badge-pending{background:rgba(180,83,9,0.1);color:var(--warning);}',
-      '.dm-badge-gray{background:var(--surface-3);color:var(--muted);}',
+      // Result sections (sent / received)
+      '.dm-rsec{border-bottom:1px solid var(--line-2);}',
+      '.dm-rsec:last-child{border-bottom:none;}',
+      '.dm-rsec-hdr{padding:8px 14px;display:flex;align-items:center;gap:8px;cursor:pointer;background:var(--surface-2);user-select:none;}',
+      '.dm-rsec-hdr:hover{background:var(--surface-3);}',
+      '.dm-rsec.closed .dm-rsec-body{display:none;}',
+      '.dm-rsec.closed .dm-schev{transform:rotate(-90deg);}',
+      '.dm-schev{font-size:14px;color:var(--muted-2);transition:transform 0.15s;line-height:1;margin-left:auto;}',
+      '.dm-rsec-title{font-size:11px;font-weight:700;color:var(--ink-2);}',
+      '.dm-rsec-body{padding:10px 14px;}',
 
-      // Expandable sections inside result
-      '.dm-section{margin-top:10px;}',
-      '.dm-section-hdr{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;cursor:pointer;user-select:none;font-size:11px;font-weight:700;color:var(--ink-2);}',
-      '.dm-section-hdr:hover{background:var(--surface-3);}',
-      '.dm-section.collapsed .dm-section-body{display:none;}',
-      '.dm-section.collapsed .dm-sec-chev{transform:rotate(-90deg);}',
-      '.dm-sec-chev{color:var(--muted-2);transition:transform 0.15s;font-size:14px;margin-left:auto;}',
-      '.dm-section-body{border:1px solid var(--line);border-top:none;border-radius:0 0 8px 8px;overflow:hidden;}',
-
-      // Raw JSON display
-      '.dm-raw{background:var(--surface-3);padding:10px 12px;font-family:monospace;font-size:10px;color:var(--ink-2);white-space:pre-wrap;word-break:break-all;max-height:320px;overflow-y:auto;line-height:1.6;}',
+      // Raw display
+      '.dm-raw{background:var(--surface-3);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font-family:monospace;font-size:10px;color:var(--ink-2);white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto;line-height:1.6;}',
 
       // KV display (read-only)
-      '.dm-kv-display{padding:8px 12px;display:flex;flex-direction:column;gap:4px;background:var(--surface-3);}',
-      '.dm-kv-display-row{display:flex;gap:8px;font-size:11px;font-family:monospace;}',
-      '.dm-kv-display-key{color:var(--green-700);font-weight:700;min-width:140px;flex-shrink:0;}',
-      '.dm-kv-display-val{color:var(--ink-2);word-break:break-all;}',
+      '.dm-kvd{display:flex;flex-direction:column;gap:3px;}',
+      '.dm-kvd-row{display:flex;gap:8px;font-size:11px;font-family:monospace;padding:3px 0;border-bottom:1px solid var(--line-2);}',
+      '.dm-kvd-row:last-child{border-bottom:none;}',
+      '.dm-kvd-k{color:var(--green-700);font-weight:700;min-width:160px;flex-shrink:0;}',
+      '.dm-kvd-v{color:var(--ink-2);word-break:break-all;}',
 
-      // S3 URL box
-      '.dm-s3-box{background:var(--green-50);border:1px solid rgba(0,166,81,0.3);border-radius:8px;padding:10px 12px;font-family:monospace;font-size:10px;color:var(--green-700);word-break:break-all;line-height:1.6;margin-top:10px;}',
-      '.dm-s3-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--green-600);margin-bottom:4px;}',
+      // Badges
+      '.dm-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;}',
+      '.dm-ok{background:var(--green-100);color:var(--green-700);}',
+      '.dm-err{background:var(--danger-bg);color:var(--danger);}',
+      '.dm-warn{background:rgba(180,83,9,0.1);color:var(--warning);}',
+      '.dm-gray{background:var(--surface-3);color:var(--muted);}',
 
-      // Image preview
-      '.dm-img-preview{margin-top:10px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface-2);display:flex;align-items:center;justify-content:center;min-height:180px;}',
-      '.dm-img-preview img{max-width:100%;max-height:480px;object-fit:contain;display:block;}',
+      // S3 box
+      '.dm-s3{background:var(--green-50);border:1px solid rgba(0,166,81,0.3);border-radius:8px;padding:10px 12px;font-family:monospace;font-size:10px;color:var(--green-700);word-break:break-all;line-height:1.6;margin-bottom:10px;}',
 
-      // Attachment quick-pick list
-      '.dm-att-list{display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:var(--surface-3);}',
-      '.dm-att-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;border:1px solid var(--line);background:var(--surface);cursor:pointer;transition:all 140ms;}',
-      '.dm-att-row:hover{background:var(--green-50);border-color:var(--green-600);}',
-      '.dm-att-pos{font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:var(--green-100);color:var(--green-700);min-width:100px;text-align:center;flex-shrink:0;}',
+      // Image
+      '.dm-img{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface-2);display:flex;align-items:center;justify-content:center;min-height:160px;}',
+      '.dm-img img{max-width:100%;max-height:420px;object-fit:contain;display:block;}',
+
+      // Attachment rows
+      '.dm-atts{display:flex;flex-direction:column;gap:5px;margin-top:8px;}',
+      '.dm-att{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;border:1px solid var(--line);background:var(--surface-2);cursor:pointer;transition:all 140ms;}',
+      '.dm-att:hover{background:var(--green-50);border-color:var(--green-600);}',
+      '.dm-att-pos{font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:var(--green-100);color:var(--green-700);min-width:110px;text-align:center;flex-shrink:0;}',
       '.dm-att-id{font-family:monospace;font-size:11px;color:var(--ink-2);flex:1;}',
-      '.dm-att-time{font-size:10px;color:var(--muted);flex-shrink:0;}',
-      '.dm-att-arrow{font-size:12px;color:var(--green-600);flex-shrink:0;}',
+      '.dm-att-t{font-size:10px;color:var(--muted);flex-shrink:0;}',
+      '.dm-att-arr{font-size:11px;color:var(--green-600);font-weight:700;flex-shrink:0;}',
 
-      // Timing row
-      '.dm-timing{display:flex;align-items:center;gap:12px;font-size:11px;color:var(--muted);margin-top:6px;}',
-      '.dm-timing strong{color:var(--ink-2);}',
+      // Empty
+      '.dm-empty{text-align:center;padding:48px 20px;color:var(--muted-2);}',
+      '.dm-empty-icon{font-size:36px;margin-bottom:10px;}',
     ].join('');
     document.head.appendChild(s);
   }
 
-  // ── Globals ────────────────────────────────────────────────────────────────
-  window._dmFillAttachment = fillAttachment;
-  window._dmToggleSection  = toggleSection;
-  window._dmToggleResult   = toggleResult;
-  window._dmAddKv          = addKvRow;
-  window._dmDelKv          = delKvRow;
-
-  var resultCount = 0;
-
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ──────────────────────────────────────────────────────────────────
   function render() {
     var view = TGE.el('view-diag-manual');
     if (!view) return;
     injectStyles();
 
     view.innerHTML = [
-      '<div class="dm-wrap">',
+      '<div class="dm">',
 
-        // Token bar
-        '<div class="dm-token-bar">',
-          '<span class="dm-token-label">TN360 Session Token</span>',
-          '<input class="dm-token-input" id="dm-token" type="password" placeholder="Paste your TN360 token here — used as X-TN360-Token header on all calls">',
-          '<span class="dm-token-hint">From DevTools → any api-au.telematics.com request → Authorization header</span>',
-        '</div>',
+        // ── LEFT ──
+        '<div class="dm-left">',
+          '<div class="dm-left-hdr">',
+            '<h2>API Workbench</h2>',
+            '<p>Build and send TN360 API calls — all requests and responses logged on the right</p>',
+          '</div>',
+          '<div class="dm-left-body">',
 
-        '<div class="dm-body">',
+            // Auth
+            '<div class="dm-block" id="dm-blk-auth">',
+              '<div class="dm-block-hdr" onclick="dmToggleBlock(\'dm-blk-auth\')">',
+                '<span class="dm-block-title">Auth</span>',
+                '<span class="dm-block-chev">›</span>',
+              '</div>',
+              '<div class="dm-block-body">',
+                '<div class="dm-col">',
+                  '<div class="dm-lbl">TN360 Session Token <span style="font-weight:400;text-transform:none;letter-spacing:0;">(X-TN360-Token header)</span></div>',
+                  '<input class="dm-input pass" id="dm-token" type="password" placeholder="Paste token from DevTools → api-au.telematics.com → Authorization">',
+                '</div>',
+              '</div>',
+            '</div>',
 
-          // ── LEFT: call builder ──
-          '<div class="dm-left">',
+            // Common IDs
+            '<div class="dm-block" id="dm-blk-ids">',
+              '<div class="dm-block-hdr" onclick="dmToggleBlock(\'dm-blk-ids\')">',
+                '<span class="dm-block-title">Common IDs &amp; Values</span>',
+                '<span class="dm-block-chev">›</span>',
+              '</div>',
+              '<div class="dm-block-body">',
+                '<p style="font-size:10px;color:var(--muted);margin-bottom:2px;">Fill these in — use the inject buttons to insert them into the URL or body below.</p>',
+                '<div class="dm-grid2">',
+                  dmField('dm-id-vehicle',   'Vehicle ID',    '381634'),
+                  dmField('dm-id-device',    'Device ID',     '518241'),
+                  dmField('dm-id-event',     'Event ID',      ''),
+                  dmField('dm-id-attachment','Attachment ID', ''),
+                  dmField('dm-id-year',      'Year',          new Date().getFullYear()),
+                  dmField('dm-id-month',     'Month',         new Date().getMonth()+1),
+                  dmField('dm-id-from',      'From (AEST)',   '2026-06-01T00:00:00%2B10:00'),
+                  dmField('dm-id-to',        'To (AEST)',     '2026-06-26T23:59:59%2B10:00'),
+                '</div>',
+                '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">',
+                  '<button class="dm-inject" onclick="dmInjectUrl()">→ Inject into URL</button>',
+                  '<button class="dm-inject" onclick="dmInjectBody()">→ Inject into Body</button>',
+                  '<button class="dm-inject" onclick="dmInjectParams()">→ Inject into Params</button>',
+                '</div>',
+              '</div>',
+            '</div>',
 
-            // CALL 1
-            buildCallPanel(1, 'POST', 'Snapshot Events',
-              '/api/tn360/v1/devices/events/camera/snapshots',
-              [['from','2026-06-01T00:00:00%2B10:00'],['to','2026-06-26T23:59:59%2B10:00']],
-              [['Content-Type','application/json']],
-              '{\n  "vehicles": ["381634"],\n  "devices": ["518241"],\n  "orderField": "EventTime",\n  "orderDirection": "desc",\n  "rowCountLimit": 25,\n  "rowOffset": 0,\n  "latestOnly": false\n}',
-              'POST events to get attachmentIds'
-            ),
+            // Request builder
+            '<div class="dm-block" id="dm-blk-req">',
+              '<div class="dm-block-hdr" onclick="dmToggleBlock(\'dm-blk-req\')">',
+                '<span class="dm-block-title">Request</span>',
+                '<span class="dm-block-chev">›</span>',
+              '</div>',
+              '<div class="dm-block-body">',
 
-            // CALL 2
-            buildCallPanel(2, 'GET', 'Attachment Content (Fresh URL)',
-              '/api/tn360/v1/attachments/ATTACHMENT_ID/content',
-              [['pruning','WEB'],['thumbnail','false'],['year','2026'],['month','6'],['presigned','true']],
-              [['Content-Type','application/json']],
-              '',
-              'Replace ATTACHMENT_ID in URL — or click an attachment from Call 1 results'
-            ),
+                // Method
+                '<div class="dm-col">',
+                  '<div class="dm-lbl">HTTP Method</div>',
+                  '<div class="dm-method-wrap">',
+                    '<div class="dm-method-opt active" data-m="GET"    onclick="dmSetMethod(\'GET\')">GET</div>',
+                    '<div class="dm-method-opt"         data-m="POST"   onclick="dmSetMethod(\'POST\')">POST</div>',
+                    '<div class="dm-method-opt"         data-m="PUT"    onclick="dmSetMethod(\'PUT\')">PUT</div>',
+                    '<div class="dm-method-opt"         data-m="DELETE" onclick="dmSetMethod(\'DELETE\')">DELETE</div>',
+                  '</div>',
+                '</div>',
 
-            // CALL 3 — custom
-            buildCallPanel(3, 'GET', 'Custom Call',
-              '/api/tn360/v1/',
-              [['','']],
-              [['Content-Type','application/json']],
-              '',
-              'Enter any TN360 endpoint path'
-            ),
+                // URL
+                '<div class="dm-col">',
+                  '<div class="dm-lbl">URL / Path</div>',
+                  '<input class="dm-input mono" id="dm-url" value="/api/tn360/v1/devices/events/camera/snapshots" placeholder="/api/tn360/v1/...">',
+                  '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">',
+                    dmQuick('Events',      '/api/tn360/v1/devices/events/camera/snapshots'),
+                    dmQuick('Attachment',  '/api/tn360/v1/attachments/ATTACHMENT_ID/content'),
+                    dmQuick('Vehicles',    '/api/tn360/v1/vehicles'),
+                    dmQuick('Cameras',     '/api/tn360/cameras/DEVICE_ID/status'),
+                  '</div>',
+                '</div>',
+
+                // Query params
+                '<div class="dm-col">',
+                  '<div class="dm-lbl">Query Params</div>',
+                  '<div class="dm-kv" id="dm-params-wrap">',
+                    '<div class="dm-kv-row"><span class="dm-kv-hdr">Key</span><span class="dm-kv-hdr">Value</span><span></span></div>',
+                    '<div id="dm-params"></div>',
+                    '<button class="dm-kv-add" onclick="dmAddKv(\'dm-params\')">+ Add param</button>',
+                  '</div>',
+                '</div>',
+
+                // Headers
+                '<div class="dm-col">',
+                  '<div class="dm-lbl">Additional Headers <span style="font-weight:400;text-transform:none;">(token auto-added)</span></div>',
+                  '<div class="dm-kv" id="dm-headers-wrap">',
+                    '<div class="dm-kv-row"><span class="dm-kv-hdr">Key</span><span class="dm-kv-hdr">Value</span><span></span></div>',
+                    '<div id="dm-headers"></div>',
+                    '<button class="dm-kv-add" onclick="dmAddKv(\'dm-headers\')">+ Add header</button>',
+                  '</div>',
+                '</div>',
+
+                // Body
+                '<div class="dm-col" id="dm-body-wrap">',
+                  '<div class="dm-lbl">Request Body</div>',
+                  '<div class="dm-body-tabs">',
+                    '<div class="dm-body-tab active" onclick="dmBodyTab(\'json\',this)">JSON</div>',
+                    '<div class="dm-body-tab" onclick="dmBodyTab(\'none\',this)">None</div>',
+                  '</div>',
+                  '<textarea class="dm-textarea" id="dm-body" rows="6">{\n  "vehicles": ["381634"],\n  "devices": ["518241"],\n  "orderField": "EventTime",\n  "orderDirection": "desc",\n  "rowCountLimit": 25,\n  "rowOffset": 0,\n  "latestOnly": false\n}</textarea>',
+                '</div>',
+
+              '</div>',
+            '</div>',
+
+            // Send
+            '<button class="dm-send" id="dm-send" onclick="dmSend()">',
+              '<span id="dm-send-txt">▶ Send Request</span>',
+            '</button>',
 
           '</div>',
+        '</div>',
 
-          // ── RIGHT: diagnostics ──
-          '<div class="dm-right" id="dm-diag-panel">',
-            '<div class="dm-diag-empty" id="dm-diag-empty">',
-              '<div class="dm-diag-empty-icon">🔬</div>',
-              '<p style="font-size:13px;color:var(--muted);">Send a call from the left panel.<br>All requests, responses and data appear here.</p>',
+        // ── RIGHT ──
+        '<div class="dm-right">',
+          '<div class="dm-right-hdr">',
+            '<h2>Diagnostics Log</h2>',
+            '<div class="dm-filter">',
+              '<input class="dm-filter-input" id="dm-filter" placeholder="Filter results…" oninput="dmFilter()">',
+              '<button class="dm-clear-btn" onclick="dmClearResults()">Clear all</button>',
             '</div>',
           '</div>',
-
+          '<div class="dm-right-body" id="dm-results">',
+            '<div class="dm-empty" id="dm-empty">',
+              '<div class="dm-empty-icon">🔬</div>',
+              '<p>Send a request — every call, response and parsed data appears here.<br>Results persist across calls so you can compare.</p>',
+            '</div>',
+          '</div>',
         '</div>',
+
       '</div>',
     ].join('');
+
+    // Set default method
+    window._dmMethod = 'GET';
+
+    // Expose globals
+    window.dmToggleBlock  = dmToggleBlock;
+    window.dmSetMethod    = dmSetMethod;
+    window.dmAddKv        = dmAddKv;
+    window.dmDelKv        = dmDelKv;
+    window.dmSend         = dmSend;
+    window.dmFilter       = dmFilter;
+    window.dmClearResults = dmClearResults;
+    window.dmBodyTab      = dmBodyTab;
+    window.dmInjectUrl    = dmInjectUrl;
+    window.dmInjectBody   = dmInjectBody;
+    window.dmInjectParams = dmInjectParams;
+    window.dmSetUrl       = dmSetUrl;
+    window.dmFillAtt      = dmFillAtt;
+    window.dmToggleResult = dmToggleResult;
+    window.dmToggleRsec   = dmToggleRsec;
   }
 
-  // ── Build call panel ───────────────────────────────────────────────────────
-  function buildCallPanel(num, method, title, url, params, headers, body, hint) {
-    var paramRows = params.map(function(p) { return kvInputRow(num,'param',p[0],p[1]); }).join('');
-    var headerRows = headers.map(function(h) { return kvInputRow(num,'header',h[0],h[1]); }).join('');
-    var bodyHtml = (method === 'POST' || method === 'PUT' || body)
-      ? '<div class="dm-sec">Request body (JSON)</div>'
-        + '<textarea class="dm-body-area" id="dm-'+num+'-body">' + esc(body) + '</textarea>'
-      : '';
-
-    return '<div class="dm-panel" id="dm-panel-'+num+'">'
-      + '<div class="dm-panel-hdr" onclick="document.getElementById(\'dm-panel-'+num+'\').classList.toggle(\'collapsed\')">'
-        + '<div class="dm-panel-num">'+num+'</div>'
-        + '<div style="flex:1;">'
-          + '<div class="dm-panel-title">'+esc(title)+'</div>'
-          + '<div class="dm-panel-subtitle">'+esc(method)+' '+esc(url)+'</div>'
-        + '</div>'
-        + '<span class="dm-panel-chev">›</span>'
-      + '</div>'
-      + '<div class="dm-panel-body">'
-
-        + (hint ? '<p style="font-size:11px;color:var(--muted);padding:4px 0;">'+esc(hint)+'</p>' : '')
-
-        + '<div class="dm-sec">Method &amp; URL</div>'
-        + '<div class="dm-url-row">'
-          + '<select class="dm-method-sel" id="dm-'+num+'-method">'
-            + ['GET','POST','PUT','DELETE'].map(function(m){ return '<option'+(m===method?' selected':'')+'>'+m+'</option>'; }).join('')
-          + '</select>'
-          + '<input class="dm-url-input" id="dm-'+num+'-url" value="'+esc(url)+'">'
-        + '</div>'
-
-        + '<div class="dm-sec">Query params</div>'
-        + '<div class="dm-kv-wrap">'
-          + '<table class="dm-kv-table"><thead><tr><th style="width:35%">Key</th><th>Value</th><th style="width:28px"></th></tr></thead>'
-          + '<tbody id="dm-'+num+'-params">'+paramRows+'</tbody></table>'
-          + '<button class="dm-add-kv" onclick="_dmAddKv(\'dm-'+num+'-params\')">+ Add param</button>'
-        + '</div>'
-
-        + '<div class="dm-sec">Request headers</div>'
-        + '<div class="dm-kv-wrap">'
-          + '<table class="dm-kv-table"><thead><tr><th style="width:35%">Key</th><th>Value</th><th style="width:28px"></th></tr></thead>'
-          + '<tbody id="dm-'+num+'-headers">'+headerRows+'</tbody></table>'
-          + '<button class="dm-add-kv" onclick="_dmAddKv(\'dm-'+num+'-headers\')">+ Add header</button>'
-        + '</div>'
-
-        + bodyHtml
-
-        + '<button class="dm-send-btn" id="dm-'+num+'-send" onclick="dmSend('+num+')">'
-          + '<div class="dm-send-spin" id="dm-'+num+'-spin"></div>'
-          + '<span id="dm-'+num+'-send-txt">▶ Send</span>'
-        + '</button>'
-
-      + '</div>'
-    + '</div>';
+  // ── Field helpers ───────────────────────────────────────────────────────────
+  function dmField(id, label, val) {
+    return '<div class="dm-col"><div class="dm-lbl">'+esc(label)+'</div>'
+      + '<input class="dm-input mono" id="'+id+'" value="'+esc(val)+'" placeholder="'+esc(label)+'"></div>';
   }
 
-  // ── KV input helpers ───────────────────────────────────────────────────────
-  function kvInputRow(num, type, k, v) {
-    var tbodyId = 'dm-'+num+'-'+(type==='param'?'params':'headers');
-    return '<tr>'
-      + '<td><input class="dm-kv-input" placeholder="key" value="'+esc(k)+'"></td>'
-      + '<td><input class="dm-kv-input" placeholder="value" value="'+esc(v)+'"></td>'
-      + '<td><button class="dm-kv-del" onclick="_dmDelKv(this)" title="Remove">×</button></td>'
-    + '</tr>';
+  function dmQuick(label, url) {
+    return '<button class="dm-inject" onclick="dmSetUrl(\''+esc(url)+'\')">'+esc(label)+'</button>';
   }
 
-  function addKvRow(tbodyId) {
-    var tbody = TGE.el(tbodyId);
-    if (!tbody) return;
-    var tr = document.createElement('tr');
-    tr.innerHTML = '<td><input class="dm-kv-input" placeholder="key"></td>'
-      + '<td><input class="dm-kv-input" placeholder="value"></td>'
-      + '<td><button class="dm-kv-del" onclick="_dmDelKv(this)" title="Remove">×</button></td>';
-    tbody.appendChild(tr);
-    tr.querySelector('.dm-kv-input').focus();
+  // ── Toggle block ────────────────────────────────────────────────────────────
+  function dmToggleBlock(id) {
+    var el = TGE.el(id);
+    if (el) el.classList.toggle('closed');
   }
 
-  function delKvRow(btn) {
-    var tr = btn.closest('tr');
-    if (tr) tr.remove();
+  // ── Method selector ─────────────────────────────────────────────────────────
+  function dmSetMethod(m) {
+    window._dmMethod = m;
+    document.querySelectorAll('.dm-method-opt').forEach(function(el) {
+      el.classList.toggle('active', el.getAttribute('data-m') === m);
+    });
   }
 
-  function getKv(tbodyId) {
-    var tbody = TGE.el(tbodyId);
-    if (!tbody) return {};
+  // ── Set URL ─────────────────────────────────────────────────────────────────
+  function dmSetUrl(url) {
+    var el = TGE.el('dm-url');
+    if (el) el.value = url;
+  }
+
+  // ── Body tab ────────────────────────────────────────────────────────────────
+  function dmBodyTab(type, btn) {
+    document.querySelectorAll('.dm-body-tab').forEach(function(t){ t.classList.remove('active'); });
+    btn.classList.add('active');
+    var bw = TGE.el('dm-body');
+    if (bw) bw.style.display = type === 'none' ? 'none' : '';
+  }
+
+  // ── KV helpers ───────────────────────────────────────────────────────────────
+  function dmAddKv(containerId) {
+    var c = TGE.el(containerId);
+    if (!c) return;
+    var row = document.createElement('div');
+    row.className = 'dm-kv-row';
+    row.innerHTML = '<input class="dm-kv-input" placeholder="key">'
+      + '<input class="dm-kv-input" placeholder="value">'
+      + '<button class="dm-kv-del" onclick="dmDelKv(this)">×</button>';
+    c.appendChild(row);
+    row.querySelector('.dm-kv-input').focus();
+  }
+
+  function dmDelKv(btn) {
+    var row = btn.closest('.dm-kv-row');
+    if (row) row.remove();
+  }
+
+  function getKv(containerId) {
+    var c = TGE.el(containerId);
+    if (!c) return {};
     var out = {};
-    tbody.querySelectorAll('tr').forEach(function(tr) {
-      var inputs = tr.querySelectorAll('.dm-kv-input');
+    c.querySelectorAll('.dm-kv-row').forEach(function(row) {
+      var inputs = row.querySelectorAll('.dm-kv-input');
       var k = inputs[0] ? inputs[0].value.trim() : '';
       var v = inputs[1] ? inputs[1].value.trim() : '';
       if (k) out[k] = v;
@@ -307,267 +400,368 @@
     return out;
   }
 
-  // ── Fill attachment into Call 2 ────────────────────────────────────────────
-  function fillAttachment(attachmentId, year, month) {
-    var urlEl = TGE.el('dm-2-url');
+  // ── Inject helpers ──────────────────────────────────────────────────────────
+  function getIds() {
+    return {
+      vehicle:    val('dm-id-vehicle'),
+      device:     val('dm-id-device'),
+      event:      val('dm-id-event'),
+      attachment: val('dm-id-attachment'),
+      year:       val('dm-id-year'),
+      month:      val('dm-id-month'),
+      from:       val('dm-id-from'),
+      to:         val('dm-id-to'),
+    };
+  }
+
+  function val(id) {
+    var el = TGE.el(id);
+    return el ? el.value.trim() : '';
+  }
+
+  function dmInjectUrl() {
+    var ids = getIds();
+    var urlEl = TGE.el('dm-url');
+    if (!urlEl) return;
+    var u = urlEl.value;
+    if (ids.attachment) u = u.replace('ATTACHMENT_ID', ids.attachment);
+    if (ids.device)     u = u.replace('DEVICE_ID', ids.device);
+    if (ids.vehicle)    u = u.replace('VEHICLE_ID', ids.vehicle);
+    if (ids.event)      u = u.replace('EVENT_ID', ids.event);
+    urlEl.value = u;
+  }
+
+  function dmInjectBody() {
+    var ids = getIds();
+    var bodyEl = TGE.el('dm-body');
+    if (!bodyEl) return;
+    try {
+      var obj = JSON.parse(bodyEl.value || '{}');
+      if (ids.vehicle)    { obj.vehicles = [ids.vehicle]; }
+      if (ids.device)     { obj.devices  = [ids.device];  }
+      if (ids.attachment) { obj.attachmentId = ids.attachment; }
+      if (ids.from)       { obj.from = ids.from; }
+      if (ids.to)         { obj.to   = ids.to;   }
+      if (ids.year)       { obj.year  = parseInt(ids.year);  }
+      if (ids.month)      { obj.month = parseInt(ids.month); }
+      bodyEl.value = JSON.stringify(obj, null, 2);
+    } catch(e) {
+      alert('Body is not valid JSON — edit it manually.');
+    }
+  }
+
+  function dmInjectParams() {
+    var ids = getIds();
+    var c = TGE.el('dm-params');
+    if (!c) return;
+    function setParam(k, v) {
+      if (!v) return;
+      var rows = c.querySelectorAll('.dm-kv-row');
+      var found = false;
+      rows.forEach(function(row) {
+        var inputs = row.querySelectorAll('.dm-kv-input');
+        if (inputs[0] && inputs[0].value.trim() === k) {
+          if (inputs[1]) inputs[1].value = v;
+          found = true;
+        }
+      });
+      if (!found) {
+        var row = document.createElement('div');
+        row.className = 'dm-kv-row';
+        row.innerHTML = '<input class="dm-kv-input" value="'+esc(k)+'">'
+          + '<input class="dm-kv-input" value="'+esc(v)+'">'
+          + '<button class="dm-kv-del" onclick="dmDelKv(this)">×</button>';
+        c.appendChild(row);
+      }
+    }
+    if (ids.from)  setParam('from',  ids.from);
+    if (ids.to)    setParam('to',    ids.to);
+    if (ids.year)  setParam('year',  ids.year);
+    if (ids.month) setParam('month', ids.month);
+    if (ids.attachment) setParam('attachmentId', ids.attachment);
+  }
+
+  // ── Fill attachment from result ─────────────────────────────────────────────
+  function dmFillAtt(attachmentId, year, month, position) {
+    // Fill IDs panel
+    var aEl = TGE.el('dm-id-attachment');
+    var yEl = TGE.el('dm-id-year');
+    var mEl = TGE.el('dm-id-month');
+    if (aEl) aEl.value = attachmentId;
+    if (yEl) yEl.value = year;
+    if (mEl) mEl.value = month;
+
+    // Set URL to attachment endpoint
+    var urlEl = TGE.el('dm-url');
     if (urlEl) urlEl.value = '/api/tn360/v1/attachments/' + attachmentId + '/content';
 
-    var tbody = TGE.el('dm-2-params');
-    if (tbody) {
-      tbody.querySelectorAll('tr').forEach(function(tr) {
-        var inputs = tr.querySelectorAll('.dm-kv-input');
-        var k = inputs[0] ? inputs[0].value.trim() : '';
-        if (k === 'year'  && inputs[1]) inputs[1].value = year;
-        if (k === 'month' && inputs[1]) inputs[1].value = month;
+    // Set method to GET
+    dmSetMethod('GET');
+
+    // Set params
+    var c = TGE.el('dm-params');
+    if (c) {
+      c.innerHTML = '';
+      [['pruning','WEB'],['thumbnail','false'],['year',year],['month',month],['presigned','true']].forEach(function(p) {
+        var row = document.createElement('div');
+        row.className = 'dm-kv-row';
+        row.innerHTML = '<input class="dm-kv-input" value="'+esc(p[0])+'">'
+          + '<input class="dm-kv-input" value="'+esc(p[1])+'">'
+          + '<button class="dm-kv-del" onclick="dmDelKv(this)">×</button>';
+        c.appendChild(row);
       });
     }
 
-    // Open panel 2
-    var p2 = TGE.el('dm-panel-2');
-    if (p2) p2.classList.remove('collapsed');
-    p2 && p2.scrollIntoView({ behavior:'smooth', block:'start' });
+    // Clear body
+    var bodyEl = TGE.el('dm-body');
+    if (bodyEl) bodyEl.value = '';
+
+    // Scroll left panel to top
+    var left = document.querySelector('.dm-left-body');
+    if (left) left.scrollTop = 0;
   }
 
-  // ── Toggle helpers ─────────────────────────────────────────────────────────
-  function toggleSection(el) {
-    var sec = el.closest('.dm-section');
-    if (sec) sec.classList.toggle('collapsed');
-  }
+  // ── Send ────────────────────────────────────────────────────────────────────
+  async function dmSend() {
+    var method  = window._dmMethod || 'GET';
+    var baseUrl = val('dm-url');
+    var token   = val('dm-token');
+    var params  = getKv('dm-params');
+    var hdrs    = getKv('dm-headers');
+    var bodyEl  = TGE.el('dm-body');
+    var bodyRaw = (bodyEl && bodyEl.style.display !== 'none') ? bodyEl.value.trim() : '';
 
-  function toggleResult(el) {
-    var res = el.closest('.dm-result');
-    if (res) res.classList.toggle('collapsed');
-  }
+    if (!baseUrl) { alert('Enter a URL.'); return; }
 
-  // ── Send a call ────────────────────────────────────────────────────────────
-  window.dmSend = async function(num) {
-    var method  = (TGE.el('dm-'+num+'-method')||{}).value || 'GET';
-    var baseUrl = ((TGE.el('dm-'+num+'-url')||{}).value||'').trim();
-    var params  = getKv('dm-'+num+'-params');
-    var hdrs    = getKv('dm-'+num+'-headers');
-    var bodyEl  = TGE.el('dm-'+num+'-body');
-    var bodyRaw = bodyEl ? bodyEl.value.trim() : '';
-    var token   = ((TGE.el('dm-token')||{}).value||'').trim();
-
-    if (!baseUrl) return;
-
-    // Build full URL with query string
+    // Build query string
     var qParts = [];
     Object.keys(params).forEach(function(k) {
       if (k) qParts.push(encodeURIComponent(k) + '=' + params[k]);
     });
     var fullUrl = qParts.length ? baseUrl + '?' + qParts.join('&') : baseUrl;
 
-    // Build headers — inject token if provided
-    var fetchHeaders = {};
-    Object.keys(hdrs).forEach(function(k) { if (k && hdrs[k]) fetchHeaders[k] = hdrs[k]; });
-    if (!fetchHeaders['Content-Type']) fetchHeaders['Content-Type'] = 'application/json';
-    if (token) fetchHeaders['X-TN360-Token'] = token;
+    // Build headers
+    var fetchHdrs = { 'Content-Type': 'application/json' };
+    Object.keys(hdrs).forEach(function(k) { if (k && hdrs[k]) fetchHdrs[k] = hdrs[k]; });
+    if (token) fetchHdrs['X-TN360-Token'] = token;
 
-    // Fetch options
-    var fetchOpts = { method: method, credentials: 'include', headers: fetchHeaders };
-    if ((method === 'POST' || method === 'PUT') && bodyRaw) fetchOpts.body = bodyRaw;
+    // Fetch opts
+    var opts = { method: method, credentials: 'include', headers: fetchHdrs };
+    if ((method === 'POST' || method === 'PUT') && bodyRaw) opts.body = bodyRaw;
 
-    // UI loading state
-    var sendBtn  = TGE.el('dm-'+num+'-send');
-    var sendSpin = TGE.el('dm-'+num+'-spin');
-    var sendTxt  = TGE.el('dm-'+num+'-send-txt');
-    if (sendBtn)  sendBtn.disabled = true;
-    if (sendBtn)  sendBtn.classList.add('loading');
-    if (sendSpin) sendSpin.style.display = 'block';
-    if (sendTxt)  sendTxt.textContent = 'Sending…';
+    // Loading state
+    var btn = TGE.el('dm-send');
+    var txt = TGE.el('dm-send-txt');
+    if (btn) btn.disabled = true;
+    if (txt) txt.textContent = 'Sending…';
 
-    // Hide empty state
-    var empty = TGE.el('dm-diag-empty');
+    var empty = TGE.el('dm-empty');
     if (empty) empty.style.display = 'none';
 
-    // Add pending result block
-    resultCount++;
-    var rid    = 'dm-res-' + resultCount;
-    var rNum   = resultCount;
-    var rBlock = buildPendingResult(rid, rNum, num, method, fullUrl);
-    var panel  = TGE.el('dm-diag-panel');
-    if (panel) panel.insertBefore(rBlock, panel.firstChild);
+    // Add pending card
+    resultSeq++;
+    var rid   = 'dmr-' + resultSeq;
+    var rNum  = resultSeq;
+    var card  = buildPendingCard(rid, rNum, method, fullUrl);
+    var rArea = TGE.el('dm-results');
+    if (rArea) rArea.insertBefore(card, rArea.firstChild);
 
-    var start = Date.now();
-    var status = 0;
-    var data   = null;
+    var start   = Date.now();
+    var status  = 0;
     var rawText = '';
+    var data    = null;
 
     try {
-      var res = await fetch(fullUrl, fetchOpts);
+      var res = await fetch(fullUrl, opts);
       status  = res.status;
       rawText = await res.text();
       try { data = JSON.parse(rawText); } catch(e) { data = null; }
     } catch(e) {
-      rawText = e.message;
+      rawText = 'Fetch error: ' + e.message;
       data    = { error: e.message };
     }
 
     var ms = Date.now() - start;
 
-    // Update result block
-    updateResult(rid, rNum, num, method, fullUrl, status, ms,
-      fetchHeaders, params, bodyRaw, data, rawText);
+    // Store result
+    results.push({ id: rid, num: rNum, method: method, url: fullUrl,
+      status: status, ms: ms, reqHdrs: fetchHdrs, reqParams: params,
+      reqBody: bodyRaw, data: data, raw: rawText });
+
+    // Update card
+    updateCard(rid, rNum, method, fullUrl, status, ms, fetchHdrs, params, bodyRaw, data, rawText);
 
     // Reset button
-    if (sendBtn)  sendBtn.disabled = false;
-    if (sendBtn)  sendBtn.classList.remove('loading');
-    if (sendSpin) sendSpin.style.display = 'none';
-    if (sendTxt)  sendTxt.textContent = '▶ Send';
-  };
+    if (btn) btn.disabled = false;
+    if (txt) txt.textContent = '▶ Send Request';
+  }
 
-  // ── Pending result block ───────────────────────────────────────────────────
-  function buildPendingResult(rid, rNum, callNum, method, url) {
+  // ── Build pending card ──────────────────────────────────────────────────────
+  function buildPendingCard(rid, rNum, method, url) {
     var div = document.createElement('div');
     div.className = 'dm-result';
     div.id = rid;
-    div.innerHTML = '<div class="dm-result-hdr" onclick="_dmToggleResult(this)">'
-      + '<div class="dm-result-num dm-result-num-pending">'+rNum+'</div>'
-      + '<div style="flex:1;margin-left:8px;">'
-        + '<div class="dm-result-title">Call '+callNum+' — '+esc(method)+'</div>'
-        + '<div class="dm-result-meta">'+esc(url)+'</div>'
-      + '</div>'
-      + '<span class="dm-badge dm-badge-pending" id="'+rid+'-badge">Sending…</span>'
-      + '<span class="dm-result-chev">›</span>'
+    div.innerHTML = '<div class="dm-result-hdr" onclick="dmToggleResult(this)">'
+      + '<span class="dm-badge dm-warn">#'+rNum+'</span>'
+      + '<span style="margin-left:6px;font-size:12px;font-weight:700;color:var(--ink);">'+esc(method)+' '+esc(url)+'</span>'
+      + '<span class="dm-badge dm-warn" style="margin-left:auto;">Sending…</span>'
+      + '<span class="dm-rchev">›</span>'
     + '</div>'
     + '<div class="dm-result-body" id="'+rid+'-body">'
-      + '<div class="dm-timing">Waiting for response…</div>'
+      + '<div style="padding:12px 14px;font-size:12px;color:var(--muted);">Waiting for response…</div>'
     + '</div>';
     return div;
   }
 
-  // ── Update result block with full data ────────────────────────────────────
-  function updateResult(rid, rNum, callNum, method, url, status, ms, headers, params, reqBody, data, rawText) {
-    var block = TGE.el(rid);
-    if (!block) return;
+  // ── Update card with full data ──────────────────────────────────────────────
+  function updateCard(rid, rNum, method, url, status, ms, reqHdrs, reqParams, reqBody, data, rawText) {
+    var card = TGE.el(rid);
+    if (!card) return;
 
-    var ok      = status >= 200 && status < 300;
-    var numCls  = ok ? 'dm-result-num-ok' : 'dm-result-num-err';
-    var badgeCls = ok ? 'dm-badge-ok' : 'dm-badge-err';
-    var badgeTxt = status === 0 ? 'Error' : 'HTTP '+status;
+    var ok       = status >= 200 && status < 300;
+    var badgeCls = ok ? 'dm-ok' : 'dm-err';
+    var statusTxt = status === 0 ? 'Error' : 'HTTP '+status;
 
-    // Extract useful things from response
+    // Parse useful data from response
+    var events      = [];
     var attachments = [];
     var s3url       = null;
 
     if (data && typeof data === 'object') {
-      // Call 1 — events with attachments
-      var events = data.events || (Array.isArray(data) ? data : []);
+      events = data.events || (Array.isArray(data) ? data : []);
       events.forEach(function(ev) {
         (ev.attachments || []).forEach(function(att) {
-          attachments.push({ att: att, ev: ev });
+          var d   = new Date(att.timeAt || '');
+          var yr  = d.getFullYear() || new Date().getFullYear();
+          var mo  = d.getMonth() + 1 || 1;
+          var fmt = att.timeAt ? d.toLocaleString('en-AU',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+          attachments.push({ att: att, yr: yr, mo: mo, fmt: fmt });
         });
       });
-      // Call 2 — presigned URL
       if (data.attachmentLink) s3url = data.attachmentLink;
     }
 
-    // Build header KV display
-    var hdrRows = Object.keys(headers).map(function(k) {
-      var v = k === 'X-TN360-Token' ? '••••••••' : headers[k];
-      return '<div class="dm-kv-display-row"><span class="dm-kv-display-key">'+esc(k)+'</span><span class="dm-kv-display-val">'+esc(v)+'</span></div>';
+    // Header row
+    var hdr = card.querySelector('.dm-result-hdr');
+    if (hdr) {
+      hdr.innerHTML = '<span class="dm-badge '+badgeCls+'">#'+rNum+'</span>'
+        + '<span style="margin-left:6px;font-size:12px;font-weight:700;color:var(--ink);">'+esc(method)+' '+esc(url)+'</span>'
+        + '<span class="dm-badge '+badgeCls+'" style="margin-left:auto;">'+esc(statusTxt)+'</span>'
+        + '<span style="font-size:11px;color:var(--muted);margin-left:8px;">'+ms+'ms</span>'
+        + '<span class="dm-rchev">›</span>';
+      hdr.onclick = function() { dmToggleResult(hdr); };
+    }
+
+    // Body sections
+    var body = TGE.el(rid+'-body');
+    if (!body) return;
+
+    // — Sent: headers
+    var hdrRows = Object.keys(reqHdrs).map(function(k) {
+      var v = k === 'X-TN360-Token' ? '••••••••••' : reqHdrs[k];
+      return '<div class="dm-kvd-row"><span class="dm-kvd-k">'+esc(k)+'</span><span class="dm-kvd-v">'+esc(v)+'</span></div>';
     }).join('');
 
-    // Build params display
-    var paramRows = Object.keys(params).map(function(k) {
-      return '<div class="dm-kv-display-row"><span class="dm-kv-display-key">'+esc(k)+'</span><span class="dm-kv-display-val">'+esc(params[k])+'</span></div>';
-    }).join('') || '<div style="padding:8px 12px;font-size:11px;color:var(--muted);">None</div>';
+    // — Sent: params
+    var paramRows = Object.keys(reqParams).length
+      ? Object.keys(reqParams).map(function(k) {
+          return '<div class="dm-kvd-row"><span class="dm-kvd-k">'+esc(k)+'</span><span class="dm-kvd-v">'+esc(reqParams[k])+'</span></div>';
+        }).join('')
+      : '<div style="font-size:11px;color:var(--muted);padding:4px 0;">None</div>';
 
-    // Attachment quick-pick
+    // — Attachments quick pick
     var attHtml = '';
     if (attachments.length) {
-      var rows = attachments.map(function(item) {
-        var att = item.att;
-        var d   = new Date(att.timeAt || '');
-        var yr  = d.getFullYear() || new Date().getFullYear();
-        var mo  = (d.getMonth()+1) || 1;
-        var fmt = att.timeAt ? d.toLocaleString('en-AU',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
-        return '<div class="dm-att-row" onclick="_dmFillAttachment(\''+att.attachmentId+'\',\''+yr+'\',\''+mo+'\')">'
-          + '<span class="dm-att-pos">'+esc(att.cameraPosition||'?')+'</span>'
-          + '<span class="dm-att-id">'+esc(att.attachmentId)+'</span>'
-          + '<span class="dm-att-time">'+esc(fmt)+'</span>'
-          + '<span class="dm-att-arrow">→ Call 2</span>'
+      attHtml = '<div class="dm-atts">'
+        + attachments.map(function(item) {
+            var att = item.att;
+            return '<div class="dm-att" onclick="dmFillAtt(\''+att.attachmentId+'\',\''+item.yr+'\',\''+item.mo+'\',\''+esc(att.cameraPosition||'')+'\')">'
+              + '<span class="dm-att-pos">'+esc(att.cameraPosition||'?')+'</span>'
+              + '<span class="dm-att-id">'+esc(att.attachmentId)+'</span>'
+              + '<span class="dm-att-t">'+esc(item.fmt)+'</span>'
+              + '<span class="dm-att-arr">→ Load</span>'
+            + '</div>';
+          }).join('')
         + '</div>';
-      }).join('');
-      attHtml = buildSection('📎 Attachments ('+attachments.length+') — click any to load into Call 2', rows, false);
     }
 
-    // S3 URL + image
+    // — S3 URL + image
     var s3Html = '';
     if (s3url) {
-      s3Html = '<div class="dm-s3-label" style="margin-top:10px;">Fresh presigned S3 URL</div>'
-        + '<div class="dm-s3-box">'+esc(s3url)+'</div>'
-        + '<div class="dm-s3-label" style="margin-top:12px;">Image preview</div>'
-        + '<div class="dm-img-preview">'
-          + '<img src="/api/image-proxy?url='+encodeURIComponent(s3url)+'" alt="snapshot"'
-          + ' onerror="this.parentElement.innerHTML=\'<p style=&quot;padding:20px;font-size:12px;color:var(--danger);&quot;>Image failed to load via proxy.</p>\'">'
-        + '</div>';
+      s3Html = '<div class="dm-lbl" style="margin-bottom:4px;">Fresh presigned S3 URL (expires ~1hr)</div>'
+        + '<div class="dm-s3">'+esc(s3url)+'</div>'
+        + '<div class="dm-lbl" style="margin-bottom:4px;">Image preview</div>'
+        + '<div class="dm-img"><img src="/api/image-proxy?url='+encodeURIComponent(s3url)+'" alt="snapshot"'
+        + ' onerror="this.parentElement.innerHTML=\'<p style=&quot;padding:16px;font-size:12px;color:var(--danger);&quot;>Image failed via proxy — URL may have expired.</p>\'"></div>';
     }
 
-    // Update header
-    var hdr = block.querySelector('.dm-result-hdr');
-    if (hdr) {
-      hdr.innerHTML = '<div class="dm-result-num '+numCls+'">'+rNum+'</div>'
-        + '<div style="flex:1;margin-left:8px;">'
-          + '<div class="dm-result-title">Call '+callNum+' — '+esc(method)+'</div>'
-          + '<div class="dm-result-meta">'+esc(url)+'</div>'
-        + '</div>'
-        + '<span class="dm-badge '+badgeCls+'">'+esc(badgeTxt)+'</span>'
-        + '<span class="dm-timing" style="margin-left:8px;"><strong>'+ms+'ms</strong></span>'
-        + '<span class="dm-result-chev">›</span>';
-      hdr.onclick = function() { toggleResult(hdr); };
-    }
+    body.innerHTML =
+      // SENT
+      buildRsec('📤 Sent — Request headers', '<div class="dm-kvd">'+hdrRows+'</div>', true)
+      + buildRsec('📤 Sent — Query params', '<div class="dm-kvd">'+paramRows+'</div>', true)
+      + (reqBody ? buildRsec('📤 Sent — Request body', '<div class="dm-raw">'+esc(reqBody)+'</div>', true) : '')
 
-    // Update body
-    var body = TGE.el(rid+'-body');
-    if (body) {
-      body.innerHTML = '<div class="dm-timing" style="padding:8px 0;">'
-          + '<span class="dm-badge '+badgeCls+'">'+esc(badgeTxt)+'</span>'
-          + '<strong style="margin-left:8px;">'+ms+'ms</strong>'
-          + '<span style="color:var(--muted);margin-left:4px;">response time</span>'
-        + '</div>'
-
-        // Request sent — headers
-        + buildSection('📤 Request headers sent', '<div class="dm-kv-display">'+hdrRows+'</div>', true)
-
-        // Request sent — params
-        + buildSection('📤 Query params sent', '<div class="dm-kv-display">'+paramRows+'</div>', true)
-
-        // Request sent — body
-        + (reqBody ? buildSection('📤 Request body sent', '<div class="dm-raw">'+esc(reqBody)+'</div>', true) : '')
-
-        // Attachments quick pick
-        + attHtml
-
-        // S3 URL + image
-        + s3Html
-
-        // Raw response
-        + buildSection('📥 Raw response', '<div class="dm-raw">'+esc(typeof rawText === 'string' ? rawText : JSON.stringify(data,null,2))+'</div>', false);
-    }
+      // RECEIVED
+      + buildRsec('📥 Received — Status &amp; timing',
+          '<div style="padding:8px 0;display:flex;gap:12px;align-items:center;">'
+            + '<span class="dm-badge '+badgeCls+'">'+esc(statusTxt)+'</span>'
+            + '<span style="font-size:12px;color:var(--muted);">Response time: <strong style="color:var(--ink);">'+ms+'ms</strong></span>'
+          + '</div>', false)
+      + (attachments.length ? buildRsec('📥 Received — Attachments ('+attachments.length+') — click to load', attHtml, false) : '')
+      + (s3url ? buildRsec('📥 Received — Presigned URL &amp; Image', s3Html, false) : '')
+      + buildRsec('📥 Received — Raw response JSON', '<div class="dm-raw">'+esc(rawText)+'</div>', false);
   }
 
-  // ── Build collapsible section ──────────────────────────────────────────────
-  function buildSection(title, content, collapsed) {
-    var id = 'dmsec-' + (++resultCount);
-    return '<div class="dm-section'+(collapsed?' collapsed':'').trim()+'" id="'+id+'">'
-      + '<div class="dm-section-hdr" onclick="_dmToggleSection(this)">'
-        + esc(title)
-        + '<span class="dm-sec-chev">›</span>'
+  // ── Build result section ────────────────────────────────────────────────────
+  function buildRsec(title, content, closed) {
+    var id = 'dms-'+(++resultSeq);
+    return '<div class="dm-rsec'+(closed?' closed':'').trim()+'" id="'+id+'">'
+      + '<div class="dm-rsec-hdr" onclick="dmToggleRsec(this)">'
+        + '<span class="dm-rsec-title">'+title+'</span>'
+        + '<span class="dm-schev">›</span>'
       + '</div>'
-      + '<div class="dm-section-body">'+content+'</div>'
+      + '<div class="dm-rsec-body">'+content+'</div>'
     + '</div>';
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  // ── Toggle helpers ──────────────────────────────────────────────────────────
+  function dmToggleResult(el) {
+    var card = el.closest('.dm-result');
+    if (card) card.classList.toggle('closed');
+  }
+
+  function dmToggleRsec(el) {
+    var sec = el.closest('.dm-rsec');
+    if (sec) sec.classList.toggle('closed');
+  }
+
+  // ── Filter ──────────────────────────────────────────────────────────────────
+  function dmFilter() {
+    var q = (val('dm-filter')||'').toLowerCase();
+    document.querySelectorAll('.dm-result').forEach(function(card) {
+      card.style.display = (!q || card.textContent.toLowerCase().indexOf(q) !== -1) ? '' : 'none';
+    });
+  }
+
+  // ── Clear ────────────────────────────────────────────────────────────────────
+  function dmClearResults() {
+    results = [];
+    resultSeq = 0;
+    var area = TGE.el('dm-results');
+    if (area) area.innerHTML = '<div class="dm-empty" id="dm-empty">'
+      + '<div class="dm-empty-icon">🔬</div>'
+      + '<p>Send a request — every call, response and parsed data appears here.<br>Results persist across calls so you can compare.</p>'
+      + '</div>';
+  }
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
   function esc(s) {
     var d = document.createElement('div');
     d.textContent = String(s == null ? '' : s);
     return d.innerHTML;
   }
 
-  // ── Register ───────────────────────────────────────────────────────────────
+  // ── Register ─────────────────────────────────────────────────────────────────
   var _orig = TGE.onAppReady;
   TGE.onAppReady = function () {
     if (typeof _orig === 'function') _orig();
