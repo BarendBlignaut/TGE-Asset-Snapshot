@@ -47,7 +47,7 @@ canFleet ? '<button class="hero-mode-btn' + (state.mode === 'fleet' ? ' active' 
           '</div>',
           '<div class="hero-bar-right">',
   '<div class="hero-divider"></div>',
-  '<div id="at-export-slot"></div>',
+  TGE.buildOutputPill ? TGE.buildOutputPill('at', assetTrackExportItems()) : '',
 '</div>',
         '</div>',
         '<p class="hero-message" id="at-message"></p>',
@@ -103,25 +103,16 @@ canFleet ? '<button class="hero-mode-btn' + (state.mode === 'fleet' ? ' active' 
     wireEvents();
   }
 
-  function buildExportMenu() {
-    var items = [
-      TGE.can('asset-track','export-pdf') ? '<button class="hero-menu-item" id="at-pdf-btn" type="button"><span>Asset Track PDF</span><span>PDF</span></button>' : '',
-      TGE.can('asset-track','export-email-pdf') ? '<button class="hero-menu-item" id="at-email-btn" type="button"><span>Email PDF</span><span>Send</span></button>' : '',
-      TGE.can('asset-track','export-csv') ? '<button class="hero-menu-item" id="at-csv-btn" type="button"><span>CSV</span><span>.csv</span></button>' : '',
-      TGE.can('asset-track','export-xlsx') ? '<button class="hero-menu-item" id="at-xlsx-btn" type="button"><span>Excel</span><span>.xlsx</span></button>' : '',
-      TGE.can('asset-track','export-json') ? '<button class="hero-menu-item" id="at-json-btn" type="button"><span>JSON</span><span>.json</span></button>' : ''
-    ].filter(Boolean).join('');
-
-    if (!items) return '';
-
-    return '<div class="hero-menu" id="at-export-menu">' +
-      '<button class="hero-menu-trigger" id="at-export-trigger" type="button" aria-haspopup="true" aria-expanded="false" title="Export">' +
-        '<span>Export</span>' +
-      '</button>' +
-      '<div class="hero-menu-panel" role="menu">' + items + '</div>' +
-    '</div>';
-  }
-
+  function assetTrackExportItems() {
+  return [
+    { id:'at-pdf-btn', label:'Asset Track PDF', suffix:'PDF', icon:'📄', permission:['asset-track','export-pdf'], action:exportPdf },
+    { id:'at-email-btn', label:'Email PDF', suffix:'Send', icon:'✉️', permission:['asset-track','export-email-pdf'], action:openEmailPdfComposer },
+    { id:'at-csv-btn', label:'CSV', suffix:'.csv', icon:'📑', permission:['asset-track','export-csv'], action:exportCsv },
+    { id:'at-xlsx-btn', label:'Excel', suffix:'.xlsx', icon:'📊', permission:['asset-track','export-xlsx'], action:exportXlsx },
+    { id:'at-json-btn', label:'JSON', suffix:'.json', icon:'{}', permission:['asset-track','export-json'], action:exportJson }
+  ];
+}
+  
   function wireEvents() {
     TGE.on('at-run-btn', 'click', runAssetTrack);
     TGE.on('at-refresh-btn', 'click', clearPage);
@@ -135,47 +126,10 @@ canFleet ? '<button class="hero-mode-btn' + (state.mode === 'fleet' ? ' active' 
     var input = TGE.el('at-fleet-input');
     if (input) input.addEventListener('input', updateInputCount);
 
-// Shared export pill will be added here.
+if (TGE.wireOutputPill) {
+  TGE.wireOutputPill('at', assetTrackExportItems());
+}
   }
-
-  function wireExportMenu() {
-    var trigger = TGE.el('at-export-trigger');
-    var menu = TGE.el('at-export-menu');
-    var panel = menu ? menu.querySelector('.hero-menu-panel') : null;
-
-    function positionPanel() {
-      if (!trigger || !panel) return;
-      var rect = trigger.getBoundingClientRect();
-      panel.style.top = (rect.bottom + 8) + 'px';
-      panel.style.left = 'auto';
-      panel.style.right = (window.innerWidth - rect.right) + 'px';
-    }
-
-    if (trigger && menu) {
-      trigger.onclick = function (e) {
-        e.stopPropagation();
-        var open = !menu.classList.contains('open');
-        if (open) positionPanel();
-        menu.classList.toggle('open', open);
-        trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
-      };
-    }
-  }
-
-  function closeExportMenu() {
-    var menu = TGE.el('at-export-menu');
-    var trigger = TGE.el('at-export-trigger');
-    if (menu) menu.classList.remove('open');
-    if (trigger) trigger.setAttribute('aria-expanded', 'false');
-  }
-
-  document.addEventListener('click', function (e) {
-    var menu = TGE.el('at-export-menu');
-    if (menu && !menu.contains(e.target)) closeExportMenu();
-  });
-
-  window.addEventListener('scroll', closeExportMenu, true);
-  window.addEventListener('resize', closeExportMenu);
 
 function setMode(mode) {
   if (state.mode === mode) return;
@@ -541,7 +495,7 @@ function isOysterTracker(device) {
     TGE.show('at-empty');
 
     setMessage('');
-    closeExportMenu();
+   if (TGE.closeOutputPill) TGE.closeOutputPill('at');
   }
 
   function setMessage(msg, isError) {
@@ -557,20 +511,6 @@ function isOysterTracker(device) {
       btn.disabled = running;
       btn.textContent = running ? 'Running...' : 'Run';
     }
-  }
-
-  function activateExports() {
-    var csvBtn = TGE.el('at-csv-btn');
-    var jsonBtn = TGE.el('at-json-btn');
-    var xlsxBtn = TGE.el('at-xlsx-btn');
-    var pdfBtn = TGE.el('at-pdf-btn');
-    var emailBtn = TGE.el('at-email-btn');
-
-    if (csvBtn) csvBtn.onclick = function () { closeExportMenu(); exportCsv(); };
-    if (jsonBtn) jsonBtn.onclick = function () { closeExportMenu(); exportJson(); };
-    if (xlsxBtn) xlsxBtn.onclick = function () { closeExportMenu(); exportXlsx(); };
-    if (pdfBtn) pdfBtn.onclick = function () { closeExportMenu(); exportPdf(); };
-    if (emailBtn) emailBtn.onclick = function () { closeExportMenu(); openEmailPdfComposer(); };
   }
 
   function ensureRowsLoaded() {
