@@ -363,6 +363,26 @@ async function handleTelematicsProxy(request, env, path) {
   if (!text) return jsonResponse({ ok: true, status: res.status });
   try { return jsonResponse(JSON.parse(text)); } catch(e) { return jsonResponse({ ok: true, raw: text }); }
 }
+async function handleAttachmentContent(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const url = new URL(request.url);
+  const parts = url.pathname.split('/');
+  const attachmentId = parts[parts.indexOf('attachments') + 1];
+  const params = url.searchParams.toString();
+  const token = env.TN360_PERSONAL_KEY || env.TN360_API_KEY;
+  const upstream = `https://api-au.telematics.com/v1/attachments/${attachmentId}/content?${params}`;
+  const res = await fetch(upstream, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Token token="${token}"`,
+      'Content-Type': 'application/json'
+    }
+  });
+  if (!res.ok) return jsonResponse2({ error: `Upstream error: HTTP ${res.status}` }, 502);
+  const data = await res.json();
+  return jsonResponse2(data);
+}
 
 // ── Registry ──────────────────────────────────────────────────────────────────
 async function handleRegistryGetApis(request, env) {
@@ -1302,6 +1322,7 @@ export default {
       }
 
       // Telematics proxy
+      if (method === "GET" && path.match(/^\/api\/attachment-content\/\d+$/)) return handleAttachmentContent(request, env);
       if (path.startsWith("/api/tn360/")) return handleTelematicsProxy(request, env, path.replace("/api/tn360", ""));
 
       // Health check
