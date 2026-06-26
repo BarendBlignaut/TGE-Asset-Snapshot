@@ -24,7 +24,12 @@
     userLimit = TGE.limit('asset-track', 'user-mode') || 500;
     canUser = TGE.can('asset-track', 'user-mode');
     canFleet = TGE.can('asset-track', 'fleet-mode');
-    state.mode = canUser ? 'user' : 'fleet';
+   if (state.mode !== 'user' && state.mode !== 'fleet') {
+  state.mode = canUser ? 'user' : 'fleet';
+}
+
+if (state.mode === 'user' && !canUser) state.mode = 'fleet';
+if (state.mode === 'fleet' && !canFleet) state.mode = 'user';
 
     view.innerHTML = [
       '<div class="hero">',
@@ -33,8 +38,8 @@
         '<div class="hero-sub">Load Asset Tracker battery, last seen and status by fleet number or fleet-wide search.</div>',
         '<div class="hero-bar">',
           '<div class="hero-bar-left">',
-            canUser ? '<button class="hero-mode-btn active" id="at-mode-user" type="button">User Mode</button>' : '',
-            canFleet ? '<button class="hero-mode-btn' + (!canUser ? ' active' : '') + '" id="at-mode-fleet" type="button">Fleet Mode</button>' : '',
+  canUser ? '<button class="hero-mode-btn' + (state.mode === 'user' ? ' active' : '') + '" id="at-mode-user" type="button">User Mode</button>' : '',
+ canFleet ? '<button class="hero-mode-btn' + (state.mode === 'fleet' ? ' active' : '') + '" id="at-mode-fleet" type="button">Fleet Mode</button>' : '',
             '<button class="hero-run-btn" id="at-run-btn" type="button">Run</button>',
             '<button class="hero-action-btn" id="at-refresh-btn" type="button">Refresh</button>',
           '</div>',
@@ -114,45 +119,32 @@ function wireExportMenu() {
   // Export menu will be wired by the shared export pill later.
 }
 
-  function wireExportMenu() {
-    var trigger = TGE.el('at-export-trigger');
-    var menu = TGE.el('at-export-menu');
-    var panel = menu ? menu.querySelector('.hero-menu-panel') : null;
-
-    function positionPanel() {
-      if (!trigger || !panel) return;
-      var rect = trigger.getBoundingClientRect();
-      panel.style.top = (rect.bottom + 8) + 'px';
-      panel.style.left = 'auto';
-      panel.style.right = (window.innerWidth - rect.right) + 'px';
-    }
-
-    if (trigger && menu) {
-      trigger.onclick = function (e) {
-        e.stopPropagation();
-        var open = !menu.classList.contains('open');
-        if (open) positionPanel();
-        menu.classList.toggle('open', open);
-        trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
-      };
-    }
-  }
-
 function closeExportMenu() {
   // Shared export pill will handle close behaviour later.
 }
+  function wireEvents() {
+  TGE.on('at-run-btn', 'click', runAssetTrack);
+  TGE.on('at-refresh-btn', 'click', clearPage);
 
-  function setMode(mode) {
-    state.mode = mode;
+  var userBtn = TGE.el('at-mode-user');
+  var fleetBtn = TGE.el('at-mode-fleet');
 
-    var userBtn = TGE.el('at-mode-user');
-    var fleetBtn = TGE.el('at-mode-fleet');
-    var userInput = TGE.el('at-user-input');
+  if (userBtn) userBtn.onclick = function () { setMode('user'); };
+  if (fleetBtn) fleetBtn.onclick = function () { setMode('fleet'); };
 
-    if (userBtn) userBtn.classList.toggle('active', mode === 'user');
-    if (fleetBtn) fleetBtn.classList.toggle('active', mode === 'fleet');
-    if (userInput) userInput.style.display = mode === 'user' ? '' : 'none';
-  }
+  var input = TGE.el('at-fleet-input');
+  if (input) input.addEventListener('input', updateInputCount);
+
+  wireExportMenu();
+  activateExports();
+}
+
+function setMode(mode) {
+  if (state.mode === mode) return;
+
+  state.mode = mode;
+  render();
+}
 
   function parseFleetNumbers(raw) {
     return String(raw || '').split(/[\n,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
