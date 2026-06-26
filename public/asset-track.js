@@ -39,9 +39,9 @@
             '<button class="hero-action-btn" id="at-refresh-btn" type="button">Refresh</button>',
           '</div>',
           '<div class="hero-bar-right">',
-            '<div class="hero-divider"></div>',
-            buildExportMenu(),
-          '</div>',
+  '<div class="hero-divider"></div>',
+  '<div id="at-export-slot"></div>',
+'</div>',
         '</div>',
         '<p class="hero-message" id="at-message"></p>',
       '</div>',
@@ -128,8 +128,7 @@
     var input = TGE.el('at-fleet-input');
     if (input) input.addEventListener('input', updateInputCount);
 
-    wireExportMenu();
-    activateExports();
+// Shared export pill will be added here.
   }
 
   function wireExportMenu() {
@@ -281,16 +280,40 @@
           });
       }, 5, 300);
 
-      var finalRows = results
-        .filter(function (item) {
-          return state.mode === 'user' || item.tracker;
-        })
-        .map(function (item) {
-          var meters = allMetersByVehicle[String(item.vehicle.id)] || [];
-          return makeRow(item.vehicle, item.devices, item.tracker, meters);
-        });
+var assetRows = [];
+var exceptionRows = [];
 
-      state.rows = state.rows.concat(finalRows);
+results.forEach(function (item) {
+
+  // Fleet Mode - only Asset Track devices
+  if (state.mode === 'fleet') {
+    if (!item.tracker) return;
+
+    var meters = allMetersByVehicle[String(item.vehicle.id)] || [];
+    assetRows.push(makeRow(item.vehicle, item.devices, item.tracker, meters));
+    return;
+  }
+
+  // User Mode
+
+  if (item.tracker) {
+    var meters = allMetersByVehicle[String(item.vehicle.id)] || [];
+    assetRows.push(makeRow(item.vehicle, item.devices, item.tracker, meters));
+    return;
+  }
+
+  // No devices assigned at all
+  if (!item.devices || item.devices.length === 0) {
+    exceptionRows.push(
+      makeExceptionRow(item.vehicle.name, 'No Device Assigned')
+    );
+  }
+
+  // Hermes / Camera / Tablet only
+  // Ignore completely.
+});
+
+state.rows = assetRows.concat(exceptionRows);
       renderRows();
       updateSummary();
       setMessage('');
