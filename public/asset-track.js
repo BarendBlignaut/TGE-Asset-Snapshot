@@ -305,37 +305,10 @@ return {
           });
       }, 5, 300);
 
-results.forEach(function (item) {
-
-  // Fleet Mode - only Asset Track devices
-  if (state.mode === 'fleet') {
-    if (!item.tracker) return;
-
-    var meters = allMetersByVehicle[String(item.vehicle.id)] || [];
-    assetRows.push(makeRow(item.vehicle, item.devices, item.tracker, meters));
-    return;
-  }
-
-  // User Mode
-
-  if (item.tracker) {
-    var meters = allMetersByVehicle[String(item.vehicle.id)] || [];
-    assetRows.push(makeRow(item.vehicle, item.devices, item.tracker, meters));
-    return;
-  }
-
-  // No devices assigned at all
-  if (!item.devices || item.devices.length === 0) {
-    exceptionRows.push(
-      makeExceptionRow(item.vehicle.name, 'No Device Assigned')
-    );
-  }
-
-  state.rows = state.rows.concat(exceptionRows);
-      renderRows();
-      updateSummary();
-      setMessage('');
-
+      state.rows = state.rows.concat(exceptionRows);
+renderRows();
+updateSummary();
+setMessage('');
     } catch (e) {
       setMessage(e.message || 'Failed to load Asset Track data.', true);
 } finally {
