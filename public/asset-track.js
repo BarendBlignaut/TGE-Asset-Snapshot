@@ -311,88 +311,49 @@
     }) || null;
   }
 
-  function isAssetTrackerDevice(d) {
-    if (!d) return false;
+function isAssetTrackerDevice(d) {
+  if (!d) return false;
 
-    var typeCode = d.type && d.type.code ? String(d.type.code).toUpperCase() : '';
-    var typeName = d.type && d.type.name ? String(d.type.name).toLowerCase() : '';
+  var typeCode = d.type && d.type.code
+    ? String(d.type.code).toUpperCase()
+    : '';
 
-    return typeCode === DEVICE_CODE || typeName === 'asset tracker';
-  }
+  var typeName = d.type && d.type.name
+    ? String(d.type.name).toLowerCase()
+    : '';
 
-  function isDeviceAssignedToVehicle(d, vehicle) {
-    if (!d || !vehicle) return false;
+  var modelName = d.model && d.model.name
+    ? String(d.model.name).toLowerCase()
+    : '';
 
-    if (String(d.vehicleId || '') === String(vehicle.id)) return true;
-    if (d.vehicle && String(d.vehicle.id || '') === String(vehicle.id)) return true;
+  var modelId = d.modelId || (d.model && d.model.id);
 
-    return false;
-  }
+  // Hard exclusions
+  if (typeCode === 'HERMES') return false;
+  if (typeCode === 'CAMERA') return false;
+  if (typeCode === 'IFACE') return false;
 
-  function makeExceptionRow(fleetNo, status) {
-    return {
-      fleetNo: fleetNo,
-      registration: '—',
-      vehicleId: null,
-      imei: '—',
-      model: '—',
-      serial: '—',
-      battBase: null,
-      battCurrent: null,
-      battStatus: 'N/A',
-      lastSeen: null,
-      status: status
-    };
-  }
+  if (typeName.indexOf('camera') !== -1) return false;
+  if (typeName.indexOf('tablet') !== -1) return false;
+  if (typeName.indexOf('hermes') !== -1) return false;
 
-  function makeRow(vehicle, devices, tracker, meters) {
-    meters = meters || [];
-    devices = devices || [];
+  if (modelName.indexOf('iq') !== -1) return false;
+  if (modelName.indexOf('multi') !== -1) return false;
+  if (modelName.indexOf('mt201') !== -1) return false;
+  if (modelName.indexOf('vt102') !== -1) return false;
+  if (modelName.indexOf('vt202') !== -1) return false;
 
-    var batteryMeter = meters.find(function (m) {
-      return m.type === 'battery';
-    });
-
-    var battBase = batteryMeter ? batteryMeter.base : null;
-    var battCurrent = batteryMeter ? batteryMeter.computed : null;
-    var lastSeen = batteryMeter ? batteryMeter.updatedAt : null;
-    var battStatus = getBatteryStatus(battCurrent, tracker);
-
-    var status = 'Reporting';
-
-    if (!devices.length) {
-      status = 'No Device Assigned';
-    } else if (!tracker) {
-      status = 'Not Asset Tracker';
-    } else if (!batteryMeter) {
-      status = 'No Meter Data';
-    } else if (!lastSeen) {
-      status = 'No Recent Data';
-    }
-
-    return {
-      fleetNo: vehicle && vehicle.name ? vehicle.name : '—',
-      registration: vehicle && vehicle.registration ? vehicle.registration : '—',
-      vehicleId: vehicle && vehicle.id ? vehicle.id : null,
-      imei: tracker && tracker.imei ? tracker.imei : '—',
-      model: getTrackerModelName(tracker),
-      serial: tracker && tracker.serialNumber ? tracker.serialNumber : '—',
-      battBase: battBase,
-      battCurrent: battCurrent,
-      battStatus: battStatus,
-      lastSeen: lastSeen,
-      status: status
-    };
-  }
-
-  function getTrackerModelName(tracker) {
-    if (!tracker) return '—';
-    if (tracker.model && tracker.model.name) return tracker.model.name;
-    if (String(tracker.modelId) === '85') return 'AT301 / Oyster3';
-    if (tracker.modelId) return 'Model ' + tracker.modelId;
-    if (tracker.model && tracker.model.id) return 'Model ' + tracker.model.id;
-    return '—';
-  }
+  // Asset tracker inclusions
+  return (
+    typeCode === 'ATRACKER' ||
+    typeName.indexOf('asset tracker') !== -1 ||
+    modelName.indexOf('at301') !== -1 ||
+    modelName.indexOf('oyster') !== -1 ||
+    modelName.indexOf('solar') !== -1 ||
+    String(modelId) === '85' ||
+    String(modelId) === '433'
+  );
+}
 
 function isOysterTracker(device) {
   if (!device) return false;
