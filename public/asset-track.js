@@ -619,10 +619,14 @@ function isOysterTracker(device) {
 );
   }
 
-  async function buildAssetTrackAttachment() {
-    if (!ensureRowsLoaded()) return null;
+async function buildAssetTrackAttachment() {
+  if (!ensureRowsLoaded()) return null;
 
-    var result = await TGE.api('POST', '/api/asset-track-pdf', {
+  return TGE.PDF.attachment({
+    route: '/api/asset-track-pdf',
+    module: 'AssetTrack',
+    type: 'Report',
+    payload: {
       rows: assetTrackRows(),
       summary: {
         generated: new Date().toLocaleString('en-AU'),
@@ -631,22 +635,9 @@ function isOysterTracker(device) {
         reporting: state.rows.filter(function (r) { return r.status === 'Reporting'; }).length,
         notReporting: state.rows.filter(function (r) { return r.status !== 'Reporting'; }).length
       }
-    });
-
-    if (!result.ok) {
-      throw new Error((result.data && result.data.error) || 'Asset Track PDF generation failed.');
     }
-
-    return {
-      fileName: TGE.outputFileName({
-  module: 'AssetTrack',
-  type: 'Report',
-  extension: 'pdf'
-}),
-      base64: result.data.base64,
-      contentType: 'application/pdf'
-    };
-  }
+  });
+}
 
   async function exportPdf() {
     if (!ensureRowsLoaded()) return;
