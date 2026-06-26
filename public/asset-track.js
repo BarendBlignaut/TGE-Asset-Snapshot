@@ -640,18 +640,28 @@ async function buildAssetTrackAttachment() {
 }
 
   async function exportPdf() {
-    if (!ensureRowsLoaded()) return;
+  if (!ensureRowsLoaded()) return;
 
-    try {
-      var attachment = await buildAssetTrackAttachment();
-      if (!attachment || !attachment.base64) return;
-
-      var bytes = base64ToBytes(attachment.base64);
-      downloadBlob(new Blob([bytes], { type: 'application/pdf' }), attachment.fileName || 'asset-track.pdf');
-    } catch (e) {
-      setMessage(e.message || 'PDF export failed.', true);
-    }
+  try {
+    await TGE.PDF.download({
+      route: '/api/asset-track-pdf',
+      module: 'AssetTrack',
+      type: 'Report',
+      payload: {
+        rows: assetTrackRows(),
+        summary: {
+          generated: new Date().toLocaleString('en-AU'),
+          totalAssets: state.rows.length,
+          withTracker: state.rows.filter(function (r) { return r.imei !== '—'; }).length,
+          reporting: state.rows.filter(function (r) { return r.status === 'Reporting'; }).length,
+          notReporting: state.rows.filter(function (r) { return r.status !== 'Reporting'; }).length
+        }
+      }
+    });
+  } catch (e) {
+    setMessage(e.message || 'PDF export failed.', true);
   }
+}
 
   function openEmailPdfComposer() {
     if (!ensureRowsLoaded()) return;
