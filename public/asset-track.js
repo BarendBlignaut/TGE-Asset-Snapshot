@@ -223,41 +223,47 @@ setMessage('Loading vehicles...', false);
   }
 }, 250);
 
-          var checked = 0;
-          var exceptionRows = [];
-          var results = await batchRun(vehicles, function (vehicle) {
-        return TGE.api('GET', '/api/tn360/v1/vehicles/' + vehicle.id + '/devices?pruning=B2B')
-          .then(function (r) {
-            checked++;
+var exceptionRows = [];
 
-            if (checked % 10 === 0 || checked === vehicles.length) {
-              setMessage('Checking devices... ' + checked + '/' + vehicles.length, false);
-            }
+await TGE.Progress.run({
+  items: vehicles,
+  concurrency: 5,
+  delay: 300,
 
-            var devices = r.ok && Array.isArray(r.data) ? r.data : [];
-var tracker = findAssetTrackerDevice(devices, vehicle);
+  worker: async function (vehicle) {
+    var r = await TGE.api('GET', '/api/tn360/v1/vehicles/' + vehicle.id + '/devices?pruning=B2B');
 
-if (tracker) {
-  var meters = allMetersByVehicle[String(vehicle.id)] || [];
-  state.rows.push(makeRow(vehicle, devices, tracker, meters));
-} else if (state.mode === 'user' && devices.length === 0) {
-  exceptionRows.push(makeExceptionRow(vehicle.name, 'No Device Assigned'));
-}
+    var devices = r.ok && Array.isArray(r.data) ? r.data : [];
+    var tracker = findAssetTrackerDevice(devices, vehicle);
 
-return {
-  vehicle: vehicle,
-  devices: devices,
-  tracker: tracker
-};
-          })
-          .catch(function () {
-            return {
-              vehicle: vehicle,
-              devices: [],
-              tracker: null
-            };
-          });
-      }, 5, 300);
+    return {
+      vehicle: vehicle,
+      devices: devices,
+      tracker: tracker
+    };
+  },
+
+  onItem: function (item) {
+    if (!item) return;
+
+    if (item.tracker) {
+      var meters = allMetersByVehicle[String(item.vehicle.id)] || [];
+      state.rows.push(makeRow(item.vehicle, item.devices, item.tracker, meters));
+    } else if (state.mode === 'user' && item.devices.length === 0) {
+      exceptionRows.push(makeExceptionRow(item.vehicle.name, 'No Device Assigned'));
+    }
+  },
+
+  onProgress: function (done, total) {
+    if (done % 10 === 0 || done === total) {
+      setMessage('Checking devices... ' + done + '/' + total, false);
+    }
+  },
+
+  onError: function (err) {
+    console.warn('[Asset Track] Progressive worker error:', err);
+  }
+}).promise;
 
       state.rows = state.rows.concat(exceptionRows);
 renderRows();
