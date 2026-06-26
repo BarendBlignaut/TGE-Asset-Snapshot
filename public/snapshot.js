@@ -379,7 +379,7 @@
   // ── Wire events ───────────────────────────────────────────────────────────────
   function wireEvents() {
     TGE.on('snap-run-btn',     'click', runSnapshot);
-    TGE.on('snap-refresh-btn', 'click', runSnapshot);
+    TGE.on('snap-refresh-btn', 'click', resetSnapshot);
     TGE.on('snap-fleet-input', 'keydown', function(e) { if (e.key === 'Enter') runSnapshot(); });
 
     // Export dropdown
@@ -397,7 +397,44 @@
         if (menu && !menu.contains(e.target)) closeExportMenu();
       });
     }
+  function resetSnapshot() {
+    if (state.running) return;
 
+    state.asset = null;
+    state.devices = { hermes:null, camera:null, iface:null, tracker:null };
+    state.data = { vehicle:null, deviceStats:null, vpm:null, gpio:null, cameras:null };
+    state.cameraSlots = [];
+    state.cameraCapturedAt = null;
+    state.alignCompleted = false;
+    state.alignAfterSlots = null;
+    state.alignCompletedAt = null;
+
+    alignState = { running:false, steps:{}, vehicleId:null };
+    historyState = { loading:false };
+
+    var input = TGE.el('snap-fleet-input');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+
+    setMessage('');
+
+    TGE.hide('snap-results');
+    TGE.show('snap-empty');
+
+    var refreshBtn = TGE.el('snap-refresh-btn');
+    if (refreshBtn) refreshBtn.style.display = 'none';
+
+    closeExportMenu();
+
+    var alignPanel = TGE.el('snap-align-panel');
+    if (alignPanel) alignPanel.style.display = 'none';
+
+    var historyPanel = TGE.el('snap-history-panel');
+    if (historyPanel) historyPanel.style.display = 'none';
+  }
+    
   }
 
   // ── Vehicle resolution (improved — checklist item) ────────────────────────────
