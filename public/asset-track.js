@@ -16,6 +16,8 @@
   var canUser = false;
   var canFleet = false;
   var _xlsxLoading = null;
+  var renderTimer = null;
+var lastRenderedCount = 0;
 
   function render() {
     var view = TGE.el('view-asset-track');
@@ -216,10 +218,17 @@
       }
     }
 
-    state.running = true;
-    state.rows = [];
-    setBtnState(true);
-    setMessage('Loading vehicles...', false);
+state.running = true;
+state.rows = [];
+lastRenderedCount = 0;
+
+if (renderTimer) {
+  clearInterval(renderTimer);
+  renderTimer = null;
+}
+
+setBtnState(true);
+setMessage('Loading vehicles...', false);
 
     try {
       var vRes = await TGE.api('GET', '/api/tn360/v1/vehicles?pruning=B2B');
@@ -252,8 +261,17 @@
 
       setMessage('Checking ' + vehicles.length + ' vehicles for Asset Tracker devices...', false);
 
-      var checked = 0;
-      var results = await batchRun(vehicles, function (vehicle) {
+      renderTimer = setInterval(function () {
+  if (state.rows.length !== lastRenderedCount) {
+    renderRows();
+    updateSummary();
+    lastRenderedCount = state.rows.length;
+  }
+}, 250);
+
+          var checked = 0;
+          var exceptionRows = [];
+          var results = await batchRun(vehicles, function (vehicle) {
         return TGE.api('GET', '/api/tn360/v1/vehicles/' + vehicle.id + '/devices?pruning=B2B')
           .then(function (r) {
             checked++;
@@ -263,13 +281,20 @@
             }
 
             var devices = r.ok && Array.isArray(r.data) ? r.data : [];
-            var tracker = findAssetTrackerDevice(devices, vehicle);
+var tracker = findAssetTrackerDevice(devices, vehicle);
 
-            return {
-              vehicle: vehicle,
-              devices: devices,
-              tracker: tracker
-            };
+if (tracker) {
+  var meters = allMetersByVehicle[String(vehicle.id)] || [];
+  state.rows.push(makeRow(vehicle, devices, tracker, meters));
+} else if (state.mode === 'user' && devices.length === 0) {
+  exceptionRows.push(makeExceptionRow(vehicle.name, 'No Device Assigned'));
+}
+
+return {
+  vehicle: vehicle,
+  devices: devices,
+  tracker: tracker
+};
           })
           .catch(function () {
             return {
@@ -313,17 +338,26 @@ results.forEach(function (item) {
   // Ignore completely.
 });
 
-state.rows = assetRows.concat(exceptionRows);
+state.rows = state.rows.concat(exceptionRows);
       renderRows();
       updateSummary();
       setMessage('');
 
     } catch (e) {
       setMessage(e.message || 'Failed to load Asset Track data.', true);
-    } finally {
-      state.running = false;
-      setBtnState(false);
+} finally {
+
+    if (renderTimer) {
+        clearInterval(renderTimer);
+        renderTimer = null;
     }
+
+    renderRows();
+    updateSummary();
+
+    state.running = false;
+    setBtnState(false);
+}
   }
 
   function findAssetTrackerDevice(devices, vehicle) {
