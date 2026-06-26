@@ -555,7 +555,14 @@ function isOysterTracker(device) {
       }).join(',');
     }).join('\n');
 
-    downloadBlob(new Blob([csv], { type: 'text/csv' }), 'asset-track.csv');
+    downloadBlob(
+  new Blob([csv], { type: 'text/csv' }),
+  TGE.outputFileName({
+    module: 'AssetTrack',
+    type: 'Report',
+    extension: 'csv'
+  })
+);
   }
 
   function loadXlsxLib() {
@@ -581,7 +588,14 @@ function isOysterTracker(device) {
       var ws = XLSX.utils.aoa_to_sheet(assetTrackSheetRows());
       var wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Asset Track');
-      XLSX.writeFile(wb, 'asset-track.xlsx');
+      XLSX.writeFile(
+  wb,
+  TGE.outputFileName({
+    module: 'AssetTrack',
+    type: 'Report',
+    extension: 'xlsx'
+  })
+);
     } catch (e) {
       setMessage(e.message || 'XLSX export failed.', true);
     }
@@ -589,7 +603,14 @@ function isOysterTracker(device) {
 
   function exportJson() {
     if (!ensureRowsLoaded()) return;
-    downloadBlob(new Blob([JSON.stringify(assetTrackRows(), null, 2)], { type: 'application/json' }), 'asset-track.json');
+    downloadBlob(
+  new Blob([JSON.stringify(assetTrackRows(), null, 2)], { type: 'application/json' }),
+  TGE.outputFileName({
+    module: 'AssetTrack',
+    type: 'Report',
+    extension: 'json'
+  })
+);
   }
 
   async function buildAssetTrackAttachment() {
@@ -611,7 +632,11 @@ function isOysterTracker(device) {
     }
 
     return {
-      fileName: result.data.fileName || 'asset-track.pdf',
+      fileName: TGE.outputFileName({
+  module: 'AssetTrack',
+  type: 'Report',
+  extension: 'pdf'
+}),
       base64: result.data.base64,
       contentType: 'application/pdf'
     };
