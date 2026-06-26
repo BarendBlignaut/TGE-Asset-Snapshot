@@ -39,9 +39,9 @@
             '<button class="hero-action-btn" id="at-refresh-btn" type="button">Refresh</button>',
           '</div>',
           '<div class="hero-bar-right">',
-            '<div class="hero-divider"></div>',
-            buildExportMenu(),
-          '</div>',
+          '<div class="hero-divider"></div>',
+          '<div id="at-export-slot"></div>',
+    '</div>',
         '</div>',
         '<p class="hero-message" id="at-message"></p>',
       '</div>',
@@ -96,41 +96,23 @@
     wireEvents();
   }
 
-  function buildExportMenu() {
-    var items = [
-      TGE.can('asset-track','export-pdf') ? '<button class="hero-menu-item" id="at-pdf-btn" type="button"><span>Asset Track PDF</span><span>PDF</span></button>' : '',
-      TGE.can('asset-track','export-email-pdf') ? '<button class="hero-menu-item" id="at-email-btn" type="button"><span>Email PDF</span><span>Send</span></button>' : '',
-      TGE.can('asset-track','export-csv') ? '<button class="hero-menu-item" id="at-csv-btn" type="button"><span>CSV</span><span>.csv</span></button>' : '',
-      TGE.can('asset-track','export-xlsx') ? '<button class="hero-menu-item" id="at-xlsx-btn" type="button"><span>Excel</span><span>.xlsx</span></button>' : '',
-      TGE.can('asset-track','export-json') ? '<button class="hero-menu-item" id="at-json-btn" type="button"><span>JSON</span><span>.json</span></button>' : ''
-    ].filter(Boolean).join('');
+  function assetTrackExportItems() {
+  return [
+    { id:'at-pdf-btn', label:'Asset Track PDF', suffix:'PDF', permission:['asset-track','export-pdf'], action:exportPdf },
+    { id:'at-email-btn', label:'Email PDF', suffix:'Send', permission:['asset-track','export-email-pdf'], action:openEmailPdfComposer },
+    { id:'at-csv-btn', label:'CSV', suffix:'.csv', permission:['asset-track','export-csv'], action:exportCsv },
+    { id:'at-xlsx-btn', label:'Excel', suffix:'.xlsx', permission:['asset-track','export-xlsx'], action:exportXlsx },
+    { id:'at-json-btn', label:'JSON', suffix:'.json', permission:['asset-track','export-json'], action:exportJson }
+  ];
+}
 
-    if (!items) return '';
+function buildExportMenu() {
+  return '';
+}
 
-    return '<div class="hero-menu" id="at-export-menu">' +
-      '<button class="hero-menu-trigger" id="at-export-trigger" type="button" aria-haspopup="true" aria-expanded="false" title="Export">' +
-        '<span>Export</span>' +
-      '</button>' +
-      '<div class="hero-menu-panel" role="menu">' + items + '</div>' +
-    '</div>';
-  }
-
-  function wireEvents() {
-    TGE.on('at-run-btn', 'click', runAssetTrack);
-    TGE.on('at-refresh-btn', 'click', clearPage);
-
-    var userBtn = TGE.el('at-mode-user');
-    var fleetBtn = TGE.el('at-mode-fleet');
-
-    if (userBtn) userBtn.onclick = function () { setMode('user'); };
-    if (fleetBtn) fleetBtn.onclick = function () { setMode('fleet'); };
-
-    var input = TGE.el('at-fleet-input');
-    if (input) input.addEventListener('input', updateInputCount);
-
-    wireExportMenu();
-    activateExports();
-  }
+function wireExportMenu() {
+  // Export menu will be wired by the shared export pill later.
+}
 
   function wireExportMenu() {
     var trigger = TGE.el('at-export-trigger');
@@ -156,20 +138,9 @@
     }
   }
 
-  function closeExportMenu() {
-    var menu = TGE.el('at-export-menu');
-    var trigger = TGE.el('at-export-trigger');
-    if (menu) menu.classList.remove('open');
-    if (trigger) trigger.setAttribute('aria-expanded', 'false');
-  }
-
-  document.addEventListener('click', function (e) {
-    var menu = TGE.el('at-export-menu');
-    if (menu && !menu.contains(e.target)) closeExportMenu();
-  });
-
-  window.addEventListener('scroll', closeExportMenu, true);
-  window.addEventListener('resize', closeExportMenu);
+function closeExportMenu() {
+  // Shared export pill will handle close behaviour later.
+}
 
   function setMode(mode) {
     state.mode = mode;
@@ -311,50 +282,35 @@
     }) || null;
   }
 
-function isAssetTrackerDevice(d) {
+  function isAssetTrackerDevice(d) {
   if (!d) return false;
 
-  var typeCode = d.type && d.type.code
-    ? String(d.type.code).toUpperCase()
-    : '';
+  var typeCode = String(d.type?.code || '').toUpperCase();
+  var typeName = String(d.type?.name || '').toLowerCase();
+  var modelName = String(d.model?.name || '').toLowerCase();
 
-  var typeName = d.type && d.type.name
-    ? String(d.type.name).toLowerCase()
-    : '';
-
-  var modelName = d.model && d.model.name
-    ? String(d.model.name).toLowerCase()
-    : '';
-
-  var modelId = d.modelId || (d.model && d.model.id);
-
-  // Hard exclusions
+  // Reject known non-asset hardware
   if (typeCode === 'HERMES') return false;
   if (typeCode === 'CAMERA') return false;
   if (typeCode === 'IFACE') return false;
 
-  if (typeName.indexOf('camera') !== -1) return false;
-  if (typeName.indexOf('tablet') !== -1) return false;
-  if (typeName.indexOf('hermes') !== -1) return false;
+  if (modelName.includes('vt102')) return false;
+  if (modelName.includes('vt202')) return false;
+  if (modelName.includes('iq')) return false;
+  if (modelName.includes('camera')) return false;
+  if (modelName.includes('tablet')) return false;
+  if (modelName.includes('mt201')) return false;
 
-  if (modelName.indexOf('iq') !== -1) return false;
-  if (modelName.indexOf('multi') !== -1) return false;
-  if (modelName.indexOf('mt201') !== -1) return false;
-  if (modelName.indexOf('vt102') !== -1) return false;
-  if (modelName.indexOf('vt202') !== -1) return false;
-
-  // Asset tracker inclusions
+  // Allow only Asset Track hardware
   return (
     typeCode === 'ATRACKER' ||
-    typeName.indexOf('asset tracker') !== -1 ||
-    modelName.indexOf('at301') !== -1 ||
-    modelName.indexOf('oyster') !== -1 ||
-    modelName.indexOf('solar') !== -1 ||
-    String(modelId) === '85' ||
-    String(modelId) === '433'
+    typeName.includes('asset tracker') ||
+    modelName.includes('at301') ||
+    modelName.includes('oyster') ||
+    modelName.includes('solar')
   );
 }
-
+  
 function isOysterTracker(device) {
   if (!device) return false;
 
