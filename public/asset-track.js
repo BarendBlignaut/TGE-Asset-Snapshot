@@ -695,22 +695,6 @@ async function buildAssetTrackAttachment() {
     });
   }
 
-  function downloadBlob(blob, fileName) {
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function base64ToBytes(base64) {
-    var bin = atob(base64);
-    var bytes = new Uint8Array(bin.length);
-    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return bytes;
-  }
-
   function formatTs(iso) {
     if (!iso) return '—';
 
