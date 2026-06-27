@@ -1365,7 +1365,7 @@
     var emailBtn = TGE.el('snap-email-btn');
     if (csvBtn)   csvBtn.onclick   = function() { closeExportMenu(); exportCsv(); };
     if (jsonBtn)  jsonBtn.onclick  = function() { closeExportMenu(); exportJson(); };
-    if (pdfBtn)   pdfBtn.onclick   = function() { closeExportMenu(); window.print(); };
+    if (pdfBtn)   pdfBtn.onclick   = function() { closeExportMenu(); exportPdf(); };
     if (xlsxBtn)  xlsxBtn.onclick  = function() { closeExportMenu(); exportCsv(); };
     if (emailBtn) emailBtn.onclick = function() { closeExportMenu(); alert('Email PDF — coming soon.'); };
   }
@@ -1395,6 +1395,56 @@
     } catch(e) { return ts; }
   }
 
+  function buildSnapshotPayload() {
+    var v   = state.data.vehicle || {};
+    var ds  = state.data.deviceStats || {};
+    var vpm = state.data.vpm || {};
+    var gpio = state.data.gpio || {};
+
+    return {
+      vehicle: {
+        fleetNo: v.name || '—',
+        registration: v.registration || '—',
+        state: v.registrationState || '—',
+        vin: v.vin || '—',
+        make: v.make || '—',
+        model: v.model || '—',
+        type: v.type && v.type.name ? v.type.name : '—'
+      },
+      status: {
+        ignition: ds.ignition || '—',
+        movement: ds.movement || '—',
+        speed: TGE.el('snap-speed') ? TGE.el('snap-speed').textContent : '—',
+        odometer: ds.odometer || '—',
+        location: ds.location || '—',
+        gpsAt: ds.gpsAt || '—'
+      },
+      vpm: vpm,
+      gpio: gpio,
+      devices: state.devices,
+      cameras: state.data.cameras || [],
+      generated: new Date().toLocaleString('en-AU')
+    };
+  }
+
+  async function exportPdf() {
+    if (!state.data.vehicle) {
+      setMessage('Run Snapshot before exporting PDF.', true);
+      return;
+    }
+
+    try {
+      await TGE.PDF.download({
+        route: '/api/snapshot-pdf',
+        module: 'Snapshot',
+        type: 'Report',
+        payload: buildSnapshotPayload()
+      });
+    } catch (e) {
+      setMessage(e.message || 'PDF export failed.', true);
+    }
+  }
+  
   // ── Exports ───────────────────────────────────────────────────────────────────
   function exportJson() {
     if (!state.data.vehicle) return;
