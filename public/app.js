@@ -1,399 +1,302 @@
-// ============================================================================
-// TGE Diagnostics Platform
-// public/tge-diagnostics.js
-// ============================================================================
+// TGE Asset Snapshot — Core
+// public/app.js
 
 (function () {
   'use strict';
 
+  // ── Shared state ────────────────────────────────────────────────────────────
   window.TGE = window.TGE || {};
 
-  var logs = [];
-  var isOpen = false;
-  var isInitialised = false;
-  var maxLogs = 300;
-
-  var position = {
-    left: 120,
-    top: 90,
-    width: 760,
-    height: 420
+  TGE.state = {
+    user:        null,   // { id, username, firstName, lastName, role, roleId }
+    permissions: {},     // { feature: { action: { enabled, limit } } }
+    activeView:  'snapshot',
   };
 
-  function nowIso() {
-    return new Date().toISOString();
-  }
+  // ── Utility functions (available to all page modules) ───────────────────────
 
-  function nowTime() {
-    return new Date().toLocaleTimeString('en-AU', { hour12: false });
-  }
+  TGE.el = function (id) { return document.getElementById(id); };
 
-  function safeText(value) {
-    return String(value == null ? '' : value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
+  TGE.show = function (el, display) {
+    if (!el) return;
+    if (typeof el === 'string') el = TGE.el(el);
+    el.style.display = display || 'block';
+  };
 
-  function getLogLevelClass(level) {
-    level = String(level || '').toLowerCase();
-    if (level === 'error') return 'tge-diag-level-error';
-    if (level === 'warn' || level === 'warning') return 'tge-diag-level-warn';
-    if (level === 'success') return 'tge-diag-level-success';
-    return 'tge-diag-level-info';
-  }
+  TGE.hide = function (el) {
+    if (!el) return;
+    if (typeof el === 'string') el = TGE.el(el);
+    el.style.display = 'none';
+  };
 
-  function addStyles() {
-    if (document.getElementById('tge-diagnostics-styles')) return;
+  TGE.setText = function (id, text) {
+    var el = TGE.el(id);
+    if (el) el.textContent = text != null ? String(text) : '';
+  };
 
-    var style = document.createElement('style');
-    style.id = 'tge-diagnostics-styles';
-    style.textContent = [
-      '.tge-diag-btn{height:32px;padding:0 12px;border-radius:7px;border:1px solid var(--line);background:var(--surface-2);color:var(--muted);font:inherit;font-size:12px;font-weight:600;cursor:pointer;margin-right:8px;}',
-      '.tge-diag-btn.active{background:var(--green-700);color:var(--yellow);border-color:var(--green-600);}',
+  TGE.on = function (id, event, fn) {
+    var el = typeof id === 'string' ? TGE.el(id) : id;
+    if (el) el.addEventListener(event, fn);
+  };
 
-      '.tge-diag-window{display:none;position:fixed;z-index:9999;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 55px rgba(0,0,0,.28);overflow:hidden;min-width:520px;min-height:260px;}',
-      '.tge-diag-window.open{display:flex;flex-direction:column;}',
+  TGE.formatDate = function (iso) {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleString('en-AU', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+      });
+    } catch (e) { return iso; }
+  };
 
-      '.tge-diag-header{height:42px;background:var(--green-900);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 12px;cursor:move;user-select:none;flex-shrink:0;}',
-      '.tge-diag-title{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--yellow);}',
-      '.tge-diag-actions{display:flex;align-items:center;gap:6px;}',
-      '.tge-diag-action{height:26px;padding:0 9px;border-radius:6px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.08);color:#fff;font:inherit;font-size:11px;cursor:pointer;}',
-      '.tge-diag-action:hover{background:rgba(255,255,255,.16);}',
+  TGE.safeText = function (val, fallback) {
+    return (val != null && String(val).trim() !== '') ? String(val) : (fallback || '—');
+  };
 
-      '.tge-diag-body{display:flex;flex-direction:column;min-height:0;flex:1;background:var(--surface);}',
-      '.tge-diag-toolbar{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--surface-2);flex-shrink:0;}',
-      '.tge-diag-pill{font-size:11px;font-weight:700;color:var(--muted);background:var(--surface);border:1px solid var(--line);padding:4px 8px;border-radius:999px;}',
-      '.tge-diag-spacer{flex:1;}',
+  // ── Permission check ─────────────────────────────────────────────────────────
+  TGE.can = function (feature, action) {
+    var f = TGE.state.permissions[feature];
+    if (!f) return false;
+    var a = f[action];
+    if (!a) return false;
+    return a.enabled === true;
+  };
 
-      '.tge-diag-table-wrap{overflow:auto;flex:1;min-height:0;}',
-      '.tge-diag-table{width:100%;border-collapse:collapse;font-size:11px;}',
-      '.tge-diag-table th{position:sticky;top:0;background:var(--surface-2);z-index:1;text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em;}',
-      '.tge-diag-table td{padding:7px 8px;border-bottom:1px solid var(--line-2);vertical-align:top;}',
-      '.tge-diag-table tr:hover td{background:var(--surface-2);}',
-      '.tge-diag-mono{font-family:monospace;font-size:10px;}',
-      '.tge-diag-muted{color:var(--muted);}',
-      '.tge-diag-level-info{color:var(--muted);font-weight:700;}',
-      '.tge-diag-level-success{color:var(--green-600);font-weight:700;}',
-      '.tge-diag-level-warn{color:var(--warning);font-weight:700;}',
-      '.tge-diag-level-error{color:var(--danger);font-weight:700;}',
+  TGE.limit = function (feature, action) {
+    var f = TGE.state.permissions[feature];
+    if (!f) return 0;
+    var a = f[action];
+    if (!a) return 0;
+    return a.limit == null ? Infinity : a.limit;
+  };
 
-      '.tge-diag-empty{padding:36px 20px;text-align:center;color:var(--muted);font-size:13px;}',
-      '.tge-diag-resize{position:absolute;right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize;}',
-      '.tge-diag-resize:after{content:"";position:absolute;right:5px;bottom:5px;width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);opacity:.7;}'
-    ].join('');
-
-    document.head.appendChild(style);
-  }
-
-  function createButton() {
-    if (document.getElementById('tge-diagnostics-btn')) return;
-
-    var topbarRight = document.querySelector('.topbar-right');
-    if (!topbarRight) return;
-
-    var btn = document.createElement('button');
-    btn.id = 'tge-diagnostics-btn';
-    btn.className = 'tge-diag-btn';
-    btn.type = 'button';
-    btn.textContent = 'Diagnostics';
-    btn.onclick = function () {
-      TGE.diagnostics.toggle();
+  // ── API helper ───────────────────────────────────────────────────────────────
+  TGE.api = async function (method, path, body) {
+    var opts = {
+      method:  method,
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
     };
+    if (body) opts.body = JSON.stringify(body);
+    var res  = await fetch(path, opts);
+    var data = await res.json().catch(function () { return {}; });
+    return { ok: res.ok, status: res.status, data: data };
+  };
 
-    topbarRight.insertBefore(btn, topbarRight.firstChild);
-  }
+  // ── View switching ────────────────────────────────────────────────────────────
+  TGE.showView = function (viewId) {
+    // Hide all views
+    document.querySelectorAll('.view').forEach(function (v) {
+      v.classList.remove('active');
+    });
+    // Show target
+    var target = TGE.el('view-' + viewId);
+    if (target) target.classList.add('active');
+    TGE.state.activeView = viewId;
+    // Notify page module if it has an onShow handler
+    var handler = TGE.onShow && TGE.onShow[viewId];
+    if (typeof handler === 'function') handler();
+  };
 
-  function createWindow() {
-    if (document.getElementById('tge-diagnostics-window')) return;
+  // Modules register their onShow handlers here
+  TGE.onShow = {};
 
-    var win = document.createElement('div');
-    win.id = 'tge-diagnostics-window';
-    win.className = 'tge-diag-window';
-    win.style.left = position.left + 'px';
-    win.style.top = position.top + 'px';
-    win.style.width = position.width + 'px';
-    win.style.height = position.height + 'px';
+  // ── Nav wiring ────────────────────────────────────────────────────────────────
+  function initNav() {
+    var GRP_KEY = 'tge_nav_groups';
+    var saved   = {};
+    try { saved = JSON.parse(localStorage.getItem(GRP_KEY) || '{}'); } catch (e) {}
 
-    win.innerHTML = [
-      '<div class="tge-diag-header" id="tge-diagnostics-drag">',
-        '<div class="tge-diag-title">Diagnostics</div>',
-        '<div class="tge-diag-actions">',
-          '<button class="tge-diag-action" id="tge-diagnostics-copy" type="button">Copy</button>',
-          '<button class="tge-diag-action" id="tge-diagnostics-export" type="button">Export</button>',
-          '<button class="tge-diag-action" id="tge-diagnostics-clear" type="button">Clear</button>',
-          '<button class="tge-diag-action" id="tge-diagnostics-close" type="button">Close</button>',
-        '</div>',
-      '</div>',
-      '<div class="tge-diag-body">',
-        '<div class="tge-diag-toolbar">',
-          '<span class="tge-diag-pill" id="tge-diagnostics-count">0 logs</span>',
-          '<span class="tge-diag-pill">Runtime API Inspector</span>',
-          '<span class="tge-diag-spacer"></span>',
-          '<span class="tge-diag-muted" style="font-size:11px;">Floating mode</span>',
-        '</div>',
-        '<div class="tge-diag-table-wrap" id="tge-diagnostics-content"></div>',
-      '</div>',
-      '<div class="tge-diag-resize" id="tge-diagnostics-resize"></div>'
-    ].join('');
+    // Group toggle
+    ['operations', 'camera', 'management'].forEach(function (g) {
+      var btn = TGE.el('grp-' + g);
+      var ch  = TGE.el('children-' + g);
+      if (!btn || !ch) return;
 
-    document.body.appendChild(win);
+      var isOpen = saved[g] !== undefined ? saved[g] : (g === 'operations');
+      btn.classList.toggle('open', isOpen);
+      ch.classList.toggle('open', isOpen);
 
-    TGE.el('tge-diagnostics-close').onclick = TGE.diagnostics.hide;
-    TGE.el('tge-diagnostics-clear').onclick = function () {
-      TGE.diagnostics.clearLogs();
-    };
-    TGE.el('tge-diagnostics-copy').onclick = TGE.diagnostics.copy;
-    TGE.el('tge-diagnostics-export').onclick = TGE.diagnostics.exportJson;
-
-    enableDrag(win, TGE.el('tge-diagnostics-drag'));
-    enableResize(win, TGE.el('tge-diagnostics-resize'));
-
-    render();
-  }
-
-  function enableDrag(win, handle) {
-    if (!win || !handle) return;
-
-    var dragging = false;
-    var startX = 0;
-    var startY = 0;
-    var startLeft = 0;
-    var startTop = 0;
-
-    handle.addEventListener('mousedown', function (e) {
-      dragging = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      startLeft = parseInt(win.style.left, 10) || 0;
-      startTop = parseInt(win.style.top, 10) || 0;
-      document.body.style.userSelect = 'none';
+      btn.addEventListener('click', function () {
+        var open = btn.classList.contains('open');
+        btn.classList.toggle('open', !open);
+        ch.classList.toggle('open', !open);
+        saved[g] = !open;
+        try { localStorage.setItem(GRP_KEY, JSON.stringify(saved)); } catch (e) {}
+      });
     });
 
-    document.addEventListener('mousemove', function (e) {
-      if (!dragging) return;
+    // Nav item clicks
+    document.querySelectorAll('.nav-item[data-view]').forEach(function (item) {
+      item.addEventListener('click', function () {
+        var viewId = item.dataset.view;
+        var group  = item.dataset.group;
+        var title  = item.dataset.title;
 
-      var nextLeft = startLeft + (e.clientX - startX);
-      var nextTop = startTop + (e.clientY - startY);
+        // Update active state
+        document.querySelectorAll('.nav-item').forEach(function (n) { n.classList.remove('active'); });
+        document.querySelectorAll('.nav-group-btn').forEach(function (b) { b.classList.remove('has-active'); });
+        item.classList.add('active');
+        var grpBtn = TGE.el('grp-' + group);
+        if (grpBtn) grpBtn.classList.add('has-active');
 
-      nextLeft = Math.max(0, Math.min(window.innerWidth - 120, nextLeft));
-      nextTop = Math.max(0, Math.min(window.innerHeight - 80, nextTop));
+        // Update topbar
+        TGE.setText('topbar-group', item.dataset.group.charAt(0).toUpperCase() + item.dataset.group.slice(1));
+        TGE.setText('topbar-title', title);
 
-      win.style.left = nextLeft + 'px';
-      win.style.top = nextTop + 'px';
+        // Switch view
+        TGE.showView(viewId);
+      });
     });
 
-    document.addEventListener('mouseup', function () {
-      if (!dragging) return;
-      dragging = false;
-      document.body.style.userSelect = '';
-    });
-  }
+    // Sidebar toggle
+    var COLLAPSE_KEY = 'tge_sidebar_collapsed';
+    var sidebar      = TGE.el('sidebar');
+    var toggleBtn    = TGE.el('sidebar-toggle');
 
-  function enableResize(win, handle) {
-    if (!win || !handle) return;
+    try {
+      if (localStorage.getItem(COLLAPSE_KEY) === '1' && sidebar) {
+        sidebar.style.width = '0';
+      }
+    } catch (e) {}
 
-    var resizing = false;
-    var startX = 0;
-    var startY = 0;
-    var startW = 0;
-    var startH = 0;
-
-    handle.addEventListener('mousedown', function (e) {
-      e.stopPropagation();
-      resizing = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      startW = win.offsetWidth;
-      startH = win.offsetHeight;
-      document.body.style.userSelect = 'none';
-    });
-
-    document.addEventListener('mousemove', function (e) {
-      if (!resizing) return;
-
-      var nextW = Math.max(520, startW + (e.clientX - startX));
-      var nextH = Math.max(260, startH + (e.clientY - startY));
-
-      nextW = Math.min(window.innerWidth - 40, nextW);
-      nextH = Math.min(window.innerHeight - 40, nextH);
-
-      win.style.width = nextW + 'px';
-      win.style.height = nextH + 'px';
-    });
-
-    document.addEventListener('mouseup', function () {
-      if (!resizing) return;
-      resizing = false;
-      document.body.style.userSelect = '';
-    });
-  }
-
-  function render() {
-    var content = TGE.el('tge-diagnostics-content');
-    var count = TGE.el('tge-diagnostics-count');
-
-    if (count) {
-      count.textContent = logs.length + ' log' + (logs.length === 1 ? '' : 's');
+    if (toggleBtn && sidebar) {
+      toggleBtn.addEventListener('click', function () {
+        var collapsed = sidebar.style.width === '0px' || sidebar.style.width === '0';
+        sidebar.style.width = collapsed ? '' : '0';
+        try { localStorage.setItem(COLLAPSE_KEY, collapsed ? '0' : '1'); } catch (e) {}
+      });
     }
-
-    if (!content) return;
-
-    if (!logs.length) {
-      content.innerHTML = '<div class="tge-diag-empty">No diagnostics captured yet.</div>';
-      return;
-    }
-
-    content.innerHTML = [
-      '<table class="tge-diag-table">',
-        '<thead>',
-          '<tr>',
-            '<th style="width:70px;">Time</th>',
-            '<th style="width:80px;">Level</th>',
-            '<th style="width:90px;">Category</th>',
-            '<th style="width:110px;">Module</th>',
-            '<th>Action</th>',
-            '<th style="width:80px;">Status</th>',
-            '<th style="width:80px;">Duration</th>',
-            '<th>Message</th>',
-          '</tr>',
-        '</thead>',
-        '<tbody>',
-          logs.slice().reverse().map(function (log) {
-            return [
-              '<tr>',
-                '<td class="tge-diag-mono tge-diag-muted">' + safeText(log.time) + '</td>',
-                '<td class="' + getLogLevelClass(log.level) + '">' + safeText(log.level) + '</td>',
-                '<td>' + safeText(log.category) + '</td>',
-                '<td>' + safeText(log.module) + '</td>',
-                '<td>' + safeText(log.action) + '</td>',
-                '<td class="tge-diag-mono">' + safeText(log.status || '') + '</td>',
-                '<td class="tge-diag-mono">' + safeText(log.duration != null ? log.duration + 'ms' : '') + '</td>',
-                '<td>' + safeText(log.message || '') + '</td>',
-              '</tr>'
-            ].join('');
-          }).join(''),
-        '</tbody>',
-      '</table>'
-    ].join('');
   }
 
-  function downloadText(filename, text, mimeType) {
-    var blob = new Blob([text], { type: mimeType || 'text/plain' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(function () {
-      URL.revokeObjectURL(a.href);
-      a.remove();
-    }, 0);
-  }
+  // ── Login ─────────────────────────────────────────────────────────────────────
+  function initLogin() {
+    var form    = TGE.el('login-form');
+    var errEl   = TGE.el('login-error');
+    var loginBtn = TGE.el('login-btn');
 
-  TGE.diagnostics = {
+    if (!form) return;
 
-    version: '1.0.0',
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var username = TGE.el('login-username').value.trim();
+      var password = TGE.el('login-password').value.trim();
 
-    init: function () {
-      if (isInitialised) return;
-
-      if (typeof TGE.can === 'function' && !TGE.can('diagnostics', 'view')) {
+      if (!username || !password) {
+        errEl.textContent = 'Please enter your username and password.';
         return;
       }
 
-      addStyles();
-      createButton();
-      createWindow();
+      loginBtn.textContent = 'Signing in...';
+      loginBtn.disabled    = true;
+      errEl.textContent    = '';
 
-      isInitialised = true;
-    },
+      var result = await TGE.api('POST', '/api/auth/login', { username: username, password: password });
 
-    log: function (data) {
-      data = data || {};
+      loginBtn.textContent = 'Sign In';
+      loginBtn.disabled    = false;
 
-      logs.push({
-        id: logs.length + 1,
-        timestamp: nowIso(),
-        time: nowTime(),
-        category: data.category || 'General',
-        level: data.level || 'Info',
-        module: data.module || '',
-        action: data.action || '',
-        request: data.request || null,
-        response: data.response || null,
-        duration: data.duration || null,
-        status: data.status || null,
-        message: data.message || '',
-        error: data.error || null
-      });
+      if (!result.ok) {
+        errEl.textContent = result.data.error || 'Login failed. Please try again.';
+        return;
+      }
 
-      if (logs.length > maxLogs) logs.shift();
+      TGE.state.user        = result.data.user;
+      TGE.state.permissions = result.data.permissions || {};
+      showApp();
+    });
+  }
 
-      if (isOpen) render();
-    },
-
-    getLogs: function () {
-      return logs.slice();
-    },
-
-    clearLogs: function () {
-      logs = [];
-      render();
-    },
-
-    show: function () {
-      if (!isInitialised) this.init();
-
-      var win = TGE.el('tge-diagnostics-window');
-      var btn = TGE.el('tge-diagnostics-btn');
-
-      if (win) win.classList.add('open');
-      if (btn) btn.classList.add('active');
-
-      isOpen = true;
-      render();
-    },
-
-    hide: function () {
-      var win = TGE.el('tge-diagnostics-window');
-      var btn = TGE.el('tge-diagnostics-btn');
-
-      if (win) win.classList.remove('open');
-      if (btn) btn.classList.remove('active');
-
-      isOpen = false;
-    },
-
-    toggle: function () {
-      if (isOpen) this.hide();
-      else this.show();
-    },
-
-    copy: function () {
-      var text = JSON.stringify(logs, null, 2);
-      navigator.clipboard.writeText(text).then(function () {
-        alert('Diagnostics copied to clipboard.');
-      });
-    },
-
-    exportJson: function () {
-      var stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13);
-      downloadText('Diagnostics_Report_' + stamp + '.json', JSON.stringify(logs, null, 2), 'application/json');
-    },
-
-    health: function () {
-      return {
-        healthy: true,
-        version: this.version,
-        logs: logs.length,
-        initialised: isInitialised,
-        open: isOpen
-      };
+  // ── Session restore ───────────────────────────────────────────────────────────
+  async function restoreSession() {
+    var result = await TGE.api('GET', '/api/auth/session');
+    if (result.ok && result.data.ok) {
+      TGE.state.user        = result.data.user;
+      TGE.state.permissions = result.data.permissions || {};
+      showApp();
     }
+    // If no session, login overlay stays visible
+  }
 
-  };
+  // ── Show app after login ──────────────────────────────────────────────────────
+  function showApp() {
+    var user = TGE.state.user;
+
+    // Update sidebar user info
+    var initials = ((user.firstName || '?')[0] + (user.lastName || '?')[0]).toUpperCase();
+    TGE.setText('user-avatar',       initials);
+    TGE.setText('user-display-name', user.firstName + ' ' + user.lastName);
+    TGE.setText('user-role-label',   user.role || 'user');
+
+    // Show sidebar
+    var sidebar = TGE.el('sidebar');
+    if (sidebar) sidebar.classList.add('visible');
+
+    // Hide login, show app
+    TGE.hide('login-overlay');
+    TGE.show('app-shell', 'grid');
+
+    // Apply permissions — small delay ensures DOM is fully ready
+    setTimeout(function() {
+      applyNavPermissions();
+      initNav();
+    }, 50);
+
+    // Show default view
+    TGE.showView('snapshot');
+    TGE.setText('topbar-group', 'Operations');
+    TGE.setText('topbar-title', 'Asset Snapshot');
+
+    // Init diagnostics panel (if permitted)
+    initDiagnostics();
+
+    // Notify all page modules that app is ready
+    if (typeof TGE.onAppReady === 'function') TGE.onAppReady();
+  }
+
+  // ── Apply permissions to nav ───────────────────────────────────────────────────
+  function applyNavPermissions() {
+    var navItems = document.querySelectorAll('.nav-item[data-view]');
+    navItems.forEach(function (item) {
+      var view = item.dataset.view;
+      // Roles page uses admin permission
+      var permKey = (view === 'roles' || view === 'api') ? 'admin' : view;
+      if (!TGE.can(permKey, 'view')) {
+        item.style.display = 'none';
+      }
+    });
+
+    // Hide management group entirely if no admin access
+    if (!TGE.can('admin', 'view')) {
+      var mgmtBtn = TGE.el('grp-management');
+      var mgmtCh  = TGE.el('children-management');
+      if (mgmtBtn) mgmtBtn.style.display = 'none';
+      if (mgmtCh)  mgmtCh.style.display  = 'none';
+    }
+  }
+
+  // ── Sign out ──────────────────────────────────────────────────────────────────
+  function initSignOut() {
+    TGE.on('sign-out-btn', 'click', async function () {
+      await TGE.api('POST', '/api/auth/logout');
+      TGE.state.user        = null;
+      TGE.state.permissions = {};
+      TGE.show('login-overlay', 'flex');
+      TGE.hide('app-shell');
+      var sidebar = TGE.el('sidebar');
+      if (sidebar) sidebar.classList.remove('visible');
+      TGE.el('login-username').value = '';
+      TGE.el('login-password').value = '';
+      TGE.el('login-error').textContent = '';
+    });
+  }
+
+
+  // ── Boot ──────────────────────────────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', function () {
+    initLogin();
+    initSignOut();
+    restoreSession();
+  });
 
 })();
