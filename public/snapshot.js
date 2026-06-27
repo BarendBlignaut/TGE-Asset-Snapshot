@@ -407,7 +407,10 @@
         if (menu && !menu.contains(e.target)) closeExportMenu();
       });
     }
-  function resetSnapshot() {
+  function resetSnapshot(options) {
+    options = options || {};
+    var keepInput = options.keepInput === true;
+
     if (state.running) return;
 
     state.asset = null;
@@ -424,7 +427,7 @@
 
     var input = TGE.el('snap-fleet-input');
     if (input) {
-      input.value = '';
+      if (!keepInput) input.value = '';
       input.focus();
     }
 
@@ -512,6 +515,8 @@
     var fleetNo = (TGE.el('snap-fleet-input') || {}).value || '';
     fleetNo = fleetNo.trim();
     if (!fleetNo) { setMessage('Enter a fleet number first.', true); return; }
+
+    resetSnapshot({ keepInput: true });
 
     state.running        = false; // reset
     state.running        = true;
