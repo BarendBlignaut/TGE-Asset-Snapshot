@@ -126,7 +126,7 @@
         '<div class="tge-diag-actions">',
           '<button class="tge-diag-action" id="tge-diagnostics-copy" type="button">Copy</button>',
           '<button class="tge-diag-action" id="tge-diagnostics-export" type="button">Export</button>',
-          '<button class="tge-diag-action" id="tge-diagnostics-popout" type="button">Pop Out</button>',
+           '<button class="tge-diag-action" id="tge-diagnostics-popout" type="button">Open Tab</button>',
           '<button class="tge-diag-action" id="tge-diagnostics-clear" type="button">Clear</button>',
           '<button class="tge-diag-action" id="tge-diagnostics-close" type="button">Close</button>',
         '</div>',
@@ -154,7 +154,7 @@
     TGE.el('tge-diagnostics-clear').onclick = TGE.diagnostics.clearLogs;
     TGE.el('tge-diagnostics-copy').onclick = TGE.diagnostics.copy;
     TGE.el('tge-diagnostics-export').onclick = TGE.diagnostics.exportJson;
-    TGE.el('tge-diagnostics-popout').onclick = TGE.diagnostics.popOut;
+    TGE.el('tge-diagnostics-popout').onclick = TGE.diagnostics.openTab;
 
     enableDrag(win, TGE.el('tge-diagnostics-drag'));
     enableResize(win, TGE.el('tge-diagnostics-resize'));
@@ -537,10 +537,71 @@
       downloadText('Diagnostics_Report_' + stamp + '.json', JSON.stringify(logs, null, 2), 'application/json');
     },
 
-    popOut: function () {
-      openPopoutWindow();
-    },
+openTab: function () {
+  var tab = window.open('', 'TGE_Diagnostics_Tab');
 
+  if (!tab) {
+    alert('Diagnostics tab blocked by browser. Allow pop-ups/tabs for this site.');
+    return;
+  }
+
+  tab.document.open();
+  tab.document.write(
+    '<!doctype html>' +
+    '<html>' +
+    '<head>' +
+      '<title>TGE Diagnostics</title>' +
+      '<style>' +
+        'body{margin:0;font-family:Arial,sans-serif;background:#f6f7f8;color:#111;}' +
+        'header{padding:12px 16px;background:#003c1f;color:#d4f026;font-weight:700;}' +
+        'main{display:grid;grid-template-columns:38% 62%;height:calc(100vh - 44px);}' +
+        '#diag-list{overflow:auto;border-right:1px solid #ddd;background:#fff;padding:10px;}' +
+        '#diag-detail{overflow:auto;padding:10px;}' +
+        '.row{padding:8px;border-bottom:1px solid #eee;cursor:pointer;}' +
+        '.row:hover{background:#f1f5f2;}' +
+        '.row.active{background:#e9f6ed;}' +
+        'h3{margin:0 0 10px;font-size:13px;text-transform:uppercase;color:#555;}' +
+        'h4{margin:12px 0 6px;font-size:11px;text-transform:uppercase;color:#555;}' +
+        'pre{white-space:pre-wrap;word-break:break-word;background:#fff;border:1px solid #ddd;border-radius:8px;padding:10px;font-size:11px;line-height:1.45;}' +
+        'code{font-size:11px;}' +
+        'small{color:#666;}' +
+        '.empty{padding:24px;color:#777;text-align:center;}' +
+      '</style>' +
+    '</head>' +
+    '<body>' +
+      '<header>TGE Diagnostics</header>' +
+      '<main>' +
+        '<section id="diag-list"></section>' +
+        '<section id="diag-detail"><div class="empty">Select a log row.</div></section>' +
+      '</main>' +
+      '<script>' +
+        'var logs=' + JSON.stringify(logs).replace(/</g, '\\u003c') + ';' +
+        'var selected=null;' +
+        'function esc(v){return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\\\\\"/g,"&quot;").replace(/\\x27/g,"&#039;");}' +
+        'function render(){' +
+          'var list=document.getElementById("diag-list");' +
+          'if(!logs.length){list.innerHTML="<div class=\\"empty\\">No diagnostics captured.</div>";return;}' +
+          'list.innerHTML="<h3>API Calls</h3>"+logs.slice().reverse().map(function(log){return "<div class=\\"row\\" data-id=\\""+log.id+"\\"><strong>"+esc(log.time)+"</strong> "+esc(log.level)+"<br><code>"+esc(log.action)+"</code><br><small>Status: "+esc(log.status||"")+" | "+esc(log.duration!=null?log.duration+"ms":"")+"</small></div>";}).join("");' +
+          'Array.prototype.forEach.call(document.querySelectorAll(".row"),function(row){row.onclick=function(){selected=Number(row.getAttribute("data-id"));renderDetail();};});' +
+        '}' +
+        'function renderDetail(){' +
+          'var detail=document.getElementById("diag-detail");' +
+          'var log=logs.find(function(x){return x.id===selected;});' +
+          'if(!log){detail.innerHTML="<div class=\\"empty\\">Select a log row.</div>";return;}' +
+          'detail.innerHTML="<h3>Raw Data</h3>"+' +
+            '"<h4>Summary</h4><pre>"+esc(JSON.stringify({id:log.id,timestamp:log.timestamp,category:log.category,level:log.level,module:log.module,action:log.action,status:log.status,duration:log.duration,message:log.message,error:log.error},null,2))+"</pre>"+' +
+            '"<h4>Request Sent</h4><pre>"+esc(JSON.stringify(log.request||{},null,2))+"</pre>"+' +
+            '"<h4>Response Received</h4><pre>"+esc(JSON.stringify(log.response||{},null,2))+"</pre>";' +
+        '}' +
+        'render();' +
+      '<\/script>' +
+    '</body>' +
+    '</html>'
+  );
+
+  tab.document.close();
+  tab.focus();
+},
     health: function () {
       return {
         healthy: true,
