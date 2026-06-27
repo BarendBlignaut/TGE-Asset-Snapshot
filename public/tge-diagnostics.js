@@ -1,64 +1,33 @@
+window.TGE.diagnostics = {
 
-// ============================================================================
-// TGE Diagnostics Platform
-// ============================================================================
+    version: "1.0.0",
 
-(function () {
-    "use strict";
+    log(data) {
+        add("LOG", data || {});
+    },
 
-    window.TGE = window.TGE || {};
+    getLogs() {
+        return [..._entries];
+    },
 
-    const _entries = [];
+    clearLogs() {
+        _entries.length = 0;
+    },
 
-    function now() {
-        return new Date().toISOString();
-    }
+    health() {
+        return {
+            healthy: true,
+            version: this.version,
+            logs: _entries.length
+        };
+    },
 
-    function add(type, data) {
-        _entries.push({
-            id: _entries.length + 1,
-            timestamp: now(),
-            type,
-            ...data
-        });
-    }
+    init() {},
 
-    window.TGE.Diagnostics = {
+    show() {},
 
-        version: "1.0.0",
+    hide() {},
 
-        logApi(data) {
-            add("API", data);
-        },
+    toggle() {}
 
-        logError(data) {
-            add("ERROR", data);
-        },
-
-        logEvent(data) {
-            add("EVENT", data);
-        },
-
-        logPerformance(data) {
-            add("PERFORMANCE", data);
-        },
-
-        entries() {
-            return [..._entries];
-        },
-
-        clear() {
-            _entries.length = 0;
-        },
-
-        health() {
-            return {
-                healthy: true,
-                version: this.version,
-                entries: _entries.length
-            };
-        }
-
-    };
-
-})();
+};
