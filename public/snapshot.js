@@ -101,14 +101,16 @@
         '<div class="hero-sub" style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:2px;">Enter a fleet number to load current location, metrics, diagnostics and camera evidence.</div>',
         '<div class="hero-bar" style="margin-top:12px;">',
           '<div class="hero-bar-left">',
-            '<input id="snap-fleet-input"' +
+ '<input id="snap-fleet-input"' +
 ' type="search"' +
 ' name="snapshot-fleet"' +
 ' placeholder="Fleet number e.g. 82050"' +
-' autocomplete="off"' +
+' autocomplete="new-password"' +
 ' autocorrect="off"' +
 ' autocapitalize="off"' +
 ' spellcheck="false"' +
+' readonly' +
+' onfocus="this.removeAttribute(\'readonly\')"' +
 ' style="height:34px;border:1px solid rgba(255,255,255,0.25);border-radius:7px;padding:0 12px;background:rgba(255,255,255,0.10);color:#fff;font:inherit;font-size:13px;min-width:180px;" />',
             '<button class="hero-run-btn" id="snap-run-btn" type="button">Run</button>',
             '<button class="hero-action-btn" id="snap-refresh-btn" type="button" style="display:none;">Refresh</button>',
