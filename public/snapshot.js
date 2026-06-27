@@ -1402,7 +1402,7 @@
     var gpio = state.data.gpio || {};
 
     return {
-      vehicle: {
+      asset: {
         fleetNo: v.name || '—',
         registration: v.registration || '—',
         state: v.registrationState || '—',
