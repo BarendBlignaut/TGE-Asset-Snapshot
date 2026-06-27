@@ -125,6 +125,7 @@
         '<div class="tge-diag-title">Diagnostics</div>',
         '<div class="tge-diag-actions">',
           '<button class="tge-diag-action" id="tge-diagnostics-copy" type="button">Copy</button>',
+      '<button class="tge-diag-action" id="tge-diagnostics-popout" type="button">Pop Out</button>',
           '<button class="tge-diag-action" id="tge-diagnostics-export" type="button">Export</button>',
           '<button class="tge-diag-action" id="tge-diagnostics-clear" type="button">Clear</button>',
           '<button class="tge-diag-action" id="tge-diagnostics-close" type="button">Close</button>',
@@ -153,6 +154,7 @@
     TGE.el('tge-diagnostics-clear').onclick = TGE.diagnostics.clearLogs;
     TGE.el('tge-diagnostics-copy').onclick = TGE.diagnostics.copy;
     TGE.el('tge-diagnostics-export').onclick = TGE.diagnostics.exportJson;
+    TGE.el('tge-diagnostics-popout').onclick = TGE.diagnostics.popOut;
 
     enableDrag(win, TGE.el('tge-diagnostics-drag'));
     enableResize(win, TGE.el('tge-diagnostics-resize'));
@@ -436,6 +438,25 @@ function renderDetail() {
       downloadText('Diagnostics_Report_' + stamp + '.json', JSON.stringify(logs, null, 2), 'application/json');
     },
 
+popOut: function () {
+  var popup = window.open('', 'TGE_Diagnostics', 'width=1100,height=700,resizable=yes,scrollbars=yes');
+
+  if (!popup) {
+    alert('Pop-out blocked by browser. Allow pop-ups for this site.');
+    return;
+  }
+
+  popup.document.open();
+  popup.document.write(
+    '<!doctype html><html><head><title>TGE Diagnostics</title>' +
+    '<style>body{font-family:Arial;margin:0;padding:16px;background:#f6f7f8;}pre{white-space:pre-wrap;word-break:break-word;background:#fff;border:1px solid #ddd;border-radius:8px;padding:12px;font-size:11px;}</style>' +
+    '</head><body><h2>TGE Diagnostics</h2><pre>' +
+    safeText(JSON.stringify(logs, null, 2)) +
+    '</pre></body></html>'
+  );
+  popup.document.close();
+},
+    
     health: function () {
       return {
         healthy: true,
