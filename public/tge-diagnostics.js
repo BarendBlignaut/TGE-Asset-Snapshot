@@ -13,6 +13,7 @@
   var isInitialised = false;
   var maxLogs = 300;
   var selectedLogId = null;
+  var popupWindow = null; // track the pop-out window
 
   var position = {
     left: 120,
@@ -125,7 +126,7 @@
         '<div class="tge-diag-title">Diagnostics</div>',
         '<div class="tge-diag-actions">',
           '<button class="tge-diag-action" id="tge-diagnostics-copy" type="button">Copy</button>',
-      '<button class="tge-diag-action" id="tge-diagnostics-popout" type="button">Pop Out</button>',
+          '<button class="tge-diag-action" id="tge-diagnostics-popout" type="button">Pop Out</button>',
           '<button class="tge-diag-action" id="tge-diagnostics-export" type="button">Export</button>',
           '<button class="tge-diag-action" id="tge-diagnostics-clear" type="button">Clear</button>',
           '<button class="tge-diag-action" id="tge-diagnostics-close" type="button">Close</button>',
@@ -139,11 +140,11 @@
           '<span class="tge-diag-muted" style="font-size:11px;">Floating mode</span>',
         '</div>',
         '<div class="tge-diag-split">',
-  '<div class="tge-diag-list" id="tge-diagnostics-content"></div>',
-  '<div class="tge-diag-detail" id="tge-diagnostics-detail">',
-    '<div class="tge-diag-empty">Select a log row to view request and response data.</div>',
-  '</div>',
-'</div>',
+          '<div class="tge-diag-list" id="tge-diagnostics-content"></div>',
+          '<div class="tge-diag-detail" id="tge-diagnostics-detail">',
+            '<div class="tge-diag-empty">Select a log row to view request and response data.</div>',
+          '</div>',
+        '</div>',
       '</div>',
       '<div class="tge-diag-resize" id="tge-diagnostics-resize"></div>'
     ].join('');
@@ -239,101 +240,111 @@
     });
   }
 
-function render() {
-  var content = TGE.el('tge-diagnostics-content');
-  var detail = TGE.el('tge-diagnostics-detail');
-  var count = TGE.el('tge-diagnostics-count');
-
-  if (count) {
-    count.textContent = logs.length + ' log' + (logs.length === 1 ? '' : 's');
+  // Send current logs to the pop-out window if it is open
+  function syncPopup() {
+    if (popupWindow && !popupWindow.closed) {
+      popupWindow.postMessage({ type: 'TGE_DIAG_SYNC', logs: logs }, '*');
+    }
   }
 
-  if (!content) return;
+  function render() {
+    var content = TGE.el('tge-diagnostics-content');
+    var detail = TGE.el('tge-diagnostics-detail');
+    var count = TGE.el('tge-diagnostics-count');
 
-  if (!logs.length) {
-    content.innerHTML = '<div class="tge-diag-empty">No diagnostics captured yet.</div>';
-    if (detail) detail.innerHTML = '<div class="tge-diag-empty">Select a log row to view request and response data.</div>';
-    return;
+    if (count) {
+      count.textContent = logs.length + ' log' + (logs.length === 1 ? '' : 's');
+    }
+
+    if (!content) return;
+
+    if (!logs.length) {
+      content.innerHTML = '<div class="tge-diag-empty">No diagnostics captured yet.</div>';
+      if (detail) detail.innerHTML = '<div class="tge-diag-empty">Select a log row to view request and response data.</div>';
+      return;
+    }
+
+    content.innerHTML = [
+      '<table class="tge-diag-table">',
+        '<thead>',
+          '<tr>',
+            '<th>Time</th>',
+            '<th>Level</th>',
+            '<th>Method / Endpoint</th>',
+            '<th>Status</th>',
+            '<th>Duration</th>',
+          '</tr>',
+        '</thead>',
+        '<tbody>',
+          logs.slice().reverse().map(function (log) {
+            var active = selectedLogId === log.id ? ' active' : '';
+            return [
+              '<tr class="tge-diag-row' + active + '" data-log-id="' + log.id + '">',
+                '<td class="tge-diag-mono tge-diag-muted">' + safeText(log.time) + '</td>',
+                '<td class="' + levelClass(log.level) + '">' + safeText(log.level) + '</td>',
+                '<td>' + safeText(log.action) + '</td>',
+                '<td class="tge-diag-mono">' + safeText(log.status || '') + '</td>',
+                '<td class="tge-diag-mono">' + safeText(log.duration != null ? log.duration + 'ms' : '') + '</td>',
+              '</tr>'
+            ].join('');
+          }).join(''),
+        '</tbody>',
+      '</table>'
+    ].join('');
+
+    Array.prototype.forEach.call(content.querySelectorAll('.tge-diag-row'), function (row) {
+      row.onclick = function () {
+        selectedLogId = parseInt(row.getAttribute('data-log-id'), 10);
+        render();
+      };
+    });
+
+    renderDetail();
+
+    // Push latest logs to pop-out if it's open on another screen
+    syncPopup();
   }
 
-  content.innerHTML = [
-    '<table class="tge-diag-table">',
-      '<thead>',
-        '<tr>',
-          '<th>Time</th>',
-          '<th>Level</th>',
-          '<th>Method / Endpoint</th>',
-          '<th>Status</th>',
-          '<th>Duration</th>',
-        '</tr>',
-      '</thead>',
-      '<tbody>',
-        logs.slice().reverse().map(function (log) {
-          var active = selectedLogId === log.id ? ' active' : '';
-          return [
-            '<tr class="tge-diag-row' + active + '" data-log-id="' + log.id + '">',
-              '<td class="tge-diag-mono tge-diag-muted">' + safeText(log.time) + '</td>',
-              '<td class="' + levelClass(log.level) + '">' + safeText(log.level) + '</td>',
-              '<td>' + safeText(log.action) + '</td>',
-              '<td class="tge-diag-mono">' + safeText(log.status || '') + '</td>',
-              '<td class="tge-diag-mono">' + safeText(log.duration != null ? log.duration + 'ms' : '') + '</td>',
-            '</tr>'
-          ].join('');
-        }).join(''),
-      '</tbody>',
-    '</table>'
-  ].join('');
+  function renderDetail() {
+    var detail = TGE.el('tge-diagnostics-detail');
+    if (!detail) return;
 
-  Array.prototype.forEach.call(content.querySelectorAll('.tge-diag-row'), function (row) {
-    row.onclick = function () {
-      selectedLogId = parseInt(row.getAttribute('data-log-id'), 10);
-      render();
-    };
-  });
+    if (!selectedLogId) {
+      detail.innerHTML = '<div class="tge-diag-empty">Select a log row to view request and response data.</div>';
+      return;
+    }
 
-  renderDetail();
-}
+    var log = logs.find(function (item) {
+      return item.id === selectedLogId;
+    });
 
-function renderDetail() {
-  var detail = TGE.el('tge-diagnostics-detail');
-  if (!detail) return;
+    if (!log) {
+      detail.innerHTML = '<div class="tge-diag-empty">Selected log no longer exists.</div>';
+      return;
+    }
 
-  if (!selectedLogId) {
-    detail.innerHTML = '<div class="tge-diag-empty">Select a log row to view request and response data.</div>';
-    return;
+    detail.innerHTML = [
+      '<div class="tge-diag-raw-title">Summary</div>',
+      '<pre class="tge-diag-raw">' + safeText(JSON.stringify({
+        id: log.id,
+        timestamp: log.timestamp,
+        category: log.category,
+        level: log.level,
+        module: log.module,
+        action: log.action,
+        status: log.status,
+        duration: log.duration,
+        message: log.message,
+        error: log.error
+      }, null, 2)) + '</pre>',
+
+      '<div class="tge-diag-raw-title">Request Sent</div>',
+      '<pre class="tge-diag-raw">' + safeText(JSON.stringify(log.request || {}, null, 2)) + '</pre>',
+
+      '<div class="tge-diag-raw-title">Response Received</div>',
+      '<pre class="tge-diag-raw">' + safeText(JSON.stringify(log.response || {}, null, 2)) + '</pre>'
+    ].join('');
   }
-
-  var log = logs.find(function (item) {
-    return item.id === selectedLogId;
-  });
-
-  if (!log) {
-    detail.innerHTML = '<div class="tge-diag-empty">Selected log no longer exists.</div>';
-    return;
-  }
-
-  detail.innerHTML = [
-    '<div class="tge-diag-raw-title">Summary</div>',
-    '<pre class="tge-diag-raw">' + safeText(JSON.stringify({
-      id: log.id,
-      timestamp: log.timestamp,
-      category: log.category,
-      level: log.level,
-      module: log.module,
-      action: log.action,
-      status: log.status,
-      duration: log.duration,
-      message: log.message,
-      error: log.error
-    }, null, 2)) + '</pre>',
-
-    '<div class="tge-diag-raw-title">Request Sent</div>',
-    '<pre class="tge-diag-raw">' + safeText(JSON.stringify(log.request || {}, null, 2)) + '</pre>',
-
-    '<div class="tge-diag-raw-title">Response Received</div>',
-    '<pre class="tge-diag-raw">' + safeText(JSON.stringify(log.response || {}, null, 2)) + '</pre>'
-  ].join('');
-}
 
   function downloadText(filename, text, mimeType) {
     var blob = new Blob([text], { type: mimeType || 'text/plain' });
@@ -348,9 +359,146 @@ function renderDetail() {
     }, 0);
   }
 
+  // HTML written into the pop-out window.
+  // Listens for postMessage from the main window and re-renders the full
+  // diagnostics table + detail panel live, so the user can drag it to
+  // a second or third monitor and review data there while working here.
+  function buildPopupHtml(initialLogs) {
+    var safeInitial = JSON.stringify(initialLogs)
+      .replace(/</g, '\\u003c')
+      .replace(/>/g, '\\u003e')
+      .replace(/&/g, '\\u0026');
+
+    return '<!doctype html><html><head><meta charset="utf-8">' +
+      '<title>TGE Diagnostics \u2014 Pop Out</title>' +
+      '<style>' +
+        '*{box-sizing:border-box;margin:0;padding:0;}' +
+        'body{font-family:Arial,sans-serif;font-size:12px;background:#f6f7f8;color:#1a1a1a;display:flex;flex-direction:column;height:100vh;overflow:hidden;}' +
+        '#header{background:#1a3a2a;color:#f0c040;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}' +
+        '#header h1{font-size:14px;font-weight:700;}' +
+        '#status{font-size:11px;color:#9db;margin-left:12px;}' +
+        '#toolbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#eef0f2;border-bottom:1px solid #d0d4d8;flex-shrink:0;}' +
+        '#log-count{font-size:11px;font-weight:700;color:#666;background:#fff;border:1px solid #d0d4d8;padding:3px 8px;border-radius:999px;}' +
+        '#clear-btn{font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #bbb;background:#fff;cursor:pointer;}' +
+        '#clear-btn:hover{background:#f0f0f0;}' +
+        '#split{display:grid;grid-template-columns:45% 55%;flex:1;min-height:0;}' +
+        '#list{overflow:auto;border-right:1px solid #d0d4d8;background:#fff;}' +
+        '#detail{overflow:auto;background:#f0f2f4;padding:10px;}' +
+        'table{width:100%;border-collapse:collapse;font-size:11px;}' +
+        'th{position:sticky;top:0;background:#eef0f2;text-align:left;padding:7px 8px;border-bottom:1px solid #d0d4d8;color:#666;font-size:10px;text-transform:uppercase;letter-spacing:.05em;}' +
+        'td{padding:7px 8px;border-bottom:1px solid #e8eaec;vertical-align:top;}' +
+        'tr.row{cursor:pointer;}' +
+        'tr.row:hover td{background:#f5f7f9;}' +
+        'tr.row.active td{background:#e6f4ec;}' +
+        '.mono{font-family:monospace;font-size:10px;}' +
+        '.muted{color:#888;}' +
+        '.error{color:#c0392b;font-weight:700;}' +
+        '.warn{color:#e67e22;font-weight:700;}' +
+        '.success{color:#27ae60;font-weight:700;}' +
+        '.info{color:#888;font-weight:700;}' +
+        '.empty{padding:36px 20px;text-align:center;color:#aaa;font-size:13px;}' +
+        '.raw-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#888;margin:0 0 6px;}' +
+        'pre.raw{font-family:monospace;font-size:10px;white-space:pre-wrap;word-break:break-word;background:#fff;border:1px solid #ddd;border-radius:8px;padding:8px;margin:0 0 10px;max-height:220px;overflow:auto;}' +
+      '</style>' +
+      '</head><body>' +
+      '<div id="header">' +
+        '<div style="display:flex;align-items:center;">' +
+          '<h1>TGE Diagnostics</h1>' +
+          '<span id="status">Live \u2014 drag this window to any screen</span>' +
+        '</div>' +
+        '<span id="log-count-hdr">0 logs</span>' +
+      '</div>' +
+      '<div id="toolbar">' +
+        '<span id="log-count">0 logs</span>' +
+        '<button id="clear-btn">Clear</button>' +
+      '</div>' +
+      '<div id="split">' +
+        '<div id="list"><div class="empty">Waiting for logs\u2026</div></div>' +
+        '<div id="detail"><div class="empty">Select a row to view detail.</div></div>' +
+      '</div>' +
+      '<script>' +
+        'var logs = ' + safeInitial + ';' +
+        'var selectedId = null;' +
+
+        'function levelClass(l){' +
+          'l=String(l||"").toLowerCase();' +
+          'if(l==="error")return "error";' +
+          'if(l==="warn"||l==="warning")return "warn";' +
+          'if(l==="success")return "success";' +
+          'return "info";' +
+        '}' +
+
+        'function safe(v){' +
+          'return String(v==null?"":v)' +
+            '.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")' +
+            '.replace(/"/g,"&quot;").replace(/\'/g,"&#039;");' +
+        '}' +
+
+        'function renderDetail(){' +
+          'var d=document.getElementById("detail");' +
+          'if(!selectedId){d.innerHTML=\'<div class="empty">Select a row to view detail.</div>\';return;}' +
+          'var log=logs.find(function(x){return x.id===selectedId;});' +
+          'if(!log){d.innerHTML=\'<div class="empty">Log not found.</div>\';return;}' +
+          'd.innerHTML=' +
+            '\'<div class="raw-title">Summary</div>\'' +
+            '+\'<pre class="raw">\'+safe(JSON.stringify({id:log.id,timestamp:log.timestamp,category:log.category,level:log.level,module:log.module,action:log.action,status:log.status,duration:log.duration,message:log.message,error:log.error},null,2))+\'</pre>\'' +
+            '+\'<div class="raw-title">Request Sent</div>\'' +
+            '+\'<pre class="raw">\'+safe(JSON.stringify(log.request||{},null,2))+\'</pre>\'' +
+            '+\'<div class="raw-title">Response Received</div>\'' +
+            '+\'<pre class="raw">\'+safe(JSON.stringify(log.response||{},null,2))+\'</pre>\';' +
+        '}' +
+
+        'function render(){' +
+          'var list=document.getElementById("list");' +
+          'var cnt=document.getElementById("log-count");' +
+          'var cnth=document.getElementById("log-count-hdr");' +
+          'var label=logs.length+" log"+(logs.length===1?"":"s");' +
+          'if(cnt)cnt.textContent=label;' +
+          'if(cnth)cnth.textContent=label;' +
+          'if(!logs.length){list.innerHTML=\'<div class="empty">No logs yet.</div>\';renderDetail();return;}' +
+          'var rows=logs.slice().reverse().map(function(log){' +
+            'var a=selectedId===log.id?\' active\':\'\';' +
+            'return \'<tr class="row\'+a+\'" data-id="\'+log.id+\'">\'' +
+              '+\'<td class="mono muted">\'+safe(log.time)+\'</td>\'' +
+              '+\'<td class="\'+levelClass(log.level)+\'">\'+safe(log.level)+\'</td>\'' +
+              '+\'<td>\'+safe(log.action)+\'</td>\'' +
+              '+\'<td class="mono">\'+safe(log.status||"")+\'</td>\'' +
+              '+\'<td class="mono">\'+safe(log.duration!=null?log.duration+"ms":"")+\'</td>\'' +
+              '+\'</tr>\';' +
+          '}).join("");' +
+          'list.innerHTML=\'<table><thead><tr><th>Time</th><th>Level</th><th>Method / Endpoint</th><th>Status</th><th>Duration</th></tr></thead><tbody>\'+rows+\'</tbody></table>\';' +
+          'Array.prototype.forEach.call(list.querySelectorAll(".row"),function(r){' +
+            'r.onclick=function(){selectedId=parseInt(r.getAttribute("data-id"),10);render();};' +
+          '});' +
+          'renderDetail();' +
+        '}' +
+
+        // Listen for updates pushed from the main window via postMessage
+        'window.addEventListener("message",function(e){' +
+          'if(!e.data||e.data.type!=="TGE_DIAG_SYNC")return;' +
+          'logs=e.data.logs;' +
+          // Keep selected row valid after a clear
+          'var still=logs.find(function(x){return x.id===selectedId;});' +
+          'if(!still)selectedId=null;' +
+          'render();' +
+        '});' +
+
+        'document.getElementById("clear-btn").onclick=function(){' +
+          // Tell the main window to clear too
+          'if(window.opener&&!window.opener.closed){' +
+            'window.opener.postMessage({type:"TGE_DIAG_CLEAR"},\'*\');' +
+          '}' +
+          'logs=[];selectedId=null;render();' +
+        '};' +
+
+        'render();' +
+      '<\/script>' +
+      '</body></html>';
+  }
+
   TGE.diagnostics = {
 
-    version: '1.0.1',
+    version: '1.0.2',
 
     init: function () {
       if (isInitialised) return;
@@ -362,6 +510,14 @@ function renderDetail() {
       addStyles();
       createButton();
       createWindow();
+
+      // Listen for messages sent back from the pop-out (e.g. clear button)
+      window.addEventListener('message', function (e) {
+        if (!e.data) return;
+        if (e.data.type === 'TGE_DIAG_CLEAR') {
+          TGE.diagnostics.clearLogs();
+        }
+      });
 
       isInitialised = true;
     },
@@ -387,6 +543,9 @@ function renderDetail() {
 
       if (logs.length > maxLogs) logs.shift();
       if (isOpen) render();
+
+      // Always push new log to pop-out even if main panel is closed
+      syncPopup();
     },
 
     getLogs: function () {
@@ -395,7 +554,9 @@ function renderDetail() {
 
     clearLogs: function () {
       logs = [];
+      selectedLogId = null;
       render();
+      syncPopup();
     },
 
     show: function () {
@@ -438,32 +599,37 @@ function renderDetail() {
       downloadText('Diagnostics_Report_' + stamp + '.json', JSON.stringify(logs, null, 2), 'application/json');
     },
 
-popOut: function () {
-  var popup = window.open('', 'TGE_Diagnostics', 'width=1100,height=700,resizable=yes,scrollbars=yes');
+    // Opens a real browser window the user can drag to any screen.
+    // The pop-out renders a live copy of the diagnostics table and
+    // receives every new log via postMessage so it stays in sync.
+    popOut: function () {
+      // If already open, just focus it
+      if (popupWindow && !popupWindow.closed) {
+        popupWindow.focus();
+        syncPopup(); // push latest state immediately
+        return;
+      }
 
-  if (!popup) {
-    alert('Pop-out blocked by browser. Allow pop-ups for this site.');
-    return;
-  }
+      popupWindow = window.open('', 'TGE_Diagnostics', 'width=1100,height=700,resizable=yes,scrollbars=yes');
 
-  popup.document.open();
-  popup.document.write(
-    '<!doctype html><html><head><title>TGE Diagnostics</title>' +
-    '<style>body{font-family:Arial;margin:0;padding:16px;background:#f6f7f8;}pre{white-space:pre-wrap;word-break:break-word;background:#fff;border:1px solid #ddd;border-radius:8px;padding:12px;font-size:11px;}</style>' +
-    '</head><body><h2>TGE Diagnostics</h2><pre>' +
-    safeText(JSON.stringify(logs, null, 2)) +
-    '</pre></body></html>'
-  );
-  popup.document.close();
-},
-    
+      if (!popupWindow) {
+        alert('Pop-out blocked by browser. Please allow pop-ups for this site and try again.');
+        return;
+      }
+
+      popupWindow.document.open();
+      popupWindow.document.write(buildPopupHtml(logs));
+      popupWindow.document.close();
+    },
+
     health: function () {
       return {
         healthy: true,
         version: this.version,
         logs: logs.length,
         initialised: isInitialised,
-        open: isOpen
+        open: isOpen,
+        popupOpen: !!(popupWindow && !popupWindow.closed)
       };
     }
   };
