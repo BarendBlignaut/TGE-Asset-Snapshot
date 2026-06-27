@@ -1,139 +1,177 @@
-# Platform Standards
+# Snapshot Project Architecture
 
-## Core Platform Services
+## Project Standards
 
-All reusable services are implemented as platform modules.
+Platform-first architecture.
 
-Current platform:
+Modules do not duplicate functionality.
 
-- tge-output.js
-- tge-progress.js
-- tge-pdf.js
-- tge-diagnostics.js
+Shared services provide all common functionality.
 
-Naming standard:
+---
 
-Files
-- lower-case
-- tge- prefix
+## Platform Services
 
-Namespace
-
-TGE
-
-Services
-
-TGE.output
-TGE.progress
-TGE.pdf
-TGE.diagnostics
-
-Methods
-
-camelCase
-
-Examples
-
-TGE.output.export()
-TGE.progress.run()
-TGE.pdf.generate()
-TGE.diagnostics.log()
-
-
-# Build Standards
-
-Every new module shall:
-
-- use the platform services
-- not duplicate shared functionality
-- support Roles
-- support Permissions
-- support Limits
-- support Output
-- support PDF
-- support Diagnostics
-- support Activity Logging where applicable
-
-- # Documentation Standards
-
-Update documentation:
-
-- after every 10 bug fixes
-- after any major bug fix
-- after every new platform service
-- after every architecture decision
-- before release
-
-- # Module Decommission Standard
-
-A module is not considered removed until:
-
-- JavaScript removed
-- HTML removed
-- Navigation removed
-- Roles removed
-- Permissions removed
-- Event handlers removed
-- CSS removed
-- API routes removed
-- Search confirms no remaining references
-
-
-# Diagnostics Platform
-
-Two diagnostics systems exist.
-
-Runtime Diagnostics
+tge-output.js
 
 Purpose
 
-- API requests
-- API responses
-- Errors
-- Performance
-- Events
+Application output.
 
-Available from header diagnostics.
+Namespace
 
-Supports:
+TGE.output
 
-- Docked
-- Floating
+---
 
-System Health
+tge-progress.js
 
-Located under:
+Purpose
 
-Admin
-    Management
-        System Health
+Progress and loading.
 
-Provides:
+Namespace
 
-- application health
-- configuration
-- defects
-- diagnostics
-- export
+TGE.progress
 
+---
 
+tge-pdf.js
 
-## Current Build Phase
+Purpose
 
-Phase 1
-Platform Foundation      ✓
+PDF generation.
 
-Phase 2
-Asset Track             In Progress
+Namespace
 
-Phase 3
-Snapshot                Pending
+TGE.pdf
 
-Phase 4
-Camera Requests         Pending
+---
 
-Phase 5
-Workflow Engine         Pending
+tge-diagnostics.js
 
-Phase 6
-Production Hardening    Pending
+Purpose
+
+Runtime diagnostics.
+
+Namespace
+
+TGE.diagnostics
+
+Provides
+
+* Runtime API logging
+* Request viewer
+* Response viewer
+* Export
+* Copy
+* Floating diagnostics
+* Browser tab diagnostics
+
+---
+
+## Module Lifecycle
+
+Every module follows:
+
+Design
+
+↓
+
+Development
+
+↓
+
+Platform Integration
+
+↓
+
+Diagnostics
+
+↓
+
+QA
+
+↓
+
+LOCK
+
+↓
+
+Maintenance
+
+---
+
+## Documentation Updates
+
+Update documentation after:
+
+* 10 bug fixes
+* Major feature
+* Architecture change
+
+---
+
+## Module Status
+
+Platform
+
+✓ Complete
+
+Asset Track
+
+✓ Locked
+
+Snapshot
+
+In Progress
+
+Camera Requests
+
+Pending
+
+Workflow Engine
+
+Pending
+
+API Management
+
+Pending
+
+Production Hardening
+
+Pending
+
+---
+
+## Engineering Rules
+
+* Lower-case file names.
+* CamelCase methods.
+* Platform namespaces only.
+* No duplicate code.
+* No legacy code.
+* Remove obsolete functionality during refactoring.
+* QA before module lock.
+* Locked modules receive bug fixes only.
+
+---
+
+## Long-term Roadmap
+
+Roles Platform
+
+* Batch Limit
+* Usage Limit
+* Expanded permissions
+
+Diagnostics Platform
+
+* Runtime Events
+* System Health
+* Performance Metrics
+* Module Events
+
+Production
+
+Asset Track remains the reference implementation for future modules.
