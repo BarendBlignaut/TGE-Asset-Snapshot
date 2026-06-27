@@ -1470,6 +1470,24 @@
   }
   
   // ── Exports ───────────────────────────────────────────────────────────────────
+async function exportPdf() {
+  if (!state.data.vehicle) {
+    setMessage('Run Snapshot before exporting PDF.', true);
+    return;
+  }
+
+  try {
+    await TGE.PDF.download({
+      route: '/api/snapshot-pdf',
+      module: 'Snapshot',
+      type: 'Report',
+      payload: buildSnapshotPayload()
+    });
+  } catch (e) {
+    setMessage(e.message || 'PDF export failed.', true);
+  }
+}
+  
   function exportJson() {
     if (!state.data.vehicle) return;
     var json = JSON.stringify(state.data, null, 2);
