@@ -510,6 +510,58 @@
     return { vehicle: null, ambiguous: [] };
   }
 
+  function clearSnapshotOutputForRun() {
+    [
+      'snap-driver-card',
+      'snap-status-card',
+      'snap-vpm-card',
+      'snap-gpio-card',
+      'snap-camera-card',
+      'snap-map-card',
+      'snap-tracker-card',
+      'snap-align-result-section',
+      'snap-sd-section',
+      'snap-faults-section'
+    ].forEach(function(id) {
+      var el = TGE.el(id);
+      if (el) el.style.display = 'none';
+    });
+
+    [
+      'snap-camera-grid',
+      'snap-align-result-grid',
+      'snap-device-cards',
+      'snap-gpio-grid',
+      'snap-faults-grid'
+    ].forEach(function(id) {
+      var el = TGE.el(id);
+      if (el) el.innerHTML = '';
+    });
+
+    [
+      'snap-cam-time',
+      'snap-align-result-time',
+      'snap-message'
+    ].forEach(function(id) {
+      var el = TGE.el(id);
+      if (el) el.textContent = '';
+    });
+
+    var map = TGE.el('snap-map');
+    if (map) map.innerHTML = '<span style="color:var(--muted);font-size:13px;">Map loads after fetch</span>';
+
+    var trackerMap = TGE.el('snap-tracker-map');
+    if (trackerMap) trackerMap.innerHTML = '';
+
+    closeExportMenu();
+
+    var alignPanel = TGE.el('snap-align-panel');
+    if (alignPanel) alignPanel.style.display = 'none';
+
+    var historyPanel = TGE.el('snap-history-panel');
+    if (historyPanel) historyPanel.style.display = 'none';
+  }
+  
   // ── Run snapshot ──────────────────────────────────────────────────────────────
   async function runSnapshot() {
     if (state.running) return;
@@ -517,6 +569,7 @@
     fleetNo = fleetNo.trim();
     if (!fleetNo) { setMessage('Enter a fleet number first.', true); return; }
 
+    clearSnapshotOutputForRun();
     resetSnapshot({ keepInput: true });
 
     state.running        = false; // reset
