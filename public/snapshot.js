@@ -1396,10 +1396,63 @@
   }
 
   function buildSnapshotPayload() {
-    var v   = state.data.vehicle || {};
-    var ds  = state.data.deviceStats || {};
-    var vpm = state.data.vpm || {};
+    var v    = state.data.vehicle || {};
+    var ds   = state.data.deviceStats || {};
+    var vpm  = state.data.vpm || {};
     var gpio = state.data.gpio || {};
+
+    var sections = [
+      {
+        title: 'Vehicle Information',
+        rows: [
+          ['Fleet Number', v.name || '—'],
+          ['Registration', v.registration || '—'],
+          ['State', v.registrationState || '—'],
+          ['VIN', v.vin || '—'],
+          ['Make', v.make || '—'],
+          ['Model', v.model || '—'],
+          ['Vehicle Type', v.type && v.type.name ? v.type.name : '—']
+        ]
+      },
+      {
+        title: 'Live Status',
+        rows: [
+          ['Ignition', ds.ignition || '—'],
+          ['Movement', ds.movement || '—'],
+          ['Speed', TGE.el('snap-speed') ? TGE.el('snap-speed').textContent : '—'],
+          ['Odometer', ds.odometer ? Number(ds.odometer).toLocaleString() + ' km' : '—'],
+          ['Location', ds.location || '—'],
+          ['Last GPS', ds.gpsAt ? formatTs(ds.gpsAt) : '—']
+        ]
+      },
+      {
+        title: 'Engine Metrics',
+        rows: [
+          ['RPM', vpm.rpm != null ? vpm.rpm + ' rpm' : '—'],
+          ['Speed CAN', vpm.speed != null ? vpm.speed + ' km/h' : '—'],
+          ['Engine Hours', vpm.hours != null ? Number(vpm.hours).toLocaleString() + ' hrs' : '—'],
+          ['Total Fuel Used', vpm.fuelconsumption != null ? Number(vpm.fuelconsumption).toLocaleString() + ' L' : '—'],
+          ['Oil Temperature', vpm.oiltemp != null ? vpm.oiltemp + ' °C' : '—'],
+          ['Oil Pressure', vpm.oilpressure != null ? vpm.oilpressure + ' kPa' : '—'],
+          ['Engine Load', vpm.engineload != null ? vpm.engineload + ' %' : '—']
+        ]
+      }
+    ];
+
+    var gpioRows = Object.keys(gpio).map(function (k) {
+      var g = gpio[k] || {};
+      return [
+        (g.noun || k) + (g.which && g.which !== 'unknown' ? ' (' + g.which + ')' : ''),
+        g.verb || '—'
+      ];
+    });
+
+    if (gpioRows.length) {
+      sections.push({
+        title: 'GPIO',
+        rows: gpioRows
+      });
+    }
 
     return {
       asset: {
@@ -1409,40 +1462,11 @@
         vin: v.vin || '—',
         make: v.make || '—',
         model: v.model || '—',
-        type: v.type && v.type.name ? v.type.name : '—'
-      },
-      status: {
-        ignition: ds.ignition || '—',
-        movement: ds.movement || '—',
-        speed: TGE.el('snap-speed') ? TGE.el('snap-speed').textContent : '—',
-        odometer: ds.odometer || '—',
-        location: ds.location || '—',
-        gpsAt: ds.gpsAt || '—'
-      },
-      vpm: vpm,
-      gpio: gpio,
-      devices: state.devices,
-      cameras: state.data.cameras || [],
-      generated: new Date().toLocaleString('en-AU')
+        type: v.type && v.type.name ? v.type.name : '—',
+        generated: new Date().toLocaleString('en-AU'),
+        sections: sections
+      }
     };
-  }
-
-  async function exportPdf() {
-    if (!state.data.vehicle) {
-      setMessage('Run Snapshot before exporting PDF.', true);
-      return;
-    }
-
-    try {
-      await TGE.PDF.download({
-        route: '/api/snapshot-pdf',
-        module: 'Snapshot',
-        type: 'Report',
-        payload: buildSnapshotPayload()
-      });
-    } catch (e) {
-      setMessage(e.message || 'PDF export failed.', true);
-    }
   }
   
   // ── Exports ───────────────────────────────────────────────────────────────────
