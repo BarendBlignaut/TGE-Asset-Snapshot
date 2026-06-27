@@ -71,17 +71,108 @@
   };
 
   // ── API helper ───────────────────────────────────────────────────────────────
-  TGE.api = async function (method, path, body) {
-    var opts = {
-      method:  method,
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-    };
-    if (body) opts.body = JSON.stringify(body);
-    var res  = await fetch(path, opts);
-    var data = await res.json().catch(function () { return {}; });
-    return { ok: res.ok, status: res.status, data: data };
+ // ── API helper ───────────────────────────────────────────────────────────────
+TGE.api = async function (method, path, body) {
+
+  var started = performance.now();
+
+  var opts = {
+    method: method,
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    credentials: 'same-origin'
   };
+
+  if (body) {
+    opts.body = JSON.stringify(body);
+  }
+
+  try {
+
+    var response = await fetch(path, opts);
+
+    var data = await response.json().catch(function () {
+      return {};
+    });
+
+    var duration = Math.round(performance.now() - started);
+
+    if (window.TGE &&
+        TGE.diagnostics &&
+        typeof TGE.diagnostics.log === 'function') {
+
+      TGE.diagnostics.log({
+
+        category: 'API',
+
+        level: response.ok ? 'Success' : 'Error',
+
+        module: TGE.state.activeView || 'Application',
+
+        action: method + ' ' + path,
+
+        request: body || null,
+
+        response: data,
+
+        status: response.status,
+
+        duration: duration,
+
+        message: response.ok
+          ? 'Request completed'
+          : (data.error || response.statusText)
+
+      });
+
+    }
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      data: data
+    };
+
+  } catch (err) {
+
+    var duration = Math.round(performance.now() - started);
+
+    if (window.TGE &&
+        TGE.diagnostics &&
+        typeof TGE.diagnostics.log === 'function') {
+
+      TGE.diagnostics.log({
+
+        category: 'API',
+
+        level: 'Error',
+
+        module: TGE.state.activeView || 'Application',
+
+        action: method + ' ' + path,
+
+        request: body || null,
+
+        response: null,
+
+        status: 'FAILED',
+
+        duration: duration,
+
+        message: err.message,
+
+        error: err
+
+      });
+
+    }
+
+    throw err;
+
+  }
+
+};
 
   // ── View switching ────────────────────────────────────────────────────────────
   TGE.showView = function (viewId) {
