@@ -1374,25 +1374,15 @@
     render();
   };
 
- TGE.onShow['snapshot'] = function () {
+TGE.onShow['snapshot'] = function () {
+  historyState.loading = false;
+  alignState.running = false;
 
-    historyState.loading = false;
-    alignState.running = false;
-
-    resetSnapshot();
-
-    var input = TGE.el('snap-fleet-input');
-
-    if (input) {
-        input.value = '';
-        input.blur();
-
-        setTimeout(function () {
-            input.value = '';
-            input.focus();
-        }, 25);
-    }
-
+  var input = TGE.el('snap-fleet-input');
+  if (input) {
+    input.value = '';
+    input.focus();
+  }
 };
 
 })();
