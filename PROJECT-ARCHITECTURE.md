@@ -115,3 +115,25 @@ Provides:
 - defects
 - diagnostics
 - export
+
+
+
+## Current Build Phase
+
+Phase 1
+Platform Foundation      ✓
+
+Phase 2
+Asset Track             In Progress
+
+Phase 3
+Snapshot                Pending
+
+Phase 4
+Camera Requests         Pending
+
+Phase 5
+Workflow Engine         Pending
+
+Phase 6
+Production Hardening    Pending
