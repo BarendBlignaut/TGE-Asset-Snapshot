@@ -248,7 +248,10 @@
     TGE.setText('topbar-title', 'Asset Snapshot');
 
     // Init diagnostics panel (if permitted)
-    initDiagnostics();
+       // Init diagnostics platform (if permitted)
+    if (TGE.diagnostics && typeof TGE.diagnostics.init === 'function') {
+      TGE.diagnostics.init();
+    }
 
     // Notify all page modules that app is ready
     if (typeof TGE.onAppReady === 'function') TGE.onAppReady();
