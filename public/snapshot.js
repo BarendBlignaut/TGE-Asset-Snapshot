@@ -101,7 +101,15 @@
         '<div class="hero-sub" style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:2px;">Enter a fleet number to load current location, metrics, diagnostics and camera evidence.</div>',
         '<div class="hero-bar" style="margin-top:12px;">',
           '<div class="hero-bar-left">',
-            '<input id="snap-fleet-input" type="text" placeholder="Fleet number e.g. 82050" autocomplete="off" style="height:34px;border:1px solid rgba(255,255,255,0.25);border-radius:7px;padding:0 12px;background:rgba(255,255,255,0.10);color:#fff;font:inherit;font-size:13px;min-width:180px;" />',
+            '<input id="snap-fleet-input"' +
+' type="search"' +
+' name="snapshot-fleet"' +
+' placeholder="Fleet number e.g. 82050"' +
+' autocomplete="off"' +
+' autocorrect="off"' +
+' autocapitalize="off"' +
+' spellcheck="false"' +
+' style="height:34px;border:1px solid rgba(255,255,255,0.25);border-radius:7px;padding:0 12px;background:rgba(255,255,255,0.10);color:#fff;font:inherit;font-size:13px;min-width:180px;" />',
             '<button class="hero-run-btn" id="snap-run-btn" type="button">Run</button>',
             '<button class="hero-action-btn" id="snap-refresh-btn" type="button" style="display:none;">Refresh</button>',
           '</div>',
@@ -1366,12 +1374,25 @@
     render();
   };
 
-  TGE.onShow['snapshot'] = function() {
-    // Stop any running history load when navigating away
+ TGE.onShow['snapshot'] = function () {
+
     historyState.loading = false;
-    alignState.running   = false;
-    var inp = TGE.el('snap-fleet-input');
-    if (inp) inp.focus();
-  };
+    alignState.running = false;
+
+    resetSnapshot();
+
+    var input = TGE.el('snap-fleet-input');
+
+    if (input) {
+        input.value = '';
+        input.blur();
+
+        setTimeout(function () {
+            input.value = '';
+            input.focus();
+        }, 25);
+    }
+
+};
 
 })();
