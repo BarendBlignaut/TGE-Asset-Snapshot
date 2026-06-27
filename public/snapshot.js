@@ -407,6 +407,8 @@
         if (menu && !menu.contains(e.target)) closeExportMenu();
       });
     }
+ }
+
   function resetSnapshot(options) {
     options = options || {};
     var keepInput = options.keepInput === true;
@@ -447,8 +449,7 @@
     var historyPanel = TGE.el('snap-history-panel');
     if (historyPanel) historyPanel.style.display = 'none';
   }
-    
-  }
+  
 
   // ── Vehicle resolution (improved — checklist item) ────────────────────────────
   function normaliseSearch(s) { return String(s == null ? '' : s).trim().toLowerCase(); }
