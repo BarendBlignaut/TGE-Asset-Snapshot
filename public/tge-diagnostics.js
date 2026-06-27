@@ -1,8 +1,3 @@
-ChatGPT
-
-
-
-
 tge-project-context.md
 File
 just some info. does this help 
