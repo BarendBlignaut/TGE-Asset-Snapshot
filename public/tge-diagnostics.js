@@ -12,6 +12,7 @@
   var isOpen = false;
   var isInitialised = false;
   var maxLogs = 300;
+  var selectedLogId = null;
 
   var position = {
     left: 120,
@@ -56,7 +57,14 @@
       '.tge-diag-toolbar{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--surface-2);flex-shrink:0;}',
       '.tge-diag-pill{font-size:11px;font-weight:700;color:var(--muted);background:var(--surface);border:1px solid var(--line);padding:4px 8px;border-radius:999px;}',
       '.tge-diag-spacer{flex:1;}',
+      '.tge-diag-split{display:grid;grid-template-columns:45% 55%;flex:1;min-height:0;}',
+      '.tge-diag-list{overflow:auto;border-right:1px solid var(--line);min-height:0;}',
+      '.tge-diag-detail{overflow:auto;min-height:0;background:var(--surface-3);padding:10px;}',
       '.tge-diag-table-wrap{overflow:auto;flex:1;min-height:0;}',
+      '.tge-diag-row{cursor:pointer;}',
+      '.tge-diag-row.active td{background:var(--green-50);}',
+      '.tge-diag-raw-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 6px;}',
+      '.tge-diag-raw{font-family:monospace;font-size:10px;white-space:pre-wrap;word-break:break-word;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px;margin:0 0 10px;max-height:220px;overflow:auto;}',
       '.tge-diag-table{width:100%;border-collapse:collapse;font-size:11px;}',
       '.tge-diag-table th{position:sticky;top:0;background:var(--surface-2);z-index:1;text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em;}',
       '.tge-diag-table td{padding:7px 8px;border-bottom:1px solid var(--line-2);vertical-align:top;}',
@@ -129,7 +137,12 @@
           '<span class="tge-diag-spacer"></span>',
           '<span class="tge-diag-muted" style="font-size:11px;">Floating mode</span>',
         '</div>',
-        '<div class="tge-diag-table-wrap" id="tge-diagnostics-content"></div>',
+        '<div class="tge-diag-split">',
+  '<div class="tge-diag-list" id="tge-diagnostics-content"></div>',
+  '<div class="tge-diag-detail" id="tge-diagnostics-detail">',
+    '<div class="tge-diag-empty">Select a log row to view request and response data.</div>',
+  '</div>',
+'</div>',
       '</div>',
       '<div class="tge-diag-resize" id="tge-diagnostics-resize"></div>'
     ].join('');
@@ -224,54 +237,101 @@
     });
   }
 
-  function render() {
-    var content = TGE.el('tge-diagnostics-content');
-    var count = TGE.el('tge-diagnostics-count');
+function render() {
+  var content = TGE.el('tge-diagnostics-content');
+  var detail = TGE.el('tge-diagnostics-detail');
+  var count = TGE.el('tge-diagnostics-count');
 
-    if (count) {
-      count.textContent = logs.length + ' log' + (logs.length === 1 ? '' : 's');
-    }
-
-    if (!content) return;
-
-    if (!logs.length) {
-      content.innerHTML = '<div class="tge-diag-empty">No diagnostics captured yet.</div>';
-      return;
-    }
-
-    content.innerHTML = [
-      '<table class="tge-diag-table">',
-        '<thead>',
-          '<tr>',
-            '<th>Time</th>',
-            '<th>Level</th>',
-            '<th>Category</th>',
-            '<th>Module</th>',
-            '<th>Action</th>',
-            '<th>Status</th>',
-            '<th>Duration</th>',
-            '<th>Message</th>',
-          '</tr>',
-        '</thead>',
-        '<tbody>',
-          logs.slice().reverse().map(function (log) {
-            return [
-              '<tr>',
-                '<td class="tge-diag-mono tge-diag-muted">' + safeText(log.time) + '</td>',
-                '<td class="' + levelClass(log.level) + '">' + safeText(log.level) + '</td>',
-                '<td>' + safeText(log.category) + '</td>',
-                '<td>' + safeText(log.module) + '</td>',
-                '<td>' + safeText(log.action) + '</td>',
-                '<td class="tge-diag-mono">' + safeText(log.status || '') + '</td>',
-                '<td class="tge-diag-mono">' + safeText(log.duration != null ? log.duration + 'ms' : '') + '</td>',
-                '<td>' + safeText(log.message || '') + '</td>',
-              '</tr>'
-            ].join('');
-          }).join(''),
-        '</tbody>',
-      '</table>'
-    ].join('');
+  if (count) {
+    count.textContent = logs.length + ' log' + (logs.length === 1 ? '' : 's');
   }
+
+  if (!content) return;
+
+  if (!logs.length) {
+    content.innerHTML = '<div class="tge-diag-empty">No diagnostics captured yet.</div>';
+    if (detail) detail.innerHTML = '<div class="tge-diag-empty">Select a log row to view request and response data.</div>';
+    return;
+  }
+
+  content.innerHTML = [
+    '<table class="tge-diag-table">',
+      '<thead>',
+        '<tr>',
+          '<th>Time</th>',
+          '<th>Level</th>',
+          '<th>Method / Endpoint</th>',
+          '<th>Status</th>',
+          '<th>Duration</th>',
+        '</tr>',
+      '</thead>',
+      '<tbody>',
+        logs.slice().reverse().map(function (log) {
+          var active = selectedLogId === log.id ? ' active' : '';
+          return [
+            '<tr class="tge-diag-row' + active + '" data-log-id="' + log.id + '">',
+              '<td class="tge-diag-mono tge-diag-muted">' + safeText(log.time) + '</td>',
+              '<td class="' + levelClass(log.level) + '">' + safeText(log.level) + '</td>',
+              '<td>' + safeText(log.action) + '</td>',
+              '<td class="tge-diag-mono">' + safeText(log.status || '') + '</td>',
+              '<td class="tge-diag-mono">' + safeText(log.duration != null ? log.duration + 'ms' : '') + '</td>',
+            '</tr>'
+          ].join('');
+        }).join(''),
+      '</tbody>',
+    '</table>'
+  ].join('');
+
+  Array.prototype.forEach.call(content.querySelectorAll('.tge-diag-row'), function (row) {
+    row.onclick = function () {
+      selectedLogId = parseInt(row.getAttribute('data-log-id'), 10);
+      render();
+    };
+  });
+
+  renderDetail();
+}
+
+function renderDetail() {
+  var detail = TGE.el('tge-diagnostics-detail');
+  if (!detail) return;
+
+  if (!selectedLogId) {
+    detail.innerHTML = '<div class="tge-diag-empty">Select a log row to view request and response data.</div>';
+    return;
+  }
+
+  var log = logs.find(function (item) {
+    return item.id === selectedLogId;
+  });
+
+  if (!log) {
+    detail.innerHTML = '<div class="tge-diag-empty">Selected log no longer exists.</div>';
+    return;
+  }
+
+  detail.innerHTML = [
+    '<div class="tge-diag-raw-title">Summary</div>',
+    '<pre class="tge-diag-raw">' + safeText(JSON.stringify({
+      id: log.id,
+      timestamp: log.timestamp,
+      category: log.category,
+      level: log.level,
+      module: log.module,
+      action: log.action,
+      status: log.status,
+      duration: log.duration,
+      message: log.message,
+      error: log.error
+    }, null, 2)) + '</pre>',
+
+    '<div class="tge-diag-raw-title">Request Sent</div>',
+    '<pre class="tge-diag-raw">' + safeText(JSON.stringify(log.request || {}, null, 2)) + '</pre>',
+
+    '<div class="tge-diag-raw-title">Response Received</div>',
+    '<pre class="tge-diag-raw">' + safeText(JSON.stringify(log.response || {}, null, 2)) + '</pre>'
+  ].join('');
+}
 
   function downloadText(filename, text, mimeType) {
     var blob = new Blob([text], { type: mimeType || 'text/plain' });
