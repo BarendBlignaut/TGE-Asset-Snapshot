@@ -1,100 +1,163 @@
+# Snapshot AI Handover
+
 ## Current Status
 
-Platform services complete
+Platform Foundation is complete.
+
+### Shared Platform Services
 
 ✓ tge-output.js
+
 ✓ tge-progress.js
+
 ✓ tge-pdf.js
+
 ✓ tge-diagnostics.js
 
-Asset Track
+All new development must utilise the shared platform services only.
 
-Approximately 95% complete.
+No duplicate functionality is permitted.
 
-Outstanding
+---
 
-- Diagnostics integration
-- Final code cleanup
-- Platform namespace standardisation
+# Asset Track
 
-- 
-1.
-Complete Diagnostics Platform
+Status
 
-2.
-Integrate Diagnostics into TGE.api()
+LOCKED
 
-3.
-Build Runtime Diagnostics Viewer
+Version
 
-4.
-Finalise Asset Track
+1.0.0
 
-5.
-Resume Snapshot
+QA Status
 
-6.
-Camera Requests
+PASSED
 
-7.
-Workflows
+Implemented
 
-8.
-API Management
+* User Mode
+* Fleet Mode
+* Progressive Loading
+* Refresh
+* Summary
+* Battery Analysis
+* CSV Export
+* Excel Export
+* JSON Export
+* PDF Export
+* Email PDF
+* Diagnostics Integration
+* API Request Logging
+* API Response Logging
+* Runtime Diagnostics
+* Shared Platform Integration
 
+Asset Track is now the reference implementation for all future modules.
 
-- Shared platform services only.
-- No duplicate code.
-- All output uses Output Platform.
-- All PDFs use PDF Platform.
-- All API activity uses Diagnostics Platform.
-- Every module follows the same architecture.
+No further architectural changes are to be made.
 
-Files
+Only bug fixes or approved enhancements.
 
-lower-case
+---
 
-Example
+# Diagnostics Platform
 
-tge-output.js
+Implemented
 
-Objects
+* Floating window
+* Draggable
+* Resizable
+* Header access
+* Runtime API logging
+* Request viewer
+* Response viewer
+* Timing
+* Status
+* Errors
+* Copy
+* Export
+* Open in new browser tab
 
-TGE.output
+Future Enhancements
 
-Methods
+* Runtime Event logging
+* Module Event logging
+* System Health page
+* Role management
+* Performance dashboard
 
-camelCase
+---
 
-Example
+# Outstanding Platform Items
 
-TGE.output.export()
+Roles Platform
 
-Documentation is maintained continuously.
+* Separate Batch Limit from Usage Limit.
+* Fix role batch limit loading (currently falls back to default value).
+* Expand role permissions for:
 
-Update after:
+  * Exports
+  * Diagnostics
+  * API access
+  * Module permissions
 
-- 10 bugs
-- major fixes
-- new features
-- architecture changes
+---
 
-## Current Build Phase
+# Current Build Order
 
-Phase 1
-Platform Foundation      ✓
+1. Snapshot
+2. Camera Requests
+3. Workflow Engine
+4. API Management
+5. Production Hardening
 
-Phase 2
-Asset Track             In Progress
+---
 
-Phase 3
-Snapshot                Pending
+# Development Rules
 
-Phase 4
-Camera Requests         Pending
+* Platform services only.
+* No duplicate functionality.
+* Lower-case file names.
+* Platform namespaces only.
+* Shared Output Platform.
+* Shared Progress Platform.
+* Shared PDF Platform.
+* Shared Diagnostics Platform.
+* Documentation updated after:
 
-Phase 5
-Workflow Engine         Pending
+  * 10 bug fixes
+  * major feature
+  * architecture change
 
-Phase 6
-Production Hardening    Pending
+---
+
+# Working Style
+
+Architecture is now considered stable.
+
+Future sessions should focus on implementation rather than redesign.
+
+Every completed module follows:
+
+Development
+
+↓
+
+Integration
+
+↓
+
+Diagnostics
+
+↓
+
+QA
+
+↓
+
+LOCK
+
+↓
+
+Bug fixes only
