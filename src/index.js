@@ -683,149 +683,197 @@ async function buildCameraFaultPdf(assets) {
 }
 
 // ── Snapshot PDF ──────────────────────────────────────────────────────────────
-const SNAP_MARGIN_TOP    = 50;
-const SNAP_MARGIN_BOTTOM = 34;
-const SNAP_MARGIN_LEFT   = 30;
-const SNAP_MARGIN_RIGHT  = 30;
-const SNAP_ROW_COLS      = 4;
-const SNAP_ROW_H         = 30;
-const SNAP_ROW_GAP_X     = 8;
-const SNAP_ROW_GAP_Y     = 6;
-const SNAP_SECTION_GAP   = 18;
-function snapUsableW() { return PDF_PAGE_W - SNAP_MARGIN_LEFT - SNAP_MARGIN_RIGHT; }
-function snapMeasureSection(section) {
-  const rowCount = (section.rows || []).length;
-  const rowLines = Math.max(1, Math.ceil(rowCount / SNAP_ROW_COLS));
-  const kickerH  = section.kicker ? 9 + 3  : 0;
-  const titleH   = section.title  ? 11 + 10 : 0;
-  const rowsH    = rowLines * SNAP_ROW_H + Math.max(0, rowLines - 1) * SNAP_ROW_GAP_Y;
-  const photosH  = (section.photos && section.photos.length) ? PDF_PHOTO_BOX_H + 10 + 10 : 0;
-  const mapH     = section.mapCoords ? 130 + 14 : 0;
-  return kickerH + titleH + rowsH + photosH + mapH + SNAP_SECTION_GAP;
+// Portrait A4, auto-spacing, rounded header/footer, brand green scheme.
+// Sections are measured first, spare space distributed as equal gaps between
+// sections. Photo rows use natural aspect ratio — never stretched.
+
+const SNAP_PAGE_W  = 595.28;
+const SNAP_PAGE_H  = 841.89;
+const SNAP_ML      = 18;
+const SNAP_MR      = 18;
+const SNAP_UW      = SNAP_PAGE_W - SNAP_ML - SNAP_MR;
+const SNAP_HDR_H   = 38;
+const SNAP_FOOT_H  = 28;
+const SNAP_TOP_PAD = 12;
+const SNAP_BOT_PAD = 12;
+const SNAP_CARD_H  = 24;
+const SNAP_GAP_X   = 4;
+const SNAP_GAP_Y   = 3;
+const SNAP_LABEL_H = 13;
+const SNAP_RADIUS  = 10;
+const SNAP_PHOTO_RATIO = 0.65;  // natural aspect ratio for photo boxes
+
+const SNAP_DARK   = rgb(0.000, 0.235, 0.122);  // #003c1f
+const SNAP_BRAND  = rgb(0.078, 0.325, 0.176);  // #14532d
+const SNAP_YELLOW = rgb(0.831, 0.941, 0.149);  // #d4f026
+const SNAP_WHITE  = rgb(1.000, 1.000, 1.000);
+const SNAP_SURF   = rgb(0.941, 0.980, 0.957);  // #f0faf4
+const SNAP_LGREEN = rgb(0.910, 0.961, 0.933);  // #e8f5ee
+const SNAP_LINE   = rgb(0.784, 0.867, 0.816);  // #c8ddd0
+const SNAP_INK    = rgb(0.067, 0.067, 0.067);
+const SNAP_MUTED  = rgb(0.420, 0.450, 0.500);
+
+function snapDataH(rowCount, cols) {
+  const lines = Math.max(1, Math.ceil(rowCount / cols));
+  return lines * (SNAP_CARD_H + SNAP_GAP_Y) - SNAP_GAP_Y;
 }
-function snapDrawRows(page, fontR, fontB, rows, startX, startY, usableW) {
-  const colW = (usableW - (SNAP_ROW_COLS - 1) * SNAP_ROW_GAP_X) / SNAP_ROW_COLS;
+
+function snapDrawHeader(page, fontR, fontB, title, sub) {
+  const w = SNAP_PAGE_W, h = SNAP_HDR_H, r = SNAP_RADIUS;
+  const x = SNAP_ML - 10, y = SNAP_PAGE_H - h, bw = SNAP_UW + 20;
+  // rounded rect with top corners rounded, bottom square
+  page.drawRectangle({ x, y: y + r, width: bw, height: h - r, color: SNAP_DARK });
+  page.drawRectangle({ x: x + r, y, width: bw - r * 2, height: r, color: SNAP_DARK });
+  page.drawCircle({ x: x + r,      y: y + r, size: r, color: SNAP_DARK });
+  page.drawCircle({ x: x + bw - r, y: y + r, size: r, color: SNAP_DARK });
+
+  const titleW = fontB.widthOfTextAtSize(title, 13);
+  page.drawText(title, { x: (SNAP_PAGE_W - titleW) / 2, y: SNAP_PAGE_H - 22, size: 13, font: fontB, color: SNAP_WHITE });
+  const subW = fontR.widthOfTextAtSize(sub, 7.5);
+  page.drawText(sub, { x: (SNAP_PAGE_W - subW) / 2, y: SNAP_PAGE_H - 32, size: 7.5, font: fontR, color: SNAP_YELLOW });
+}
+
+function snapDrawFooter(page, fontR, footerText) {
+  const x = SNAP_ML - 10, bw = SNAP_UW + 20, h = SNAP_FOOT_H, r = SNAP_RADIUS;
+  // rounded rect with bottom corners rounded, top square
+  page.drawRectangle({ x, y: r, width: bw, height: h - r, color: SNAP_DARK });
+  page.drawRectangle({ x: x + r, y: 0, width: bw - r * 2, height: r, color: SNAP_DARK });
+  page.drawCircle({ x: x + r,      y: r, size: r, color: SNAP_DARK });
+  page.drawCircle({ x: x + bw - r, y: r, size: r, color: SNAP_DARK });
+
+  const fw = fontR.widthOfTextAtSize(footerText, 7.5);
+  page.drawText(footerText, { x: (SNAP_PAGE_W - fw) / 2, y: 10, size: 7.5, font: fontR, color: SNAP_YELLOW });
+}
+
+function snapDrawLabel(page, fontB, y, text) {
+  const lbl = text.toUpperCase();
+  const lw  = fontB.widthOfTextAtSize(lbl, 6.5);
+  page.drawRectangle({ x: SNAP_ML - 2, y: y - 9, width: lw + 8, height: 11, color: SNAP_LGREEN, borderRadius: 3 });
+  page.drawText(lbl, { x: SNAP_ML + 2, y: y - 7, size: 6.5, font: fontB, color: SNAP_BRAND });
+  page.drawLine({ start: { x: SNAP_ML + lw + 10, y: y - 3 }, end: { x: SNAP_PAGE_W - SNAP_MR, y: y - 3 }, thickness: 0.5, color: SNAP_LINE });
+}
+
+function snapDrawDataCards(page, fontR, fontB, y, rows, cols) {
+  const colW = (SNAP_UW - (cols - 1) * SNAP_GAP_X) / cols;
   rows.forEach((row, i) => {
-    const col  = i % SNAP_ROW_COLS;
-    const line = Math.floor(i / SNAP_ROW_COLS);
-    const x    = startX + col * (colW + SNAP_ROW_GAP_X);
-    const y    = startY - line * (SNAP_ROW_H + SNAP_ROW_GAP_Y);
-    page.drawRectangle({ x, y: y - SNAP_ROW_H, width: colW, height: SNAP_ROW_H, color: rgb(0.960, 0.976, 0.965), borderColor: rgb(0.920, 0.950, 0.940), borderWidth: 0.75 });
-    const label = String(row.label || "").toUpperCase().slice(0, 32);
-    page.drawText(label, { x: x + 6, y: y - 11, size: 6.5, font: fontB, color: rgb(0.35, 0.43, 0.38) });
-    let value = (row.value == null || row.value === "") ? "—" : String(row.value);
-    if (value.length > 28) value = value.slice(0, 27) + "…";
-    page.drawText(value, { x: x + 6, y: y - 23, size: 9.5, font: fontR, color: rgb(0.06, 0.10, 0.075) });
+    const col  = i % cols;
+    const line = Math.floor(i / cols);
+    const x    = SNAP_ML + col * (colW + SNAP_GAP_X);
+    const ry   = y - line * (SNAP_CARD_H + SNAP_GAP_Y);
+    page.drawRectangle({ x, y: ry - SNAP_CARD_H, width: colW, height: SNAP_CARD_H, color: SNAP_SURF, borderColor: SNAP_LINE, borderWidth: 0.5, borderRadius: 4 });
+    const lbl = String(row.label || "").toUpperCase().slice(0, 22);
+    page.drawText(lbl, { x: x + 5, y: ry - 8, size: 5.5, font: fontB, color: SNAP_BRAND });
+    let val = String(row.value == null || row.value === "" ? "—" : row.value);
+    if (val.length > 24) val = val.slice(0, 23) + "…";
+    page.drawText(val, { x: x + 5, y: ry - 19, size: 8.5, font: fontR, color: SNAP_INK });
   });
 }
-async function snapDrawPhotos(pdfDoc, page, fontR, fontB, photos, startX, startY, usableW) {
-  const n = Math.min(photos.length, 5);
-  if (!n) return;
-  const totalGap = (n - 1) * PDF_PHOTO_GAP_X;
-  const boxW     = (usableW - totalGap) / n;
-  const fetched  = await Promise.all(photos.slice(0, n).map(p => (p && p.url) ? fetchImageForPdf(p.url) : Promise.resolve(null)));
+
+async function snapDrawPhotos(pdfDoc, page, y, photos, boxH) {
+  const n    = photos.length;
+  if (!n) return y;
+  const gap  = 4;
+  const boxW = (SNAP_UW - (n - 1) * gap) / n;
+  const actualH = Math.min(boxH, boxW * 0.68);
+
+  const fetched = await Promise.all(photos.map(p =>
+    p && p.url ? fetchImageForPdf(p.url) : Promise.resolve(null)
+  ));
+
   for (let i = 0; i < n; i++) {
-    const photo = photos[i];
-    const bx    = startX + i * (boxW + PDF_PHOTO_GAP_X);
-    const by    = startY - PDF_PHOTO_BOX_H;
+    const bx = SNAP_ML + i * (boxW + gap);
+    const by = y - actualH;
     let embedded = null;
-    if (fetched[i]) { try { embedded = fetched[i].format === "png" ? await pdfDoc.embedPng(fetched[i].bytes) : await pdfDoc.embedJpg(fetched[i].bytes); } catch (e) { embedded = null; } }
-    if (embedded) {
-      const scaled  = embedded.scaleToFit(boxW, PDF_PHOTO_BOX_H);
-      const offsetX = bx + (boxW - scaled.width) / 2;
-      const offsetY = by + (PDF_PHOTO_BOX_H - scaled.height) / 2;
-      page.drawRectangle({ x: bx, y: by, width: boxW, height: PDF_PHOTO_BOX_H, color: rgb(0.96, 0.96, 0.97) });
-      page.drawImage(embedded, { x: offsetX, y: offsetY, width: scaled.width, height: scaled.height });
-      page.drawRectangle({ x: bx, y: by, width: boxW, height: PDF_PHOTO_BOX_H, borderColor: rgb(0.82, 0.84, 0.86), borderWidth: 1 });
-    } else {
-      page.drawRectangle({ x: bx, y: by, width: boxW, height: PDF_PHOTO_BOX_H, color: rgb(0.96, 0.96, 0.97), borderColor: rgb(0.82, 0.84, 0.86), borderWidth: 1 });
-      const noImgW = fontR.widthOfTextAtSize("no image", 7);
-      page.drawText("no image", { x: bx + boxW / 2 - noImgW / 2, y: by + PDF_PHOTO_BOX_H / 2 - 3, size: 7, font: fontR, color: rgb(0.61, 0.64, 0.69) });
-    }
-    const slotLabel  = (photo && photo.label) || ("Camera " + (i + 1));
-    const slotLabelW = fontB.widthOfTextAtSize(slotLabel, 7.5);
-    page.drawText(slotLabel, { x: bx + boxW / 2 - slotLabelW / 2, y: by - 8, size: 7.5, font: fontB, color: rgb(0.07, 0.07, 0.07) });
-  }
-}
-async function buildSnapshotPdf(asset) {
-  const pdfDoc  = await PDFDocument.create();
-  const fontR   = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontB   = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const usableW = snapUsableW();
-  const usableH = PDF_PAGE_H - SNAP_MARGIN_TOP - SNAP_MARGIN_BOTTOM;
-  const pages   = [];
-  let page    = null;
-  let cursorY = 0;
-  const generatedAt = asset.generatedAt
-    ? new Date(asset.generatedAt).toLocaleString("en-AU", { timeZone:"Australia/Sydney", day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit", hour12:true })
-    : new Date().toLocaleString("en-AU", { timeZone:"Australia/Sydney", day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit", hour12:true });
-  function newPage(isFirst) {
-    page = pdfDoc.addPage([PDF_PAGE_W, PDF_PAGE_H]);
-    pages.push(page);
-    cursorY = PDF_PAGE_H - SNAP_MARGIN_TOP;
-    page.drawRectangle({ x: SNAP_MARGIN_LEFT - 10, y: SNAP_MARGIN_BOTTOM - 10, width: usableW + 20, height: usableH + 20, borderColor: rgb(0.82, 0.84, 0.86), borderWidth: 1 });
-    if (isFirst) {
-      const docTitle = asset.title || ("Asset " + (asset.legacyNo || "—") + " Snapshot");
-      page.drawText(docTitle, { x: SNAP_MARGIN_LEFT, y: PDF_PAGE_H - 28, size: 16, font: fontB, color: rgb(0.07, 0.07, 0.07) });
-      const genText = "Generated " + generatedAt;
-      const genW    = fontR.widthOfTextAtSize(genText, 9);
-      page.drawText(genText, { x: PDF_PAGE_W - SNAP_MARGIN_RIGHT - genW, y: PDF_PAGE_H - 28, size: 9, font: fontR, color: rgb(0.42, 0.45, 0.50) });
-      page.drawLine({ start: { x: SNAP_MARGIN_LEFT, y: PDF_PAGE_H - 36 }, end: { x: PDF_PAGE_W - SNAP_MARGIN_RIGHT, y: PDF_PAGE_H - 36 }, thickness: 1.5, color: PDF_BRAND_GREEN });
-    }
-  }
-  newPage(true);
-  for (const section of (asset.sections || [])) {
-    const sectionH = snapMeasureSection(section);
-    if (cursorY - sectionH < SNAP_MARGIN_BOTTOM) newPage(false);
-    if (section.kicker) { page.drawText(String(section.kicker).toUpperCase(), { x: SNAP_MARGIN_LEFT, y: cursorY - 9, size: 9, font: fontB, color: PDF_BRAND_GREEN }); cursorY -= 12; }
-    if (section.title)  { page.drawText(String(section.title), { x: SNAP_MARGIN_LEFT, y: cursorY - 11, size: 11, font: fontB, color: rgb(0.07, 0.07, 0.07) }); cursorY -= 21; }
-    const rows = section.rows || [];
-    if (rows.length) {
-      const rowLines = Math.max(1, Math.ceil(rows.length / SNAP_ROW_COLS));
-      snapDrawRows(page, fontR, fontB, rows, SNAP_MARGIN_LEFT, cursorY, usableW);
-      cursorY -= rowLines * SNAP_ROW_H + Math.max(0, rowLines - 1) * SNAP_ROW_GAP_Y;
-    }
-if (section.photos && section.photos.length) {
-      cursorY -= 6;
-      await snapDrawPhotos(pdfDoc, page, fontR, fontB, section.photos, SNAP_MARGIN_LEFT, cursorY, usableW);
-      cursorY -= PDF_PHOTO_BOX_H + 10 + 4;
+    if (fetched[i]) {
+      try {
+        embedded = fetched[i].format === "png"
+          ? await pdfDoc.embedPng(fetched[i].bytes)
+          : await pdfDoc.embedJpg(fetched[i].bytes);
+      } catch(e) { embedded = null; }
     }
 
-    if (section.mapCoords && section.mapCoords.lat && section.mapCoords.lng) {
-      const lat    = section.mapCoords.lat;
-      const lng    = section.mapCoords.lng;
-      const mapUrl = `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=14&size=700x220&markers=${lat},${lng},red-pushpin`;
-      const mapH   = 130;
-      const mapW   = usableW;
-      cursorY -= 6;
-      if (cursorY - mapH < SNAP_MARGIN_BOTTOM) newPage(false);
-      try {
-        const mapRes = await fetch(mapUrl);
-        if (mapRes.ok) {
-          const mapBuf  = await mapRes.arrayBuffer();
-          const mapImg  = await pdfDoc.embedPng(mapBuf);
-          const scaled  = mapImg.scaleToFit(mapW, mapH);
-          page.drawImage(mapImg, {
-            x: SNAP_MARGIN_LEFT + (mapW - scaled.width) / 2,
-            y: cursorY - scaled.height,
-            width:  scaled.width,
-            height: scaled.height
-          });
-          cursorY -= scaled.height + 8;
-        }
-      } catch(e) {
-        // Map fetch failed silently — PDF continues without map
-      }
+    if (embedded) {
+      const scaled  = embedded.scaleToFit(boxW, actualH);
+      const offsetX = bx + (boxW - scaled.width) / 2;
+      const offsetY = by + (actualH - scaled.height) / 2;
+      page.drawRectangle({ x: bx, y: by, width: boxW, height: actualH, color: rgb(0.06, 0.06, 0.06), borderRadius: 5 });
+      page.drawImage(embedded, { x: offsetX, y: offsetY, width: scaled.width, height: scaled.height });
+      page.drawRectangle({ x: bx, y: by, width: boxW, height: actualH, borderColor: SNAP_LINE, borderWidth: 0.6, borderRadius: 5 });
+    } else {
+      page.drawRectangle({ x: bx, y: by, width: boxW, height: actualH, color: rgb(0.96, 0.96, 0.97), borderColor: SNAP_LINE, borderWidth: 0.6, borderRadius: 5 });
+      const noImg  = "no image";
+      const noImgW = 30;
+      page.drawText(noImg, { x: bx + boxW / 2 - noImgW / 2, y: by + actualH / 2 - 3, size: 7, font: await pdfDoc.embedFont(StandardFonts.Helvetica), color: SNAP_MUTED });
     }
-    cursorY -= SNAP_SECTION_GAP;
   }
-  pages.forEach((pg, idx) => {
-    const footerText = `Page ${idx + 1} of ${pages.length}   —   Generated ${generatedAt}`;
-    const footerW    = fontR.widthOfTextAtSize(footerText, 7.5);
-    pg.drawText(footerText, { x: (PDF_PAGE_W - footerW) / 2, y: SNAP_MARGIN_BOTTOM - 22, size: 7.5, font: fontR, color: rgb(0.61, 0.64, 0.69) });
+  return y - actualH;
+}
+
+async function buildSnapshotPdf(asset) {
+  const pdfDoc = await PDFDocument.create();
+  const fontR  = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontB  = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const sections = asset.sections || [];
+  const slotW    = (SNAP_UW - 4 * 4) / 5;
+  const photoH   = slotW * SNAP_PHOTO_RATIO;
+
+  // ── Measure fixed content height ──────────────────────────────────────────
+  const usableH = SNAP_PAGE_H - SNAP_HDR_H - SNAP_FOOT_H - SNAP_TOP_PAD - SNAP_BOT_PAD;
+  let fixedH = 0;
+  for (const s of sections) {
+    fixedH += SNAP_LABEL_H;
+    if (s.photos && s.photos.length) {
+      fixedH += Math.min(photoH, slotW * 0.68);
+    } else {
+      fixedH += snapDataH((s.rows || []).length, s.cols || 4);
+    }
+  }
+
+  // ── Distribute spare space as equal section gaps ───────────────────────────
+  const spare  = usableH - fixedH;
+  const secGap = Math.max(spare / Math.max(sections.length, 1), 4);
+
+  // ── Generated timestamp ───────────────────────────────────────────────────
+  const generatedAt = new Date().toLocaleString("en-AU", {
+    timeZone: "Australia/Sydney", day: "2-digit", month: "2-digit",
+    year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true
   });
+
+  // ── Build page ────────────────────────────────────────────────────────────
+  const page = pdfDoc.addPage([SNAP_PAGE_W, SNAP_PAGE_H]);
+
+  const docTitle = `Asset ${asset.legacyNo || "—"} — Snapshot Report`;
+  const docSub   = `Generated ${generatedAt}   |   ${asset.registration || "—"}   |   ${asset.state || "—"}` +
+                   (asset.vehicleType ? `   |   ${asset.vehicleType}` : "");
+
+  snapDrawHeader(page, fontR, fontB, docTitle, docSub);
+
+  const footerText = `Page 1 of 1   —   Asset Snapshot Report   —   Generated ${generatedAt}`;
+  snapDrawFooter(page, fontR, footerText);
+
+  let y = SNAP_PAGE_H - SNAP_HDR_H - SNAP_TOP_PAD;
+
+  for (const s of sections) {
+    snapDrawLabel(page, fontB, y, s.label || s.title || s.kicker || "");
+    y -= SNAP_LABEL_H;
+
+    if (s.photos && s.photos.length) {
+      y = await snapDrawPhotos(pdfDoc, page, y, s.photos, photoH);
+    } else {
+      const rows = (s.rows || []);
+      const cols = s.cols || 4;
+      snapDrawDataCards(page, fontR, fontB, y, rows, cols);
+      y -= snapDataH(rows.length, cols);
+    }
+
+    y -= secGap;
+  }
+
   return await pdfDoc.save();
 }
+
+async function handleSnapshotPdf(request, env) {
 
 async function handleSnapshotPdf(request, env) {
   const auth  = await requireSession(request, env);
