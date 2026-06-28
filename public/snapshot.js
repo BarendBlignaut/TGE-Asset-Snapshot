@@ -1250,40 +1250,12 @@ if (step.type === 'poll-ignition') {
       '<div id="snap-hist-results"></div>',
     ].join('');
 
-    // Single call — 6 days to today
-    var now  = new Date();
-    var from = toAestIso(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000));
-    var to   = toAestIso(now);
-
-    try {
-      var result = await TGE.api('POST', '/api/historical-snapshots', {
-        vehicleId: String(vehicle.id),
-        deviceId:  String(cam.id),
-        from:      from,
-        to:        to,
-      });
-
-      if (!historyState.loading) return;
-
-      var prog = TGE.el('snap-hist-prog');
-      if (prog) prog.style.display = 'none';
-
-      if (result.ok && result.data && Array.isArray(result.data.groups) && result.data.groups.length) {
-        var sorted = result.data.groups.slice().sort(function(a,b) {
-          return new Date(b.timeAt) - new Date(a.timeAt);
-        });
-        renderHistoryGroups(sorted, activeSlots, slots);
-      } else {
-        var resEl = TGE.el('snap-hist-results');
-        if (resEl) resEl.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px;">No snapshot history found for this vehicle in the last 28 days.</div>';
-      }
-    } catch(e) {
-      var prog2 = TGE.el('snap-hist-prog');
-      if (prog2) prog2.style.display = 'none';
-      var resEl2 = TGE.el('snap-hist-results');
-      if (resEl2) resEl2.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px;">Failed to load history. Please try again.</div>';
-    }
-
+ // History — pending Teletrac API direction
+    // No API call made — show holding message
+    var prog = TGE.el('snap-hist-prog');
+    if (prog) prog.style.display = 'none';
+    var resEl = TGE.el('snap-hist-results');
+    if (resEl) resEl.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px;">Camera history coming soon.</div>';
     historyState.loading = false;
   }
 
