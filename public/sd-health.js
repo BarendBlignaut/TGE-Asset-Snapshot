@@ -118,6 +118,14 @@
 
       '<div id="sd-results" style="display:none;">',
         '<div class="card" style="padding:0;overflow:hidden;">',
+          '<div id="sd-summary-cards" style="display:none;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--surface-2);display:none;">',
+            '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">',
+              '<div class="data-item" id="sd-card-total"><span>Total Cameras</span><strong>—</strong></div>',
+              '<div class="data-item" id="sd-card-ok"><span>All OK</span><strong>—</strong></div>',
+              '<div class="data-item" id="sd-card-fault"><span>Fault</span><strong>—</strong></div>',
+              '<div class="data-item" id="sd-card-nodata"><span>No Data</span><strong>—</strong></div>',
+            '</div>',
+          '</div>',
           '<div id="sd-progress-bar" style="display:none;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--surface-2);">',
             '<div style="font-size:12px;font-weight:600;color:var(--ink);" id="sd-progress-text">Loading...</div>',
             '<div style="height:4px;background:var(--line);border-radius:999px;margin-top:8px;overflow:hidden;">',
@@ -128,6 +136,8 @@
             '<table id="sd-table" style="width:100%;border-collapse:collapse;font-size:12px;">',
               '<thead>',
                 '<tr style="background:var(--surface-2);border-bottom:2px solid var(--line);">',
+                  '<th style="padding:10px 12px;width:36px;"><input type="checkbox" id="sd-select-all" title="Select all" /></th>',
+                  '<th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Fleet No</th>',
                   '<th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Fleet No</th>',
                   '<th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">IMEI</th>',
                   '<th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Model</th>',
@@ -398,9 +408,10 @@
     tbody.innerHTML = rows.map(function(row, idx) {
       var zebra = idx % 2 === 1 ? 'background:var(--surface-2);' : '';
 
-      // Exception row
+// Exception row
       if (row.exception) {
         return '<tr style="' + zebra + '">' +
+          '<td style="padding:9px 12px;"></td>' +
           '<td style="padding:9px 12px;font-weight:700;color:var(--ink);">' + esc(row.fleetNo) + '</td>' +
           '<td colspan="8" style="padding:9px 12px;color:var(--danger);font-weight:600;">' + esc(row.exception) + '</td>' +
         '</tr>';
@@ -410,7 +421,8 @@
       var sd2s    = sdStatus(row._sd2raw);
       var overall = overallStatus(row._overallRaw);
 
-      return '<tr style="' + zebra + 'border-bottom:1px solid var(--line);">' +
+return '<tr style="' + zebra + 'border-bottom:1px solid var(--line);">' +
+        '<td style="padding:9px 12px;"><input type="checkbox" class="sd-row-check" data-idx="' + idx + '" /></td>' +
         '<td style="padding:9px 12px;font-weight:700;color:var(--ink);white-space:nowrap;">' + esc(row.fleetNo) + '</td>' +
         '<td style="padding:9px 12px;font-family:monospace;font-size:11px;color:var(--muted);">' + esc(row.imei) + '</td>' +
         '<td style="padding:9px 12px;color:var(--ink);">' + esc(row.model) + '</td>' +
@@ -424,19 +436,44 @@
     }).join('');
   }
 
-  function renderSummary(rows) {
-    var summary = TGE.el('sd-summary');
-    if (!summary) return;
-    var dataRows   = rows.filter(function(r) { return !r.exception; });
+function renderSummary(rows) {
+    var dataRows = rows.filter(function(r) { return !r.exception; });
     var totalOk    = dataRows.filter(function(r) { return r._overallRaw && r._overallRaw.toLowerCase() === 'ok'; }).length;
-    var totalFault = dataRows.filter(function(r) { return r._overallRaw && r._overallRaw.toLowerCase() !== 'ok'; }).length;
+    var totalFault = dataRows.filter(function(r) { return r._overallRaw && r._overallRaw.toLowerCase() !== 'ok' && r._overallRaw; }).length;
     var totalNone  = dataRows.filter(function(r) { return !r._overallRaw; }).length;
-    summary.textContent = dataRows.length + ' camera device' + (dataRows.length !== 1 ? 's' : '') +
-      '   |   ' + totalOk + ' OK   |   ' + totalFault + ' Fault   |   ' + totalNone + ' No Data' +
-      (rows.filter(function(r) { return r.exception; }).length ? '   |   ' + rows.filter(function(r) { return r.exception; }).length + ' Exception' : '');
-    summary.style.display = '';
-  }
 
+    // Update summary cards
+    var cards = TGE.el('sd-summary-cards');
+    if (cards) {
+      cards.style.display = '';
+      var setCard = function(id, val, color) {
+        var el = TGE.el(id);
+        if (el) { var strong = el.querySelector('strong'); if (strong) { strong.textContent = val; strong.style.color = color || ''; } }
+      };
+      setCard('sd-card-total',  dataRows.length, '');
+      setCard('sd-card-ok',     totalOk,    totalOk    > 0 ? 'var(--green-600)' : '');
+      setCard('sd-card-fault',  totalFault, totalFault > 0 ? 'var(--danger)'    : '');
+      setCard('sd-card-nodata', totalNone,  totalNone  > 0 ? 'var(--muted)'     : '');
+    }
+
+    // Wire select all
+    var selectAll = TGE.el('sd-select-all');
+    if (selectAll) {
+      selectAll.onchange = function() {
+        var checked = selectAll.checked;
+        document.querySelectorAll('.sd-row-check').forEach(function(cb) { cb.checked = checked; });
+      };
+    }
+
+    // Footer summary
+    var summary = TGE.el('sd-summary');
+    if (summary) {
+      summary.textContent = dataRows.length + ' camera device' + (dataRows.length !== 1 ? 's' : '') +
+        '   |   ' + totalOk + ' OK   |   ' + totalFault + ' Fault   |   ' + totalNone + ' No Data' +
+        (rows.filter(function(r) { return r.exception; }).length ? '   |   ' + rows.filter(function(r) { return r.exception; }).length + ' Exception' : '');
+      summary.style.display = '';
+    }
+  }
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -457,13 +494,23 @@
   }
 
   // ── Exports ───────────────────────────────────────────────────────────────────
-  function getExportRows() {
-    return currentRows().filter(function(r) { return !r.exception; });
+function getExportRows() {
+    var checked = [];
+    document.querySelectorAll('.sd-row-check:checked').forEach(function(cb) {
+      var idx = parseInt(cb.getAttribute('data-idx'));
+      var row = currentRows()[idx];
+      if (row && !row.exception) checked.push(row);
+    });
+    if (!checked.length) {
+      setMessage('Select at least one row to export.', true);
+      return null;
+    }
+    return checked;
   }
 
-  function exportCsv() {
+function exportCsv() {
     var rows = getExportRows();
-    if (!rows.length) return;
+    if (!rows) return;
     var headers = ['Fleet No','IMEI','Model','SD 1 Status','SD 1 Size','SD 2 Status','SD 2 Size','Overall Status','Last Connected'];
     var csv = [headers].concat(rows.map(function(r) {
       return [r.fleetNo, r.imei, r.model, r.sd1, r.sd1size, r.sd2, r.sd2size, r.overall, r.lastConn];
@@ -481,9 +528,9 @@
     exportCsv();
   }
 
-  function exportJson() {
+function exportJson() {
     var rows = getExportRows();
-    if (!rows.length) return;
+    if (!rows) return;
     var clean = rows.map(function(r) {
       return { fleetNo:r.fleetNo, imei:r.imei, model:r.model, sd1Status:r.sd1, sd1Size:r.sd1size, sd2Status:r.sd2, sd2Size:r.sd2size, overallStatus:r.overall, lastConnected:r.lastConn };
     });
