@@ -147,7 +147,7 @@ var REPORTING_DAYS = 7;
               '<thead>',
                 '<tr style="background:var(--surface-2);border-bottom:2px solid var(--line);">',
                   '<th style="padding:10px 12px;width:36px;"><input type="checkbox" id="sd-select-all" title="Select all" /></th>',
-                  '<th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Fleet No</th>',
+                 
                   '<th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Fleet No</th>',
                   '<th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">IMEI</th>',
                   '<th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Model</th>',
