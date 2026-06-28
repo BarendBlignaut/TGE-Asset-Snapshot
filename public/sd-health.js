@@ -17,6 +17,15 @@
     return state.mode === 'fleet' ? state.fleetRows : state.userRows;
   }
 
+var REPORTING_DAYS = 7;
+
+  function reportingStatus(lastEventAt) {
+    if (!lastEventAt) return { label:'Not Reporting', color:'var(--danger)' };
+    var days = (Date.now() - new Date(lastEventAt).getTime()) / (1000 * 60 * 60 * 24);
+    if (days <= REPORTING_DAYS) return { label:'Reporting', color:'var(--green-600)' };
+    return { label:'Not Reporting', color:'var(--danger)' };
+  }
+
   function fmtSd(val) {
     if (!val) return '—';
     if (val === 'sdCardPresent') return 'Present';
@@ -119,11 +128,12 @@
       '<div id="sd-results" style="display:none;">',
         '<div class="card" style="padding:0;overflow:hidden;">',
           '<div id="sd-summary-cards" style="display:none;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--surface-2);display:none;">',
-            '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">',
-              '<div class="data-item" id="sd-card-total"><span>Total Cameras</span><strong>—</strong></div>',
-              '<div class="data-item" id="sd-card-ok"><span>All OK</span><strong>—</strong></div>',
-              '<div class="data-item" id="sd-card-fault"><span>Fault</span><strong>—</strong></div>',
-              '<div class="data-item" id="sd-card-nodata"><span>No Data</span><strong>—</strong></div>',
+            '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">',
+              '<div class="data-item" id="sd-card-total"><span>Total Assets</span><strong>—</strong></div>',
+              '<div class="data-item" id="sd-card-camera"><span>With Camera</span><strong>—</strong></div>',
+              '<div class="data-item" id="sd-card-reporting"><span>Reporting</span><strong>—</strong></div>',
+              '<div class="data-item" id="sd-card-issues"><span>Not Reporting</span><strong>—</strong></div>',
+              '<div class="data-item" id="sd-card-fault"><span>SD Faults</span><strong>—</strong></div>',
             '</div>',
           '</div>',
           '<div id="sd-progress-bar" style="display:none;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--surface-2);">',
@@ -147,6 +157,7 @@
                   '<th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">SD 2 Size</th>',
                   '<th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Overall</th>',
                   '<th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Last Connected</th>',
+                  '<th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Status</th>',
                 '</tr>',
               '</thead>',
               '<tbody id="sd-tbody"></tbody>',
@@ -192,6 +203,7 @@
       TGE.show('sd-empty');
       var refreshBtn2 = TGE.el('sd-refresh-btn');
       if (refreshBtn2) refreshBtn2.style.display = 'none';
+      
     }
     setMessage('');
     if (TGE.closeOutputPill) TGE.closeOutputPill('sd');
@@ -360,6 +372,7 @@
             sd2size:    fmtBytes(attrs['lm.sd_card.2_total_size_bytes']),
             overall:    attrs['lm.sd_card.overall_status'] || '—',
             lastConn:   fmtTs(d.deviceStats && d.deviceStats.lastEventAt),
+            _lastEventAt: (d.deviceStats && d.deviceStats.lastEventAt) || null,
             // raw for export
             _sd1raw:    attrs['lm.sd_card.1'] || '',
             _sd2raw:    attrs['lm.sd_card.2'] || '',
@@ -413,7 +426,7 @@
         return '<tr style="' + zebra + '">' +
           '<td style="padding:9px 12px;"></td>' +
           '<td style="padding:9px 12px;font-weight:700;color:var(--ink);">' + esc(row.fleetNo) + '</td>' +
-          '<td colspan="8" style="padding:9px 12px;color:var(--danger);font-weight:600;">' + esc(row.exception) + '</td>' +
+         '<td colspan="9" style="padding:9px 12px;color:var(--danger);font-weight:600;">' + esc(row.exception) + '</td>' +
         '</tr>';
       }
 
@@ -432,15 +445,27 @@ return '<tr style="' + zebra + 'border-bottom:1px solid var(--line);">' +
         '<td style="padding:9px 12px;color:var(--ink);">' + esc(row.sd2size) + '</td>' +
         '<td style="padding:9px 12px;font-weight:600;color:' + overall.color + ';">' + esc(overall.label) + '</td>' +
         '<td style="padding:9px 12px;color:var(--muted);white-space:nowrap;">' + esc(row.lastConn) + '</td>' +
+        (function() { var rs = reportingStatus(row._lastEventAt); return '<td style="padding:9px 12px;font-weight:600;color:' + rs.color + ';">' + rs.label + '</td>'; })() +
+      '</tr>';
       '</tr>';
     }).join('');
   }
 
 function renderSummary(rows) {
-    var dataRows = rows.filter(function(r) { return !r.exception; });
-    var totalOk    = dataRows.filter(function(r) { return r._overallRaw && r._overallRaw.toLowerCase() === 'ok'; }).length;
-    var totalFault = dataRows.filter(function(r) { return r._overallRaw && r._overallRaw.toLowerCase() !== 'ok' && r._overallRaw; }).length;
-    var totalNone  = dataRows.filter(function(r) { return !r._overallRaw; }).length;
+    var dataRows    = rows.filter(function(r) { return !r.exception; });
+    var exceptions  = rows.filter(function(r) { return !!r.exception; });
+    var totalAssets = state.mode === 'fleet'
+      ? dataRows.length + exceptions.length
+      : (TGE.el('sd-fleet-input') ? (TGE.el('sd-fleet-input').value || '').split(/[,\n]+/).map(function(s){return s.trim();}).filter(Boolean).length : dataRows.length + exceptions.length);
+    var withCamera  = dataRows.length;
+    var reporting   = dataRows.filter(function(r) { return reportingStatus(r._lastEventAt).label === 'Reporting'; }).length;
+    var notReporting= dataRows.filter(function(r) { return reportingStatus(r._lastEventAt).label === 'Not Reporting'; }).length;
+    var sdFaults    = dataRows.filter(function(r) {
+      var s1bad = r._sd1raw && (r._sd1raw === 'sdCardAbsent' || r._sd1raw === 'sdCardFailed');
+      var s2bad = r._sd2raw && (r._sd2raw === 'sdCardAbsent' || r._sd2raw === 'sdCardFailed');
+      var obad  = r._overallRaw && r._overallRaw.toLowerCase() !== 'ok';
+      return s1bad || s2bad || obad;
+    }).length;
 
     // Update summary cards
     var cards = TGE.el('sd-summary-cards');
@@ -450,10 +475,11 @@ function renderSummary(rows) {
         var el = TGE.el(id);
         if (el) { var strong = el.querySelector('strong'); if (strong) { strong.textContent = val; strong.style.color = color || ''; } }
       };
-      setCard('sd-card-total',  dataRows.length, '');
-      setCard('sd-card-ok',     totalOk,    totalOk    > 0 ? 'var(--green-600)' : '');
-      setCard('sd-card-fault',  totalFault, totalFault > 0 ? 'var(--danger)'    : '');
-      setCard('sd-card-nodata', totalNone,  totalNone  > 0 ? 'var(--muted)'     : '');
+      setCard('sd-card-total',     totalAssets,  '');
+      setCard('sd-card-camera',    withCamera,   withCamera   > 0 ? 'var(--green-600)' : '');
+      setCard('sd-card-reporting', reporting,    reporting    > 0 ? 'var(--green-600)' : '');
+      setCard('sd-card-issues',    notReporting, notReporting > 0 ? 'var(--danger)'    : '');
+      setCard('sd-card-fault',     sdFaults,     sdFaults     > 0 ? 'var(--danger)'    : '');
     }
 
     // Wire select all
