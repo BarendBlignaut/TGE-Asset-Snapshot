@@ -893,6 +893,80 @@ async function handleSnapshotPdf(request, env) {
     return jsonResponse({ error: "Snapshot PDF generation failed: " + e.message }, 500);
   }
 }
+async function handleMergeMailPdf(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const body    = await safeJson(request);
+  const row     = body.row || {};
+  const columns = Array.isArray(body.columns) ? body.columns : Object.keys(row);
+  const titleField    = String(body.titleField    || '').trim();
+  const subtitleField = String(body.subtitleField || '').trim();
+  const includeDate   = body.includeDate !== false;
+  const fileName      = String(body.fileName || 'Merge Mail').trim();
+
+  try {
+    const pdfDoc = await PDFDocument.create();
+    const fontR  = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontB  = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    const generatedAt = new Date().toLocaleString("en-AU", {
+      timeZone: "Australia/Sydney", day: "2-digit", month: "2-digit",
+      year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true
+    });
+    const todayDate = new Date().toLocaleDateString("en-AU", {
+      timeZone: "Australia/Sydney", day: "2-digit", month: "2-digit", year: "numeric"
+    });
+
+    // Build header text
+    const titleVal    = titleField    && row[titleField]    ? String(row[titleField])    : fileName;
+    const subtitleVal = subtitleField && row[subtitleField] ? String(row[subtitleField]) : null;
+
+    const docTitle = titleVal + (subtitleVal ? ' — ' + subtitleVal : '');
+    const docSub   = includeDate ? todayDate + '   |   Generated ' + generatedAt : 'Generated ' + generatedAt;
+
+    // Build sections — all columns as data cards
+    const rows = columns
+      .filter(function(c) { return row[c] != null && String(row[c]).trim() !== ''; })
+      .map(function(c) { return { label: c, value: String(row[c]) }; });
+
+    const sections = [{ label: fileName, cols: 4, rows: rows, photos: null }];
+
+    // Measure and auto-space
+    const usableH = SNAP_PAGE_H - SNAP_HDR_H - SNAP_FOOT_H - SNAP_TOP_PAD - SNAP_BOT_PAD;
+    let fixedH = 0;
+    for (const s of sections) {
+      fixedH += SNAP_LABEL_H;
+      fixedH += snapDataH((s.rows || []).length, s.cols || 4);
+    }
+    const spare  = usableH - fixedH;
+    const secGap = Math.max(spare / Math.max(sections.length, 1), 4);
+
+    const page = pdfDoc.addPage([SNAP_PAGE_W, SNAP_PAGE_H]);
+
+    snapDrawHeader(page, fontR, fontB, docTitle, docSub);
+    snapDrawFooter(page, fontR, `Page 1 of 1   —   ${fileName}   —   Generated ${generatedAt}`);
+
+    let y = SNAP_PAGE_H - SNAP_HDR_H - SNAP_TOP_PAD;
+
+    for (const s of sections) {
+      snapDrawLabel(page, fontB, y, s.label || '');
+      y -= SNAP_LABEL_H;
+      snapDrawDataCards(page, fontR, fontB, y, s.rows, s.cols || 4);
+      y -= snapDataH(s.rows.length, s.cols || 4);
+      y -= secGap;
+    }
+
+    const pdfBytes = await pdfDoc.save();
+    let binary = '';
+    const bytes = new Uint8Array(pdfBytes);
+    for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+    const base64   = btoa(binary);
+    const safeName = titleVal.replace(/[\\/:*?"<>|]+/g, '-').trim() || 'merge-mail';
+    return jsonResponse({ ok: true, base64, fileName: safeName + '.pdf', sizeBytes: pdfBytes.length });
+  } catch(e) {
+    return jsonResponse({ error: 'Merge Mail PDF generation failed: ' + e.message }, 500);
+  }
+}
 
 async function handleSdHealthPdf(request, env) {
   const auth = await requireSession(request, env);
@@ -1527,6 +1601,7 @@ export default {
       if (method === "POST" && path === "/api/snapshot-pdf")                return handleSnapshotPdf(request, env);
       if (method === "POST" && path === "/api/asset-track-pdf")             return handleAssetTrackPdf(request, env);
       if (method === "POST" && path === "/api/sd-health-pdf")               return handleSdHealthPdf(request, env);
+      if (method === "POST" && path === "/api/merge-mail-pdf")              return handleMergeMailPdf(request, env);
       if (method === "POST" && path === "/api/send-email")                  return handleSendEmail(request, env);
 
       // Utilisation
