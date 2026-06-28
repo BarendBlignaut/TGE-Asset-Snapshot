@@ -1434,17 +1434,22 @@ function activateExports() {
       });
     }
 
-    return {
+return {
       asset: {
-        fleetNo: v.name || '—',
+        legacyNo:    v.name || '—',
         registration: v.registration || '—',
-        state: v.registrationState || '—',
-        vin: v.vin || '—',
-        make: v.make || '—',
-        model: v.model || '—',
-        type: v.type && v.type.name ? v.type.name : '—',
-        generated: new Date().toLocaleString('en-AU'),
-        sections: sections
+        title:       'Asset ' + (v.name || '—') + ' — Snapshot',
+        generatedAt: new Date().toISOString(),
+        sections:    sections.map(function(s) {
+          return {
+            kicker: s.kicker || null,
+            title:  s.title  || null,
+            rows:   (s.rows || []).map(function(r) {
+              return { label: r[0], value: r[1] };
+            }),
+            photos: s.photos || null
+          };
+        })
       }
     };
   }
