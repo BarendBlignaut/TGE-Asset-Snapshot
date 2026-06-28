@@ -1561,24 +1561,24 @@ function buildSnapshotPayload() {
     }
 
     // ── Normalise sections into the shape buildSnapshotPdf expects ────────────
-    return {
+ return {
       asset: {
         legacyNo:    v.name || '—',
         registration: v.registration || '—',
+        state:       v.registrationState || '—',
+        vehicleType: v.type && v.type.name ? v.type.name : null,
         title:       'Asset ' + (v.name || '—') + ' — Snapshot',
         generatedAt: new Date().toISOString(),
         sections:    sections.map(function(s) {
           return {
-            kicker:    s.kicker    || null,
-            title:     s.title     || null,
-            rows:      (s.rows || []).map(function(r) { return { label: r[0], value: r[1] }; }),
-            photos:    s.photos    || null,
-            mapCoords: s.mapCoords || null
+            label:  s.kicker || s.title || null,
+            cols:   s.cols   || 4,
+            rows:   (s.rows || []).map(function(r) { return { label: r[0], value: r[1] }; }),
+            photos: s.photos || null,
           };
         })
       }
     };
-  }
   
 // ── Exports ───────────────────────────────────────────────────────────────────
   function openEmailPdfComposer() {
