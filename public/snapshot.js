@@ -633,8 +633,9 @@ if (TGE.wireOutputPill) {
       if (refreshBtn) refreshBtn.style.display = '';
       activateExports();
 
-    } catch(e) {
+} catch(e) {
       setMessage(e.message || 'Failed to load asset.', true);
+      TGE.diagnostics.log({ category:'Snapshot', level:'Error', module:'snapshot', action:'runSnapshot', message: e.message, error: e });
     } finally {
       state.running = false;
       setBtnState(false);
@@ -1113,12 +1114,13 @@ if (step.type === 'poll-ignition') {
         if (startBtn) { startBtn.textContent = 'Test Complete'; }
       }
 
-    } catch(e) {
+} catch(e) {
       ALIGN_STEPS.forEach(function(s) {
         if (alignState.steps[s.id] === 'running') setAlignStep(s.id, 'error', e.message);
       });
       setText('snap-align-status', '❌ ' + e.message);
       if (startBtn) { startBtn.textContent = 'Retry Test'; startBtn.disabled = false; }
+      TGE.diagnostics.log({ category:'Snapshot', level:'Error', module:'snapshot', action:'alignmentTest', message: e.message, error: e });
     } finally {
       alignState.running = false;
     }
@@ -1650,8 +1652,9 @@ function buildSnapshotPayload() {
       type: 'Report',
       payload: buildSnapshotPayload()
     });
-  } catch (e) {
+} catch (e) {
     setMessage(e.message || 'PDF export failed.', true);
+    TGE.diagnostics.log({ category:'Snapshot', level:'Error', module:'snapshot', action:'exportPdf', message: e.message, error: e });
   }
 }
   
