@@ -1095,26 +1095,32 @@
         var step = ALIGN_STEPS[i];
         setAlignStep(step.id, 'running');
 
-        if (step.type === 'poll-ignition') {
-          var ok = await pollIgnition(hermesImei, step.expect, step.timeout);
-          if (!alignState.running) break; // cancelled while polling
-          if (!ok) throw new Error('Ignition ' + step.expect + ' not confirmed within ' + step.timeout + 's');
-          setAlignStep(step.id, 'done', 'Ignition ' + step.expect);
-
-        } else if (step.type === 'trigger') {
-          setAlignStep(step.id, 'running', 'Awaiting Teletrac endpoint...');
-          await delay(3000);
+if (step.type === 'poll-ignition') {
+          // SIMULATION — skip real ignition polling, tick through with delay
+          setAlignStep(step.id, 'running', 'Simulation mode');
+          await delay(2000);
           if (!alignState.running) break;
-          setAlignStep(step.id, 'done', 'Placeholder — endpoint TBC');
+          setAlignStep(step.id, 'done', 'Simulation — Ignition ' + step.expect);
+} else if (step.type === 'trigger') {
+          setAlignStep(step.id, 'running', 'Simulation mode');
+          await delay(2000);
+          if (!alignState.running) break;
+          setAlignStep(step.id, 'done', 'Simulation — endpoint TBC');
 
         } else if (step.type === 'wait') {
-          await countdownWait(step.id, step.seconds);
+          setAlignStep(step.id, 'running', 'Simulating wait...');
+          await delay(2000);
           if (!alignState.running) break;
           setAlignStep(step.id, 'done', 'Complete');
 
         } else if (step.type === 'snapshot') {
-          var afterData = await pullAlignmentSnapshots();
+          setAlignStep(step.id, 'running', 'Loading images...');
+          await delay(2000);
           if (!alignState.running) break;
+          // SIMULATION — use current frozen snapshots as the AFTER images
+          // Replace with real pullAlignmentSnapshots() when Teletrac endpoint is confirmed
+          var afterData = simulateAlignmentSnapshots();
+          if (!afterData) throw new Error('No current snapshots to simulate with');
           // Populate AFTER grid in panel
           var afterGrid = TGE.el('snap-align-after');
           var cam       = state.devices.camera;
@@ -1171,6 +1177,25 @@
       renderAlignSteps();
       await delay(1000);
     }
+  }
+
+  // SIMULATION — builds fake afterData from the current frozen snapshots
+  // Remove this and use pullAlignmentSnapshots() when Teletrac endpoint is confirmed
+  function simulateAlignmentSnapshots() {
+    var mediaFiles  = state.data.cameras;
+    var cam         = state.devices.camera;
+    var model       = cam && cam.model && cam.model.name;
+    var slots       = model === 'MultiIQ' ? 5 : 2;
+    var activeSlots = CAMERA_SLOTS.slice(0, slots);
+
+    if (!mediaFiles || !mediaFiles.length) return null;
+
+    var attachments = activeSlots.map(function(slot) {
+      var file = findCameraFile(mediaFiles, slot);
+      return { position: slot.id.toUpperCase(), url: file && file.mediaFile ? file.mediaFile : '' };
+    });
+
+    return { attachments: attachments, timeAt: state.cameraCapturedAt };
   }
 
   // Pull snapshots for alignment AFTER — uses standard events endpoint for now
