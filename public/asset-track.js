@@ -206,7 +206,7 @@ setMessage('Loading vehicles...', false);
           });
 
           if (match) vehicles.push(match);
-          else state.rows.push(makeExceptionRow(fleetNo, 'Fleet Not Found'));
+          else state.userRows.push(makeExceptionRow(fleetNo, 'Fleet Not Found'));
         });
       } else {
         vehicles = allVehicles.filter(function (v) {
@@ -214,7 +214,8 @@ setMessage('Loading vehicles...', false);
         });
       }
 
-      if (!vehicles.length && !state.rows.length) throw new Error('No matching vehicles found.');
+     var currentRows = state.mode === 'user' ? state.userRows : state.fleetRows;
+      if (!vehicles.length && !currentRows.length) throw new Error('No matching vehicles found.');
 
       setMessage('Loading meter data...', false);
 
@@ -655,10 +656,10 @@ async function buildAssetTrackAttachment() {
       rows: assetTrackRows(),
       summary: {
         generated: new Date().toLocaleString('en-AU'),
-        totalAssets: state.rows.length,
-        withTracker: state.rows.filter(function (r) { return r.imei !== '—'; }).length,
-        reporting: state.rows.filter(function (r) { return r.status === 'Reporting'; }).length,
-        notReporting: state.rows.filter(function (r) { return r.status !== 'Reporting'; }).length
+        totalAssets: assetTrackRows().length,
+        withTracker: assetTrackRows().filter(function (r) { return r.imei !== '—'; }).length,
+        reporting: assetTrackRows().filter(function (r) { return r.status === 'Reporting'; }).length,
+        notReporting: assetTrackRows().filter(function (r) { return r.status !== 'Reporting'; }).length
       }
     }
   });
