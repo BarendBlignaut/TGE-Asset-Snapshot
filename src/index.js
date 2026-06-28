@@ -874,8 +874,6 @@ async function buildSnapshotPdf(asset) {
 }
 
 async function handleSnapshotPdf(request, env) {
-
-async function handleSnapshotPdf(request, env) {
   const auth  = await requireSession(request, env);
   if (!auth.ok) return auth.response;
   const body  = await safeJson(request);
