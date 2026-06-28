@@ -143,6 +143,12 @@ function setMode(mode) {
 
   var userInput = TGE.el('at-user-input');
   if (userInput) userInput.style.display = mode === 'user' ? '' : 'none';
+
+  // Refresh displayed data for the newly selected mode.
+  // renderRows already handles empty state correctly — if the new mode
+  // has no data it shows the empty state, if it has data it shows it.
+  renderRows();
+  updateSummary();
 }
 
   function parseFleetNumbers(raw) {
