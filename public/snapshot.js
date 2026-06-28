@@ -1507,6 +1507,27 @@ function buildSnapshotPayload() {
         photos: photos
       });
 
+// 7b — Alignment Test After (only if test completed)
+      if (state.alignCompleted && state.alignAfterSlots && state.alignAfterSlots.length) {
+        var bySlotId = {};
+        state.alignAfterSlots.forEach(function(att) {
+          var slotId = POSITION_MAP[String(att.position || '').toUpperCase()];
+          if (slotId) bySlotId[slotId] = att.url;
+        });
+        var afterPhotos = state.cameraSlots.map(function(slot) {
+          return {
+            label: slot.label,
+            url:   bySlotId[slot.id] || null,
+          };
+        });
+        sections.push({
+          kicker: 'Alignment Test — After',
+          title:  'Alignment Test — After   ·   ' + (state.alignCompletedAt ? formatTs(state.alignCompletedAt) : ''),
+          photos: afterPhotos,
+          rows:   [],
+        });
+      }
+
       // 8 — SD Card Health
       var sdEl1     = TGE.el('snap-sd1');
       var sdEl2     = TGE.el('snap-sd2');
