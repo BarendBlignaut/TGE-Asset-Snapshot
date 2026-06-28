@@ -1643,69 +1643,6 @@ function buildSnapshotPayload() {
     });
   }
 
-// ── Exports ───────────────────────────────────────────────────────────────────
-  function openEmailPdfComposer() {
-    if (!state.data.vehicle) {
-      setMessage('Run Snapshot before sending email.', true);
-      return;
-    }
-
-    if (typeof TGE.openEmailComposer !== 'function') {
-      setMessage('Email Composer is not available.', true);
-      return;
-    }
-
-    var v   = state.data.vehicle || {};
-    var ds  = state.data.deviceStats || {};
-    var vpm = state.data.vpm || {};
-
-    TGE.openEmailComposer({
-      rows: [{
-        fleetNo:      v.name || '—',
-        registration: v.registration || '—',
-        state:        v.registrationState || '—',
-        vin:          v.vin || '—',
-        make:         v.make || '—',
-        model:        v.model || '—',
-        ignition:     ds.ignition || '—',
-        movement:     ds.movement || '—',
-        odometer:     ds.odometer ? Number(ds.odometer).toLocaleString() + ' km' : '—',
-        location:     ds.location || '—',
-        rpm:          vpm.rpm != null ? vpm.rpm + ' rpm' : '—',
-        engineHours:  vpm.hours != null ? Number(vpm.hours).toLocaleString() + ' hrs' : '—',
-        fuelUsed:     vpm.fuelconsumption != null ? Number(vpm.fuelconsumption).toLocaleString() + ' L' : '—',
-      }],
-      fields: [
-        { key: 'fleetNo',      label: 'Fleet Number' },
-        { key: 'registration', label: 'Registration' },
-        { key: 'state',        label: 'State' },
-        { key: 'vin',          label: 'VIN' },
-        { key: 'make',         label: 'Make' },
-        { key: 'model',        label: 'Model' },
-        { key: 'ignition',     label: 'Ignition' },
-        { key: 'movement',     label: 'Movement' },
-        { key: 'odometer',     label: 'Odometer' },
-        { key: 'location',     label: 'Location' },
-        { key: 'rpm',          label: 'RPM' },
-        { key: 'engineHours',  label: 'Engine Hours' },
-        { key: 'fuelUsed',     label: 'Fuel Used' },
-      ],
-      attachmentBuilder: function() {
-        return TGE.PDF.attachment({
-          route:   '/api/snapshot-pdf',
-          module:  'Snapshot',
-          type:    'Report',
-          payload: buildSnapshotPayload()
-        });
-      },
-      attachmentLabel:  'Attach Snapshot PDF',
-      attachByDefault:  true,
-      onSent: function() {
-        setMessage('Snapshot email sent.', false);
-      }
-    });
-  }
-
   async function exportPdf() {
   if (!state.data.vehicle) {
     setMessage('Run Snapshot before exporting PDF.', true);
