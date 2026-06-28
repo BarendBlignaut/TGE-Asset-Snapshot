@@ -34,7 +34,8 @@ var lastRenderedCount = 0;
     var view = TGE.el('view-asset-track');
     if (!view) return;
 
-    userLimit = TGE.limit('asset-track', 'user-mode') || 500;
+    var rawLimit = TGE.limit('asset-track', 'user-mode');
+userLimit = (rawLimit != null && rawLimit !== Infinity) ? rawLimit : 500;
     canUser = TGE.can('asset-track', 'user-mode');
     canFleet = TGE.can('asset-track', 'fleet-mode');
    if (state.mode !== 'user' && state.mode !== 'fleet') {
