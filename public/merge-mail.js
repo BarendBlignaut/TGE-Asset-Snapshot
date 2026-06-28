@@ -58,8 +58,33 @@
           '<div style="overflow-x:auto;max-height:280px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;">',
             '<table id="mm-select-table" style="width:100%;border-collapse:collapse;font-size:12px;"></table>',
           '</div>',
-          '<button class="hero-run-btn" id="mm-compose-btn" type="button" style="margin-top:14px;">✉ Compose Email</button>',
+         '<div class="card" style="margin-top:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:16px;">',
+          '<div class="card-kicker">PDF Header</div>',
+          '<div class="card-title" style="margin-bottom:12px;">Configure PDF Attachment Header</div>',
+          '<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;">',
+            '<div>',
+              '<label style="display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:5px;">Title Field</label>',
+              '<select id="mm-pdf-title" style="width:100%;height:36px;border:1px solid var(--line);border-radius:7px;padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink);">',
+                '<option value="">— None (use filename) —</option>',
+              '</select>',
+            '</div>',
+            '<div>',
+              '<label style="display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:5px;">Subtitle Field</label>',
+              '<select id="mm-pdf-subtitle" style="width:100%;height:36px;border:1px solid var(--line);border-radius:7px;padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink);">',
+                '<option value="">— None —</option>',
+              '</select>',
+            '</div>',
+            '<div>',
+              '<label style="display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:5px;">Today\'s Date</label>',
+              '<label style="display:flex;align-items:center;gap:8px;height:36px;font-size:13px;cursor:pointer;">',
+                '<input type="checkbox" id="mm-pdf-date" checked style="width:16px;height:16px;" />',
+                'Include in header',
+              '</label>',
+            '</div>',
+          '</div>',
         '</div>',
+        '<button class="hero-run-btn" id="mm-compose-btn" type="button" style="margin-top:14px;">✉ Compose Email</button>',
+      '</div>',
 
       '</div>',
 
@@ -148,11 +173,33 @@
     state.rows    = json;
   }
 
-  function showLoaded() {
+function showLoaded() {
     TGE.el('mm-loaded').style.display = '';
     TGE.el('mm-file-summary').textContent = state.fileName + ' — ' + state.rows.length + ' row' + (state.rows.length !== 1 ? 's' : '') + ', ' + state.columns.length + ' columns';
     renderPreviewTable();
     renderSelectTable();
+    populatePdfHeaderDropdowns();
+  }
+
+  function populatePdfHeaderDropdowns() {
+    var titleSel    = TGE.el('mm-pdf-title');
+    var subtitleSel = TGE.el('mm-pdf-subtitle');
+    if (!titleSel || !subtitleSel) return;
+    var options = '<option value="">— None —</option>' +
+      state.columns.map(function(c) {
+        return '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>';
+      }).join('');
+    titleSel.innerHTML    = '<option value="">— None (use filename) —</option>' + state.columns.map(function(c) {
+      return '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>';
+    }).join('');
+    subtitleSel.innerHTML = options;
+
+    // Auto-detect common field names
+    state.columns.forEach(function(c) {
+      var cl = c.toLowerCase();
+      if (/fleet|name/.test(cl) && !titleSel.value)    titleSel.value    = c;
+      if (/imei|serial|device/.test(cl) && !subtitleSel.value) subtitleSel.value = c;
+    });
   }
 
   function renderPreviewTable() {
@@ -218,17 +265,52 @@
     if (fileInput) fileInput.value = '';
   }
 
-  function openComposer() {
+function openComposer() {
     var checked = Array.prototype.slice.call(document.querySelectorAll('.mm-row-check:checked'));
     if (!checked.length) { alert('Select at least one row first.'); return; }
-    var rows = checked.map(function (cb) { return state.rows[parseInt(cb.dataset.row, 10)]; });
-    var fields = state.columns.map(function (c) { return { key: sanitizeKey(c), label: c }; });
-    var mergeRows = rows.map(function (row) {
+
+    var titleField    = (TGE.el('mm-pdf-title')    || {}).value || '';
+    var subtitleField = (TGE.el('mm-pdf-subtitle') || {}).value || '';
+    var includeDate   = TGE.el('mm-pdf-date') ? TGE.el('mm-pdf-date').checked : true;
+    var fileName      = state.fileName.replace(/\.[^.]+$/, '') || 'Merge Mail';
+
+    var rows = checked.map(function(cb) { return state.rows[parseInt(cb.dataset.row, 10)]; });
+    var fields = state.columns.map(function(c) { return { key: sanitizeKey(c), label: c }; });
+    var mergeRows = rows.map(function(row) {
       var obj = {};
-      state.columns.forEach(function (c) { obj[sanitizeKey(c)] = row[c]; });
+      state.columns.forEach(function(c) { obj[sanitizeKey(c)] = row[c]; });
       return obj;
     });
-    TGE.openEmailComposer({ rows: mergeRows, fields: fields, imagesField: null, onSent: function () {} });
+
+    TGE.openEmailComposer({
+      rows: mergeRows,
+      fields: fields,
+      imagesField: null,
+      attachmentBuilder: function(selectedRows) {
+        // Build PDF for the first row of this send batch
+        var sourceRow = selectedRows && selectedRows[0];
+        if (!sourceRow) return Promise.resolve(null);
+        // Map sanitized keys back to original column values
+        var rawRow = {};
+        state.columns.forEach(function(c) { rawRow[c] = sourceRow[sanitizeKey(c)]; });
+        return TGE.PDF.attachment({
+          route:   '/api/merge-mail-pdf',
+          module:  'MergeMail',
+          type:    'Report',
+          payload: {
+            row:          rawRow,
+            columns:      state.columns,
+            titleField:   titleField,
+            subtitleField: subtitleField,
+            includeDate:  includeDate,
+            fileName:     fileName,
+          }
+        });
+      },
+      attachmentLabel:  'Attach Row PDF',
+      attachByDefault:  true,
+      onSent: function() {}
+    });
   }
 
   function sanitizeKey(s) {
