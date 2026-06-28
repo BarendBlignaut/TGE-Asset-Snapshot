@@ -698,9 +698,9 @@
     var ds = d.deviceStats || {};
     state.data.deviceStats = ds;
 
-    show('snap-status-card');
-    show('snap-vpm-card');
-    show('snap-gpio-card');
+    TGE.show('snap-status-card');
+    TGE.show('snap-vpm-card');
+    TGE.show('snap-gpio-card');
 
     setText('snap-ignition', ds.ignition, 'No data');
     setText('snap-movement', ds.movement, 'No data');
@@ -715,7 +715,7 @@
       setText('snap-lat', coords.lat.toFixed(6));
       setText('snap-lng', coords.lng.toFixed(6));
       setText('snap-speed', lastPr.Spd != null && lastPr.Spd !== '' ? lastPr.Spd + ' km/h' : '—');
-      show('snap-map-card');
+     TGE.show('snap-map-card');
       setText('snap-map-address', ds.location || '—');
       setText('snap-map-lat', coords.lat.toFixed(6));
       setText('snap-map-lng', coords.lng.toFixed(6));
@@ -746,7 +746,7 @@
     var ds = d.deviceStats || {};
     var cu = ds.currentUser;
     if (!cu) return;
-    show('snap-driver-card');
+    TGE.show('snap-driver-card');
     setText('snap-driver-name',    (cu.firstName || '') + ' ' + (cu.lastName || ''));
     setText('snap-driver-user',    cu.username || '—');
     setText('snap-driver-licence', cu.licenceNumber || '—');
@@ -810,7 +810,7 @@
 
   function processTrackerStats(d) {
     var ds = d.deviceStats || {};
-    show('snap-tracker-card');
+    TGE.show('snap-tracker-card');
     setText('snap-tracker-address', ds.location || '—');
     setText('snap-tracker-time',    ds.lastEventAt ? formatTs(ds.lastEventAt) : '—');
     setText('snap-tracker-model',   (d.model && d.model.name) || '—');
@@ -857,7 +857,7 @@
     state.cameraSlots = activeSlots;
     state.cameraCapturedAt = latest.timeAt;
 
-    show('snap-camera-card');
+    TGE.show('snap-camera-card');
     var alignBtn = TGE.el('snap-align-btn');
     if (alignBtn) alignBtn.onclick = openAlignPanel;
     var histBtn = TGE.el('snap-history-btn');
@@ -1336,7 +1336,7 @@
     }
   }
 
-  function show(id) { var el = TGE.el(id); if (el) el.style.display = ''; }
+ // TGE.show() removed — use TGE.show() directly
 
   function setMessage(msg, isError) {
     var el = TGE.el('snap-message');
