@@ -105,7 +105,7 @@ var REPORTING_DAYS = 7;
               '</div>',
             ].join('') : ''),
             // User mode input
-            (canUser ? '<textarea id="sd-fleet-input" placeholder="Fleet numbers — one per line or comma separated" autocomplete="off" rows="3" style="border:1px solid rgba(255,255,255,0.25);border-radius:7px;padding:8px 12px;background:rgba(255,255,255,0.10);color:#fff;font:inherit;font-size:13px;min-width:240px;resize:vertical;' + (initMode==='fleet'?'display:none;':'') + '"></textarea>' : ''),
+           
             '<button class="hero-run-btn" id="sd-run-btn" type="button">Run</button>',
             '<button class="hero-action-btn" id="sd-refresh-btn" type="button" style="display:none;">Refresh</button>',
           '</div>',
@@ -115,6 +115,14 @@ var REPORTING_DAYS = 7;
           '</div>',
         '</div>',
         '<p class="hero-message" id="sd-message"></p>',
+      '</div>',
+
+      '<div id="sd-user-input" class="card" style="' + (initMode === 'user' ? '' : 'display:none;') + '">',
+        '<div class="card-kicker">User Mode</div>',
+        '<div class="card-title">Enter Fleet Numbers</div>',
+        '<p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Enter one fleet number per line. Maximum ' + (TGE.limit('sd-health','user-mode') !== Infinity ? TGE.limit('sd-health','user-mode') : 500) + ' assets.</p>',
+        '<textarea id="sd-fleet-input" rows="6" placeholder="82050&#10;90117&#10;136" style="width:100%;font-family:monospace;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical;background:var(--surface);color:var(--ink);"></textarea>',
+        '<p id="sd-input-count" style="font-size:12px;color:var(--muted);margin-top:6px;">0 assets entered</p>',
       '</div>',
 
       '<div id="sd-empty" class="card" style="text-align:center;padding:48px 20px;">',
@@ -175,20 +183,21 @@ var REPORTING_DAYS = 7;
   function wireEvents() {
     TGE.on('sd-run-btn',     'click', runSdHealth);
     TGE.on('sd-refresh-btn', 'click', resetSdHealth);
-   // textarea — Enter adds new line, Run button triggers run
+   var input = TGE.el('sd-fleet-input');
+    if (input) input.addEventListener('input', updateInputCount);
     TGE.on('sd-mode-user',  'click', function() { setMode('user'); });
     TGE.on('sd-mode-fleet', 'click', function() { setMode('fleet'); });
     if (TGE.wireOutputPill) TGE.wireOutputPill('sd', sdExportItems());
   }
 
-  function setMode(mode) {
+function setMode(mode) {
     state.mode = mode;
-    var userBtn  = TGE.el('sd-mode-user');
-    var fleetBtn = TGE.el('sd-mode-fleet');
-    var input    = TGE.el('sd-fleet-input');
-    if (userBtn)  userBtn.classList.toggle('active',  mode === 'user');
-    if (fleetBtn) fleetBtn.classList.toggle('active', mode === 'fleet');
-    if (input)    input.style.display = mode === 'user' ? '' : 'none';
+    var userBtn   = TGE.el('sd-mode-user');
+    var fleetBtn  = TGE.el('sd-mode-fleet');
+    var userInput = TGE.el('sd-user-input');
+    if (userBtn)   userBtn.classList.toggle('active',  mode === 'user');
+    if (fleetBtn)  fleetBtn.classList.toggle('active', mode === 'fleet');
+    if (userInput) userInput.style.display = mode === 'user' ? '' : 'none';
 
     // Restore previous state for this mode
     var rows = currentRows();
@@ -214,8 +223,9 @@ var REPORTING_DAYS = 7;
     state.userRows  = [];
     state.fleetRows = [];
 
-    var input = TGE.el('sd-fleet-input');
+  var input = TGE.el('sd-fleet-input');
     if (input) { input.value = ''; input.focus(); }
+    updateInputCount();
 
     setMessage('');
     TGE.hide('sd-results');
@@ -507,6 +517,18 @@ function renderSummary(rows) {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
+  function updateInputCount() {
+    var input = TGE.el('sd-fleet-input');
+    var count = TGE.el('sd-input-count');
+    if (!input || !count) return;
+    var limit = TGE.limit('sd-health', 'user-mode');
+    limit = (limit != null && limit !== Infinity) ? limit : 500;
+    var items = (input.value || '').split(/[\n,]+/).map(function(s) { return s.trim(); }).filter(Boolean);
+    var over = items.length > limit;
+    count.textContent = items.length + ' asset' + (items.length !== 1 ? 's' : '') + ' entered' + (over ? ' — max ' + limit + ' allowed' : '');
+    count.style.color = over ? 'var(--danger)' : 'var(--muted)';
+  }
+
   function setMessage(msg, isError) {
     var el = TGE.el('sd-message');
     if (!el) return;
