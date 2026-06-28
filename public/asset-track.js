@@ -275,11 +275,20 @@ onItem: function (item) {
     var targetRows = state.mode === 'user' ? state.userRows : state.fleetRows;
 
     if (item.tracker) {
+      // Vehicle has a confirmed AT301/Solar tracker — add to results
       var meters = allMetersByVehicle[String(item.vehicle.id)] || [];
       targetRows.push(makeRow(item.vehicle, item.devices, item.tracker, meters));
-    } else if (state.mode === 'user' && item.devices.length === 0) {
-      exceptionRows.push(makeExceptionRow(item.vehicle.name, 'No Device Assigned'));
+    } else if (state.mode === 'user') {
+      // User mode only — show exception rows so the user knows
+      // why a specific fleet number they requested isn't showing tracker data
+      if (item.devices.length === 0) {
+        exceptionRows.push(makeExceptionRow(item.vehicle.name, 'No Device Assigned'));
+      } else {
+        exceptionRows.push(makeExceptionRow(item.vehicle.name, 'Not Asset Tracker'));
+      }
     }
+    // Fleet mode — vehicles without a tracker are silently excluded.
+    // Only AT301/Solar tracker-equipped vehicles appear in fleet mode results.
   },
 
   onProgress: function (done, total) {
