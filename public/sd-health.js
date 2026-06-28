@@ -109,6 +109,8 @@ var REPORTING_DAYS = 7;
             '<button class="hero-run-btn" id="sd-run-btn" type="button">Run</button>',
             '<button class="hero-action-btn" id="sd-refresh-btn" type="button" style="display:none;">Refresh</button>',
           '</div>',
+            '<button class="hero-action-btn" id="sd-refresh-btn" type="button" style="display:none;">Refresh</button>',
+          '</div>',
           '<div class="hero-bar-right">',
             '<div class="hero-divider"></div>',
             TGE.buildOutputPill ? TGE.buildOutputPill('sd', sdExportItems()) : '',
