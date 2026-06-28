@@ -221,8 +221,21 @@ setMessage('Loading vehicles...', false);
             return String(v.name || '').trim().toLowerCase() === String(fleetNo).trim().toLowerCase();
           });
 
-          if (match) vehicles.push(match);
-          else state.userRows.push(makeExceptionRow(fleetNo, 'Fleet Not Found'));
+       if (match) {
+            vehicles.push(match);
+          } else {
+            state.userRows.push(makeExceptionRow(fleetNo, 'Fleet Not Found'));
+            TGE.diagnostics.log({
+              category: 'Asset Track',
+              level: 'warn',
+              module: 'asset-track',
+              action: 'Vehicle lookup — Fleet Not Found',
+              status: 'Not Found',
+              message: 'Fleet number not found in TN360: ' + fleetNo,
+              request: { fleetNo: fleetNo },
+              response: null
+            });
+          }
         });
       } else {
         vehicles = allVehicles.filter(function (v) {
