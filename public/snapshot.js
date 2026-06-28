@@ -117,7 +117,7 @@
           '</div>',
           '<div class="hero-bar-right">',
             '<div class="hero-divider"></div>',
-            buildExportMenu(),
+            TGE.buildOutputPill ? TGE.buildOutputPill('snap', snapshotExportItems()) : '',
           '</div>',
         '</div>',
         '<p class="hero-message" id="snap-message"></p>',
@@ -286,39 +286,18 @@
   }
 
   // ── Export menu (Export Standard 1) ───────────────────────────────────────────
-  function buildExportMenu() {
-    var items = [
-      TGE.can('snapshot','export-pdf')       ? '<button class="snap-menu-item" id="snap-pdf-btn" type="button"><span>Snapshot PDF</span><span style="color:var(--muted);font-size:10px;">PDF</span></button>' : '',
-      TGE.can('snapshot','export-email-pdf') ? '<button class="snap-menu-item" id="snap-email-btn" type="button"><span>Email PDF</span><span style="color:var(--muted);font-size:10px;">Send</span></button>' : '',
-      TGE.can('snapshot','export-csv')       ? '<button class="snap-menu-item" id="snap-csv-btn" type="button"><span>CSV</span><span style="color:var(--muted);font-size:10px;">.csv</span></button>' : '',
-      TGE.can('snapshot','export-xlsx')      ? '<button class="snap-menu-item" id="snap-xlsx-btn" type="button"><span>Excel</span><span style="color:var(--muted);font-size:10px;">.xlsx</span></button>' : '',
-      TGE.can('snapshot','export-json')      ? '<button class="snap-menu-item" id="snap-json-btn" type="button"><span>JSON</span><span style="color:var(--muted);font-size:10px;">.json</span></button>' : '',
-    ].filter(Boolean).join('');
-    if (!items) return '';
-    return '<div class="snap-hero-menu" id="snap-export-menu">' +
-      '<button class="snap-menu-trigger" id="snap-export-trigger" type="button" aria-haspopup="true" aria-expanded="false">' +
-        '<span style="width:16px;height:16px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--yellow);color:var(--green-900);font-size:12px;">↓</span>' +
-        '<span>Export</span>' +
-        '<svg class="snap-menu-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>' +
-      '</button>' +
-      '<div class="snap-menu-panel" id="snap-menu-panel" role="menu">' + items + '</div>' +
-    '</div>';
+function snapshotExportItems() {
+    return [
+      { id:'snap-pdf-btn',   label:'Snapshot PDF', suffix:'PDF',  icon:'📄', permission:['snapshot','export-pdf'],       action: exportPdf },
+      { id:'snap-email-btn', label:'Email PDF',    suffix:'Send', icon:'✉️', permission:['snapshot','export-email-pdf'], action: openEmailPdfComposer },
+      { id:'snap-csv-btn',   label:'CSV',          suffix:'.csv', icon:'📑', permission:['snapshot','export-csv'],       action: exportCsv },
+      { id:'snap-xlsx-btn',  label:'Excel',        suffix:'.xlsx',icon:'📊', permission:['snapshot','export-xlsx'],      action: exportCsv },
+      { id:'snap-json-btn',  label:'JSON',         suffix:'.json',icon:'{}', permission:['snapshot','export-json'],      action: exportJson },
+    ];
   }
 
-  function positionExportPanel() {
-    var trigger = TGE.el('snap-export-trigger');
-    var panel   = TGE.el('snap-menu-panel');
-    if (!trigger || !panel) return;
-    var rect = trigger.getBoundingClientRect();
-    panel.style.top   = (rect.bottom + 8) + 'px';
-    panel.style.right = (window.innerWidth - rect.right) + 'px';
-  }
-
-  function closeExportMenu() {
-    var menu    = TGE.el('snap-export-menu');
-    var trigger = TGE.el('snap-export-trigger');
-    if (menu)    menu.classList.remove('open');
-    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+function closeExportMenu() {
+    if (TGE.closeOutputPill) TGE.closeOutputPill('snap');
   }
 
   // ── Inject panels ──────────────────────────────────────────────────────────────
@@ -392,20 +371,8 @@
     TGE.on('snap-refresh-btn', 'click', resetSnapshot);
     TGE.on('snap-fleet-input', 'keydown', function(e) { if (e.key === 'Enter') runSnapshot(); });
 
-    // Export dropdown
-    var trigger = TGE.el('snap-export-trigger');
-    var menu    = TGE.el('snap-export-menu');
-    if (trigger && menu) {
-      trigger.onclick = function(e) {
-        e.stopPropagation();
-        var open = !menu.classList.contains('open');
-        menu.classList.toggle('open', open);
-        trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
-        if (open) positionExportPanel();
-      };
-      document.addEventListener('click', function(e) {
-        if (menu && !menu.contains(e.target)) closeExportMenu();
-      });
+if (TGE.wireOutputPill) {
+      TGE.wireOutputPill('snap', snapshotExportItems());
     }
  }
 
@@ -1377,22 +1344,10 @@ if (step.type === 'poll-ignition') {
 
   function showResults() { TGE.hide('snap-empty'); TGE.show('snap-results'); }
 
-  function activateExports() {
-    // Activate all export menu items
-    ['snap-pdf-btn','snap-email-btn','snap-csv-btn','snap-xlsx-btn','snap-json-btn'].forEach(function(id) {
-      var el = TGE.el(id);
-      if (el) el.classList.add('active');
-    });
-    var csvBtn   = TGE.el('snap-csv-btn');
-    var jsonBtn  = TGE.el('snap-json-btn');
-    var pdfBtn   = TGE.el('snap-pdf-btn');
-    var xlsxBtn  = TGE.el('snap-xlsx-btn');
-    var emailBtn = TGE.el('snap-email-btn');
-    if (csvBtn)   csvBtn.onclick   = function() { closeExportMenu(); exportCsv(); };
-    if (jsonBtn)  jsonBtn.onclick  = function() { closeExportMenu(); exportJson(); };
-    if (pdfBtn)   pdfBtn.onclick   = function() { closeExportMenu(); exportPdf(); };
-    if (xlsxBtn)  xlsxBtn.onclick  = function() { closeExportMenu(); exportCsv(); };
-    if (emailBtn) emailBtn.onclick = function() { closeExportMenu(); alert('Email PDF — coming soon.'); };
+function activateExports() {
+    if (TGE.wireOutputPill) {
+      TGE.wireOutputPill('snap', snapshotExportItems());
+    }
   }
 
   function renderMap(containerId, lat, lng) {
