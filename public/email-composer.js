@@ -226,10 +226,16 @@
     };
 
     // Track which field the user is editing so Insert knows where to go
-    var subjectInput = document.getElementById('ec-subject');
-    var bodyInput     = document.getElementById('ec-body');
+var subjectInput = document.getElementById('ec-subject');
+    var bodyInput    = document.getElementById('ec-body');
+    var toInput      = document.getElementById('ec-to');
+    var ccInput      = document.getElementById('ec-cc');
+    var bccInput     = document.getElementById('ec-bcc');
+    if (toInput)      toInput.addEventListener('focus',      function() { lastFocusedField = 'ec-to'; });
+    if (ccInput)      ccInput.addEventListener('focus',      function() { lastFocusedField = 'ec-cc'; });
+    if (bccInput)     bccInput.addEventListener('focus',     function() { lastFocusedField = 'ec-bcc'; });
     if (subjectInput) subjectInput.addEventListener('focus', function() { lastFocusedField = 'ec-subject'; });
-    if (bodyInput)     bodyInput.addEventListener('focus',     function() { lastFocusedField = 'ec-body'; });
+    if (bodyInput)    bodyInput.addEventListener('focus',    function() { lastFocusedField = 'ec-body'; });
   }
 
   // Tracks whichever field (subject or body) the user last clicked into,
