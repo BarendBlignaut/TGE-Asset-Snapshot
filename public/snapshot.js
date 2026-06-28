@@ -1375,66 +1375,193 @@ function activateExports() {
     } catch(e) { return ts; }
   }
 
-  function buildSnapshotPayload() {
-    var v    = state.data.vehicle || {};
+function buildSnapshotPayload() {
+    var v    = state.data.vehicle    || {};
     var ds   = state.data.deviceStats || {};
-    var vpm  = state.data.vpm || {};
-    var gpio = state.data.gpio || {};
+    var vpm  = state.data.vpm        || {};
+    var gpio = state.data.gpio       || {};
+    var ovm  = v.operationalVehicleModel || {};
+    var make = ovm.make  || v.make  || '—';
+    var model = ovm.model || v.model || '—';
+    var year  = ovm.yearOfManufacture || '—';
 
-    var sections = [
-      {
-        title: 'Vehicle Information',
-        rows: [
-          ['Fleet Number', v.name || '—'],
-          ['Registration', v.registration || '—'],
-          ['State', v.registrationState || '—'],
-          ['VIN', v.vin || '—'],
-          ['Make', v.make || '—'],
-          ['Model', v.model || '—'],
-          ['Vehicle Type', v.type && v.type.name ? v.type.name : '—']
-        ]
-      },
-      {
-        title: 'Live Status',
-        rows: [
-          ['Ignition', ds.ignition || '—'],
-          ['Movement', ds.movement || '—'],
-          ['Speed', TGE.el('snap-speed') ? TGE.el('snap-speed').textContent : '—'],
-          ['Odometer', ds.odometer ? Number(ds.odometer).toLocaleString() + ' km' : '—'],
-          ['Location', ds.location || '—'],
-          ['Last GPS', ds.gpsAt ? formatTs(ds.gpsAt) : '—']
-        ]
-      },
-      {
-        title: 'Engine Metrics',
-        rows: [
-          ['RPM', vpm.rpm != null ? vpm.rpm + ' rpm' : '—'],
-          ['Speed CAN', vpm.speed != null ? vpm.speed + ' km/h' : '—'],
-          ['Engine Hours', vpm.hours != null ? Number(vpm.hours).toLocaleString() + ' hrs' : '—'],
-          ['Total Fuel Used', vpm.fuelconsumption != null ? Number(vpm.fuelconsumption).toLocaleString() + ' L' : '—'],
-          ['Oil Temperature', vpm.oiltemp != null ? vpm.oiltemp + ' °C' : '—'],
-          ['Oil Pressure', vpm.oilpressure != null ? vpm.oilpressure + ' kPa' : '—'],
-          ['Engine Load', vpm.engineload != null ? vpm.engineload + ' %' : '—']
-        ]
-      }
-    ];
+    var sections = [];
 
-    var gpioRows = Object.keys(gpio).map(function (k) {
-      var g = gpio[k] || {};
-      return [
-        (g.noun || k) + (g.which && g.which !== 'unknown' ? ' (' + g.which + ')' : ''),
-        g.verb || '—'
-      ];
+    // 1 — Vehicle Information
+    sections.push({
+      kicker: 'Vehicle',
+      title:  'Vehicle Information',
+      rows: [
+        ['Fleet Number',  v.name || '—'],
+        ['Registration',  v.registration || '—'],
+        ['State',         v.registrationState || '—'],
+        ['VIN',           v.vin || '—'],
+        ['Make',          make],
+        ['Model',         model],
+        ['Year',          year],
+        ['Vehicle Type',  v.type && v.type.name ? v.type.name : '—'],
+      ]
     });
 
-    if (gpioRows.length) {
+    // 2 — Devices
+    var deviceList = TGE.el('snap-device-cards');
+    var deviceRows = [];
+    var devKeys = ['hermes', 'camera', 'iface', 'tracker'];
+    devKeys.forEach(function(key) {
+      var d = state.devices[key];
+      if (!d) return;
+      var code  = (d.type && d.type.code)   || key.toUpperCase();
+      var dModel = (d.model && d.model.name) || '—';
+      deviceRows.push([code + ' / ' + dModel, (d.imei || d.serialNumber || '—')]);
+    });
+    if (deviceRows.length) {
       sections.push({
-        title: 'GPIO',
-        rows: gpioRows
+        kicker: 'Hardware',
+        title:  'Assigned Devices',
+        rows:   deviceRows
       });
     }
 
-return {
+    // 3 — Live Status (Hermes only)
+    if (state.devices.hermes) {
+      var lastPr = {};
+      try { lastPr = JSON.parse(ds.attrs && (ds.attrs.last_pr || ds.attrs.lastPr) || '{}'); } catch(e) {}
+      var coords = extractGpsCoords(ds, lastPr);
+      sections.push({
+        kicker: 'Telematics',
+        title:  'Live Status',
+        rows: [
+          ['Ignition',   ds.ignition  || '—'],
+          ['Movement',   ds.movement  || '—'],
+          ['Speed',      lastPr.Spd != null && lastPr.Spd !== '' ? lastPr.Spd + ' km/h' : '—'],
+          ['Odometer',   ds.odometer  ? Number(ds.odometer).toLocaleString() + ' km' : '—'],
+          ['Location',   ds.location  || '—'],
+          ['Last GPS',   ds.gpsAt     ? formatTs(ds.gpsAt) : '—'],
+          ['Latitude',   coords       ? coords.lat.toFixed(6) : '—'],
+          ['Longitude',  coords       ? coords.lng.toFixed(6) : '—'],
+        ]
+      });
+
+      // 4 — Engine Metrics
+      sections.push({
+        kicker: 'Engine',
+        title:  'Engine Metrics — VPM Last Reading',
+        rows: [
+          ['RPM',            vpm.rpm            != null && vpm.rpm            !== -1 ? vpm.rpm + ' rpm'                                          : '—'],
+          ['Speed (CAN)',     vpm.speed          != null && vpm.speed          !== -1 ? vpm.speed + ' km/h'                                       : '—'],
+          ['Engine Hours',   vpm.hours          != null && vpm.hours          !== -1 ? Number(vpm.hours).toLocaleString() + ' hrs'               : '—'],
+          ['Total Fuel Used',vpm.fuelconsumption!= null && vpm.fuelconsumption!== -1 ? Number(vpm.fuelconsumption).toLocaleString() + ' L'       : '—'],
+          ['Oil Temperature',vpm.oiltemp        != null && vpm.oiltemp        !== -1 ? vpm.oiltemp + ' °C'                                       : '—'],
+          ['Oil Pressure',   vpm.oilpressure    != null && vpm.oilpressure    !== -1 ? vpm.oilpressure + ' kPa'                                  : '—'],
+          ['Engine Load',    vpm.engineload     != null && vpm.engineload     !== -1 ? vpm.engineload + ' %'                                     : '—'],
+          ['VPM Recorded',   ds.lastVpmAt        ? formatTs(ds.lastVpmAt) : '—'],
+        ]
+      });
+
+      // 5 — GPIO
+      var gpioRows = Object.keys(gpio).map(function(k) {
+        var g = gpio[k] || {};
+        return [
+          (g.noun || k) + (g.which && g.which !== 'unknown' ? ' (' + g.which + ')' : ''),
+          g.verb || '—'
+        ];
+      });
+      if (gpioRows.length) {
+        sections.push({ kicker: 'I/O', title: 'GPIO — Input / Output Status', rows: gpioRows });
+      }
+
+      // 6 — Location map (static image via OSM)
+      if (coords) {
+        sections.push({
+          kicker: 'Location',
+          title:  'Last Known Position',
+          rows: [
+            ['Address',   ds.location || '—'],
+            ['Latitude',  coords.lat.toFixed(6)],
+            ['Longitude', coords.lng.toFixed(6)],
+          ],
+          mapCoords: { lat: coords.lat, lng: coords.lng }
+        });
+      }
+    }
+
+    // 7 — Camera Evidence
+    if (state.devices.camera && state.data.cameras && state.cameraSlots.length) {
+      var mediaFiles  = state.data.cameras;
+      var activeSlots = state.cameraSlots;
+      var photos = activeSlots.map(function(slot) {
+        var file = findCameraFile(mediaFiles, slot);
+        return {
+          label:  slot.label,
+          url:    file && file.mediaFile ? file.mediaFile : null,
+          status: file && file.status === 'FINISHED' ? 'working' : null
+        };
+      });
+      sections.push({
+        kicker: 'Evidence',
+        title:  'Camera Snapshots',
+        rows: [
+          ['Captured', state.cameraCapturedAt ? formatTs(state.cameraCapturedAt) : '—'],
+          ['Model',    state.devices.camera && state.devices.camera.model ? state.devices.camera.model.name : '—'],
+        ],
+        photos: photos
+      });
+
+      // 8 — SD Card Health
+      var sdEl1     = TGE.el('snap-sd1');
+      var sdEl2     = TGE.el('snap-sd2');
+      var sdOver    = TGE.el('snap-sd-overall');
+      var sdSize1   = TGE.el('snap-sd1-size');
+      var sdSize2   = TGE.el('snap-sd2-size');
+      var sdSection = TGE.el('snap-sd-section');
+      if (sdSection && sdSection.style.display !== 'none') {
+        sections.push({
+          kicker: 'Storage',
+          title:  'SD Card Health',
+          rows: [
+            ['SD Card 1',        sdEl1   ? sdEl1.textContent   : '—'],
+            ['SD Card 2',        sdEl2   ? sdEl2.textContent   : '—'],
+            ['Overall Status',   sdOver  ? sdOver.textContent  : '—'],
+            ['SD Card 1 Size',   sdSize1 ? sdSize1.textContent : '—'],
+            ['SD Card 2 Size',   sdSize2 ? sdSize2.textContent : '—'],
+          ]
+        });
+      }
+    }
+
+    // 9 — Asset Tracker
+    if (state.devices.tracker) {
+      var trackerDs = ds;
+      var trackerLastPr = {};
+      try { trackerLastPr = JSON.parse(trackerDs.attrs && (trackerDs.attrs.last_pr || trackerDs.attrs.lastPr) || '{}'); } catch(e) {}
+      var trackerAddrEl   = TGE.el('snap-tracker-address');
+      var trackerTimeEl   = TGE.el('snap-tracker-time');
+      var trackerBattEl   = TGE.el('snap-tracker-battery');
+      var trackerModelEl  = TGE.el('snap-tracker-model');
+      var trackerLatEl    = TGE.el('snap-tracker-lat');
+      var trackerLngEl    = TGE.el('snap-tracker-lng');
+      var tLat = trackerLatEl  ? parseFloat(trackerLatEl.textContent)  : null;
+      var tLng = trackerLngEl  ? parseFloat(trackerLngEl.textContent) : null;
+      var trackerSection = {
+        kicker: 'Asset Tracker',
+        title:  'Last Known Position',
+        rows: [
+          ['Location',   trackerAddrEl  ? trackerAddrEl.textContent  : '—'],
+          ['Latitude',   trackerLatEl   ? trackerLatEl.textContent   : '—'],
+          ['Longitude',  trackerLngEl   ? trackerLngEl.textContent   : '—'],
+          ['Last Seen',  trackerTimeEl  ? trackerTimeEl.textContent  : '—'],
+          ['Battery',    trackerBattEl  ? trackerBattEl.textContent  : '—'],
+          ['Model',      trackerModelEl ? trackerModelEl.textContent : '—'],
+        ]
+      };
+      if (tLat && tLng && !isNaN(tLat) && !isNaN(tLng)) {
+        trackerSection.mapCoords = { lat: tLat, lng: tLng };
+      }
+      sections.push(trackerSection);
+    }
+
+    // ── Normalise sections into the shape buildSnapshotPdf expects ────────────
+    return {
       asset: {
         legacyNo:    v.name || '—',
         registration: v.registration || '—',
@@ -1442,19 +1569,17 @@ return {
         generatedAt: new Date().toISOString(),
         sections:    sections.map(function(s) {
           return {
-            kicker: s.kicker || null,
-            title:  s.title  || null,
-            rows:   (s.rows || []).map(function(r) {
-              return { label: r[0], value: r[1] };
-            }),
-            photos: s.photos || null
+            kicker:    s.kicker    || null,
+            title:     s.title     || null,
+            rows:      (s.rows || []).map(function(r) { return { label: r[0], value: r[1] }; }),
+            photos:    s.photos    || null,
+            mapCoords: s.mapCoords || null
           };
         })
       }
     };
   }
   
-  // ── Exports ───────────────────────────────────────────────────────────────────
 // ── Exports ───────────────────────────────────────────────────────────────────
   function openEmailPdfComposer() {
     if (!state.data.vehicle) {
