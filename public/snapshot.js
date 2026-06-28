@@ -1521,20 +1521,24 @@ async function exportPdf() {
   }
 
   // ── Register ──────────────────────────────────────────────────────────────────
-  var _orig = TGE.onAppReady;
-  TGE.onAppReady = function () {
-    if (typeof _orig === 'function') _orig();
-    render();
-  };
-
 TGE.onShow['snapshot'] = function () {
-  historyState.loading = false;
-  alignState.running = false;
+  var alreadyBuilt = !!TGE.el('snap-run-btn');
+  if (!alreadyBuilt) {
+    render();
+    return;
+  }
 
-  var input = TGE.el('snap-fleet-input');
-  if (input) {
-    input.value = '';
-    input.focus();
+  // Stop any in-progress panels on return
+  historyState.loading = false;
+  alignState.running   = false;
+
+  // Restore previous state — results if data exists, empty if not
+  if (state.data.vehicle) {
+    TGE.hide('snap-empty');
+    TGE.show('snap-results');
+  } else {
+    TGE.hide('snap-results');
+    TGE.show('snap-empty');
   }
 };
 
