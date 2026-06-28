@@ -700,7 +700,8 @@ function snapMeasureSection(section) {
   const titleH   = section.title  ? 11 + 10 : 0;
   const rowsH    = rowLines * SNAP_ROW_H + Math.max(0, rowLines - 1) * SNAP_ROW_GAP_Y;
   const photosH  = (section.photos && section.photos.length) ? PDF_PHOTO_BOX_H + 10 + 10 : 0;
-  return kickerH + titleH + rowsH + photosH + SNAP_SECTION_GAP;
+  const mapH     = section.mapCoords ? 130 + 14 : 0;
+  return kickerH + titleH + rowsH + photosH + mapH + SNAP_SECTION_GAP;
 }
 function snapDrawRows(page, fontR, fontB, rows, startX, startY, usableW) {
   const colW = (usableW - (SNAP_ROW_COLS - 1) * SNAP_ROW_GAP_X) / SNAP_ROW_COLS;
@@ -784,10 +785,37 @@ async function buildSnapshotPdf(asset) {
       snapDrawRows(page, fontR, fontB, rows, SNAP_MARGIN_LEFT, cursorY, usableW);
       cursorY -= rowLines * SNAP_ROW_H + Math.max(0, rowLines - 1) * SNAP_ROW_GAP_Y;
     }
-    if (section.photos && section.photos.length) {
+if (section.photos && section.photos.length) {
       cursorY -= 6;
       await snapDrawPhotos(pdfDoc, page, fontR, fontB, section.photos, SNAP_MARGIN_LEFT, cursorY, usableW);
       cursorY -= PDF_PHOTO_BOX_H + 10 + 4;
+    }
+
+    if (section.mapCoords && section.mapCoords.lat && section.mapCoords.lng) {
+      const lat    = section.mapCoords.lat;
+      const lng    = section.mapCoords.lng;
+      const mapUrl = `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=14&size=700x220&markers=${lat},${lng},red-pushpin`;
+      const mapH   = 130;
+      const mapW   = usableW;
+      cursorY -= 6;
+      if (cursorY - mapH < SNAP_MARGIN_BOTTOM) newPage(false);
+      try {
+        const mapRes = await fetch(mapUrl);
+        if (mapRes.ok) {
+          const mapBuf  = await mapRes.arrayBuffer();
+          const mapImg  = await pdfDoc.embedPng(mapBuf);
+          const scaled  = mapImg.scaleToFit(mapW, mapH);
+          page.drawImage(mapImg, {
+            x: SNAP_MARGIN_LEFT + (mapW - scaled.width) / 2,
+            y: cursorY - scaled.height,
+            width:  scaled.width,
+            height: scaled.height
+          });
+          cursorY -= scaled.height + 8;
+        }
+      } catch(e) {
+        // Map fetch failed silently — PDF continues without map
+      }
     }
     cursorY -= SNAP_SECTION_GAP;
   }
