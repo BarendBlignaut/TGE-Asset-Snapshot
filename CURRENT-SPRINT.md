@@ -1,8 +1,8 @@
 # TGE Asset Snapshot — Current Sprint
 
-Sprint: 02
+Sprint: 03
 Status: IN PROGRESS
-Last Updated: June 2026
+Last Updated: 28 June 2026
 
 ---
 
@@ -15,50 +15,80 @@ Phase 2 — Asset Track
 ✓ LOCKED v1.0 — QA Passed
 
 Phase 3 — Snapshot
+✓ LOCKED v1.0 — QA Passed
+
+Phase 4 — SD Card Health + Control Table Platform
 IN PROGRESS
 
 ---
 
 ## Current Task
 
-Complete Snapshot (Asset Snapshot) module development.
+SD Card Health — review and verify independent data flow in Snapshot module.
 
 ---
 
-## Snapshot Development Status
+## Snapshot v1.0 — LOCKED ✅
 
-### Bugs Fixed This Session
-✅ Bug 1 — Page name: nav button now shows "Asset Snapshot" (was "Snapshot")
-✅ Bug 2 — Refresh button: now correctly clears all data and returns to true empty state (was re-running the search and leaving empty table shell visible)
+All items completed and QA passed:
 
-### Bugs Confirmed, Not Yet Fixed
-❌ Bug 3 — PDF export: currently calls window.print() — dumps raw app UI. Must be replaced with real PDF generation via tge-pdf.js. Root cause confirmed.
-❌ Bug 4 — Email PDF: currently a placeholder alert(). Must be wired to shared TGE.openEmailComposer(). Root cause confirmed.
+✅ A1/A2 — onShow pattern and navigation persistence
+✅ A5/A6 — removed duplicate local helpers (show() removed, TGE.show() used directly)
+✅ P1 — export dropdown using TGE.buildOutputPill/wireOutputPill
+✅ P2/P3 — CSV/JSON use TGE.outputFileName for platform file naming
+✅ P6 — diagnostics logging in all catch blocks (runSnapshot, exportPdf, alignmentTest)
+✅ AL3 — alignment step state included in diagnostics log
+✅ H2 — DST-aware toAestIso() (ready for history build)
+✅ Bug 1 — nav button shows "Asset Snapshot"
+✅ Bug 2 — Refresh correctly clears all data, returns to true empty state
+✅ Bug 3 — PDF export via TGE.PDF.download() → /api/snapshot-pdf
+✅ Bug 4 — Email PDF wired to TGE.openEmailComposer with attachmentBuilder
+✅ Alignment simulation — all 6 steps tick through 2s delays, AFTER images populate, main page updates on close
+✅ History panel — no API calls, clean "Camera history coming soon." message
+✅ PDF layout — portrait A4, single page, auto-spacing, rounded header/footer, green pill labels, compact data cards, natural aspect ratio photos, alignment after section (conditional)
+✅ PDF payload — all sections: Vehicle Info, Devices, Live Status, Engine Metrics, GPIO, Evidence (camera photos), Alignment Test After (if completed), SD Card Health, Location
+✅ Export pill — PDF, Email PDF, CSV, JSON, Excel (Excel falls back to CSV — XLSX deferred)
 
-### Snapshot Development Order (Remaining)
-1. Fix Bug 3 — PDF export (migrate to tge-pdf.js)
-2. Fix Bug 4 — Email PDF (wire to shared email composer)
-3. Review Startup and Initialisation
-4. Resolve Fleet Input browser autocomplete issue (Chrome fills field with login username)
-5. Review Vehicle Resolution
-6. Review Snapshot Workflow
-7. Review History
-8. Review Camera Alignment
-9. Review Asset Tracker Logic
-10. Review Map
-11. Integrate TGE.progress (replace manual loading logic / setMessage / setBtnState)
-12. Integrate TGE.output (replace local export functions and file naming)
-13. Cleanup (dead code, unused variables, duplicate helpers, legacy references)
-14. QA (full checklist — see QA section below)
-15. Lock Snapshot v1.0
+**Deferred items (not blockers for lock):**
+- XLSX export — SheetJS implementation (backlog item 5)
+- History rewrite — pending Teletrac API direction (backlog item 6)
+- Alignment real API — pending Teletrac camera trigger endpoint
 
-### Snapshot Stable Sections (Do Not Redesign)
-- History
-- Camera Alignment
-- Device Detection
-- Snapshot Workflow
-- Roles Integration
-- Diagnostics Integration (already uses TGE.api())
+---
+
+## Next Items
+
+### 1. SD Card Health — Snapshot (CURRENT)
+SD Card Health currently populates by reading DOM element text content from snap-sd1, snap-sd2 etc. This is fragile — if the DOM hasn't fully populated before PDF export is triggered, values may be missing. Need to verify:
+- Does SD Card data always populate before Export is available?
+- Should SD Card data be stored in state rather than read from DOM at export time?
+- Is the current approach reliable in practice?
+
+### 2. Control Table Platform
+- Build vendors D1 table
+- Build hardware_types D1 table
+- Update Admin UI: Vendors tab, hardware type management
+- Update Control Tables tab: vendor dropdown, hardware type tabs auto-populate
+- Build table types: Battery Status, Last Reported, Hardware Exclusion
+- Wire asset-track.js into Control Table platform (replace hardcoded logic)
+
+---
+
+## Backlog (Ordered by Priority)
+
+1. SD Card Health — Snapshot data flow review (CURRENT)
+2. Control Table Platform — full build (vendors, hardware_types, wire asset-track.js)
+3. Solar battery status — waiting on Teletrac vendor data
+4. Asset Track Fleet Mode rate limiting — server-side, max runs per user per time period
+5. Snapshot XLSX export — SheetJS implementation
+6. History rewrite — 7-day window, events endpoint direct, S3 URL expiry check, no storage (pending Teletrac direction)
+7. Fleet Utilisation module (utilisation.js — stub, design not started)
+8. Roles Platform expansion — rate limiting, batch limits, expanded permissions
+9. Camera Requests module
+10. Workflow Engine
+11. API Management
+12. Production Hardening
+13. Diagnostics Platform enhancements
 
 ---
 
@@ -67,122 +97,42 @@ Complete Snapshot (Asset Snapshot) module development.
 Every module must pass all items before locking:
 
 - [ ] Startup
-- [ ] Vehicle Search
-- [ ] Snapshot Request
-- [ ] Snapshot Images
-- [ ] Camera Selection
-- [ ] History
-- [ ] Camera Alignment
-- [ ] Asset Tracker Logic
-- [ ] Map
-- [ ] CSV Export
-- [ ] Excel Export
-- [ ] JSON Export
-- [ ] PDF Export
-- [ ] Email PDF
+- [ ] Vehicle Search / Input
+- [ ] Core function (snapshot run / asset track run / etc)
+- [ ] All data sections populate correctly
+- [ ] All exports (CSV, Excel, JSON, PDF, Email PDF)
 - [ ] Diagnostics (all API calls logged, all errors logged, no silent failures)
 - [ ] Roles (permissions respected, feature access gated correctly)
-- [ ] Limits (input limits enforced, batch limits enforced — verify limit_value is on the correct permission action row)
-- [ ] Refresh (clears all data, returns to true empty state, no table shell remaining)
-- [ ] Console Error Check (no red errors, no unexpected warnings in DevTools)
-
----
-
-## Backlog (Ordered by Priority)
-
-### After Snapshot is Locked
-
-1. **Control Table Platform — Full Build**
-   - Build vendors D1 table (vendor name, active)
-   - Build hardware_types D1 table (linked to vendor, name, code, active)
-   - Build Admin UI: Vendors tab, hardware type management per vendor
-   - Update Control Tables Admin tab: vendor dropdown auto-populates, hardware type tabs auto-populate from linked hardware types
-   - Build table types: Battery Status, Last Reported, Hardware Exclusion
-   - Wire asset-track.js into Control Table platform (replace all hardcoded logic)
-   - Target: no hardware names or business thresholds in any module JS file
-
-2. **Solar Battery Status**
-   - Waiting on vendor data from Teletrac Navman
-   - Once received: either add Solar to existing CT-001 table (if ranges match Oyster) or create CT-002 (if ranges differ)
-   - No code change needed — will be managed entirely through Control Table Admin UI
-
-3. **Asset Track — Fleet Mode Call Rate Limiting**
-   - Prevent users from running fleet-wide pulls too frequently (e.g. max X runs per Y hours)
-   - Must be enforced server-side in the Worker, not just client-side
-   - Part of Roles Platform expansion
-
-4. **PDF Layout Refinement (tge-pdf.js)**
-   - Asset Track PDF layout needs improvement
-   - Fix is in tge-pdf.js not asset-track.js (platform concern, not module concern)
-
-5. **Mail Merge Improvements (email-composer.js)**
-   - Specific changes TBD — flagged during testing
-
-6. **camera.js Investigation**
-   - Unclear if camera.js is legacy dead code or active shared utility
-   - Must be resolved before Snapshot work touches any camera functionality
-   - If legacy: remove. If active: document what it provides.
-
-7. **Fleet Utilisation Module (utilisation.js)**
-   - Currently a non-functional stub in main branch
-   - Design not yet started
-   - Data source: TN360 API (vehicle/device data, GPS, ignition events)
-   - Output: per-asset utilisation metrics (% time in use, idle time, distance) and/or fleet-wide aggregates
-   - Time period: TBD (user-selected date range vs rolling period)
-
-8. **Roles Platform Expansion**
-   - Separate batch limit from usage limit (currently conflated in limit_value)
-   - Time-based rate limiting (X calls per Y hours per user)
-   - Expanded permissions for: exports, diagnostics, API access, module permissions
-   - Fix: limit_value must be on the correct action row (e.g. user-mode for Asset Track input limit, not run)
-
-9. **Consolidated Export Dropdown (Common Pattern)**
-   - Replace individual export buttons on remaining pages with single dropdown button (arrow-down icon)
-   - This is the new standard — Asset Track already implements it via TGE.buildOutputPill
-   - Pages still needing migration: Snapshot, Camera Snapshots, Camera Count (verify current state)
-
-### Medium Term
-
-10. Camera Requests module
-11. Workflow Engine
-12. API Management
-13. Production Hardening
-
-### Long Term
-
-14. Diagnostics Platform enhancements:
-    - Runtime Event logging
-    - Module Event logging
-    - System Health page
-    - Performance dashboard
-    - Role management integration
+- [ ] Limits (input limits enforced, limit_value on correct permission action row)
+- [ ] Refresh (clears all data, returns to true empty state)
+- [ ] Navigation persistence (data survives nav away/back, only Refresh clears)
+- [ ] Console Error Check (no red errors, no unexpected warnings)
 
 ---
 
 ## Completed This Sprint
 
-✓ Shared platform architecture (tge-output.js, tge-progress.js, tge-pdf.js, tge-diagnostics.js)
+### Sprint 02 (previous)
+✓ Shared platform architecture (export-pill.js, tge-progress.js, tge-pdf.js, tge-diagnostics.js)
 ✓ Asset Track v1.0 — developed, QA passed, LOCKED
-✓ Asset Track — mode-separated state (userRows/fleetRows — data persists across mode switches and navigation)
-✓ Asset Track — progressive loading with live render timer
-✓ Asset Track — Fleet Not Found logging to TGE.diagnostics
-✓ Asset Track — last-seen status thresholds (7/14 day, hardcoded interim)
-✓ Asset Track — fleet mode hardware filtering (AT301/Solar only)
-✓ Asset Track — user mode exception rows (Fleet Not Found, No Device Assigned, Not Asset Tracker)
-✓ Asset Track — battery status via control table (CT-001, Oyster only — Solar pending)
-✓ Asset Track — user mode limit working (limit_value on user-mode permission row)
-✓ Documentation standards established
-✓ QA process established (checklist includes Limits as standard item)
-✓ Module lock process established
-✓ Snapshot Bug 1 and Bug 2 fixed
-✓ Email composer shared platform (Camera Snapshots, Camera Count, Merge Mail)
-✓ Camera Fault Report PDF (pdf-lib, A4 landscape, 4-per-page grid, smart centering)
-✓ Power Automate email flow with PDF attachment (OneDrive workaround for base64 attachment bug)
-✓ Mailer Data admin tab (D1-backed signatures, live preview, add/edit/deactivate)
-✓ Control Tables admin tab (partially built — CT-001 Oyster Battery Status active)
-✓ Merge Mail page (drag-drop CSV/XLSX import, shared composer)
-✓ Admin → Mailer Data tab with signature management
-✓ Login permission timing fixed (handleLogin now returns full permMap same as handleSession)
+✓ Email composer shared platform
+✓ Camera Fault Report PDF (locked design)
+✓ Power Automate email flow with PDF attachment
+✓ Mailer Data admin tab
+✓ Control Tables admin tab (CT-001 Oyster Battery Status active)
+✓ Merge Mail page
+✓ Login permission timing fixed
+
+### Sprint 03 (this sprint)
+✓ Snapshot v1.0 — all fixes applied, QA passed, LOCKED
+✓ Snapshot PDF — portrait A4, auto-spacing, rounded header/footer, full layout
+✓ Snapshot alignment simulation — full visual flow, AFTER images on main page
+✓ Snapshot history — cleaned out broken API calls, holding message
+✓ Snapshot exports — PDF, Email PDF, CSV, JSON all working
+✓ Snapshot diagnostics — logging in all catch blocks
+✓ Platform file naming (TGE.outputFileName) for CSV and JSON
+✓ DST-aware toAestIso() ready for history build
+✓ Documentation updated (v3.0)
 
 ---
 
@@ -192,5 +142,7 @@ None currently.
 
 Waiting on (external):
 - Teletrac Navman: solar tracker battery voltage specification
-- Teletrac Navman: API key scope expansion for attachment content endpoint (/v1/attachments/{id}/content) — currently returns 401
+- Teletrac Navman: API key scope expansion for attachment content endpoint — currently returns 401
 - Teletrac Navman: camera trigger endpoint fix — currently returns 405
+- Teletrac Navman: direction on camera history API approach (7-day window confirmed, implementation TBD)
+- 
