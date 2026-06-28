@@ -566,12 +566,81 @@ function exportJson() {
     document.body.appendChild(a); a.click(); a.remove();
   }
 
-  function exportPdf() {
-    setMessage('PDF export coming soon.', false);
+ function buildPdfPayload() {
+    var rows = getExportRows();
+    if (!rows) return null;
+    var dataRows = currentRows().filter(function(r) { return !r.exception; });
+    var allRows  = currentRows();
+    return {
+      rows: rows.map(function(r) {
+        return {
+          fleetNo:   r.fleetNo,
+          imei:      r.imei,
+          model:     r.model,
+          sd1:       r.sd1,
+          sd1size:   r.sd1size,
+          sd2:       r.sd2,
+          sd2size:   r.sd2size,
+          overall:   r.overall,
+          lastConn:  r.lastConn,
+          status:    reportingStatus(r._lastEventAt).label,
+          sdFault:   !!(r._sd1raw === 'sdCardAbsent' || r._sd1raw === 'sdCardFailed' || r._sd2raw === 'sdCardAbsent' || r._sd2raw === 'sdCardFailed' || (r._overallRaw && r._overallRaw.toLowerCase() !== 'ok')),
+          exception: r.exception || null,
+        };
+      }),
+      summary: {
+        generated:    new Date().toLocaleString('en-AU', { timeZone:'Australia/Sydney', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true }),
+        totalAssets:  allRows.length,
+        withCamera:   dataRows.length,
+        reporting:    dataRows.filter(function(r) { return reportingStatus(r._lastEventAt).label === 'Reporting'; }).length,
+        notReporting: dataRows.filter(function(r) { return reportingStatus(r._lastEventAt).label !== 'Reporting'; }).length,
+        sdFaults:     dataRows.filter(function(r) { return r._sd1raw === 'sdCardAbsent' || r._sd1raw === 'sdCardFailed' || r._sd2raw === 'sdCardAbsent' || r._sd2raw === 'sdCardFailed' || (r._overallRaw && r._overallRaw.toLowerCase() !== 'ok'); }).length,
+      }
+    };
   }
 
-  function exportEmailPdf() {
-    setMessage('Email PDF coming soon.', false);
+  async function exportPdf() {
+    var payload = buildPdfPayload();
+    if (!payload) return;
+    try {
+      await TGE.PDF.download({
+        route:   '/api/sd-health-pdf',
+        module:  'SDHealth',
+        type:    'Report',
+        payload: payload
+      });
+    } catch(e) {
+      setMessage(e.message || 'PDF export failed.', true);
+      TGE.diagnostics.log({ category:'SD Health', level:'Error', module:'sd-health', action:'exportPdf', message:e.message, error:e });
+    }
+  }
+
+  async function exportEmailPdf() {
+    var payload = buildPdfPayload();
+    if (!payload) return;
+    if (typeof TGE.openEmailComposer !== 'function') { setMessage('Email composer not available.', true); return; }
+    TGE.openEmailComposer({
+      rows: payload.rows.map(function(r) {
+        return { fleetNo:r.fleetNo, imei:r.imei, model:r.model, status:r.status, overall:r.overall };
+      }),
+      fields: [
+        { key:'fleetNo', label:'Fleet No' },
+        { key:'imei',    label:'IMEI' },
+        { key:'model',   label:'Model' },
+        { key:'status',  label:'Status' },
+        { key:'overall', label:'Overall' },
+      ],
+      attachmentBuilder: function() {
+        return TGE.PDF.attachment({
+          route:   '/api/sd-health-pdf',
+          module:  'SDHealth',
+          type:    'Report',
+          payload: payload
+        });
+      },
+      attachmentLabel:  'Attach SD Health PDF',
+      attachByDefault:  true,
+    });
   }
 
   // ── Register ──────────────────────────────────────────────────────────────────
