@@ -6,10 +6,11 @@
 
   var DEVICE_CODE = 'ATRACKER';
 
-  var state = {
+var state = {
     running: false,
     mode: 'user',
-    rows: []
+    userRows: [],
+    fleetRows: []
   };
 
   var userLimit = 500;
@@ -179,7 +180,8 @@ function setMode(mode) {
     }
 
 state.running = true;
-state.rows = [];
+if (state.mode === 'user') state.userRows = [];
+else state.fleetRows = [];
 lastRenderedCount = 0;
 
 if (renderTimer) {
@@ -221,11 +223,12 @@ setMessage('Loading vehicles...', false);
 
       setMessage('Checking ' + vehicles.length + ' vehicles for Asset Tracker devices...', false);
 
-      renderTimer = setInterval(function () {
-  if (state.rows.length !== lastRenderedCount) {
+renderTimer = setInterval(function () {
+  var currentRows = state.mode === 'user' ? state.userRows : state.fleetRows;
+  if (currentRows.length !== lastRenderedCount) {
     renderRows();
     updateSummary();
-    lastRenderedCount = state.rows.length;
+    lastRenderedCount = currentRows.length;
   }
 }, 250);
 
@@ -249,12 +252,14 @@ await TGE.Progress.run({
     };
   },
 
-  onItem: function (item) {
+onItem: function (item) {
     if (!item) return;
+
+    var targetRows = state.mode === 'user' ? state.userRows : state.fleetRows;
 
     if (item.tracker) {
       var meters = allMetersByVehicle[String(item.vehicle.id)] || [];
-      state.rows.push(makeRow(item.vehicle, item.devices, item.tracker, meters));
+      targetRows.push(makeRow(item.vehicle, item.devices, item.tracker, meters));
     } else if (state.mode === 'user' && item.devices.length === 0) {
       exceptionRows.push(makeExceptionRow(item.vehicle.name, 'No Device Assigned'));
     }
@@ -271,7 +276,8 @@ await TGE.Progress.run({
   }
 }).promise;
 
-      state.rows = state.rows.concat(exceptionRows);
+     if (state.mode === 'user') state.userRows = state.userRows.concat(exceptionRows);
+      else state.fleetRows = state.fleetRows.concat(exceptionRows);
 renderRows();
 updateSummary();
 setMessage('');
@@ -441,7 +447,16 @@ function isOysterTracker(device) {
     return 'Critical';
   }
 
-  function renderRows() {
+function renderRows() {
+    var rows = state.mode === 'user' ? state.userRows : state.fleetRows;
+
+    if (!rows.length) {
+      TGE.hide('at-summary');
+      TGE.hide('at-results');
+      TGE.show('at-empty');
+      return;
+    }
+
     TGE.hide('at-empty');
     TGE.show('at-summary');
     TGE.show('at-results');
@@ -449,7 +464,7 @@ function isOysterTracker(device) {
     var tbody = TGE.el('at-tbody');
     if (!tbody) return;
 
-    tbody.innerHTML = state.rows.map(function (r) {
+    tbody.innerHTML = rows.map(function (r) {
       var badgeClass = 'badge-gray';
       if (r.status === 'Reporting') badgeClass = 'badge-green';
       else if (r.status !== 'Reporting') badgeClass = 'badge-red';
@@ -474,10 +489,11 @@ function isOysterTracker(device) {
     }).join('');
   }
 
-  function updateSummary() {
-    var total = state.rows.length;
-    var trackers = state.rows.filter(function (r) { return r.imei !== '—'; }).length;
-    var reporting = state.rows.filter(function (r) { return r.status === 'Reporting'; }).length;
+function updateSummary() {
+    var rows = state.mode === 'user' ? state.userRows : state.fleetRows;
+    var total = rows.length;
+    var trackers = rows.filter(function (r) { return r.imei !== '—'; }).length;
+    var reporting = rows.filter(function (r) { return r.status === 'Reporting'; }).length;
     var issues = total - reporting;
 
     TGE.setText('at-sum-total', total);
@@ -489,7 +505,8 @@ function isOysterTracker(device) {
   function clearPage() {
     if (state.running) return;
 
-    state.rows = [];
+state.userRows = [];
+    state.fleetRows = [];
 
     var input = TGE.el('at-fleet-input');
     if (input) {
@@ -525,14 +542,16 @@ function isOysterTracker(device) {
     }
   }
 
-  function ensureRowsLoaded() {
-    if (state.rows && state.rows.length) return true;
+function ensureRowsLoaded() {
+    var rows = state.mode === 'user' ? state.userRows : state.fleetRows;
+    if (rows && rows.length) return true;
     setMessage('Run Asset Track before exporting.', true);
     return false;
   }
 
-  function assetTrackRows() {
-    return state.rows.map(function (r) {
+function assetTrackRows() {
+    var rows = state.mode === 'user' ? state.userRows : state.fleetRows;
+    return rows.map(function (r) {
       return {
         fleetNo: r.fleetNo,
         registration: r.registration,
@@ -758,7 +777,8 @@ function downloadBlob(blob, fileName) {
     return;
   }
 
-  if (state.rows && state.rows.length) {
+var currentRows = state.mode === 'user' ? state.userRows : state.fleetRows;
+  if (currentRows && currentRows.length) {
     TGE.hide('at-empty');
     TGE.show('at-summary');
     TGE.show('at-results');
