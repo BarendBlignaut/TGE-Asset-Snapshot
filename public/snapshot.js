@@ -1118,9 +1118,9 @@ if (step.type === 'poll-ignition') {
       ALIGN_STEPS.forEach(function(s) {
         if (alignState.steps[s.id] === 'running') setAlignStep(s.id, 'error', e.message);
       });
-      setText('snap-align-status', '❌ ' + e.message);
+setText('snap-align-status', '❌ ' + e.message);
       if (startBtn) { startBtn.textContent = 'Retry Test'; startBtn.disabled = false; }
-      TGE.diagnostics.log({ category:'Snapshot', level:'Error', module:'snapshot', action:'alignmentTest', message: e.message, error: e });
+      TGE.diagnostics.log({ category:'Snapshot', level:'Error', module:'snapshot', action:'alignmentTest', message: e.message, error: e, step: alignState.steps });
     } finally {
       alignState.running = false;
     }
@@ -1276,17 +1276,22 @@ if (step.type === 'poll-ignition') {
   }
 
   // Convert Date to AEST ISO string with URL-safe encoding (kept for reference)
-  function toAestIso(d) {
-    // Format as YYYY-MM-DDTHH:mm:ss+10:00 then encode + and :
+function toAestIso(d) {
+    // DST-aware AEST/AEDT offset using Intl
     var pad = function(n) { return String(n).padStart(2,'0'); };
-    var aest = new Date(d.getTime() + 10 * 60 * 60 * 1000); // rough AEST offset
-    var s = aest.getUTCFullYear() + '-' +
-            pad(aest.getUTCMonth() + 1) + '-' +
-            pad(aest.getUTCDate()) + 'T' +
-            pad(aest.getUTCHours()) + '%3A' +
-            pad(aest.getUTCMinutes()) + '%3A' +
-            pad(aest.getUTCSeconds()) + '%2B10%3A00';
-    return s;
+    var offsetMins = -new Date(d).toLocaleString('en-AU', { timeZone:'Australia/Sydney', timeZoneName:'shortOffset' })
+      .split('GMT')[1].split(':').reduce(function(h, m, i) { return h + (i === 0 ? parseInt(m) * 60 : parseInt(m)); }, 0);
+    var local = new Date(d.getTime() - offsetMins * 60 * 1000);
+    var absOffset = Math.abs(offsetMins);
+    var sign = offsetMins <= 0 ? '%2B' : '-';
+    var oh = pad(Math.floor(absOffset / 60));
+    var om = pad(absOffset % 60);
+    return local.getUTCFullYear() + '-' +
+      pad(local.getUTCMonth() + 1) + '-' +
+      pad(local.getUTCDate()) + 'T' +
+      pad(local.getUTCHours()) + '%3A' +
+      pad(local.getUTCMinutes()) + '%3A' +
+      pad(local.getUTCSeconds()) + sign + oh + '%3A' + om;
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1663,7 +1668,7 @@ function buildSnapshotPayload() {
     var json = JSON.stringify(state.data, null, 2);
     var a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([json], { type:'application/json' }));
-    a.download = 'snapshot-' + (state.data.vehicle.name || 'asset') + '.json';
+   a.download = TGE.outputFileName({ module:'Snapshot', type:'Report', extension:'json' });
     document.body.appendChild(a); a.click(); a.remove();
   }
 
@@ -1686,7 +1691,7 @@ function buildSnapshotPayload() {
     }).join('\n');
     var a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv' }));
-    a.download = 'snapshot-' + v.name + '.csv';
+    a.download = TGE.outputFileName({ module:'Snapshot', type:'Report', extension:'csv' });
     document.body.appendChild(a); a.click(); a.remove();
   }
 
