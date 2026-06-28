@@ -334,9 +334,6 @@ setMessage('');
         renderTimer = null;
     }
 
-    renderRows();
-    updateSummary();
-
     state.running = false;
     setBtnState(false);
 }
