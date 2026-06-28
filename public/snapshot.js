@@ -1575,12 +1575,12 @@ function buildSnapshotPayload() {
             cols:   s.cols   || 4,
             rows:   (s.rows || []).map(function(r) { return { label: r[0], value: r[1] }; }),
             photos: s.photos || null,
-          };
-        })
+      });
       }
     };
-  
-// ── Exports ───────────────────────────────────────────────────────────────────
+  }
+
+  // ── Exports ───────────────────────────────────────────────────────────────────
   function openEmailPdfComposer() {
     if (!state.data.vehicle) {
       setMessage('Run Snapshot before sending email.', true);
@@ -1643,7 +1643,7 @@ function buildSnapshotPayload() {
     });
   }
 
-  // ── Exports ───────────────────────────────────────────────────────────────────
+// ── Exports ───────────────────────────────────────────────────────────────────
   function openEmailPdfComposer() {
     if (!state.data.vehicle) {
       setMessage('Run Snapshot before sending email.', true);
