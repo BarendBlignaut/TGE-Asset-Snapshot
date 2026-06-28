@@ -105,7 +105,7 @@ var REPORTING_DAYS = 7;
               '</div>',
             ].join('') : ''),
             // User mode input
-            (canUser ? '<input id="sd-fleet-input" type="search" placeholder="Fleet numbers e.g. 82050, 82051" autocomplete="off" style="height:34px;border:1px solid rgba(255,255,255,0.25);border-radius:7px;padding:0 12px;background:rgba(255,255,255,0.10);color:#fff;font:inherit;font-size:13px;min-width:240px;' + (initMode==='fleet'?'display:none;':'') + '" />' : ''),
+            (canUser ? '<textarea id="sd-fleet-input" placeholder="Fleet numbers — one per line or comma separated" autocomplete="off" rows="3" style="border:1px solid rgba(255,255,255,0.25);border-radius:7px;padding:8px 12px;background:rgba(255,255,255,0.10);color:#fff;font:inherit;font-size:13px;min-width:240px;resize:vertical;' + (initMode==='fleet'?'display:none;':'') + '"></textarea>' : ''),
             '<button class="hero-run-btn" id="sd-run-btn" type="button">Run</button>',
             '<button class="hero-action-btn" id="sd-refresh-btn" type="button" style="display:none;">Refresh</button>',
           '</div>',
@@ -175,7 +175,7 @@ var REPORTING_DAYS = 7;
   function wireEvents() {
     TGE.on('sd-run-btn',     'click', runSdHealth);
     TGE.on('sd-refresh-btn', 'click', resetSdHealth);
-    TGE.on('sd-fleet-input', 'keydown', function(e) { if (e.key === 'Enter') runSdHealth(); });
+   // textarea — Enter adds new line, Run button triggers run
     TGE.on('sd-mode-user',  'click', function() { setMode('user'); });
     TGE.on('sd-mode-fleet', 'click', function() { setMode('fleet'); });
     if (TGE.wireOutputPill) TGE.wireOutputPill('sd', sdExportItems());
