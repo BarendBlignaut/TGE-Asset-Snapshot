@@ -133,9 +133,15 @@ if (TGE.wireOutputPill) {
 
 function setMode(mode) {
   if (state.mode === mode) return;
-
   state.mode = mode;
-  render();
+
+  var userBtn  = TGE.el('at-mode-user');
+  var fleetBtn = TGE.el('at-mode-fleet');
+  if (userBtn)  userBtn.classList.toggle('active',  mode === 'user');
+  if (fleetBtn) fleetBtn.classList.toggle('active', mode === 'fleet');
+
+  var userInput = TGE.el('at-user-input');
+  if (userInput) userInput.style.display = mode === 'user' ? '' : 'none';
 }
 
   function parseFleetNumbers(raw) {
@@ -745,6 +751,24 @@ function downloadBlob(blob, fileName) {
       .replace(/'/g, '&#039;');
   }
 
-  TGE.onShow['asset-track'] = render;
+  TGE.onShow['asset-track'] = function () {
+  var alreadyBuilt = !!TGE.el('at-run-btn');
+  if (!alreadyBuilt) {
+    render();
+    return;
+  }
+
+  if (state.rows && state.rows.length) {
+    TGE.hide('at-empty');
+    TGE.show('at-summary');
+    TGE.show('at-results');
+    renderRows();
+    updateSummary();
+  } else {
+    TGE.hide('at-summary');
+    TGE.hide('at-results');
+    TGE.show('at-empty');
+  }
+};
 
 })();
