@@ -1574,8 +1574,9 @@ function buildSnapshotPayload() {
             label:  s.kicker || s.title || null,
             cols:   s.cols   || 4,
             rows:   (s.rows || []).map(function(r) { return { label: r[0], value: r[1] }; }),
-            photos: s.photos || null,
-      });
+          photos: s.photos || null,
+          };
+        })
       }
     };
   }
