@@ -97,18 +97,11 @@ var REPORTING_DAYS = 7;
         '<div class="hero-sub" style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:2px;">Check SD card status across camera-equipped fleet assets.</div>',
         '<div class="hero-bar" style="margin-top:12px;">',
           '<div class="hero-bar-left">',
-            // Mode toggle
-            (canUser && canFleet ? [
-              '<div class="hero-mode-toggle" id="sd-mode-toggle">',
-                '<button class="hero-mode-btn' + (initMode==='user'?' active':'') + '" id="sd-mode-user" type="button">User</button>',
-                '<button class="hero-mode-btn' + (initMode==='fleet'?' active':'') + '" id="sd-mode-fleet" type="button">Fleet</button>',
-              '</div>',
-            ].join('') : ''),
-            // User mode input
-           
+            (canUser && canFleet ? '<div class="hero-mode-toggle" id="sd-mode-toggle">' +
+              '<button class="hero-mode-btn' + (initMode==='user'?' active':'') + '" id="sd-mode-user" type="button">User</button>' +
+              '<button class="hero-mode-btn' + (initMode==='fleet'?' active':'') + '" id="sd-mode-fleet" type="button">Fleet</button>' +
+            '</div>' : ''),
             '<button class="hero-run-btn" id="sd-run-btn" type="button">Run</button>',
-            '<button class="hero-action-btn" id="sd-refresh-btn" type="button" style="display:none;">Refresh</button>',
-          '</div>',
             '<button class="hero-action-btn" id="sd-refresh-btn" type="button" style="display:none;">Refresh</button>',
           '</div>',
           '<div class="hero-bar-right">',
@@ -457,8 +450,7 @@ return '<tr style="' + zebra + 'border-bottom:1px solid var(--line);">' +
         '<td style="padding:9px 12px;color:var(--ink);">' + esc(row.sd2size) + '</td>' +
         '<td style="padding:9px 12px;font-weight:600;color:' + overall.color + ';">' + esc(overall.label) + '</td>' +
         '<td style="padding:9px 12px;color:var(--muted);white-space:nowrap;">' + esc(row.lastConn) + '</td>' +
-        (function() { var rs = reportingStatus(row._lastEventAt); return '<td style="padding:9px 12px;font-weight:600;color:' + rs.color + ';">' + rs.label + '</td>'; })() +
-      '</tr>';
+     (function() { var rs = reportingStatus(row._lastEventAt); return '<td style="padding:9px 12px;font-weight:600;color:' + rs.color + ';">' + rs.label + '</td>'; })() +
       '</tr>';
     }).join('');
   }
@@ -506,9 +498,9 @@ function renderSummary(rows) {
     // Footer summary
     var summary = TGE.el('sd-summary');
     if (summary) {
-      summary.textContent = dataRows.length + ' camera device' + (dataRows.length !== 1 ? 's' : '') +
-        '   |   ' + totalOk + ' OK   |   ' + totalFault + ' Fault   |   ' + totalNone + ' No Data' +
-        (rows.filter(function(r) { return r.exception; }).length ? '   |   ' + rows.filter(function(r) { return r.exception; }).length + ' Exception' : '');
+summary.textContent = dataRows.length + ' camera device' + (dataRows.length !== 1 ? 's' : '') +
+        '   |   ' + reporting + ' Reporting   |   ' + notReporting + ' Not Reporting   |   ' + sdFaults + ' SD Faults' +
+        (exceptions.length ? '   |   ' + exceptions.length + ' Exception' : '');
       summary.style.display = '';
     }
   }
