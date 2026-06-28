@@ -6,6 +6,16 @@
 
   var DEVICE_CODE = 'ATRACKER';
 
+  // Last-seen thresholds — temporary hardcoded values for Asset Track.
+  // TODO: replace with control table platform lookup (Last Reported table)
+  // when the control table platform is built.
+  // Teletrac Navman — all hardware types (interim):
+  //   within 7 days  = Reporting
+  //   within 14 days = Review
+  //   21+ days       = Not Reporting
+  var THRESHOLD_REPORTING_DAYS = 7;
+  var THRESHOLD_REVIEW_DAYS    = 14;
+
 var state = {
     running: false,
     mode: 'user',
@@ -369,6 +379,21 @@ function isAssetTrackerDevice(d) {
   );
 }
 
+function getLastSeenStatus(lastSeen) {
+    if (!lastSeen) return 'No Recent Data';
+
+    var now     = Date.now();
+    var seenAt  = new Date(lastSeen).getTime();
+    if (isNaN(seenAt)) return 'No Recent Data';
+
+    var ageHours = (now - seenAt) / (1000 * 60 * 60);
+    var ageDays  = ageHours / 24;
+
+    if (ageHours <= THRESHOLD_REPORTING_DAYS * 24) return 'Reporting';
+    if (ageDays  <= THRESHOLD_REVIEW_DAYS)          return 'Review';
+    return 'Not Reporting';
+  }
+
   function isDeviceAssignedToVehicle(d, vehicle) {
     if (!d || !vehicle) return false;
 
@@ -407,7 +432,7 @@ function isAssetTrackerDevice(d) {
     var lastSeen = batteryMeter ? batteryMeter.updatedAt : null;
     var battStatus = getBatteryStatus(battCurrent, tracker);
 
-    var status = 'Reporting';
+var status;
 
     if (!devices.length) {
       status = 'No Device Assigned';
@@ -415,8 +440,8 @@ function isAssetTrackerDevice(d) {
       status = 'Not Asset Tracker';
     } else if (!batteryMeter) {
       status = 'No Meter Data';
-    } else if (!lastSeen) {
-      status = 'No Recent Data';
+    } else {
+      status = getLastSeenStatus(lastSeen);
     }
 
     return {
@@ -491,9 +516,15 @@ function renderRows() {
     if (!tbody) return;
 
     tbody.innerHTML = rows.map(function (r) {
-      var badgeClass = 'badge-gray';
-      if (r.status === 'Reporting') badgeClass = 'badge-green';
-      else if (r.status !== 'Reporting') badgeClass = 'badge-red';
+var badgeClass = 'badge-gray';
+      if (r.status === 'Reporting')     badgeClass = 'badge-green';
+      else if (r.status === 'Review')   badgeClass = 'badge-yellow';
+      else if (r.status === 'Not Reporting' ||
+               r.status === 'No Device Assigned' ||
+               r.status === 'Not Asset Tracker' ||
+               r.status === 'No Meter Data' ||
+               r.status === 'No Recent Data' ||
+               r.status === 'Fleet Not Found') badgeClass = 'badge-red';
 
       var battClass = 'badge-gray';
       if (r.battStatus === 'Fresh') battClass = 'badge-green';
