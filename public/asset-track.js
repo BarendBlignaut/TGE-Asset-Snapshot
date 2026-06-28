@@ -278,8 +278,19 @@ onItem: function (item) {
     }
   },
 
-  onError: function (err) {
-    console.warn('[Asset Track] Progressive worker error:', err);
+onError: function (err) {
+    TGE.diagnostics.log({
+      category: 'Asset Track',
+      level: 'error',
+      module: 'asset-track',
+      action: 'Progressive worker error',
+      status: err && err.error ? 'Failed' : 'Unknown',
+      message: err && err.error ? err.error : String(err),
+      error: err && err.error ? err.error : String(err),
+      request: err && err.item ? { vehicle: err.item } : null,
+      response: null
+    });
+  }
   }
 }).promise;
 
@@ -288,7 +299,15 @@ onItem: function (item) {
 renderRows();
 updateSummary();
 setMessage('');
-    } catch (e) {
+} catch (e) {
+      TGE.diagnostics.log({
+        category: 'Asset Track',
+        level: 'error',
+        module: 'asset-track',
+        action: 'runAssetTrack',
+        message: e.message || 'Failed to load Asset Track data.',
+        error: e.message || String(e)
+      });
       setMessage(e.message || 'Failed to load Asset Track data.', true);
 } finally {
 
