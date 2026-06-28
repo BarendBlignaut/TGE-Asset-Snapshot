@@ -894,6 +894,177 @@ async function handleSnapshotPdf(request, env) {
   }
 }
 
+async function handleSdHealthPdf(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const body    = await safeJson(request);
+  const rows    = Array.isArray(body.rows) ? body.rows : [];
+  const summary = body.summary || {};
+  if (!rows.length) return jsonResponse({ error: "rows array is required." }, 400);
+  try {
+    const pdfDoc   = await PDFDocument.create();
+    const font     = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const pageW = 841.89, pageH = 595.28, margin = 28;
+    const brand = PDF_BRAND_GREEN;
+    const ink   = rgb(0.07,0.09,0.08);
+    const muted = rgb(0.42,0.45,0.50);
+    const line  = rgb(0.82,0.84,0.86);
+    const headerFill = rgb(0.94,0.97,0.95);
+    const zebraFill  = rgb(0.985,0.988,0.990);
+    const issueFill  = rgb(0.996,0.953,0.953);
+    const reviewFill = rgb(0.999,0.980,0.940);
+
+    const cols = [
+      { key:'fleetNo',   label:'Fleet No',      w:55  },
+      { key:'imei',      label:'IMEI',           w:115 },
+      { key:'model',     label:'Model',          w:90  },
+      { key:'sd1',       label:'SD 1 Status',    w:80  },
+      { key:'sd1size',   label:'SD 1 Size',      w:65  },
+      { key:'sd2',       label:'SD 2 Status',    w:80  },
+      { key:'sd2size',   label:'SD 2 Size',      w:65  },
+      { key:'overall',   label:'Overall',        w:60  },
+      { key:'lastConn',  label:'Last Connected', w:105 },
+      { key:'status',    label:'Status',         w:80  },
+    ];
+
+    const tableX = margin, tableW = pageW - margin*2;
+    const rowH = 20, headerH = 22;
+    const tableTopFirst = pageH - 145, tableTopNext = pageH - 78, tableBottom = 42;
+    const footerY = 18;
+
+    const generatedAt = summary.generated || new Date().toLocaleString("en-AU", {
+      timeZone:"Australia/Sydney", day:"2-digit", month:"2-digit", year:"numeric",
+      hour:"2-digit", minute:"2-digit", hour12:true
+    });
+
+    let pages = [], page = null, y = 0;
+
+    function tw(text, size, fnt) { return fnt.widthOfTextAtSize(String(text||""), size); }
+    function dtf(pg, text, x, yy, maxW, size, fnt, color) {
+      let s = String(text == null || text === "" ? "—" : text);
+      while (s.length && tw(s, size, fnt) > maxW) s = s.slice(0,-1);
+      if (s !== String(text == null || text === "" ? "—" : text)) s = s.length > 1 ? s.slice(0,-1) + "…" : "…";
+      pg.drawText(s, { x, y:yy, size, font:fnt, color });
+    }
+
+    function drawPageFrame(pg) {
+      pg.drawRectangle({ x:margin-10, y:30, width:pageW-(margin-10)*2, height:pageH-48, borderColor:line, borderWidth:0.8 });
+    }
+
+    function drawTitle(pg) {
+      const t = "SD Card Health Report", tW = tw(t, 17, fontBold);
+      pg.drawText(t, { x:(pageW-tW)/2, y:pageH-34, size:17, font:fontBold, color:ink });
+      const sub = "Camera device SD card status across fleet assets", sW = tw(sub, 8.5, font);
+      pg.drawText(sub, { x:(pageW-sW)/2, y:pageH-49, size:8.5, font, color:muted });
+      pg.drawLine({ start:{x:margin, y:pageH-60}, end:{x:pageW-margin, y:pageH-60}, thickness:1.4, color:brand });
+    }
+
+    function drawSummary(pg) {
+      const cards = [
+        ["Generated",     generatedAt],
+        ["Total Assets",  summary.totalAssets  || rows.length],
+        ["With Camera",   summary.withCamera   || rows.filter(r=>!r.exception).length],
+        ["Reporting",     summary.reporting    || rows.filter(r=>r.status==="Reporting").length],
+        ["Not Reporting", summary.notReporting || rows.filter(r=>r.status==="Not Reporting").length],
+        ["SD Faults",     summary.sdFaults     || rows.filter(r=>r.sdFault).length],
+      ];
+      const gap = 6, cardW = (tableW - gap*(cards.length-1)) / cards.length, cardH = 38;
+      let x = margin;
+      cards.forEach(function(card) {
+        pg.drawRectangle({ x, y:pageH-111, width:cardW, height:cardH, color:rgb(0.960,0.976,0.965), borderColor:rgb(0.900,0.940,0.920), borderWidth:0.7 });
+        pg.drawText(String(card[0]).toUpperCase(), { x:x+6, y:pageH-88, size:6.5, font:fontBold, color:rgb(0.32,0.42,0.36) });
+        dtf(pg, card[1], x+6, pageH-103, cardW-12, 9, fontBold, ink);
+        x += cardW + gap;
+      });
+    }
+
+    function drawTableHeader(pg, yy) {
+      pg.drawRectangle({ x:tableX, y:yy-headerH, width:tableW, height:headerH, color:headerFill, borderColor:line, borderWidth:0.7 });
+      let x = tableX;
+      cols.forEach(function(col) {
+        pg.drawText(col.label, { x:x+4, y:yy-14, size:7.2, font:fontBold, color:rgb(0.19,0.31,0.23) });
+        x += col.w;
+      });
+      pg.drawLine({ start:{x:tableX, y:yy-headerH}, end:{x:tableX+tableW, y:yy-headerH}, thickness:1, color:brand });
+    }
+
+    function newPage(isFirst) {
+      page = pdfDoc.addPage([pageW, pageH]);
+      pages.push(page);
+      drawPageFrame(page);
+      if (isFirst) {
+        drawTitle(page);
+        drawSummary(page);
+        y = tableTopFirst;
+      } else {
+        const t = "SD Card Health Report", tW = tw(t, 13, fontBold);
+        page.drawText(t, { x:(pageW-tW)/2, y:pageH-38, size:13, font:fontBold, color:ink });
+        const c = "Continued", cW = tw(c, 8.5, font);
+        page.drawText(c, { x:(pageW-cW)/2, y:pageH-52, size:8.5, font, color:muted });
+        page.drawLine({ start:{x:margin, y:pageH-50}, end:{x:pageW-margin, y:pageH-50}, thickness:1.2, color:brand });
+        y = tableTopNext;
+      }
+      drawTableHeader(page, y);
+      y -= headerH;
+    }
+
+    newPage(true);
+
+    rows.forEach(function(row, idx) {
+      if (y - rowH < tableBottom) newPage(false);
+
+      // Exception row
+      if (row.exception) {
+        page.drawRectangle({ x:tableX, y:y-rowH, width:tableW, height:rowH, color:rgb(0.996,0.953,0.953), borderColor:line, borderWidth:0.35 });
+        dtf(page, row.fleetNo, tableX+4, y-13, cols[0].w-6, 7, fontBold, ink);
+        dtf(page, row.exception, tableX+cols[0].w+4, y-13, tableW-cols[0].w-8, 7, font, rgb(0.75,0.12,0.12));
+        y -= rowH;
+        return;
+      }
+
+      const isIssue  = row.status === "Not Reporting";
+      const isReview = row.status === "Review";
+      const isFault  = row.sdFault;
+      const fill = isIssue ? issueFill : (isReview ? reviewFill : (idx%2===1 ? zebraFill : rgb(1,1,1)));
+
+      page.drawRectangle({ x:tableX, y:y-rowH, width:tableW, height:rowH, color:fill, borderColor:rgb(0.90,0.91,0.92), borderWidth:0.35 });
+
+      let x = tableX;
+      cols.forEach(function(col) {
+        const value = row[col.key] == null || row[col.key] === "" ? "—" : row[col.key];
+        let color = ink;
+        if (col.key === "status") {
+          color = row.status === "Reporting" ? rgb(0.05,0.42,0.18) : (row.status === "Review" ? rgb(0.60,0.35,0.00) : rgb(0.75,0.12,0.12));
+        }
+        if (col.key === "sd1" || col.key === "sd2") {
+          color = value === "Present" ? rgb(0.05,0.42,0.18) : (value === "—" ? muted : rgb(0.75,0.12,0.12));
+        }
+        if (col.key === "overall") {
+          color = value === "OK" ? rgb(0.05,0.42,0.18) : (value === "—" ? muted : rgb(0.75,0.12,0.12));
+        }
+        dtf(page, value, x+4, y-13, col.w-6, col.key==="status"?7.1:6.8, col.key==="status"?fontBold:font, color);
+        x += col.w;
+      });
+      y -= rowH;
+    });
+
+    pages.forEach(function(pg, idx) {
+      const footer = `Page ${idx+1} of ${pages.length}   —   Generated ${generatedAt}`;
+      const footerW = tw(footer, 7.5, font);
+      pg.drawText(footer, { x:(pageW-footerW)/2, y:footerY, size:7.5, font, color:muted });
+    });
+
+    const pdfBytes = await pdfDoc.save();
+    let binary = "";
+    const bytes = new Uint8Array(pdfBytes);
+    for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i+8192));
+    return jsonResponse({ ok:true, base64:btoa(binary), fileName:"SD Card Health Report.pdf", sizeBytes:pdfBytes.length });
+  } catch(e) {
+    return jsonResponse({ error:"SD Health PDF generation failed: " + e.message }, 500);
+  }
+}
+
 async function handleAssetTrackPdf(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
@@ -1355,6 +1526,7 @@ export default {
       if (method === "POST" && path === "/api/camera-fault-pdf")            return handleCameraFaultPdf(request, env);
       if (method === "POST" && path === "/api/snapshot-pdf")                return handleSnapshotPdf(request, env);
       if (method === "POST" && path === "/api/asset-track-pdf")             return handleAssetTrackPdf(request, env);
+      if (method === "POST" && path === "/api/sd-health-pdf")               return handleSdHealthPdf(request, env);
       if (method === "POST" && path === "/api/send-email")                  return handleSendEmail(request, env);
 
       // Utilisation
