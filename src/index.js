@@ -1245,24 +1245,18 @@ async function fetchCameraEventsChunk(env, fromIso, toIso) {
   const allEvents = [];
   let rowOffset   = 0;
   const rowLimit  = 100;
-  const fromEnc   = fromIso.replace(/\+/g, '%2B').replace(/:/g, '%3A');
-  const toEnc     = toIso.replace(/\+/g,   '%2B').replace(/:/g, '%3A');
+  const fromEnc   = encodeURIComponent(fromIso);
+  const toEnc     = encodeURIComponent(toIso);
+  const companyId = env.TN360_COMPANY_ID || '432639';
   while (true) {
-    const res = await fetch(
-      `https://api-au.telematics.com/v1/devices/events/camera/snapshots?from=${fromEnc}&to=${toEnc}`,
-      {
-        method: 'POST',
-        headers: { 'Authorization': `Token token="${env.TN360_API_KEY}"`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderField: 'EventTime', orderDirection: 'asc', latestOnly: false, rowCountLimit: rowLimit, rowOffset }),
-      }
-    );
-    if (!res.ok) { const text = await res.text(); throw new Error(`TN360 snapshots fetch failed: HTTP ${res.status} — ${text.slice(0,200)}`); }
+    const url = `https://api-au.telematics.com/v1/events/camera?company_id=${companyId}&from=${fromEnc}&to=${toEnc}&pruning=B2B&key=${env.TN360_API_KEY}&limit=${rowLimit}&offset=${rowOffset}`;
+    const res = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+    if (!res.ok) { const text = await res.text(); throw new Error(`TN360 camera events fetch failed: HTTP ${res.status} — ${text.slice(0,200)}`); }
     const data   = await res.json();
-    const events = Array.isArray(data.events) ? data.events : [];
+    const events = Array.isArray(data) ? data : (Array.isArray(data.events) ? data.events : []);
     allEvents.push(...events);
-    const total = data.totalCount || 0;
-    rowOffset  += rowLimit;
-    if (rowOffset >= total || events.length < rowLimit) break;
+    if (events.length < rowLimit) break;
+    rowOffset += rowLimit;
   }
   return allEvents;
 }
@@ -1274,18 +1268,128 @@ async function saveCameraEvents(env, events) {
     const vehicleId  = String(ev.vehicleId || ev.vehicleID || '').trim();
     const eventId    = String(ev.id || '').trim();
     if (!vehicleId || !eventId) continue;
-    const action     = String(ev.type || ev.action || ev.actionType || ev.subType || 'UNKNOWN').toUpperCase();
-    const provider   = String(ev.provider || ev.providerType || '').toUpperCase();
+    const deviceId   = String(ev.deviceId  || '').trim();
+    const eventType  = String(ev.type      || 'CAMERA').toUpperCase();
+    const action     = String(ev.action    || ev.type || 'UNKNOWN').toUpperCase();
     const capturedAt = ev.timeAt || ev.eventTime || ev.createdAt || '';
-    const attachments = Array.isArray(ev.attachments)
-      ? ev.attachments.filter(a => a.attachmentId != null).map(a => ({ attachmentId: a.attachmentId, position: a.cameraPosition || a.position || '', timeAt: a.timeAt || capturedAt, status: a.attachmentStatus || a.status || '' }))
-      : [];
+
+    // Extract provider and uuid from attributes
+    const attrs    = ev.attributes || {};
+    const provider = String(attrs.provider || '').toUpperCase();
+    const uuid     = String(attrs.uuid     || '').trim();
+
+    // Extract channels from attributes.extras (JSON string)
+    let channels = [];
     try {
-      await env.DB.prepare(`INSERT OR IGNORE INTO camera_history (vehicle_id, event_id, event_type, action, provider, captured_at, attachments, created_at) VALUES (?, ?, 'CAMERA', ?, ?, ?, ?, ?)`).bind(vehicleId, eventId, action, provider || null, capturedAt, JSON.stringify(attachments), nowIso()).run();
+      const extras = typeof attrs.extras === 'string' ? JSON.parse(attrs.extras) : (attrs.extras || {});
+      channels = Array.isArray(extras.tn360_channels) ? extras.tn360_channels : [];
+    } catch(e) { channels = []; }
+
+    try {
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO camera_history 
+         (event_id, vehicle_id, device_id, event_type, action, provider, captured_at, uuid, channels, attachments, created_at) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        eventId,
+        vehicleId,
+        deviceId        || null,
+        eventType,
+        action,
+        provider        || null,
+        capturedAt,
+        uuid            || null,
+        JSON.stringify(channels),
+        JSON.stringify([]),  // attachments empty — populated in Phase 2
+        nowIso()
+      ).run();
       saved++;
     } catch(e) { console.error('[CameraHistory] insert error for event', eventId, ':', e.message); }
   }
   return saved;
+}
+
+async function enrichCameraAttachments(env, fromIso, toIso) {
+  // Phase 2 — get attachment IDs per event from snapshot endpoint
+  // Find all events in this date range that have no attachments yet
+  const rows = await env.DB.prepare(
+    `SELECT event_id, vehicle_id, device_id, captured_at 
+     FROM camera_history 
+     WHERE captured_at >= ? AND captured_at <= ? 
+     AND (attachments = '[]' OR attachments IS NULL)`
+  ).bind(fromIso, toIso).all();
+
+  const events = rows.results || [];
+  if (!events.length) return 0;
+
+  // Group by vehicle+device to minimise API calls
+  const groups = {};
+  for (const ev of events) {
+    const key = `${ev.vehicle_id}|${ev.device_id}`;
+    if (!groups[key]) groups[key] = { vehicleId: ev.vehicle_id, deviceId: ev.device_id, eventIds: new Set() };
+    groups[key].eventIds.add(ev.event_id);
+  }
+
+  const token   = env.TN360_SNAPSHOT_KEY || env.TN360_API_KEY;
+  const fromEnc = encodeURIComponent(fromIso);
+  const toEnc   = encodeURIComponent(toIso);
+  let enriched  = 0;
+
+  for (const group of Object.values(groups)) {
+    try {
+      const res = await fetch(
+        `https://api-au.telematics.com/v1/devices/events/camera/snapshots?from=${fromEnc}&to=${toEnc}`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Token token="${token}"`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            vehicles:      [group.vehicleId],
+            devices:       group.deviceId ? [group.deviceId] : [],
+            orderField:    'EventTime',
+            orderDirection:'asc',
+            latestOnly:    false,
+            rowCountLimit: 100,
+            rowOffset:     0,
+            search:        null,
+          }),
+        }
+      );
+      if (!res.ok) continue;
+      const data         = await res.json();
+      const snapEvents   = Array.isArray(data.events) ? data.events : [];
+
+      for (const snapEv of snapEvents) {
+        const eventId     = String(snapEv.id || '').trim();
+        if (!group.eventIds.has(eventId)) continue;
+        if (!Array.isArray(snapEv.attachments) || !snapEv.attachments.length) continue;
+
+        const capturedAt  = snapEv.timeAt || '';
+        const attachments = snapEv.attachments
+          .filter(a => a.attachmentId != null)
+          .map(a => ({
+            attachmentId:       a.attachmentId,
+            cameraPosition:     a.cameraPosition     || '',
+            cameraPositionName: a.cameraPositionName || a.cameraPosition || '',
+            timeAt:             a.timeAt || capturedAt,
+            attachmentStatus:   a.attachmentStatus   || 'UNKNOWN',
+          }));
+
+        if (!attachments.length) continue;
+
+        await env.DB.prepare(
+          `UPDATE camera_history SET attachments = ? WHERE event_id = ?`
+        ).bind(JSON.stringify(attachments), eventId).run();
+        enriched++;
+      }
+    } catch(e) {
+      console.error('[EnrichAttachments] failed for vehicle', group.vehicleId, ':', e.message);
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  return enriched;
 }
 
 async function updateSyncState(env, fields) {
@@ -1339,10 +1443,17 @@ async function handleCameraHistoryBackfill(request, env) {
     const chunk = chunksToProcess[i];
     await updateSyncState(env, { current_chunk: chunk.from.slice(0,10) + ' → ' + chunk.to.slice(0,10), chunks_done: startChunkIdx + i });
     try {
+try {
+      // Phase 1 — save event metadata
       const events = await fetchCameraEventsChunk(env, chunk.from, chunk.to);
       const saved  = await saveCameraEvents(env, events);
       totalSaved  += saved;
-      lastTo       = chunk.to;
+
+      // Phase 2 — enrich with attachment IDs
+      await updateSyncState(env, { current_chunk: chunk.from.slice(0,10) + ' → ' + chunk.to.slice(0,10) + ' (enriching)' });
+      await enrichCameraAttachments(env, chunk.from, chunk.to);
+
+      lastTo = chunk.to;
       await updateSyncState(env, { backfill_to: lastTo, chunks_done: startChunkIdx + i + 1 });
     } catch(e) { console.error('[Backfill] chunk failed:', chunk.from, '—', e.message); }
     await new Promise(r => setTimeout(r, 200));
@@ -1361,8 +1472,9 @@ async function handleCameraHistorySync(request, env) {
   const from7   = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   await updateSyncState(env, { status: 'running', current_chunk: 'Last 7 days' });
   try {
-    const events = await fetchCameraEventsChunk(env, from7.toISOString(), now.toISOString());
+const events = await fetchCameraEventsChunk(env, from7.toISOString(), now.toISOString());
     const saved  = await saveCameraEvents(env, events);
+    await enrichCameraAttachments(env, from7.toISOString(), now.toISOString());
     await updateSyncState(env, { status: 'idle', last_sync_at: nowIso(), current_chunk: null, backfill_to: now.toISOString() });
     await logActivity(env, auth.session.user_id, 'admin', 'camera-history-sync', `Synced last 7 days — ${events.length} events fetched, ${saved} new saved`, null);
     return jsonResponse({ ok: true, fetched: events.length, saved, from: from7.toISOString(), to: now.toISOString() });
