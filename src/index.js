@@ -1339,29 +1339,40 @@ const fromDate = new Date(fromIso).toISOString().slice(0, 10);
 
   for (const group of Object.values(groups)) {
     try {
-      const res = await fetch(
-        `https://api-au.telematics.com/v1/devices/events/camera/snapshots?from=${fromEnc}&to=${toEnc}`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Token token="${token}"`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            vehicles:      [group.vehicleId],
-            devices:       group.deviceId ? [group.deviceId] : [],
-            orderField:    'EventTime',
-            orderDirection:'asc',
-            latestOnly:    false,
-            rowCountLimit: 100,
-            rowOffset:     0,
-            search:        null,
-          }),
-        }
-      );
-      if (!res.ok) continue;
-      const data         = await res.json();
-      const snapEvents   = Array.isArray(data.events) ? data.events : [];
+     // Paginate through all results for this vehicle/device
+      let snapEvents = [];
+      let snapOffset = 0;
+      const snapLimit = 100;
+      while (true) {
+        const res = await fetch(
+          `https://api-au.telematics.com/v1/devices/events/camera/snapshots?from=${fromEnc}&to=${toEnc}`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Token token="${token}"`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              vehicles:      [group.vehicleId],
+              devices:       group.deviceId ? [group.deviceId] : [],
+              orderField:    'EventTime',
+              orderDirection:'asc',
+              latestOnly:    false,
+              rowCountLimit: snapLimit,
+              rowOffset:     snapOffset,
+              search:        null,
+            }),
+          }
+        );
+        if (!res.ok) break;
+        const data   = await res.json();
+        const page   = Array.isArray(data.events) ? data.events : [];
+        snapEvents   = snapEvents.concat(page);
+        const total  = data.totalCount || 0;
+        snapOffset  += snapLimit;
+        if (snapOffset >= total || page.length < snapLimit) break;
+        await new Promise(r => setTimeout(r, 100));
+      }
 
       for (const snapEv of snapEvents) {
         const eventId     = String(snapEv.id || '').trim();
