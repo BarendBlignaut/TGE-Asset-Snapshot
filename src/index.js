@@ -1312,12 +1312,14 @@ async function saveCameraEvents(env, events) {
 async function enrichCameraAttachments(env, fromIso, toIso) {
   // Phase 2 — get attachment IDs per event from snapshot endpoint
   // Find all events in this date range that have no attachments yet
+const fromDate = new Date(fromIso).toISOString().slice(0, 10);
+  const toDate   = new Date(new Date(toIso).getTime() + 24*60*60*1000).toISOString().slice(0, 10);
   const rows = await env.DB.prepare(
     `SELECT event_id, vehicle_id, device_id, captured_at 
      FROM camera_history 
-     WHERE captured_at >= ? AND captured_at <= ? 
-     AND (attachments = '[]' OR attachments IS NULL)`
-  ).bind(fromIso, toIso).all();
+     WHERE (attachments = '[]' OR attachments IS NULL)
+     AND SUBSTR(captured_at, 1, 10) >= ? AND SUBSTR(captured_at, 1, 10) <= ?`
+  ).bind(fromDate, toDate).all();
 
   const events = rows.results || [];
   if (!events.length) return 0;
