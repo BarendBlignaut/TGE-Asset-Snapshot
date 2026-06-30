@@ -1443,7 +1443,6 @@ async function handleCameraHistoryBackfill(request, env) {
     const chunk = chunksToProcess[i];
     await updateSyncState(env, { current_chunk: chunk.from.slice(0,10) + ' → ' + chunk.to.slice(0,10), chunks_done: startChunkIdx + i });
     try {
-try {
       // Phase 1 — save event metadata
       const events = await fetchCameraEventsChunk(env, chunk.from, chunk.to);
       const saved  = await saveCameraEvents(env, events);
@@ -1471,8 +1470,8 @@ async function handleCameraHistorySync(request, env) {
   const now     = new Date();
   const from7   = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   await updateSyncState(env, { status: 'running', current_chunk: 'Last 7 days' });
-  try {
-const events = await fetchCameraEventsChunk(env, from7.toISOString(), now.toISOString());
+try {
+    const events = await fetchCameraEventsChunk(env, from7.toISOString(), now.toISOString());
     const saved  = await saveCameraEvents(env, events);
     await enrichCameraAttachments(env, from7.toISOString(), now.toISOString());
     await updateSyncState(env, { status: 'idle', last_sync_at: nowIso(), current_chunk: null, backfill_to: now.toISOString() });
