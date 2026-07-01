@@ -1698,9 +1698,12 @@ async function handleHistoricalSnapshotsAttachments(request, env) {
     attachments.map(async function(att) {
       const attachmentId = att.attachmentId;
       const position     = att.position || '';
-      const timeAt       = new Date(att.timeAt || '');
-      const year         = timeAt.getFullYear();
-      const month        = timeAt.getMonth() + 1;
+     const timeAt       = new Date(att.timeAt || '');
+      // TN360 stores images by AEST local month — extract from the ISO string directly
+      // to avoid UTC conversion issues (e.g. 2026-07-01T00:02+10:00 → UTC June 30)
+      const timeAtStr    = String(att.timeAt || '');
+      const year         = parseInt(timeAtStr.slice(0, 4), 10)  || timeAt.getFullYear();
+      const month        = parseInt(timeAtStr.slice(5, 7), 10)  || (timeAt.getMonth() + 1);
       if (!attachmentId || !year || !month) return { position, url: '' };
      try {
         const imgRes = await fetch(
