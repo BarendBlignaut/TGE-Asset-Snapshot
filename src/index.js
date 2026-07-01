@@ -1652,10 +1652,18 @@ async function handleHistoricalSnapshots(request, env) {
         const year   = timeAt.getFullYear();
         const month  = timeAt.getMonth() + 1;
         try {
-          const imgRes = await fetch(
-            `https://api-au.telematics.com/v1/attachments/${att.attachmentId}/content?pruning=WEB&thumbnail=false&year=${year}&month=${month}&presigned=true`,
-            { headers: { 'Authorization': authHeader }, redirect: 'follow' }
-          );
+         const imgRes = await fetch(
+          `https://api-au.telematics.com/v1/attachments/${attachmentId}/content?pruning=WEB&thumbnail=false&year=${year}&month=${month}&presigned=true`,
+          {
+            headers: {
+              'Authorization': authHeader,
+              'Origin':  'https://tn360-au.telematics.com',
+              'Referer': 'https://tn360-au.telematics.com/',
+              'User-Agent': 'Mozilla/5.0',
+            },
+            redirect: 'follow',
+          }
+        );
           if (!imgRes.ok) return { position: att.cameraPosition, url: '' };
           const contentType = imgRes.headers.get('content-type') || '';
           if (contentType.includes('image/')) return { position: att.cameraPosition, url: imgRes.url };
