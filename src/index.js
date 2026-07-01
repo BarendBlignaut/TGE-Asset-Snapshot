@@ -1287,18 +1287,41 @@ async function fetchAndSaveChunk(env, chunk, log) {
     const attrs      = ev.attributes || {};
     const provider   = String(attrs.provider || '').toUpperCase();
     const uuid       = String(attrs.uuid     || '').trim();
-    let channels     = [];
+   let channels     = [];
     try {
       const extras = typeof attrs.extras === 'string' ? JSON.parse(attrs.extras) : (attrs.extras || {});
       channels = Array.isArray(extras.tn360_channels) ? extras.tn360_channels : [];
     } catch(e) { channels = []; }
 
+    // Extract image dimensions from context.mediaFiles
+    let mediaDetails = [];
+    try {
+      const ctx = typeof attrs.context === 'string' ? JSON.parse(attrs.context) : (attrs.context || {});
+      const mediaFiles = (ctx.response && Array.isArray(ctx.response.mediaFiles))
+        ? ctx.response.mediaFiles
+        : (Array.isArray(ctx.mediaFiles) ? ctx.mediaFiles : []);
+      mediaFiles.forEach(function(m) {
+        if (!m || !m.imageDetails) return;
+        const d       = m.imageDetails;
+        const sources = Array.isArray(d.sources) ? d.sources : [];
+        const source  = sources[0] || (m.source || '');
+        if (!source) return;
+        mediaDetails.push({
+          source:  String(source).toUpperCase(),
+          width:   d.imageWidth  || null,
+          height:  d.imageHeight || null,
+          quality: d.imageQuality || null,
+          collage: d.collage || null,
+        });
+      });
+    } catch(e) { mediaDetails = []; }
+
     try {
       const result = await env.DB.prepare(
         `INSERT OR IGNORE INTO camera_history
-         (event_id, vehicle_id, device_id, event_type, action, provider, captured_at, uuid, channels, attachments, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(eventId, vehicleId, deviceId || null, eventType, action, provider || null, capturedAt, uuid || null, JSON.stringify(channels), JSON.stringify([]), nowIso()).run();
+         (event_id, vehicle_id, device_id, event_type, action, provider, captured_at, uuid, channels, attachments, media_details, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     ).bind(eventId, vehicleId, deviceId || null, eventType, action, provider || null, capturedAt, uuid || null, JSON.stringify(channels), JSON.stringify([]), JSON.stringify(mediaDetails), nowIso()).run();
       if (result.meta && result.meta.changes > 0) {
         saved++;
         log.push({ phase: 1, action: 'saved', eventId, vehicleId, capturedAt });
