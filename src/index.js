@@ -1702,10 +1702,18 @@ async function handleHistoricalSnapshotsAttachments(request, env) {
       const year         = timeAt.getFullYear();
       const month        = timeAt.getMonth() + 1;
       if (!attachmentId || !year || !month) return { position, url: '' };
-      try {
+     try {
         const imgRes = await fetch(
           `https://api-au.telematics.com/v1/attachments/${attachmentId}/content?pruning=WEB&thumbnail=false&year=${year}&month=${month}&presigned=true`,
-          { headers: { 'Authorization': authHeader }, redirect: 'follow' }
+          {
+            headers: {
+              'Authorization': authHeader,
+              'Origin':  'https://tn360-au.telematics.com',
+              'Referer': 'https://tn360-au.telematics.com/',
+              'User-Agent': 'Mozilla/5.0',
+            },
+            redirect: 'follow',
+          }
         );
         if (!imgRes.ok) return { position, url: '' };
         const contentType = imgRes.headers.get('content-type') || '';
