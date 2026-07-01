@@ -79,7 +79,7 @@
         state.activeTab = t.btn.replace('admin-tab-', '');
         if (state.activeTab === 'history') loadActivity();
         if (state.activeTab === 'api') wireApiFilters();
-        if (state.activeTab === 'camera-history') loadCameraHistoryStatus();
+        if (state.activeTab === 'camera-history') { loadCameraHistoryStatus(); wireCameraHistoryTab(); }
         if (state.activeTab === 'mailer') loadSignatures();
         if (state.activeTab === 'controls') loadControlTables();
       });
@@ -983,276 +983,377 @@ function renderControlTablesTab() {
   }
 
 // ── Camera History Tab — add to admin.js ──────────────────────────────────────
-// 1. Add tab button in renderUsersTab hero bar:
-//    '<button class="hero-mode-btn" id="admin-tab-camera-history" type="button">Camera History</button>'
-//
-// 2. Add content div in render():
-//    '<div id="admin-content-camera-history" style="display:none;">', renderCameraHistoryTab(), '</div>'
-//
-// 3. Add to wireAdminTabs() tabs array:
-//    { btn: 'admin-tab-camera-history', content: 'admin-content-camera-history' }
-//    And in the tab click handler:
-//    if (state.activeTab === 'camera-history') loadCameraHistoryStatus();
-//
-// 4. Paste the functions below into admin.js
-
 function renderCameraHistoryTab() {
   return [
-    '<div class="card" style="margin-bottom:14px;">',
+    '<div class="card">',
       '<div class="card-kicker">Camera History Database</div>',
       '<div class="card-title">Backfill & Sync Status</div>',
 
-      // Stats grid
-      '<div class="data-grid data-grid-4" id="ch-stats" style="margin-bottom:16px;">',
+      '<div class="data-grid data-grid-4" style="margin-bottom:16px;">',
         '<div class="data-item"><span>Total Events</span><strong id="ch-total">—</strong></div>',
         '<div class="data-item"><span>Vehicles Covered</span><strong id="ch-vehicles">—</strong></div>',
-        '<div class="data-item"><span>Oldest Event</span><strong id="ch-oldest">—</strong></div>',
-        '<div class="data-item"><span>Newest Event</span><strong id="ch-newest">—</strong></div>',
+        '<div class="data-item"><span>With Attachments</span><strong id="ch-with-att">—</strong></div>',
+        '<div class="data-item"><span>Total Attachment IDs</span><strong id="ch-att-ids">—</strong></div>',
         '<div class="data-item"><span>Last Sync</span><strong id="ch-last-sync">—</strong></div>',
         '<div class="data-item"><span>Status</span><strong id="ch-status">—</strong></div>',
-        '<div class="data-item"><span>Backfill From</span><strong id="ch-from">—</strong></div>',
-        '<div class="data-item"><span>Backfill To</span><strong id="ch-to">—</strong></div>',
+        '<div class="data-item"><span>Backfill From</span><strong id="ch-bf-from">—</strong></div>',
+        '<div class="data-item"><span>Backfill To</span><strong id="ch-bf-to">—</strong></div>',
       '</div>',
 
-      // Action breakdown
-      '<div style="margin-bottom:16px;" id="ch-action-breakdown"></div>',
-
-      // Backfill progress bar — hidden until running
-      '<div id="ch-progress-wrap" style="display:none;margin-bottom:16px;">',
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">',
-          '<span style="font-size:12px;font-weight:700;color:var(--ink);" id="ch-progress-label">Processing...</span>',
-          '<span style="font-size:12px;color:var(--muted);" id="ch-progress-pct">0%</span>',
+      '<div id="ch-progress-wrap" style="display:none;margin-bottom:14px;">',
+        '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px;">',
+          '<span id="ch-progress-label">Processing...</span>',
+          '<span id="ch-progress-pct">0%</span>',
         '</div>',
-        '<div style="height:8px;background:var(--line);border-radius:999px;overflow:hidden;">',
+        '<div style="height:6px;background:var(--line);border-radius:999px;overflow:hidden;">',
           '<div id="ch-progress-fill" style="height:100%;background:var(--green-600);border-radius:999px;transition:width 300ms;width:0%;"></div>',
         '</div>',
         '<div style="font-size:11px;color:var(--muted);margin-top:4px;" id="ch-progress-chunk"></div>',
       '</div>',
 
-      // Action buttons
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">',
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">',
         '<button class="btn btn-primary" id="ch-backfill-btn" type="button">▶ Run Backfill</button>',
-        '<button class="btn" id="ch-sync-btn" type="button">↻ Sync Last 7 Days</button>',
+        '<button class="btn" id="ch-sync-btn" type="button">↺ Sync Last 7 Days</button>',
+        '<button class="btn" id="ch-stop-btn" type="button" style="display:none;">⏹ Stop</button>',
         '<button class="btn btn-danger" id="ch-clear-btn" type="button">✕ Clear All History</button>',
-        '<span id="ch-message" style="font-size:12px;color:var(--muted);margin-left:4px;"></span>',
       '</div>',
 
-      // Info box
-      '<div style="margin-top:16px;padding:12px 14px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;font-size:12px;color:var(--muted);line-height:1.6;">',
-        '<strong style="color:var(--ink);">How it works:</strong> ',
-        'Backfill fetches all camera events from February 2024 to today in 6-day chunks using your existing TN360 API key. ',
-        'Only event metadata is stored (event ID, vehicle, action type, attachment IDs) — no image URLs. ',
-        'Fresh image URLs are fetched on demand when a user views history. ',
-        'Run Sync after backfill to pick up the last 7 days. Daily automatic sync runs at 6am AEST.',
-      '</div>',
-    '</div>',
-
-    // Action type breakdown table
-    '<div class="card" id="ch-breakdown-card" style="display:none;">',
-      '<div class="card-kicker">Event Breakdown</div>',
-      '<div class="card-title">Stored Events by Action Type</div>',
-      '<div class="table-wrap">',
-        '<table>',
-          '<thead><tr><th>Action Type</th><th>Count</th><th>% of Total</th><th>Use</th></tr></thead>',
-          '<tbody id="ch-breakdown-table"></tbody>',
-        '</table>',
+      '<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;">',
+        '<div style="background:var(--surface-2);padding:8px 12px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;">',
+          '<span>Live Log</span>',
+          '<button class="btn" id="ch-clear-log-btn" type="button" style="height:24px;padding:0 8px;font-size:11px;">Clear</button>',
+        '</div>',
+        '<div id="ch-log" style="height:320px;overflow-y:auto;padding:10px 12px;font-family:monospace;font-size:11px;color:var(--ink);background:var(--surface);">',
+          '<div style="color:var(--muted);">Log will appear here when running...</div>',
+        '</div>',
       '</div>',
     '</div>',
   ].join('');
 }
 
-// ── Load status ───────────────────────────────────────────────────────────────
-var chState = { polling: false, backfillRunning: false };
+var chRunState = {
+  running:           false,
+  stopped:           false,
+  phase:             'phase1',
+  chunkIndex:        0,
+  startAfterEventId: null,
+  totalChunks:       0,
+  session: { apiCalls: 0, eventsFetched: 0, eventsSaved: 0, attachmentsEnriched: 0, errors: 0 },
+};
+
+function wireCameraHistoryTab() {
+  TGE.on('ch-backfill-btn',  'click', startBackfill);
+  TGE.on('ch-sync-btn',      'click', startSync);
+  TGE.on('ch-stop-btn',      'click', stopRun);
+  TGE.on('ch-clear-btn',     'click', clearHistory);
+  TGE.on('ch-clear-log-btn', 'click', clearLog);
+}
+
+function chLog(msg, level) {
+  var log = TGE.el('ch-log');
+  if (!log) return;
+  var color = level === 'error'   ? 'var(--danger)'
+            : level === 'success' ? 'var(--green-600)'
+            : level === 'warn'    ? 'var(--warning, #d97706)'
+            : 'var(--ink)';
+  var time = new Date().toLocaleTimeString('en-AU', { hour12: false });
+  var line = document.createElement('div');
+  line.style.color         = color;
+  line.style.marginBottom  = '2px';
+  line.style.borderBottom  = '1px solid var(--line-2)';
+  line.style.paddingBottom = '2px';
+  line.textContent = time + '  ' + msg;
+  if (log.children.length === 1 && log.children[0].style && log.children[0].style.color === 'var(--muted)') log.innerHTML = '';
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+  TGE.diagnostics.log({ category: 'Camera History', level: level || 'Info', module: 'admin', action: 'sync', message: msg });
+}
+
+function clearLog() {
+  var log = TGE.el('ch-log');
+  if (log) log.innerHTML = '<div style="color:var(--muted);">Log cleared.</div>';
+}
+
+function setChBtns(running) {
+  var backfill = TGE.el('ch-backfill-btn');
+  var sync     = TGE.el('ch-sync-btn');
+  var stop     = TGE.el('ch-stop-btn');
+  var clear    = TGE.el('ch-clear-btn');
+  if (backfill) backfill.disabled = running;
+  if (sync)     sync.disabled     = running;
+  if (clear)    clear.disabled    = running;
+  if (stop)     stop.style.display = running ? '' : 'none';
+}
+
+function updateChProgress(done, total, label, chunk) {
+  var wrap = TGE.el('ch-progress-wrap');
+  var fill = TGE.el('ch-progress-fill');
+  var pct  = TGE.el('ch-progress-pct');
+  var lbl  = TGE.el('ch-progress-label');
+  var chEl = TGE.el('ch-progress-chunk');
+  if (!wrap) return;
+  wrap.style.display = '';
+  var p = total > 0 ? Math.round((done / total) * 100) : 0;
+  if (fill)  fill.style.width = p + '%';
+  if (pct)   pct.textContent  = p + '%';
+  if (lbl)   lbl.textContent  = label || 'Processing...';
+  if (chEl)  chEl.textContent = chunk || '';
+}
+
+function stopRun() {
+  chRunState.stopped = true;
+  chLog('⏹ Stop requested — will halt after current batch.', 'warn');
+}
+
+function formatLogEntry(entry) {
+  if (!entry) return null;
+  var p = entry.phase ? '[P' + entry.phase + '] ' : '';
+  switch (entry.action) {
+    case 'fetch':             return p + 'GET ' + (entry.url || '') + ' (' + (entry.from || '').slice(0,10) + ' → ' + (entry.to || '').slice(0,10) + ')';
+    case 'fetch_result':      return p + '← ' + entry.returned + ' events returned';
+    case 'fetch_error':       return p + '✗ Fetch error HTTP ' + entry.status + ' — ' + entry.detail;
+    case 'saved':             return p + '✓ Event ' + entry.eventId + ' saved (' + (entry.capturedAt || '').slice(0,10) + ')';
+    case 'skipped_duplicate': return p + '→ Event ' + entry.eventId + ' duplicate, skipped';
+    case 'save_error':        return p + '✗ Save error event ' + entry.eventId + ': ' + entry.error;
+    case 'chunk_complete':    return p + '✓ Chunk done — returned: ' + entry.returned + ', saved: ' + entry.saved + ', dupes: ' + entry.skipped;
+    case 'batch_start':       return p + 'Enriching ' + entry.count + ' events (after ' + entry.startAfterEventId + ')';
+    case 'call':              return p + '→ POST snapshot — event ' + entry.eventId + ' (vehicle ' + entry.vehicleId + ')';
+    case 'call_result':       return p + '← ' + entry.eventsReturned + ' events in response (total: ' + entry.totalCount + ')';
+    case 'call_error':        return p + '✗ HTTP ' + entry.status + ' for event ' + entry.eventId + ' — ' + (entry.detail || '');
+    case 'enriched':          return p + '✓ Event ' + entry.eventId + ' — ' + entry.attachments + ' attachment IDs saved';
+    case 'no_match':          return p + '→ Event ' + entry.eventId + ' — no match in snapshot response';
+    case 'batch_complete':    return p + 'Batch done — enriched: ' + entry.enriched + ', no match: ' + entry.noMatch + ', errors: ' + entry.errors + (entry.hasMore ? ' (more to process)' : ' (all done)');
+    case 'error':             return p + '✗ Error event ' + entry.eventId + ': ' + entry.error;
+    case 'fatal_error':       return '✗ FATAL: ' + entry.error;
+    default:                  return p + JSON.stringify(entry);
+  }
+}
 
 async function loadCameraHistoryStatus() {
-  var result = await api('GET', '/api/admin/camera-history/status');
-  if (!result.ok) {
-    setCHMessage('Failed to load status: ' + (result.data && result.data.error ? result.data.error : 'unknown error'), true);
+  try {
+    var res = await TGE.api('GET', '/api/admin/camera-history/status');
+    if (!res.ok) return;
+    var d = res.data;
+    var c = d.counts || {};
+    var s = d.sync   || {};
+    TGE.setText('ch-total',    (c.total    || 0).toLocaleString());
+    TGE.setText('ch-vehicles', (c.vehicles || 0).toLocaleString());
+    TGE.setText('ch-with-att', (c.with_attachments     || 0).toLocaleString());
+    TGE.setText('ch-att-ids',  (c.total_attachment_ids || 0).toLocaleString());
+    TGE.setText('ch-last-sync', s.last_sync_at ? new Date(s.last_sync_at).toLocaleString('en-AU') : 'Never');
+    TGE.setText('ch-status',   s.status       || 'idle');
+    TGE.setText('ch-bf-from',  s.backfill_from || 'Not started');
+    TGE.setText('ch-bf-to',    s.backfill_to   || '—');
+    if (s.chunks_total > 0) {
+      updateChProgress(
+        s.chunks_done || 0, s.chunks_total,
+        (s.chunks_done || 0) + ' of ' + s.chunks_total + ' chunks',
+        s.current_chunk || ''
+      );
+    }
+    wireCameraHistoryTab();
+  } catch(e) {
+    chLog('Failed to load status: ' + e.message, 'error');
+  }
+}
+
+async function startBackfill() {
+  if (chRunState.running) return;
+  chRunState.running           = true;
+  chRunState.stopped           = false;
+  chRunState.phase             = 'phase1';
+  chRunState.chunkIndex        = 0;
+  chRunState.startAfterEventId = null;
+  chRunState.session           = { apiCalls: 0, eventsFetched: 0, eventsSaved: 0, attachmentsEnriched: 0, errors: 0 };
+  setChBtns(true);
+  clearLog();
+  chLog('▶ Backfill started from 2024-02-01', 'success');
+  await runBackfillStep();
+}
+
+async function runBackfillStep() {
+  if (chRunState.stopped) {
+    chRunState.running = false;
+    setChBtns(false);
+    chLog('⏹ Stopped by user.', 'warn');
+    await loadCameraHistoryStatus();
     return;
   }
 
-  var sync   = result.data.sync   || {};
-  var counts = result.data.counts || {};
-  var byAct  = result.data.byAction || [];
+  try {
+    var res = await TGE.api('POST', '/api/admin/camera-history/backfill', {
+      chunkIndex:        chRunState.chunkIndex,
+      phase:             chRunState.phase,
+      startAfterEventId: chRunState.startAfterEventId,
+    });
 
-  // Stats
-  TGE.setText('ch-total',     counts.total ? Number(counts.total).toLocaleString() : '0');
-  TGE.setText('ch-vehicles',  counts.vehicles ? Number(counts.vehicles).toLocaleString() : '0');
-  TGE.setText('ch-oldest',    counts.oldest ? formatCHDate(counts.oldest) : '—');
-  TGE.setText('ch-newest',    counts.newest ? formatCHDate(counts.newest) : '—');
-  TGE.setText('ch-last-sync', sync.last_sync_at ? formatCHDate(sync.last_sync_at) : 'Never');
-  TGE.setText('ch-from',      sync.backfill_from ? sync.backfill_from.slice(0,10) : 'Not started');
-  TGE.setText('ch-to',        sync.backfill_to   ? sync.backfill_to.slice(0,10)   : '—');
-
-  // Status badge
-  var statusEl = TGE.el('ch-status');
-  if (statusEl) {
-    var s = sync.status || 'idle';
-    var badge = s === 'complete' ? '<span class="badge badge-green">Complete</span>'
-              : s === 'running'  ? '<span class="badge badge-yellow">Running...</span>'
-              : '<span class="badge badge-gray">Idle</span>';
-    statusEl.innerHTML = badge;
-  }
-
-  // Progress bar
-  var progressWrap = TGE.el('ch-progress-wrap');
-  if (sync.chunks_total > 0) {
-    if (progressWrap) progressWrap.style.display = '';
-    var pct = sync.chunks_total > 0 ? Math.round((sync.chunks_done / sync.chunks_total) * 100) : 0;
-    var fill = TGE.el('ch-progress-fill');
-    var pctEl = TGE.el('ch-progress-pct');
-    var labelEl = TGE.el('ch-progress-label');
-    var chunkEl = TGE.el('ch-progress-chunk');
-    if (fill)    fill.style.width = pct + '%';
-    if (pctEl)   pctEl.textContent = pct + '%';
-    if (labelEl) labelEl.textContent = sync.chunks_done + ' of ' + sync.chunks_total + ' date windows processed';
-    if (chunkEl) chunkEl.textContent = sync.current_chunk ? 'Current: ' + sync.current_chunk : '';
-  } else {
-    if (progressWrap) progressWrap.style.display = 'none';
-  }
-
-  // Action breakdown table
-  var total = counts.total || 0;
-  if (byAct.length) {
-    var breakdownCard = TGE.el('ch-breakdown-card');
-    if (breakdownCard) breakdownCard.style.display = '';
-    var tbody = TGE.el('ch-breakdown-table');
-    if (tbody) {
-      tbody.innerHTML = byAct.map(function(row) {
-        var pct = total > 0 ? ((row.count / total) * 100).toFixed(1) : '0';
-        var use = {
-          'SNAPSHOT':     'Camera photos — current & history',
-          'DRIVER_INPUT': 'Driver ID / fatigue events',
-          'VIDEO_REQUEST':'On-demand video clips',
-        }[row.action] || 'Future use';
-        return '<tr>' +
-          '<td><strong>' + row.action + '</strong></td>' +
-          '<td>' + Number(row.count).toLocaleString() + '</td>' +
-          '<td>' + pct + '%</td>' +
-          '<td style="color:var(--muted);font-size:12px;">' + use + '</td>' +
-        '</tr>';
-      }).join('');
-    }
-  }
-
-  wireCHButtons();
-}
-
-// ── Wire buttons ──────────────────────────────────────────────────────────────
-function wireCHButtons() {
-  TGE.on('ch-backfill-btn', 'click', runBackfill);
-  TGE.on('ch-sync-btn',     'click', runSync);
-  TGE.on('ch-clear-btn',    'click', clearHistory);
-}
-
-// ── Backfill ──────────────────────────────────────────────────────────────────
-// Calls the backfill endpoint repeatedly until complete (10 chunks per call)
-async function runBackfill() {
-  if (chState.backfillRunning) return;
-  chState.backfillRunning = true;
-
-  var btn = TGE.el('ch-backfill-btn');
-  if (btn) { btn.textContent = 'Running...'; btn.disabled = true; }
-  setCHMessage('Starting backfill from February 2024...', false);
-
-  var progressWrap = TGE.el('ch-progress-wrap');
-  if (progressWrap) progressWrap.style.display = '';
-
-  var totalSaved = 0;
-  var done       = false;
-
-  while (!done) {
-    var result = await api('POST', '/api/admin/camera-history/backfill', {});
-    if (!result.ok) {
-      setCHMessage('Backfill error: ' + (result.data && result.data.error ? result.data.error : 'unknown'), true);
-      break;
+    if (!res.ok) {
+      chLog('✗ Request failed: ' + (res.data && res.data.error ? res.data.error : 'Unknown'), 'error');
+      chRunState.running = false;
+      setChBtns(false);
+      await loadCameraHistoryStatus();
+      return;
     }
 
-    var d = result.data;
-    totalSaved += (d.savedThisCall || 0);
-    done = d.isComplete;
+    var d = res.data;
 
-    // Update progress bar
-    var pct     = d.percentComplete || 0;
-    var fill    = TGE.el('ch-progress-fill');
-    var pctEl   = TGE.el('ch-progress-pct');
-    var labelEl = TGE.el('ch-progress-label');
-    if (fill)    fill.style.width = pct + '%';
-    if (pctEl)   pctEl.textContent = pct + '%';
-    if (labelEl) labelEl.textContent = (d.chunksCompleted || 0) + ' of ' + (d.chunksTotal || 0) + ' date windows';
+    if (Array.isArray(d.log)) {
+      d.log.forEach(function(entry) {
+        var msg = formatLogEntry(entry);
+        if (msg) chLog(msg, entry.action && entry.action.indexOf('error') !== -1 ? 'error' : 'info');
+      });
+    }
 
-    setCHMessage(
-      done
-        ? '✅ Backfill complete — ' + totalSaved.toLocaleString() + ' new events saved.'
-        : 'Processing... ' + (d.chunksCompleted || 0) + ' of ' + (d.chunksTotal || 0) + ' chunks (' + totalSaved.toLocaleString() + ' saved so far)',
-      false
+    if (d.result) {
+      if (d.phase === 'phase1') {
+        chRunState.session.apiCalls++;
+        chRunState.session.eventsFetched += d.result.returned || 0;
+        chRunState.session.eventsSaved   += d.result.saved    || 0;
+      } else {
+        chRunState.session.apiCalls            += d.result.processed || 0;
+        chRunState.session.attachmentsEnriched += d.result.enriched  || 0;
+        chRunState.session.errors              += d.result.errors     || 0;
+      }
+    }
+
+    if (d.chunksTotal) chRunState.totalChunks = d.chunksTotal;
+    updateChProgress(
+      d.chunkIndex + (d.phase === 'phase2' && d.result && !d.result.hasMore ? 1 : 0),
+      d.chunksTotal || chRunState.totalChunks,
+      'Chunk ' + (d.chunkIndex + 1) + ' of ' + (d.chunksTotal || '?') + ' — ' + d.phase +
+        '  |  Saved: ' + chRunState.session.eventsSaved +
+        '  |  Enriched: ' + chRunState.session.attachmentsEnriched,
+      d.chunk ? d.chunk.from.slice(0,10) + ' → ' + d.chunk.to.slice(0,10) : ''
     );
 
-    if (!done) {
-      // Small pause between calls to keep UI responsive
-      await new Promise(function(r) { setTimeout(r, 500); });
+    await loadCameraHistoryStatus();
+
+    if (d.complete) {
+      chRunState.running = false;
+      setChBtns(false);
+      var wrap = TGE.el('ch-progress-wrap');
+      if (wrap) wrap.style.display = 'none';
+      chLog('✓ Backfill complete!', 'success');
+      chLog('Session — API calls: ' + chRunState.session.apiCalls +
+            '  |  Events saved: ' + chRunState.session.eventsSaved +
+            '  |  Attachments enriched: ' + chRunState.session.attachmentsEnriched +
+            '  |  Errors: ' + chRunState.session.errors, 'success');
+      return;
     }
+
+    var next = d.nextAction;
+    if (next) {
+      chRunState.phase             = next.phase;
+      chRunState.chunkIndex        = next.chunkIndex !== undefined ? next.chunkIndex : chRunState.chunkIndex;
+      chRunState.startAfterEventId = next.startAfterEventId || null;
+    }
+
+    await new Promise(function(r) { setTimeout(r, 700); });
+    await runBackfillStep();
+
+  } catch(e) {
+    chLog('✗ Fatal error: ' + e.message, 'error');
+    chRunState.running = false;
+    setChBtns(false);
+    await loadCameraHistoryStatus();
+  }
+}
+
+async function startSync() {
+  if (chRunState.running) return;
+  chRunState.running           = true;
+  chRunState.stopped           = false;
+  chRunState.phase             = 'phase1';
+  chRunState.startAfterEventId = null;
+  chRunState.session           = { apiCalls: 0, eventsFetched: 0, eventsSaved: 0, attachmentsEnriched: 0, errors: 0 };
+  setChBtns(true);
+  clearLog();
+  chLog('▶ 7-day sync started', 'success');
+  await runSyncStep();
+}
+
+async function runSyncStep() {
+  if (chRunState.stopped) {
+    chRunState.running = false;
+    setChBtns(false);
+    chLog('⏹ Stopped.', 'warn');
+    await loadCameraHistoryStatus();
+    return;
   }
 
-  chState.backfillRunning = false;
-  if (btn) { btn.textContent = '▶ Run Backfill'; btn.disabled = false; }
-
-  // Refresh status
-  await loadCameraHistoryStatus();
-}
-
-// ── Sync ──────────────────────────────────────────────────────────────────────
-async function runSync() {
-  var btn = TGE.el('ch-sync-btn');
-  if (btn) { btn.textContent = 'Syncing...'; btn.disabled = true; }
-  setCHMessage('Fetching last 7 days...', false);
-
-  var result = await api('POST', '/api/admin/camera-history/sync', {});
-  if (!result.ok) {
-    setCHMessage('Sync failed: ' + (result.data && result.data.error ? result.data.error : 'unknown'), true);
-  } else {
-    var d = result.data;
-    setCHMessage('✅ Sync complete — ' + (d.fetched || 0) + ' events fetched, ' + (d.saved || 0) + ' new saved.', false);
-  }
-
-  if (btn) { btn.textContent = '↻ Sync Last 7 Days'; btn.disabled = false; }
-  await loadCameraHistoryStatus();
-}
-
-// ── Clear ─────────────────────────────────────────────────────────────────────
-async function clearHistory() {
-  if (!confirm('This will delete ALL stored camera history and reset the backfill progress. This cannot be undone. Continue?')) return;
-  var btn = TGE.el('ch-clear-btn');
-  if (btn) { btn.textContent = 'Clearing...'; btn.disabled = true; }
-
-  var result = await api('DELETE', '/api/admin/camera-history', {});
-  if (!result.ok) {
-    setCHMessage('Clear failed: ' + (result.data && result.data.error ? result.data.error : 'unknown'), true);
-  } else {
-    setCHMessage('History cleared and backfill reset.', false);
-  }
-
-  if (btn) { btn.textContent = '✕ Clear All History'; btn.disabled = false; }
-  await loadCameraHistoryStatus();
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function setCHMessage(msg, isError) {
-  var el = TGE.el('ch-message');
-  if (!el) return;
-  el.textContent = msg;
-  el.style.color = isError ? 'var(--danger)' : 'var(--muted)';
-}
-
-function formatCHDate(iso) {
-  if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleString('en-AU', {
-      timeZone: 'Australia/Sydney',
-      day: '2-digit', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', hour12: true,
+    var res = await TGE.api('POST', '/api/admin/camera-history/sync', {
+      phase:             chRunState.phase,
+      startAfterEventId: chRunState.startAfterEventId,
     });
-  } catch(e) { return iso; }
+
+    if (!res.ok) {
+      chLog('✗ Sync failed: ' + (res.data && res.data.error ? res.data.error : 'Unknown'), 'error');
+      chRunState.running = false;
+      setChBtns(false);
+      await loadCameraHistoryStatus();
+      return;
+    }
+
+    var d = res.data;
+
+    if (Array.isArray(d.log)) {
+      d.log.forEach(function(entry) {
+        var msg = formatLogEntry(entry);
+        if (msg) chLog(msg, entry.action && entry.action.indexOf('error') !== -1 ? 'error' : 'info');
+      });
+    }
+
+    if (d.result) {
+      if (d.phase === 'phase1') {
+        chRunState.session.apiCalls++;
+        chRunState.session.eventsFetched += d.result.returned || 0;
+        chRunState.session.eventsSaved   += d.result.saved    || 0;
+      } else {
+        chRunState.session.apiCalls            += d.result.processed || 0;
+        chRunState.session.attachmentsEnriched += d.result.enriched  || 0;
+        chRunState.session.errors              += d.result.errors     || 0;
+      }
+    }
+
+    chLog('Session — API calls: ' + chRunState.session.apiCalls +
+          '  |  Events: ' + chRunState.session.eventsSaved +
+          '  |  Attachments: ' + chRunState.session.attachmentsEnriched, 'info');
+
+    await loadCameraHistoryStatus();
+
+    if (d.complete) {
+      chRunState.running = false;
+      setChBtns(false);
+      chLog('✓ 7-day sync complete!', 'success');
+      return;
+    }
+
+    var next = d.nextAction;
+    if (next) {
+      chRunState.phase             = next.phase;
+      chRunState.startAfterEventId = next.startAfterEventId || null;
+    }
+
+    await new Promise(function(r) { setTimeout(r, 700); });
+    await runSyncStep();
+
+  } catch(e) {
+    chLog('✗ Fatal error: ' + e.message, 'error');
+    chRunState.running = false;
+    setChBtns(false);
+    await loadCameraHistoryStatus();
+  }
+}
+
+async function clearHistory() {
+  if (chRunState.running) return;
+  if (!confirm('Clear all camera history and reset sync state?')) return;
+  try {
+    var res = await TGE.api('DELETE', '/api/admin/camera-history');
+    if (res.ok) { chLog('✓ Camera history cleared.', 'success'); await loadCameraHistoryStatus(); }
+    else chLog('✗ Clear failed.', 'error');
+  } catch(e) { chLog('✗ ' + e.message, 'error'); }
 }
   
   // ── Register ──────────────────────────────────────────────────────────────────
