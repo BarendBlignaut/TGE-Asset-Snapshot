@@ -8,26 +8,33 @@
 
   // Camera position map — matches the new historical snapshots API response
   var POSITION_MAP = {
-    'FRONT':          'road',
-    'ROAD':           'road',
-    'ROAD_FACING':    'road',
-    'DRIVER':         'driver',
-    'DRIVER_FACING':  'driver',
-    'LEFT_PASSENGER': 'ext2',
-    'LEFT':           'ext2',
-    'TVI1':           'ext2',
-    'RIGHT_DRIVER':   'ext1',
-    'RIGHT':          'ext1',
-    'TVI2':           'ext1',
-    'UVC':            'incab',
+    'FRONT':                         'road',
+    'ROAD':                          'road',
+    'ROAD_FACING':                   'road',
+    'DRIVER':                        'driver',
+    'DRIVER_FACING':                 'driver',
+    'LEFT_PASSENGER':                'ext2',
+    'LEFT':                          'ext2',
+    'TVI1':                          'ext2',
+    'RIGHT_DRIVER':                  'ext1',
+    'RIGHT':                         'ext1',
+    'TVI2':                          'ext1',
+    'UVC':                           'incab',
+    'LEFT_BLIND_SPOT':               'incab',
+    'RIGHT_BLIND_SPOT':              'ext1',
+    'ADDITIONAL_REAR_FACING_CAMERA': 'ext2',
+    'UNKNOWN':                       'unsure1',
   };
 
-  var CAMERA_SLOTS = [
-    { id:'road',   label:'Road Facing',    source:'ROAD_FACING',  sources:['ROAD']   },
-    { id:'driver', label:'Driver Facing',  source:'DRIVER_FACING',sources:['DRIVER'] },
-    { id:'incab',  label:'In-Cab Driver',  source:'MDVR',         sources:['UVC']    },
-    { id:'ext1',   label:'Right External', source:'MDVR',         sources:['TVI2']   },
-    { id:'ext2',   label:'Left External',  source:'MDVR',         sources:['TVI1']   },
+ var CAMERA_SLOTS = [
+    { id:'road',    label:'Road Facing',    source:'ROAD_FACING',  sources:['ROAD']   },
+    { id:'driver',  label:'Driver Facing',  source:'DRIVER_FACING',sources:['DRIVER'] },
+    { id:'incab',   label:'In-Cab Driver',  source:'MDVR',         sources:['UVC']    },
+    { id:'ext1',    label:'Right External', source:'MDVR',         sources:['TVI2']   },
+    { id:'ext2',    label:'Left External',  source:'MDVR',         sources:['TVI1']   },
+    { id:'unsure1', label:'Additional 1',   source:'',             sources:[]         },
+    { id:'unsure2', label:'Additional 2',   source:'',             sources:[]         },
+    { id:'unsure3', label:'Additional 3',   source:'',             sources:[]         },
   ];
 
   var state = {
@@ -950,9 +957,22 @@ function ensureCameraCardVisible() {
   // Build camera grid from fresh-URL attachments (history/alignment after)
   function buildCameraGridFromAttachments(attachments, activeSlots, galleryImages, galleryOffset) {
     var bySlotId = {};
+    var unmapped = [];
     attachments.forEach(function(att) {
       var slotId = POSITION_MAP[String(att.position || '').toUpperCase()];
-      if (slotId) bySlotId[slotId] = att.url;
+      if (slotId) {
+        bySlotId[slotId] = att.url;
+      } else if (att.url) {
+        unmapped.push({ url: att.url, position: att.position || 'Unknown' });
+      }
+    });
+    var unsureIdx  = 0;
+    var unsureSlots = ['unsure1', 'unsure2', 'unsure3'];
+    unmapped.forEach(function(u) {
+      if (unsureIdx < unsureSlots.length) {
+        bySlotId[unsureSlots[unsureIdx]] = u.url;
+        unsureIdx++;
+      }
     });
     return activeSlots.map(function(slot, i) {
       var url = bySlotId[slot.id];
