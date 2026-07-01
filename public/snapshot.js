@@ -276,9 +276,10 @@
 
     ].join('');
 
-    wireEvents();
+   wireEvents();
     injectAlignPanel();
     injectHistoryPanel();
+    injectLightbox();
   }
 
   function di(id, label) {
@@ -343,6 +344,69 @@ function closeExportMenu() {
     document.body.appendChild(panel);
   }
 
+function injectLightbox() {
+    var existing = document.getElementById('snap-lightbox');
+    if (existing) existing.remove();
+    var lb = document.createElement('div');
+    lb.id = 'snap-lightbox';
+    lb.style.cssText = 'display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.92);flex-direction:column;align-items:center;justify-content:center;';
+    lb.innerHTML = [
+      '<button id="snap-lb-close" style="position:fixed;top:16px;right:16px;background:rgba(255,255,255,0.15);border:none;border-radius:50%;color:#fff;font-size:22px;width:40px;height:40px;cursor:pointer;z-index:9001;">✕</button>',
+      '<button id="snap-lb-prev" style="position:fixed;left:16px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.15);border:none;border-radius:50%;color:#fff;font-size:28px;width:48px;height:48px;cursor:pointer;z-index:9001;">‹</button>',
+      '<button id="snap-lb-next" style="position:fixed;right:16px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.15);border:none;border-radius:50%;color:#fff;font-size:28px;width:48px;height:48px;cursor:pointer;z-index:9001;">›</button>',
+      '<img id="snap-lb-img" src="" style="max-width:90vw;max-height:85vh;object-fit:contain;border-radius:8px;" />',
+      '<div id="snap-lb-caption" style="color:rgba(255,255,255,0.7);font-size:12px;margin-top:12px;text-align:center;"></div>',
+      '<div id="snap-lb-counter" style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:4px;"></div>',
+    ].join('');
+    document.body.appendChild(lb);
+
+    lb.addEventListener('click', function(e) { if (e.target === lb) closeLightbox(); });
+    document.getElementById('snap-lb-close').onclick = closeLightbox;
+    document.getElementById('snap-lb-prev').onclick  = function() { lbNavigate(-1); };
+    document.getElementById('snap-lb-next').onclick  = function() { lbNavigate(1); };
+
+    document.addEventListener('keydown', function(e) {
+      var lb = TGE.el('snap-lightbox');
+      if (!lb || lb.style.display === 'none') return;
+      if (e.key === 'Escape')     closeLightbox();
+      if (e.key === 'ArrowLeft')  lbNavigate(-1);
+      if (e.key === 'ArrowRight') lbNavigate(1);
+    });
+  }
+
+  var lbGallery = [], lbIndex = 0;
+
+  function openLightbox(images, startIndex) {
+    lbGallery = images;
+    lbIndex   = startIndex || 0;
+    var lb = TGE.el('snap-lightbox');
+    if (!lb) return;
+    lb.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    lbShow();
+  }
+
+  function closeLightbox() {
+    var lb = TGE.el('snap-lightbox');
+    if (lb) lb.style.display = 'none';
+    document.body.style.overflow = '';
+    lbGallery = []; lbIndex = 0;
+  }
+
+  function lbNavigate(dir) {
+    lbIndex = (lbIndex + dir + lbGallery.length) % lbGallery.length;
+    lbShow();
+  }
+
+  function lbShow() {
+    var item    = lbGallery[lbIndex];
+    var img     = TGE.el('snap-lb-img');
+    var caption = TGE.el('snap-lb-caption');
+    var counter = TGE.el('snap-lb-counter');
+    if (img)     img.src             = item.url;
+    if (caption) caption.textContent = item.label || '';
+    if (counter) counter.textContent = (lbIndex + 1) + ' of ' +
+  
   function injectHistoryPanel() {
     var existing = document.getElementById('snap-history-panel');
     if (existing) existing.remove();
@@ -370,6 +434,8 @@ function closeExportMenu() {
     TGE.on('snap-run-btn',     'click', runSnapshot);
     TGE.on('snap-refresh-btn', 'click', resetSnapshot);
     TGE.on('snap-fleet-input', 'keydown', function(e) { if (e.key === 'Enter') runSnapshot(); });
+    TGE._lbOpen    = function(idx) { openLightbox(TGE._lbGallery || [], idx); };
+    TGE._lbGallery = [];
 
 if (TGE.wireOutputPill) {
       TGE.wireOutputPill('snap', snapshotExportItems());
@@ -610,6 +676,7 @@ if (TGE.wireOutputPill) {
       }
 
       if (state.devices.camera) {
+        ensureCameraCardVisible();
         promises.push(
           TGE.api('GET', '/api/tn360/v1/events?pruning=B2B&types=camera&vehicle_ids=' + vehicle.id)
             .then(function(r) { if (r.ok) processCameraEvents(r.data, vehicle.id); })
@@ -721,6 +788,15 @@ if (TGE.wireOutputPill) {
     setText('snap-driver-state',   cu.licenceState || '—');
   }
 
+function ensureCameraCardVisible() {
+    var card = TGE.el('snap-camera-card');
+    if (card) card.style.display = '';
+    var alignBtn = TGE.el('snap-align-btn');
+    if (alignBtn) alignBtn.onclick = openAlignPanel;
+    var histBtn = TGE.el('snap-history-btn');
+    if (histBtn) histBtn.onclick = openHistoryPanel;
+  }
+  
   function processCameraDeviceStats(d) {
     var attrs = (d.deviceStats && d.deviceStats.attrs) || {};
 
@@ -825,8 +901,7 @@ if (TGE.wireOutputPill) {
     state.cameraSlots = activeSlots;
     state.cameraCapturedAt = latest.timeAt;
 
-    TGE.show('snap-camera-card');
-    var alignBtn = TGE.el('snap-align-btn');
+   var alignBtn = TGE.el('snap-align-btn');
     if (alignBtn) alignBtn.onclick = openAlignPanel;
     var histBtn = TGE.el('snap-history-btn');
     if (histBtn) histBtn.onclick = openHistoryPanel;
@@ -835,20 +910,30 @@ if (TGE.wireOutputPill) {
     var grid = TGE.el('snap-camera-grid');
     if (grid) {
       grid.style.gridTemplateColumns = 'repeat(' + slots + ',minmax(0,1fr))';
-      grid.innerHTML = buildCameraGrid(mediaFiles, activeSlots);
+      // Build gallery for lightbox
+      var gallery = activeSlots.map(function(slot) {
+        var file = findCameraFile(mediaFiles, slot);
+        return { url: file && file.mediaFile ? '/api/image-proxy?url=' + encodeURIComponent(file.mediaFile) : '', label: slot.label };
+      }).filter(function(g) { return !!g.url; });
+      TGE._lbGallery = gallery;
+      TGE._lbOpen = function(idx) { openLightbox(TGE._lbGallery, idx); };
+      grid.innerHTML = buildCameraGrid(mediaFiles, activeSlots, gallery, 0);
     }
     var camTime = TGE.el('snap-cam-time');
     if (camTime) camTime.textContent = 'Snapshot captured: ' + formatTs(latest.timeAt);
   }
 
-  function buildCameraGrid(mediaFiles, activeSlots) {
-    return activeSlots.map(function(slot) {
-      var file = findCameraFile(mediaFiles, slot);
+  function buildCameraGrid(mediaFiles, activeSlots, galleryImages, galleryOffset) {
+    return activeSlots.map(function(slot, i) {
+      var file     = findCameraFile(mediaFiles, slot);
       var hasImage = file && file.mediaFile;
+      var proxyUrl = hasImage ? '/api/image-proxy?url=' + encodeURIComponent(file.mediaFile) : '';
+      var galleryIdx = (galleryOffset || 0) + i;
       return '<div>' +
-        '<div style="aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;">' +
+        '<div style="aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;cursor:' + (hasImage?'zoom-in':'default') + ';" ' +
+          (hasImage ? 'onclick="TGE._lbOpen(' + galleryIdx + ')"' : '') + '>' +
           (hasImage
-            ? '<img src="/api/image-proxy?url=' + encodeURIComponent(file.mediaFile) + '" style="width:100%;height:100%;object-fit:cover;" alt="' + slot.label + '" onerror="this.parentElement.innerHTML=\'<span style=&quot;font-size:11px;color:var(--muted);&quot;>Unavailable</span>\'" />'
+            ? '<img src="' + proxyUrl + '" style="width:100%;height:100%;object-fit:cover;" alt="' + slot.label + '" onerror="this.parentElement.innerHTML=\'<span style=&quot;font-size:11px;color:var(--muted);&quot;>Unavailable</span>\'" />'
             : '<span style="font-size:11px;color:var(--muted);">No image</span>') +
         '</div>' +
         '<div style="padding-top:5px;font-size:11px;font-weight:600;color:var(--ink-2);">' + slot.label + '</div>' +
@@ -858,19 +943,21 @@ if (TGE.wireOutputPill) {
   }
 
   // Build camera grid from fresh-URL attachments (history/alignment after)
-  function buildCameraGridFromAttachments(attachments, activeSlots) {
-    // attachments: array of { position, url }
+  function buildCameraGridFromAttachments(attachments, activeSlots, galleryImages, galleryOffset) {
     var bySlotId = {};
     attachments.forEach(function(att) {
       var slotId = POSITION_MAP[String(att.position || '').toUpperCase()];
       if (slotId) bySlotId[slotId] = att.url;
     });
-    return activeSlots.map(function(slot) {
+    return activeSlots.map(function(slot, i) {
       var url = bySlotId[slot.id];
+      var proxyUrl = url ? '/api/image-proxy?url=' + encodeURIComponent(url) : '';
+      var galleryIdx = (galleryOffset || 0) + i;
       return '<div>' +
-        '<div style="aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;">' +
+        '<div style="aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;cursor:' + (url?'zoom-in':'default') + ';" ' +
+          (url ? 'onclick="TGE._lbOpen(' + galleryIdx + ')"' : '') + '>' +
           (url
-            ? '<img src="/api/image-proxy?url=' + encodeURIComponent(url) + '" style="width:100%;height:100%;object-fit:cover;" alt="' + slot.label + '" onerror="this.parentElement.innerHTML=\'<span style=&quot;font-size:11px;color:var(--muted);&quot;>Unavailable</span>\'" />'
+            ? '<img src="' + proxyUrl + '" style="width:100%;height:100%;object-fit:cover;" alt="' + slot.label + '" onerror="this.parentElement.innerHTML=\'<span style=&quot;font-size:11px;color:var(--muted);&quot;>Unavailable</span>\'" />'
             : '<span style="font-size:11px;color:var(--muted);">No image</span>') +
         '</div>' +
         '<div style="padding-top:5px;font-size:11px;font-weight:600;color:var(--ink-2);">' + slot.label + '</div>' +
