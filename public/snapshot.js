@@ -405,8 +405,13 @@ function injectLightbox() {
     var counter = TGE.el('snap-lb-counter');
     if (img)     img.src             = item.url;
     if (caption) caption.textContent = item.label || '';
-    if (counter) counter.textContent = (lbIndex + 1) + ' of ' +
-  
+    if (counter) counter.textContent = (lbIndex + 1) + ' of ' + lbGallery.length;
+    var prev = TGE.el('snap-lb-prev');
+    var next = TGE.el('snap-lb-next');
+    if (prev) prev.style.display = lbGallery.length > 1 ? '' : 'none';
+    if (next) next.style.display = lbGallery.length > 1 ? '' : 'none';
+  }
+
   function injectHistoryPanel() {
     var existing = document.getElementById('snap-history-panel');
     if (existing) existing.remove();
