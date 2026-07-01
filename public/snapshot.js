@@ -312,7 +312,7 @@ function closeExportMenu() {
       '<div style="padding:14px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">',
         '<div>',
           '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:rgba(212,240,38,0.7);">Camera Alignment Test</div>',
-          '<div style="font-size:15px;font-weight:700;color:#fff;" id="snap-align-title">Fleet —</div>',
+         '<div style="font-size:15px;font-weight:700;color:rgba(212,240,38,0.9);" id="snap-hist-title">Fleet — Snapshot History</div>',
         '</div>',
         '<button id="snap-align-close" style="border:none;background:rgba(255,255,255,0.1);border-radius:6px;color:#fff;font-size:16px;cursor:pointer;width:30px;height:30px;">✕</button>',
       '</div>',
@@ -1344,12 +1344,138 @@ setText('snap-align-status', '❌ ' + e.message);
       '<div id="snap-hist-results"></div>',
     ].join('');
 
- // History — pending Teletrac API direction
-    // No API call made — show holding message
+ var vehicleId = vehicle.id;
+
+    // Step 1 — fetch events from D1
+    var histRes = await TGE.api('GET', '/api/camera-history/vehicle/' + vehicleId + '?limit=200');
+    if (!histRes.ok) {
+      var resEl = TGE.el('snap-hist-results');
+      if (resEl) resEl.innerHTML = '<div style="text-align:center;color:var(--danger);padding:40px;font-size:13px;">Failed to load history.</div>';
+      historyState.loading = false;
+      return;
+    }
+
+    var events = (histRes.data && histRes.data.events) || [];
+
+    // Filter to last 14 days
+    var cutoff = Date.now() - (14 * 24 * 60 * 60 * 1000);
+    events = events.filter(function(ev) {
+      return new Date(ev.capturedAt).getTime() >= cutoff;
+    });
+
     var prog = TGE.el('snap-hist-prog');
-    if (prog) prog.style.display = 'none';
+    var progText = TGE.el('snap-hist-prog-text');
+    var progFill = TGE.el('snap-hist-prog-fill');
     var resEl = TGE.el('snap-hist-results');
-    if (resEl) resEl.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px;">Camera history coming soon.</div>';
+
+    if (!events.length) {
+      if (prog) prog.style.display = 'none';
+      if (resEl) resEl.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px;">No camera history found for the last 14 days.</div>';
+      historyState.loading = false;
+      return;
+    }
+
+    // Update progress
+    if (progText) progText.textContent = 'Loading ' + events.length + ' snapshot events...';
+    if (progFill) progFill.style.width = '10%';
+
+    // Build global lightbox gallery for history
+    var histGallery = [];
+
+    // Step 2 — process events in batches, fetch fresh URLs, render progressively
+    var BATCH = 10;
+    var rendered = 0;
+
+    for (var b = 0; b < events.length; b += BATCH) {
+      if (!historyState.loading) break;
+
+      var batch = events.slice(b, b + BATCH);
+
+      // Collect all attachment IDs for this batch
+      var allAtts = [];
+      batch.forEach(function(ev) {
+        (ev.attachments || []).forEach(function(att) {
+          if (att.attachmentStatus === 'AVAILABLE') {
+            allAtts.push({
+              attachmentId: att.attachmentId,
+              position:     att.cameraPosition,
+              timeAt:       att.timeAt,
+              eventId:      ev.eventId,
+            });
+          }
+        });
+      });
+
+      // Fetch fresh URLs for this batch
+      var freshUrls = {};
+      if (allAtts.length) {
+        try {
+          var urlRes = await TGE.api('POST', '/api/historical-snapshots/attachments', {
+            attachments: allAtts.map(function(a) {
+              return { attachmentId: a.attachmentId, position: a.position, timeAt: a.timeAt };
+            }),
+          });
+          if (urlRes.ok && urlRes.data && Array.isArray(urlRes.data.attachments)) {
+            urlRes.data.attachments.forEach(function(r, i) {
+              if (r.url) freshUrls[allAtts[i].attachmentId] = r.url;
+            });
+          }
+        } catch(e) {
+          TGE.diagnostics.log({ category:'History', level:'Warn', module:'snapshot', action:'loadHistory', message: e.message });
+        }
+      }
+
+      // Render this batch
+      var batchHtml = batch.map(function(ev) {
+        var attachments = (ev.attachments || []).map(function(att) {
+          return {
+            position: att.cameraPosition,
+            url:      freshUrls[att.attachmentId] || '',
+          };
+        });
+
+        // Build gallery entries for lightbox
+        var eventGalleryStart = histGallery.length;
+        attachments.forEach(function(att) {
+          if (att.url) {
+            var slotId = POSITION_MAP[String(att.position || '').toUpperCase()];
+            var slot   = CAMERA_SLOTS.find(function(s) { return s.id === slotId; });
+            histGallery.push({
+              url:   '/api/image-proxy?url=' + encodeURIComponent(att.url),
+              label: (slot ? slot.label : att.position) + ' · ' + formatTs(ev.capturedAt),
+            });
+          }
+        });
+
+        var gridHtml = buildCameraGridFromAttachments(attachments, activeSlots, histGallery, eventGalleryStart);
+
+        return '<div class="snap-hist-group">' +
+          '<div class="snap-hist-time" style="color:var(--ink);font-size:12px;font-weight:700;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--line);">' +
+            formatTs(ev.capturedAt) +
+          '</div>' +
+          '<div class="snap-hist-grid" style="grid-template-columns:repeat(' + slots + ',minmax(0,1fr));gap:8px;">' +
+            gridHtml +
+          '</div>' +
+        '</div>';
+      }).join('');
+
+      // Append to results
+      if (resEl) resEl.innerHTML += batchHtml;
+
+      // Update gallery reference so lightbox has all images
+      TGE._lbGallery = histGallery;
+      TGE._lbOpen    = function(idx) { openLightbox(TGE._lbGallery, idx); };
+
+      rendered += batch.length;
+      var pct = Math.round((rendered / events.length) * 100);
+      if (progFill) progFill.style.width = pct + '%';
+      if (progText)  progText.textContent = rendered + ' of ' + events.length + ' events loaded...';
+
+      // Small pause to keep UI responsive
+      await new Promise(function(r) { setTimeout(r, 50); });
+    }
+
+    if (prog) prog.style.display = 'none';
     historyState.loading = false;
   }
 
