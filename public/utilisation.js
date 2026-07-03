@@ -5,14 +5,6 @@
 (function () {
   'use strict';
 
-  var FILTER_DEFS = [
-    { key: 'buName', label: 'BU Name' },
-    { key: 'equipType', label: 'Equip Type' },
-    { key: 'operatorState', label: 'Operator State' },
-    { key: 'operatorName', label: 'Operator Name' },
-    { key: 'legacyNumber', label: 'Legacy Number' },
-  ];
-
   var state = {
     kmCutoff: 0,
     cutoffMode: 'all',
@@ -22,6 +14,9 @@
     endDate: null,
     fleet: [],
     loaded: false,
+    fieldDefs: [],
+    filters: {},
+    openFilterCol: null,
   };
 
   function render() {
@@ -80,7 +75,7 @@
             '<div><span>EXM</span><strong>0</strong></div>',
             '<div><span>No Telematics</span><strong>0</strong></div>',
           '</div>',
-          renderFilterCards(),
+          '<div class="ud-filter-cards-wrap" id="ud-filter-cards"></div>',
         '</div>',
         '<div class="ud-status-row">',
           '<button type="button">Filters: All selected</button>',
@@ -113,22 +108,137 @@
     wireEvents();
     updateDateSummary();
     renderTable();
-    loadFleet();
+    initData();
   }
 
   function renderFilterCards() {
-    return FILTER_DEFS.map(function (f) {
+    var wrap = TGE.el('ud-filter-cards');
+    if (!wrap) return;
+    wrap.innerHTML = state.fieldDefs.map(function (def) {
+      var col = def.source_column;
+      var label = def.filter_label || def.display_label || col;
+      var selected = state.filters[col] || new Set();
+      var isOpen = state.openFilterCol === col;
+      var values = getAvailableValues(col);
+
+      var summary = 'All';
+      if (selected.size === 1) summary = selected.values().next().value;
+      else if (selected.size > 1) summary = selected.size + ' selected';
+
+      var listHtml = values.length
+        ? values.map(function (v) {
+            var checked = selected.has(v.value);
+            return '<label class="ud-filter-opt">' +
+              '<input type="checkbox" class="ud-filter-check" data-col="' + esc(col) + '" value="' + esc(v.value) + '"' + (checked ? ' checked' : '') + ' />' +
+              '<span>' + esc(v.value) + '</span>' +
+              '<em>' + v.count + '</em>' +
+            '</label>';
+          }).join('')
+        : '<div class="ud-filter-pop-empty">No values available</div>';
+
       return [
         '<div class="ud-card ud-filter-card">',
-          '<div class="ud-card-label">' + esc(f.label) + '</div>',
-          '<button class="ud-filter-btn" type="button" disabled><span>All</span><span>▾</span></button>',
-          '<div class="ud-filter-empty">No values</div>',
+          '<div class="ud-card-label">' + esc(label) + '</div>',
+          '<button class="ud-filter-btn" type="button" data-col="' + esc(col) + '"><span>' + esc(summary) + '</span><span>▾</span></button>',
+          '<div class="ud-filter-pop' + (isOpen ? ' open' : '') + '" data-col="' + esc(col) + '">',
+            '<div class="ud-filter-pop-list">' + listHtml + '</div>',
+            (selected.size ? '<button type="button" class="ud-filter-clear" data-col="' + esc(col) + '">Clear</button>' : ''),
+          '</div>',
         '</div>'
       ].join('');
     }).join('');
   }
 
+  // Returns distinct values (+ counts) for `col`, computed against the fleet
+  // as filtered by every *other* active filter. This is what makes filters
+  // cascade — a column's own popover never restricts itself, but does
+  // reflect every other currently-selected filter.
+  function getAvailableValues(col) {
+    var counts = {};
+    state.fleet.forEach(function (asset) {
+      if (!matchesFilters(asset, col)) return;
+      var val = asset.fields && asset.fields[col] != null ? String(asset.fields[col]).trim() : '';
+      if (!val) return;
+      counts[val] = (counts[val] || 0) + 1;
+    });
+    return Object.keys(counts).sort().map(function (v) {
+      return { value: v, count: counts[v] };
+    });
+  }
+
+  // True if `asset` matches every active filter except `excludeCol` (pass
+  // null to check against all active filters with no exclusion).
+  function matchesFilters(asset, excludeCol) {
+    return Object.keys(state.filters).every(function (col) {
+      if (col === excludeCol) return true;
+      var selected = state.filters[col];
+      if (!selected || !selected.size) return true;
+      var val = asset.fields && asset.fields[col] != null ? String(asset.fields[col]).trim() : '';
+      return selected.has(val);
+    });
+  }
+
+  function getVisibleFleet() {
+    return state.fleet.filter(function (a) { return matchesFilters(a, null); });
+  }
+
+  function updateFilterStatusText() {
+    var btn = document.querySelector('.ud-status-row button');
+    if (!btn) return;
+    var activeCols = Object.keys(state.filters).filter(function (c) {
+      return state.filters[c] && state.filters[c].size;
+    });
+    btn.textContent = activeCols.length
+      ? 'Filters: ' + activeCols.length + ' active'
+      : 'Filters: All selected';
+  }
+
+  // Delegated events for filter popovers — attached once (guarded), since
+  // renderFilterCards() rebuilds the cards' innerHTML on every change and
+  // per-element listeners would be lost (and re-attaching per render would
+  // stack up duplicates across repeated view navigation).
+  function wireFilterDelegation() {
+    if (window.__udFilterDelegated) return;
+    window.__udFilterDelegated = true;
+
+    document.addEventListener('click', function (e) {
+      var btn = e.target.closest && e.target.closest('.ud-filter-btn');
+      if (btn) {
+        var col = btn.dataset.col;
+        state.openFilterCol = (state.openFilterCol === col) ? null : col;
+        renderFilterCards();
+        return;
+      }
+      var clearBtn = e.target.closest && e.target.closest('.ud-filter-clear');
+      if (clearBtn) {
+        delete state.filters[clearBtn.dataset.col];
+        renderTable();
+        updateTotalPill();
+        renderFilterCards();
+        return;
+      }
+      if (state.openFilterCol && !(e.target.closest && e.target.closest('.ud-filter-card'))) {
+        state.openFilterCol = null;
+        renderFilterCards();
+      }
+    });
+
+    document.addEventListener('change', function (e) {
+      if (!e.target.classList || !e.target.classList.contains('ud-filter-check')) return;
+      var col = e.target.dataset.col;
+      var val = e.target.value;
+      if (!state.filters[col]) state.filters[col] = new Set();
+      if (e.target.checked) state.filters[col].add(val);
+      else state.filters[col].delete(val);
+      if (!state.filters[col].size) delete state.filters[col];
+      renderTable();
+      updateTotalPill();
+      renderFilterCards();
+    });
+  }
+
   function wireEvents() {
+    wireFilterDelegation();
     TGE.on('ud-km-slider', 'input', function (e) {
       state.kmCutoff = parseInt(e.target.value, 10) || 0;
       TGE.setText('ud-km-value', state.kmCutoff);
@@ -203,18 +313,20 @@
     sub += '</tr>';
     head.innerHTML = top + sub;
 
+    updateFilterStatusText();
+    var visible = getVisibleFleet();
     var colspan = 1 + (dates.length * 3) + 2;
 
     if (!state.loaded) {
       body.innerHTML = '<tr><td colspan="' + colspan + '" class="ud-empty-row">Loading fleet data…</td></tr>';
       return;
     }
-    if (!state.fleet.length) {
-      body.innerHTML = '<tr><td colspan="' + colspan + '" class="ud-empty-row">No assets found.</td></tr>';
+    if (!visible.length) {
+      body.innerHTML = '<tr><td colspan="' + colspan + '" class="ud-empty-row">No assets match the selected filters.</td></tr>';
       return;
     }
 
-    body.innerHTML = state.fleet.map(function (asset) {
+    body.innerHTML = visible.map(function (asset) {
       var row = '<tr' + (asset.status === 'inactive' ? ' class="ud-row-inactive"' : '') + '>';
       row += '<td class="ud-pin-left">' + esc(asset.legacyNumber) + '</td>';
       dates.forEach(function () {
@@ -229,6 +341,20 @@
     }).join('');
   }
 
+  async function loadFieldDefs() {
+    var result = await TGE.api('GET', '/api/utilisation/static-fields');
+    var all = (result.ok && result.data && Array.isArray(result.data.fields)) ? result.data.fields : [];
+    state.fieldDefs = all
+      .filter(function (f) { return f.use_as_filter === 1 && f.enabled !== 0; })
+      .sort(function (a, b) { return (a.display_order || 0) - (b.display_order || 0); });
+  }
+
+  async function initData() {
+    await loadFieldDefs();
+    renderFilterCards();
+    await loadFleet();
+  }
+
   async function loadFleet() {
     var path = '/api/utilisation/static-fleet' + (state.history ? '?history=1' : '');
     var result = await TGE.api('GET', path);
@@ -236,12 +362,13 @@
     state.loaded = true;
     updateTotalPill();
     renderTable();
+    renderFilterCards();
   }
 
   function updateTotalPill() {
-    var total = state.fleet.length;
-    var active = state.fleet.filter(function (a) { return a.status === 'active'; }).length;
-    TGE.setText('ud-total', 'Assets: ' + active + ' / ' + total);
+    var visible = getVisibleFleet();
+    var visibleActive = visible.filter(function (a) { return a.status === 'active'; }).length;
+    TGE.setText('ud-total', 'Assets: ' + visibleActive + ' / ' + state.fleet.length);
   }
 
   function ensureSidebarLegend() {
@@ -359,8 +486,20 @@
       '.ud-metric{display:grid;grid-template-columns:1fr 1fr;gap:5px 9px;min-width:145px;}',
       '.ud-metric span{display:block;font-size:9px;text-transform:uppercase;color:#6b778c;font-weight:700;}',
       '.ud-metric strong{font-size:17px;color:#143200;}',
-      '.ud-filter-btn{display:flex;align-items:center;justify-content:space-between;width:100%;opacity:.7;}',
+      '.ud-filter-card{position:relative;}',
+      '.ud-filter-btn{display:flex;align-items:center;justify-content:space-between;width:100%;cursor:pointer;text-align:left;}',
+      '.ud-filter-btn span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px;}',
       '.ud-filter-empty{font-size:10px;color:#8a9e92;}',
+      '.ud-filter-pop{display:none;position:absolute;top:100%;left:0;margin-top:4px;width:220px;background:#fff;border:1px solid #dce8e0;border-radius:10px;box-shadow:0 12px 28px rgba(0,0,0,.18);z-index:80;overflow:hidden;}',
+      '.ud-filter-pop.open{display:block;}',
+      '.ud-filter-pop-list{max-height:260px;overflow-y:auto;padding:6px;}',
+      '.ud-filter-opt{display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:6px;font-size:12px;color:#172b4d;cursor:pointer;}',
+      '.ud-filter-opt:hover{background:#f4f5f7;}',
+      '.ud-filter-opt input{flex-shrink:0;}',
+      '.ud-filter-opt span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.ud-filter-opt em{font-style:normal;font-size:10px;color:#8a9e92;flex-shrink:0;}',
+      '.ud-filter-pop-empty{padding:14px;font-size:11px;color:#8a9e92;text-align:center;}',
+      '.ud-filter-clear{width:100%;height:30px;border:none;border-top:1px solid #e6e8ec;background:#f4f5f7;color:#143200;font-size:11px;font-weight:700;cursor:pointer;}',
       '.ud-status-row{height:28px;display:flex;align-items:center;gap:12px;padding:0 2px;background:#f4f5f7;flex-shrink:0;}',
       '.ud-status-row button{height:24px;border:1px solid #dce8e0;background:#fff;color:#143200;border-radius:6px;font-size:11px;padding:0 9px;}',
       '.ud-status-row span{font-size:11px;color:#5a6e62;font-weight:600;}',
