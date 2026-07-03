@@ -1,7 +1,7 @@
 # TGE Asset Snapshot — AI Handover Document
 
-Version: 3.0
-Last Updated: 28 June 2026
+Version: 4.0
+Last Updated: 3 July 2026
 Purpose: Full handover document for AI continuity. If starting a new chat, read this entire document before writing any code or making any suggestions. This document reflects the exact current state of the project including completed work, pending items, architectural decisions, and working rules.
 
 ---
@@ -21,7 +21,7 @@ TGE Asset Snapshot is an internal fleet telematics web application built for Tea
 ## Tech Stack
 
 - **Frontend:** Vanilla JS, one file per page module, no framework
-- **Backend:** Cloudflare Worker (ES modules, `src/index.js`)
+- **Backend:** Cloudflare Worker (ES modules, `src/index.js` + feature route files, e.g. `src/utilisation-static-fleet.js`)
 - **Database:** Cloudflare D1 (SQLite)
 - **Build:** Bun + Wrangler
 - **PDF Generation:** pdf-lib (npm dependency, bundled by Wrangler/esbuild)
@@ -52,18 +52,21 @@ public/
   tge-output.js         — Output Platform (COMPLETE)
   tge-pdf.js            — PDF Platform (COMPLETE)
   tge-progress.js       — Progress Platform (COMPLETE)
-  utilisation.js        — Fleet Utilisation module (STUB — not yet functional)
+  utilisation.js        — Fleet Utilisation module (UI SHELL — not yet wired to live backend; backend itself is functional, see below)
   vpm.js                — VPM module
 
 src/
-  index.js              — Cloudflare Worker (all backend routes, PDF generation, email, auth)
+  index.js                        — Cloudflare Worker (all backend routes, PDF generation, email, auth)
+  utilisation-static-fleet.js     — Fleet Utilisation static fleet handlers (import, field mappings, exclusions) — LIVE, working with real data
+  schema.sql                      — ⚠️ Known to have drifted from live D1 in the past (see Known Issues). Verify against live schema before trusting it, don't assume it's current.
 
 Root:
-  AI-HANDOVER.md        — This document
-  CURRENT-SPRINT.md     — Current sprint status and task list
-  PROJECT-ARCHITECTURE.md — Architecture, rules, module status
-  package.json          — Dependencies (pdf-lib, wrangler)
-  wrangler.jsonc        — Cloudflare Worker config
+  AI-HANDOVER.md         — This document
+  CURRENT-SPRINT.md      — Current sprint status and task list
+  PROJECT-ARCHITECTURE.md — Architecture, rules, module status, Vendor Platform design
+  fleet-utilisation-spec.md — Full Fleet Utilisation decision log and open items (separate working doc, not in repo — kept alongside these three)
+  package.json           — Dependencies (pdf-lib, wrangler)
+  wrangler.jsonc          — Cloudflare Worker config
   .gitignore
 ```
 
@@ -121,7 +124,7 @@ Status: LOCKED. QA passed. No architectural changes permitted. Bug fixes only.
 
 **Known deferred items:**
 - Solar battery status thresholds — waiting on vendor data from Teletrac
-- Control Table platform integration (battery status, last reported)
+- Control Table platform integration (battery status, last reported) — superseded by Vendor Platform design, see below
 - Fleet Mode call rate limiting
 
 ---
@@ -207,6 +210,62 @@ Status: LOCKED. QA passed. No architectural changes permitted. Bug fixes only.
 
 ---
 
+## Fleet Utilisation — Static Fleet Backend (LIVE, real data)
+
+Status changed materially this version — no longer a stub. Full working
+design and decision log lives in `fleet-utilisation-spec.md` (a separate
+working document, kept alongside these three but not part of the original
+handover set — read it for the complete reasoning trail).
+
+**What's live and tested, with the real 11,588-row weekly fleet file:**
+- `POST /api/utilisation/static-fleet/import` (in `src/utilisation-static-fleet.js`) — parses rows, self-seeds `utilisation_static_field_defs` for any newly-seen column, upserts into `utilisation_static_fleet`, soft-deletes assets missing from the current file (`status='inactive'`), auto-reactivates assets that reappear. Auth via `X-Import-Key` header (`UTILISATION_IMPORT_KEY` Worker secret) — not session-based, since this is called by Power Automate, not a logged-in user.
+- **Chunked import support** — large files are split client-side into sequential POSTs sharing one `batchStartedAt` timestamp; only the request with `isFinalChunk: true` runs the soft-delete comparison (`last_seen_at < batchStartedAt`). Built because a single 11,588-row request risks exceeding the Workers CPU time limit. All D1 writes batched via `env.DB.batch()`, chunked at 100 statements per batch call.
+- `GET /api/utilisation/static-fleet` — returns active assets by default, `?history=1` includes inactive. Applies exclusion rules (`utilisation_static_exclusion_rules`, published only) at query time.
+- `GET`/`PUT /api/utilisation/static-fields` — field mapping control (identity column, save_to_db, use_as_filter). 13 of 34 real columns currently configured.
+- Exclusion rules — draft → preview → publish flow, per-column exact/contains matching. **Resolved design decision:** filtering happens only at query time, never at import — import always saves every row, so a bad exclusion rule can never destructively lose data.
+- `utilisation_import_runs` / `utilisation_import_errors` — real audit trail, not placeholders.
+
+**Not yet built:**
+- `utilisation_static_fleet_history` — weekly snapshot table (design agreed, not created)
+- Any admin UI — everything above is currently only reachable via direct API calls (was tested via curl and browser DevTools console, not a built screen)
+- Dashboard grid wiring — `public/utilisation.js` still shows an empty 0/0 UI shell despite live data existing
+- Vendor KM ingestion (`utilisation_vendors`, `utilisation_daily_km`) — design only
+
+**Known gotcha found during this work:** no `permissions` rows existed for
+the `utilisation` feature for any role, including superuser — this
+codebase gives superuser no implicit bypass, every feature/action needs an
+explicit row. Had to be seeded manually before testing could proceed.
+
+---
+
+## Vendor Platform (Design Locked — Not Yet Built)
+
+Major architecture decision this version, spanning the whole app, not just
+Fleet Utilisation. Full detail in `PROJECT-ARCHITECTURE.md` → Vendor
+Platform. Read that section before touching Control Tables, API Registry,
+or anything vendor-related.
+
+**Core idea:** Vendor = anyone or anything supplying data, internal or
+external (Teletrac Navman, TGE's own internal static fleet export, future
+KM-data vendors). Every vendor gets an identical template — Overview, File
+Spec, API Registry (Definitions + Flows), Hardware Types, Control Tables,
+Import History — always present whether used or not. New capabilities are
+added to the shared template, never to one vendor individually.
+
+**Supersedes** the "Control Table Platform" section that existed in prior
+versions of this document — that work is not abandoned, it's absorbed into
+this bigger design. CT-001 and existing `registry_apis` rows (API-1, etc.)
+will migrate into a "Teletrac Navman" vendor record. Safe to do at any
+point — Control Tables are confirmed not wired into any live module code
+yet (Asset Track still uses hardcoded `getBatteryStatus()` /
+`isOysterTracker()`).
+
+**Do not confuse with Fleet Utilisation:** Utilisation is a vendor-agnostic
+top-level module. A vendor's File Spec feeds data into it; Utilisation is
+not nested inside any vendor.
+
+---
+
 ## Shared Infrastructure
 
 ### Email Composer (email-composer.js)
@@ -241,25 +300,32 @@ Attachment handling: Create file in OneDrive → Get file content → attach to 
 ## Admin Module
 
 Tabs: Users, Access History, API Reference, Mailer Data, Control Tables.
+**Planned change:** API Reference and Control Tables will be removed as
+standalone tabs and replaced with a new "Vendor" tab (card grid, click into
+a vendor for nested API Registry / Control Tables / etc.) — see Vendor
+Platform section above. Not yet built.
 
-### Control Tables Tab
+### Control Tables Tab (current, pre-Vendor Platform)
 One control table exists — CT-001 "Teletrac Navman - Oyster Battery Status". Evaluates battery voltage → outputs Fresh/Good/Low/Critical for DMT Oyster Cellular 3 hardware.
 
-**IMPORTANT:** Control Table platform is partially built in Admin UI but NOT yet wired into asset-track.js. Asset Track still uses hardcoded getBatteryStatus() and isOysterTracker() functions. Integration is planned next.
+**IMPORTANT:** Control Table platform is partially built in Admin UI but NOT yet wired into asset-track.js. Asset Track still uses hardcoded getBatteryStatus() and isOysterTracker() functions. Integration is now planned as part of the Vendor Platform build, not as a standalone Control Table effort.
 
-**Planned Control Table Platform (full design agreed, not yet built):**
-Three new D1 tables: vendors, hardware_types, and expanded control_table_rules. Modules call TGE.rules.isIncluded() and TGE.rules.evaluate(). All business logic lives in D1 tables — change a table, app changes without redeploy.
-
-Table types planned: Battery Status, Last Reported, Hardware Exclusion.
-
-Current workarounds to be replaced:
-- Battery status: hardcoded getBatteryStatus() / isOysterTracker() in asset-track.js
-- Last-seen status: hardcoded THRESHOLD_REPORTING_DAYS=7, THRESHOLD_REVIEW_DAYS=14
-- Hardware inclusion/exclusion: hardcoded isAssetTrackerDevice() in asset-track.js
+### API Reference Tab (current, pre-Vendor Platform)
+Table `registry_apis` — API-1 ("User Login Confirmation") is a real
+working example of the Definitions concept: each field has `name`, `label`,
+`use` (match/filter-rule/display), `path`, `example`, `hardCheck`. Will gain
+a `mapsTo` property under the Vendor Platform design, to support merging
+multiple vendors' differently-named fields into one standardized module
+output field.
 
 ---
 
 ## D1 Database Schema (Key Tables)
+
+⚠️ **Caution:** `src/schema.sql` in the repo has previously drifted from
+the actual deployed D1 schema (discovered this version — see Known Issues).
+Do not trust schema.sql blindly; verify against live D1 with a direct query
+if a table's exact columns matter for a change.
 
 ```sql
 users (id, username, first_name, last_name, email, password_hash, role_id, login_type, active)
@@ -271,26 +337,44 @@ mailer_signatures (id, label, html, active, created_at, updated_at)
 control_tables (id, name, feature, output_field, evaluate_field, active, created_at)
 control_table_hardware (id, table_id, hardware_type_id, active)
 control_table_rules (id, table_id, hardware_type_id, min_value, max_value, output, colour, active)
--- Planned: vendors, hardware_types
+registry_apis (api_id, label, group_name, method, url, notes, vendor, sample_response, fields, active, updated_at)
+
+-- Fleet Utilisation (live):
+utilisation_static_fleet (id, legacy_number, status, field_values, source_file, first_seen_at, last_seen_at, created_at, updated_at)
+utilisation_static_field_defs (id, source_column, display_label, save_to_db, is_identity, use_as_filter, filter_label, filter_type, display_order, enabled, created_at, updated_at)
+utilisation_static_exclusion_rules (id, status, source_column, match_type, match_value, reason, created_by, created_at, published_at)
+utilisation_import_runs (id, feed, source_file, status, row_count, inserted_count, updated_count, failed_count, error_summary, started_at, finished_at)
+utilisation_import_errors (id, import_run_id, feed, legacy_number, reason, raw_row, created_at, resolved)
+
+-- Fleet Utilisation (planned, not built):
+utilisation_static_fleet_history, utilisation_vendors, utilisation_daily_km, utilisation_non_functional, utilisation_workshop
+
+-- Vendor Platform (planned, not built):
+vendors, hardware_types (+ vendor_id added to control_tables / control_table_hardware / registry_apis)
 ```
 
 ---
 
 ## Backlog (Prioritised)
 
-1. **SD Card Health — Snapshot** — review data flow, ensure reliable independent population
-2. **Control Table Platform** — vendors table, hardware_types table, Admin UI, wire into asset-track.js
-3. **Solar battery status** — waiting on Teletrac vendor data
-4. **Asset Track Fleet Mode rate limiting** — max runs per user per time period, server-side
-5. **Snapshot XLSX export** — SheetJS implementation (deferred, not a blocker)
-6. **History rewrite** — 7-day window, events endpoint direct, expiry check, no storage (pending Teletrac direction)
-7. **Fleet Utilisation module** (utilisation.js — stub, design not started)
-8. **Roles Platform expansion** — rate limiting, batch limits, expanded permissions
-9. **Camera Requests module**
-10. **Workflow Engine**
-11. **API Management**
-12. **Production Hardening**
-13. **Diagnostics Platform enhancements**
+1. **Fleet Utilisation — dashboard grid wiring** — wire utilisation.js to live `GET /api/utilisation/static-fleet`
+2. **Fleet Utilisation — history table** — build `utilisation_static_fleet_history`, wire snapshot writes into import handler
+3. **Vendor Platform — schema build** — vendors, hardware_types, mapsTo, Flows
+4. **Vendor Platform — Admin UI** — Vendor tab, card grid, nested detail view
+5. **Vendor Platform — migration** — CT-001 + API-1 into a real Teletrac Navman vendor record
+6. **SD Card Health — Snapshot** — review data flow, ensure reliable independent population
+7. **Fleet Utilisation — vendor KM ingestion** — utilisation_vendors, utilisation_daily_km, first real vendor onboarded
+8. **Fleet Utilisation — Analysis tab** — mockup agreed (north-star KPIs, sparklines, heatmap, trend, downtime breakdown, BU movements, cost vs. utilisation), not built
+9. **Solar battery status** — waiting on Teletrac vendor data
+10. **Asset Track Fleet Mode rate limiting** — max runs per user per time period, server-side
+11. **Snapshot XLSX export** — SheetJS implementation (deferred, not a blocker)
+12. **History rewrite** — 7-day window, events endpoint direct, expiry check, no storage (pending Teletrac direction)
+13. **Roles Platform expansion** — rate limiting, batch limits, expanded permissions
+14. **Camera Requests module**
+15. **Workflow Engine**
+16. **API Management**
+17. **Production Hardening**
+18. **Diagnostics Platform enhancements**
 
 ---
 
@@ -301,16 +385,21 @@ control_table_rules (id, table_id, hardware_type_id, min_value, max_value, outpu
 - Lower-case file names, CamelCase methods
 - Platform namespaces only (TGE.output, TGE.progress, TGE.pdf, TGE.diagnostics)
 - No legacy code — remove during refactoring
-- No hardcoded business logic in module JS files — use Control Tables
+- No hardcoded business logic in module JS files — use Control Tables (migrating into Vendor Platform)
 - All API calls through TGE.api() — provides automatic diagnostics logging
 - All errors must log to TGE.diagnostics — no silent failures
-- src/index.js is growing large — watch for need to split into route handlers
+- src/index.js is growing large — feature-specific route handlers should live in their own file (established pattern: `src/utilisation-static-fleet.js`), imported into index.js rather than added inline
 
 ### Change Rules
 - One change at a time — discuss, confirm, code
 - Changes supplied as: File / Find / Replace / Reason
 - No redesign of stable/locked code
 - Wait for confirmation after every change before continuing
+- Full-document rewrites (not sequential find/replace) are acceptable for non-runtime documentation, where reviewing one coherent version is clearer than a stack of interdependent patches — code changes still follow strict File/Find/Replace/Reason
+- Where an agreed design drifts from an earlier decision, the drift must be demonstrably better than the current state before being adopted — not change for its own sake
+
+### Vendor Platform Rule
+- Every vendor gets an identical template of tabs/tables, always present whether currently used or not. A new capability is added to the shared template, never to one vendor individually. No vendor is ever a special case.
 
 ### Process Rules
 - QA checklist before locking any module
@@ -333,14 +422,16 @@ control_table_rules (id, table_id, hardware_type_id, min_value, max_value, outpu
 ## Known Issues / Technical Debt
 
 1. `camera.js` — unclear if legacy or active. Needs investigation.
-2. `utilisation.js` — non-functional stub in main branch.
-3. `src/index.js` — growing large. Future: split into route handler modules.
+2. `utilisation.js` (frontend) — UI shell not yet wired to the now-live backend. Backend itself is functional and tested — this is a frontend gap, not a backend one.
+3. `src/index.js` — growing large. Pattern for splitting into route handler modules now established (`src/utilisation-static-fleet.js`) — extend this pattern for future features rather than adding more inline handlers.
 4. Signed image URL system — built but unused. Remove when confirmed not needed.
-5. Asset Track hardcoded business logic — will be replaced by Control Table platform.
+5. Asset Track hardcoded business logic — will be replaced by Vendor Platform (supersedes the standalone Control Table platform plan).
 6. Power Automate OneDrive temp files — accumulate, no cleanup mechanism.
 7. Snapshot XLSX — falls back to CSV currently.
 8. Snapshot history — stub holding message, pending Teletrac API direction.
 9. Snapshot alignment test — simulation mode only, pending Teletrac camera trigger endpoint.
+10. **`src/schema.sql` drift** — discovered this version: the repo's schema.sql for Fleet Utilisation tables did not match the actual deployed D1 schema (someone had migrated D1 directly at some point without updating the file). Caused a live import bug (`import_run_id` column referenced in code but not present in real D1). Treat schema.sql with caution until reconciled — verify against live D1 directly for anything schema-sensitive.
+11. **Permissions seeding** — no default `permissions` rows exist for new features until manually inserted, for any role including superuser. Discovered via Fleet Utilisation testing. No automated seeding process exists yet for provisioning a new feature's permissions.
 
 ---
 
