@@ -233,6 +233,17 @@ async function handleImportStaticFleet(request, env) {
 
   const startedAt = nowIso();
 
+  // Multi-chunk support: when a large file is split into several requests,
+  // every chunk shares the same batchStartedAt (set by the client, once,
+  // before sending the first chunk) and only the last chunk sets
+  // isFinalChunk = true. Soft-delete only runs on the final chunk, and is
+  // based on last_seen_at vs. batchStartedAt — so it correctly accounts for
+  // assets touched by *any* chunk in the batch, not just this one request.
+  // Single-shot (non-chunked) imports don't need to pass either field —
+  // they default to "this is the only, and therefore final, chunk".
+  const batchStartedAt = String(body.batchStartedAt || "").trim() || startedAt;
+  const isFinalChunk = body.isFinalChunk !== false;
+
   try {
     // ── Field defs: self-seed any newly-seen source columns ──────────────────
     const defs = await getFieldDefs(env);
@@ -321,22 +332,22 @@ async function handleImportStaticFleet(request, env) {
       }
     }
 
-    // ── Phase C: soft-delete anything active in DB but missing from this file ──
-    let deactivatedCount = 0;
-    for (const [legacyNumber, status] of existingByLegacy.entries()) {
-      if (status === "active" && !seenLegacyNumbers.has(legacyNumber)) {
-        writeStatements.push(
-          env.DB.prepare(
-            `UPDATE utilisation_static_fleet SET status = 'inactive', updated_at = ? WHERE legacy_number = ?`
-          ).bind(nowIso(), legacyNumber)
-        );
-        deactivatedCount++;
-      }
-    }
-
-    // ── Execute everything in batches ──────────────────────────────────────────
+    // ── Execute this chunk's writes before evaluating soft-delete ──────────────
     await runBatched(env, writeStatements);
     await runBatched(env, errorStatements);
+
+    // ── Phase C: soft-delete — final chunk only ─────────────────────────────────
+    // Anything currently active whose last_seen_at is still older than this
+    // batch's start time was not touched by any chunk in this batch, so it's
+    // genuinely missing from the current fleet file.
+    let deactivatedCount = 0;
+    if (isFinalChunk) {
+      const deactivateResult = await env.DB.prepare(
+        `UPDATE utilisation_static_fleet SET status = 'inactive', updated_at = ?
+         WHERE status = 'active' AND last_seen_at < ?`
+      ).bind(nowIso(), batchStartedAt).run();
+      deactivatedCount = (deactivateResult.meta && deactivateResult.meta.changes) || 0;
+    }
 
     // ── Log the run ─────────────────────────────────────────────────────────────
     const finishedAt = nowIso();
@@ -363,6 +374,8 @@ async function handleImportStaticFleet(request, env) {
     return jsonResponse({
       ok: true,
       importRunId,
+      isFinalChunk,
+      batchStartedAt,
       inserted: insertedCount,
       updated: updatedCount,
       reactivated: reactivatedCount,
