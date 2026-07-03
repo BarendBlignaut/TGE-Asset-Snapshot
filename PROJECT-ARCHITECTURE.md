@@ -1,7 +1,7 @@
 # TGE Asset Snapshot — Project Architecture
 
-Version: 3.0
-Last Updated: 28 June 2026
+Version: 4.0
+Last Updated: 3 July 2026
 
 ---
 
@@ -21,7 +21,7 @@ Cloudflare Build (bun install + npx wrangler deploy)
 Cloudflare Worker (src/index.js)
     ├── Serves static assets from /public/
     ├── Proxies TN360 API calls (keeps API keys server-side)
-    ├── D1 database access (users, permissions, sessions, signatures, control tables)
+    ├── D1 database access (users, permissions, sessions, signatures, control tables, utilisation)
     ├── PDF generation (pdf-lib, bundled by Wrangler/esbuild)
     └── Email via Power Automate webhook
 ```
@@ -187,28 +187,161 @@ A4 landscape tabular report with summary cards, data rows, zebra striping.
 
 ---
 
-## Control Table Platform (Partially Built — Full Build Pending)
+## Vendor Platform (Design Locked — Not Yet Built)
 
-### Current State
-CT-001 "Teletrac Navman - Oyster Battery Status" exists and is active. Admin UI for control tables is built. NOT yet wired into module code.
+Supersedes the vendor-scoping originally described under "Control Table
+Platform" in earlier versions of this document. Control Tables and API
+Registry become nested inside this system rather than standalone Admin
+concepts — see Migration Note below.
 
-### Planned Architecture
+### Core principle
+
+Vendor = anyone or anything supplying us data, internal or external
+(Teletrac Navman, a fuel-card provider, TGE's own internal static fleet
+export). Every vendor gets an identical template of sub-structures, always
+present regardless of whether that vendor currently uses them. Adding a new
+capability means adding it to the shared template — every existing and
+future vendor gets it automatically, populated or not. No vendor is ever a
+special case with tabs or tables others don't have. This is what makes a
+new vendor go live with zero code changes, once the platform itself is
+built: create the vendor, define its hardware and API mappings, and every
+module that queries by feature tag picks it up automatically.
+
+Standard vendor template (all vendors, always present):
+- **Overview** — name, active/inactive, notes
+- **File Spec** — flat-file ingestion mapping (only populated where relevant,
+  e.g. weekly Excel/CSV feeds; empty for vendors integrated purely via API)
+- **API Registry** → **Definitions** + **Flows** (see below)
+- **Hardware Types** — with module-applicability tagging (see below)
+- **Control Tables** — hardware evaluation rules (battery status, thresholds,
+  hardware exclusion, etc.)
+- **Import History** — every run, success/partial/failed, error drill-down
+
+### Data model (planned, not yet built)
+
 ```sql
-vendors (id, name, active)
-hardware_types (id, vendor_id, name, code, active)
+vendors (id, name, active, notes, created_at, updated_at)
+hardware_types (id, vendor_id, name, code, applies_to_feature, active)
+-- control_tables, control_table_hardware, control_table_rules gain vendor_id
+-- registry_apis.vendor (currently free text) becomes vendor_id (FK)
 ```
 
-**Runtime module calls (planned):**
-```javascript
-TGE.rules.isIncluded('asset-track', device)
-TGE.rules.evaluate('battery-status', device, value)
-TGE.rules.getStatus('last-reported', device, timestamp)
-```
+`hardware_types.applies_to_feature` declares which module(s) recognize this
+hardware (e.g. AT301 / Flex Solar Tracker → `asset-track`; Hermes Camera →
+`snapshot`). Modules query hardware by feature tag at runtime — they never
+hardcode vendor or hardware names. This is the mechanism that replaces the
+hardcoded `isOysterTracker()` / `isAssetTrackerDevice()` functions currently
+in asset-track.js (see Known Issues / Technical Debt).
 
-**Current workarounds to be replaced:**
-- `getBatteryStatus()` / `isOysterTracker()` hardcoded in asset-track.js
-- `THRESHOLD_REPORTING_DAYS = 7`, `THRESHOLD_REVIEW_DAYS = 14` hardcoded
-- `isAssetTrackerDevice()` hardcoded in asset-track.js
+### API Definitions — standardized output mapping
+
+Existing `registry_apis.fields` entries (see API-1, "User Login
+Confirmation," for a real working example) gain one new property: `mapsTo`
+— the standardized module-level output field this source field feeds. Two
+different vendors' wildly different field names (e.g. `battVolt` vs.
+`voltage_reading`) both declare `mapsTo: "battery_voltage"`, so their data
+lands in the same output column regardless of vendor-specific naming. This
+requires a defined output schema per module (e.g. Asset Track expects:
+`battery_voltage`, `last_seen`, `device_status`) that every vendor's
+relevant API Definition must map into.
+
+### Flows — module-tagged, multi-vendor merge
+
+A Flow chains one or more API Definitions into a named, reusable outcome
+(e.g. "Asset Track — Teletrac," "Asset Track — PowerFleet"). Flows are
+tagged with which module consumes them. At runtime, a module looks up every
+Flow tagged for it, runs all of them, and merges results **by asset**
+(legacy number) into one output table — an asset with data from only one
+vendor's flow simply shows that vendor's data; no error, no special case.
+
+### Two-phase ingestion pattern (applies to any vendor)
+
+- **Phase 1 (file-based):** vendor sends data via email/Power Automate push
+  to a Worker endpoint, governed by that vendor's File Spec. No outbound API
+  call involved — File Spec sits outside the Definitions/Flows framework.
+- **Phase 2 (API-based):** vendor migrates to direct API polling. Gets a
+  real API Definition + Flow, replacing the file-push mechanism. Everything
+  downstream of "we have parsed rows of identifying data" is agnostic to
+  which phase supplied it — no rebuild required when a vendor migrates from
+  Phase 1 to Phase 2.
+
+### Admin UI (not yet built)
+
+New "Vendor" tab in Admin, card grid matching the existing Role Management
+pattern (see admin.js — cards with an action button, dashed "+ Create New"
+card). One card per vendor. Click a card → detail view with the nested tab
+set described above.
+
+**Migration note:** once built, the existing standalone "Control Tables"
+and "API Reference" Admin tabs are removed — their content and data move
+inside each vendor's detail view. CT-001 (Oyster Battery Status) and
+existing registry_apis rows (API-1, etc.) get backfilled with a vendor_id
+pointing to a new "Teletrac Navman" vendor row. Safe to do at any point —
+per Module Status below, Control Tables are not yet wired into any live
+module code, so this is a data/UI restructure, not a live-breaking change.
+
+**Fleet Utilisation relationship — do not conflate:** Fleet Utilisation is
+a vendor-agnostic, top-level module in its own right (own nav entry, own
+dashboard, own D1 tables), not owned by or nested under any vendor. A
+vendor's File Spec (e.g. "TGE Static Fleet," or a future KM-data vendor)
+feeds data into Utilisation's tables — it does not live inside Utilisation,
+and Utilisation does not live inside any one vendor.
+
+---
+
+## Fleet Utilisation Module
+
+Full working design and decision log lives in a dedicated document:
+`fleet-utilisation-spec.md`. Summary of current state as of this version:
+
+**Live and working:**
+- Static fleet import — `POST /api/utilisation/static-fleet/import`. Tested
+  end-to-end with the real 11,588-row weekly fleet file, via a chunked
+  multi-request pattern (large files split client-side; only the final
+  chunk triggers soft-delete evaluation, based on `last_seen_at` vs. a
+  shared batch start time — see fleet-utilisation-spec.md §1f).
+- Soft-delete / reactivate — assets missing from the current weekly file
+  are marked `inactive` (not hard-deleted); assets that reappear are
+  auto-reactivated. Static fleet file is always treated as source of truth.
+- Field mappings — `GET`/`PUT /api/utilisation/static-fields`. Self-seeding:
+  any new source column encountered on import is auto-inserted as a
+  disabled stub, no manual seed step required. 13 of the 34 real columns
+  currently flagged as save/filter (Legacy Number as identity + filter,
+  BU/BU Name/Equip Type/Operator State/Operator Name as filters, plus
+  Description/Rego/Make/Model/Home Location/Equipment Status/Ownership
+  saved for future use).
+- Exclusion rules — `utilisation_static_exclusion_rules`, draft → preview →
+  publish. Per-column, exact/contains match. Resolved this session:
+  filtering happens **only at query time** (`GET
+  /api/utilisation/static-fleet`), never at import — import always saves
+  every row unconditionally, so a bad rule can never destructively drop
+  data that would otherwise require a week's wait to recover.
+- Import audit trail — `utilisation_import_runs` / `utilisation_import_errors`
+  now write real counts (inserted/updated/failed) and error rows, not
+  placeholder values.
+
+**Not yet built:**
+- `utilisation_static_fleet_history` — weekly snapshot table for the
+  History toggle and BU/location movement tracking. Design agreed, table
+  not yet created.
+- Any admin UI — field mappings, exclusion rules, and import history are
+  currently only editable via direct API calls (browser console / curl).
+  Per the Vendor Platform design above, this will live as "TGE Static
+  Fleet"'s File Spec + Import History tabs once the Vendor Admin UI exists.
+- Dashboard grid wiring — `public/utilisation.js` does not yet call
+  `GET /api/utilisation/static-fleet`; the dashboard UI shell still shows
+  an empty 0/0 state despite live data existing in D1.
+- Vendor KM ingestion (`utilisation_vendors`, `utilisation_daily_km`) —
+  design only, no vendors onboarded yet. Layouts vary per vendor; no fixed
+  set of "types" assumed.
+- Analysis tab — mockup only (north-star KPIs, sparkline grid, utilisation
+  rate, outliers, BU × equip type heatmap, trend, downtime breakdown, BU
+  movements, cost vs. utilisation pending a cost-per-asset data source).
+- Permissions for the `utilisation` feature (`view`,
+  `manage-field-mappings`, `manage-static-sanitising`) were not seeded for
+  any role by default — including superuser, which gets no implicit bypass
+  in this codebase. Had to be inserted manually before any testing could
+  proceed. Worth adding to whatever process provisions a new environment.
 
 ---
 
@@ -220,9 +353,9 @@ TGE.rules.getStatus('last-reported', device, timestamp)
 /api/admin/roles/*              — role CRUD
 /api/admin/permissions/*        — permissions CRUD
 /api/admin/activity             — activity log
-/api/admin/control-tables/*     — control table CRUD
+/api/admin/control-tables/*     — control table CRUD (migrating into Vendor Platform)
 /api/admin/camera-history/*     — camera history admin
-/api/registry/*                 — API registry CRUD
+/api/registry/*                 — API registry CRUD (migrating into Vendor Platform)
 /api/tn360/*                    — TN360 API proxy
 /api/mailer/signatures/*        — email signature CRUD
 /api/send-email                 — Power Automate webhook forwarding
@@ -235,7 +368,13 @@ TGE.rules.getStatus('last-reported', device, timestamp)
 /api/public-image               — Public image proxy (built, currently unused)
 /api/historical-snapshots       — Historical snapshot events (requires TN360_SNAPSHOT_KEY)
 /api/historical-snapshots/attachments — Attachment content fetch
-/api/utilisation/*              — Utilisation module routes
+/api/utilisation/static-fleet/import      — Static fleet import (X-Import-Key auth, not session)
+/api/utilisation/static-fleet             — Get current fleet (session auth)
+/api/utilisation/static-fields            — GET/PUT field mappings
+/api/utilisation/static-exclusions        — Get exclusion rules (draft/published)
+/api/utilisation/static-exclusions/draft  — PUT draft rules
+/api/utilisation/static-exclusions/preview — POST preview exclusion impact
+/api/utilisation/static-exclusions/publish — POST publish draft → live
 /api/ping                       — Health check
 ```
 
@@ -268,6 +407,8 @@ TGE.limit('feature', 'action')  // number (null → Infinity)
 
 `limit_value` must be on the correct action row. For Asset Track user input limit: `user-mode` action, NOT `run` action.
 
+**Important:** superuser does not get an implicit bypass — every feature/action combination must have an explicit row in `permissions` for every role, including superuser. Discovered during Fleet Utilisation testing (July 2026) when superuser received "Access denied" on `utilisation.*` routes with no rows seeded. Any new feature must seed its permissions for all relevant roles as part of setup, not assume superuser is exempt.
+
 ---
 
 ## Module Status
@@ -280,10 +421,11 @@ TGE.limit('feature', 'action')  // number (null → Infinity)
 | Camera Snapshots | 🔄 Active | Email composer wired |
 | Camera Count | 🔄 Active | Email composer wired |
 | Merge Mail | 🔄 Active | Shared composer, CSV/XLSX import |
-| Admin | 🔄 Active | Users, History, API Ref, Mailer Data, Control Tables |
+| Admin | 🔄 Active | Users, History, API Ref, Mailer Data, Control Tables — API Ref/Control Tables migrating into Vendor Platform |
 | camera.js | ❓ Unknown | Verify: legacy dead code or active utility? |
-| Fleet Utilisation | ⏳ Stub | Non-functional, design not started |
+| Fleet Utilisation | 🔄 Active — backend live | Static fleet import, soft-delete/reactivate, field mappings, exclusion rules, import audit trail all working with real data (11,588 assets). Dashboard grid wiring, history table, admin UI, vendor KM ingestion, and Analysis tab not yet built. No longer a stub — see Fleet Utilisation Module section above |
 | VPM | ❓ Unknown | Verify current state |
+| Vendor Platform | ⏳ Design locked, not built | See Vendor Platform section above |
 | Camera Requests | ⏳ Pending | Not started |
 | Workflow Engine | ⏳ Pending | Not started |
 | API Management | ⏳ Pending | Not started |
@@ -297,13 +439,20 @@ TGE.limit('feature', 'action')  // number (null → Infinity)
 - Platform namespaces only (TGE.output, TGE.progress, TGE.pdf, TGE.diagnostics)
 - No duplicate code — if two modules need the same thing, it's a platform service
 - No legacy code — remove during refactoring
-- No hardcoded business logic in module files — use Control Tables
+- No hardcoded business logic in module files — use Control Tables (migrating into Vendor Platform)
 - All errors must log to TGE.diagnostics — no silent failures
 
 **Change Process:**
 - One change at a time with confirmation before next
 - Always specify: File / Find / Replace / Reason
 - No code until approach is agreed
+- Full-document rewrites (rather than sequential find/replace) are acceptable for non-runtime documentation files where a coherent single review is clearer than a stack of interdependent patches — code changes still follow strict File/Find/Replace/Reason
+- Where the agreed design drifts from an earlier decision, the drift must be a clear improvement over the current state before it's adopted — not change for its own sake
+
+**Vendor Platform Rule (new):**
+- Every vendor gets the identical template of tabs/tables, always, whether
+  currently used or not. A new capability is added to the shared template,
+  never to one vendor individually. No vendor is ever a special case.
 
 **Module Lifecycle:**
 ```
@@ -327,13 +476,14 @@ Design → Development → Platform Integration → Diagnostics → QA → LOCK 
 2. ✅ Asset Track v1.0
 3. ✅ Snapshot v1.0
 4. ⏳ SD Card Health review (Snapshot)
-5. ⏳ Control Table Platform (vendors, hardware types, rule-driven module logic)
-6. ⏳ Fleet Utilisation
-7. ⏳ Roles Platform expansion (rate limiting, batch limits)
-8. ⏳ Camera Requests
-9. ⏳ Workflow Engine
-10. ⏳ API Management
-11. ⏳ Production Hardening
-12. ⏳ Diagnostics Platform enhancements
+5. 🔄 Fleet Utilisation — static fleet backend live; dashboard wiring, history table, admin UI, vendor KM ingestion, Analysis tab remaining
+6. ⏳ Vendor Platform — vendors + hardware_types schema, mapsTo field mapping, Flows, Admin UI, Control Table/API Registry migration
+7. ⏳ Control Table Platform full wiring — rebuilt on top of Vendor Platform rather than standalone (supersedes prior roadmap item)
+8. ⏳ Roles Platform expansion (rate limiting, batch limits)
+9. ⏳ Camera Requests
+10. ⏳ Workflow Engine
+11. ⏳ API Management
+12. ⏳ Production Hardening
+13. ⏳ Diagnostics Platform enhancements
 
 Asset Track v1.0 is and remains the reference implementation for all future module development.
