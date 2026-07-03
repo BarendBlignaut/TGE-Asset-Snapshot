@@ -20,6 +20,8 @@
     history: false,
     startDate: null,
     endDate: null,
+    fleet: [],
+    loaded: false,
   };
 
   function render() {
@@ -44,7 +46,7 @@
             '</div>',
           '</div>',
           '<div class="ud-header-actions">',
-            '<span class="ud-total">Assets: 0 / 0</span>',
+            '<span class="ud-total" id="ud-total">Assets: 0 / 0</span>',
             '<button class="ud-btn" id="ud-history-btn" type="button">History: Off</button>',
             '<button class="ud-btn ud-disabled" type="button" disabled>Export</button>',
             '<span class="ud-refresh">Last Update:</span>',
@@ -111,6 +113,7 @@
     wireEvents();
     updateDateSummary();
     renderTable();
+    loadFleet();
   }
 
   function renderFilterCards() {
@@ -138,6 +141,7 @@
       var btn = TGE.el('ud-history-btn');
       btn.textContent = 'History: ' + (state.history ? 'On' : 'Off');
       btn.classList.toggle('ud-primary', state.history);
+      loadFleet();
     });
     TGE.on('ud-date-btn', 'click', function () {
       TGE.el('ud-date-modal').classList.add('open');
@@ -198,7 +202,46 @@
     });
     sub += '</tr>';
     head.innerHTML = top + sub;
-    body.innerHTML = '';
+
+    var colspan = 1 + (dates.length * 3) + 2;
+
+    if (!state.loaded) {
+      body.innerHTML = '<tr><td colspan="' + colspan + '" class="ud-empty-row">Loading fleet data…</td></tr>';
+      return;
+    }
+    if (!state.fleet.length) {
+      body.innerHTML = '<tr><td colspan="' + colspan + '" class="ud-empty-row">No assets found.</td></tr>';
+      return;
+    }
+
+    body.innerHTML = state.fleet.map(function (asset) {
+      var row = '<tr' + (asset.status === 'inactive' ? ' class="ud-row-inactive"' : '') + '>';
+      row += '<td class="ud-pin-left">' + esc(asset.legacyNumber) + '</td>';
+      dates.forEach(function () {
+        row += '<td class="ud-dcol">-</td>';
+        row += '<td class="ud-dcol">-</td>';
+        row += '<td class="ud-dcol">-</td>';
+      });
+      row += '<td class="ud-pin-total">-</td>';
+      row += '<td class="ud-pin-avg">-</td>';
+      row += '</tr>';
+      return row;
+    }).join('');
+  }
+
+  async function loadFleet() {
+    var path = '/api/utilisation/static-fleet' + (state.history ? '?history=1' : '');
+    var result = await TGE.api('GET', path);
+    state.fleet = (result.ok && result.data && Array.isArray(result.data.fleet)) ? result.data.fleet : [];
+    state.loaded = true;
+    updateTotalPill();
+    renderTable();
+  }
+
+  function updateTotalPill() {
+    var total = state.fleet.length;
+    var active = state.fleet.filter(function (a) { return a.status === 'active'; }).length;
+    TGE.setText('ud-total', 'Assets: ' + active + ' / ' + total);
   }
 
   function ensureSidebarLegend() {
@@ -356,7 +399,9 @@
       '.ud-side-swatch em{font-style:normal;}',
       '.ud-side-swatch i{width:10px;height:10px;border-radius:2px;display:inline-block;}',
       '.ud-red{background:#ff5630;}',
-      '.ud-hist{background:#f3d7d7;border:1px solid #bf2600;}'
+      '.ud-hist{background:#f3d7d7;border:1px solid #bf2600;}',
+      '.ud-empty-row{color:#6b778c;font-style:italic;height:60px;font-size:12px!important;}',
+      '.ud-row-inactive{filter:grayscale(1);opacity:.55;}'
     ].join('');
 
     document.head.appendChild(style);
