@@ -391,10 +391,15 @@
     TGE.el('api-panel-message').textContent = '';
     TGE.el('api-parse-status').textContent  = '';
 
-    // Render group, method and vendor dropdowns
-    TGE.el('api-group-wrap').innerHTML  = customSelect('api-group',  API_GROUPS,  v.group  || 'other',  'Select group...');
-    TGE.el('api-method-wrap').innerHTML = customSelect('api-method', API_METHODS, v.method || 'GET',     'Select method...');
-    TGE.el('api-vendor-wrap').innerHTML = customSelect('api-vendor', VENDORS,     v.vendor || '',        'Select vendor...');
+// Render group, method and vendor dropdowns
+TGE.el('api-group-wrap').innerHTML  = customSelect('api-group', API_GROUPS, v.group || 'other', 'Select group...');
+TGE.el('api-method-wrap').innerHTML = customSelect('api-method', API_METHODS, v.method || 'GET', 'Select method...');
+
+if (componentOptions.mode === 'vendor') {
+  TGE.el('api-vendor-wrap').innerHTML = '';
+} else {
+  TGE.el('api-vendor-wrap').innerHTML = customSelect('api-vendor', VENDORS, v.vendor || '', 'Select vendor...');
+}
 
     // Hide tag form
     TGE.el('tag-inline-form').style.display = 'none';
