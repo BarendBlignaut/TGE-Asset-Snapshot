@@ -134,9 +134,94 @@
     render: render,
     load: loadHardware,
 
-    discover: function () {
-      alert('Hardware discovery will be added next.');
-    },
+   discover: async function () {
+  if (document.getElementById('hardware-discovery-overlay')) return;
+
+  var overlay = document.createElement('div');
+  overlay.id = 'hardware-discovery-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:900;display:flex;justify-content:flex-end;';
+
+  overlay.innerHTML = [
+    '<div style="width:620px;max-width:96vw;height:100%;background:var(--surface);overflow:auto;padding:24px;box-shadow:-8px 0 24px rgba(0,0,0,.15);">',
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">',
+        '<div>',
+          '<div class="card-kicker">Hardware Library</div>',
+          '<div class="card-title">Discover Hardware</div>',
+          '<p style="font-size:12px;color:var(--muted);margin:4px 0 0;">Select a vendor API used to confirm hardware definitions.</p>',
+        '</div>',
+        '<button id="hardware-discovery-close" class="btn">✕</button>',
+      '</div>',
+
+      '<label>Hardware Confirmation API</label>',
+      '<select id="hardware-discovery-api" class="input" style="width:100%;height:38px;margin-bottom:12px;">',
+        '<option value="">Loading APIs...</option>',
+      '</select>',
+
+      '<div id="hardware-discovery-message" style="font-size:12px;color:var(--muted);margin-bottom:14px;"></div>',
+
+      '<div style="display:flex;justify-content:flex-end;gap:8px;">',
+        '<button id="hardware-discovery-cancel" class="btn">Cancel</button>',
+        '<button id="hardware-discovery-execute" class="btn btn-primary" disabled>Execute</button>',
+      '</div>',
+    '</div>'
+  ].join('');
+
+  document.body.appendChild(overlay);
+
+  function closeDiscovery() {
+    var p = document.getElementById('hardware-discovery-overlay');
+    if (p) p.remove();
+  }
+
+  document.getElementById('hardware-discovery-close').onclick = closeDiscovery;
+  document.getElementById('hardware-discovery-cancel').onclick = closeDiscovery;
+
+  var select = document.getElementById('hardware-discovery-api');
+  var msg = document.getElementById('hardware-discovery-message');
+  var executeBtn = document.getElementById('hardware-discovery-execute');
+
+  try {
+    var res = await TGE.api('GET', '/api/vendors/' + state.vendorId + '/apis?all=1');
+
+    if (!res.ok) {
+      select.innerHTML = '<option value="">Could not load APIs</option>';
+      msg.textContent = (res.data && res.data.error) || 'Could not load vendor APIs.';
+      msg.style.color = 'var(--danger)';
+      return;
+    }
+
+    var apis = res.data.apis || [];
+    var deviceApis = apis.filter(function (a) {
+      return a.active !== false && (a.group === 'device' || /hardware|device/i.test(a.label || ''));
+    });
+
+    if (!deviceApis.length) {
+      select.innerHTML = '<option value="">No suitable device APIs found</option>';
+      msg.textContent = 'Create or activate a device API in API Registry first.';
+      return;
+    }
+
+    select.innerHTML = '<option value="">Select API...</option>' + deviceApis.map(function (a) {
+      return '<option value="' + escapeHtml(a.apiId) + '">' + escapeHtml(a.apiId + ' — ' + a.label) + '</option>';
+    }).join('');
+
+    msg.textContent = deviceApis.length + ' API option(s) available.';
+    executeBtn.disabled = true;
+
+    select.onchange = function () {
+      executeBtn.disabled = !select.value;
+    };
+
+    executeBtn.onclick = function () {
+      alert('Execute will be implemented in Build 006.');
+    };
+
+  } catch (e) {
+    select.innerHTML = '<option value="">Error loading APIs</option>';
+    msg.textContent = e.message || 'Error loading APIs.';
+    msg.style.color = 'var(--danger)';
+  }
+},
 
 addManual: function () {
 
