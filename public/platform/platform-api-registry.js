@@ -320,11 +320,36 @@
     });
   }
 
-  // ── Load / render APIs ────────────────────────────────────────────────────────
+// ── Load / render APIs ────────────────────────────────────────────────────────
+  // DB rows arrive snake_case with fields as a JSON string; the module works
+  // in camelCase with fields as an array. Normalise once, here, on load —
+  // every render, edit, toggle and save downstream relies on this shape.
+  function normalizeApiRow(row) {
+    if (!row) return row;
+    if (row.apiId && Array.isArray(row.fields)) return row; // already normalised
+    var fields = row.fields;
+    if (typeof fields === 'string') {
+      try { fields = JSON.parse(fields); } catch (e) { fields = []; }
+    }
+    return {
+      apiId:          row.apiId          || row.api_id          || '',
+      label:          row.label          || '',
+      group:          row.group          || row.group_name      || '',
+      method:         row.method         || 'GET',
+      url:            row.url            || '',
+      notes:          row.notes          || '',
+      vendor:         row.vendor         != null ? row.vendor    : null,
+      vendorId:       row.vendorId       != null ? row.vendorId  : (row.vendor_id != null ? row.vendor_id : null),
+      sampleResponse: row.sampleResponse || row.sample_response || '',
+      fields:         Array.isArray(fields) ? fields : [],
+      active:         row.active === true || row.active === 1,
+    };
+  }
+
   async function loadApis() {
    var result = await api('GET', componentOptions.endpoint);
     state.apis = (result.ok && result.data.apis && result.data.apis.length)
-      ? result.data.apis : [];
+      ? result.data.apis.map(normalizeApiRow) : [];
     renderApiList();
   }
 
