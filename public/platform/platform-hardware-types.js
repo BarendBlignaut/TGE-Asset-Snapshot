@@ -164,17 +164,17 @@ addManual: function () {
 
       '</div>',
 
-      '<label>Display Name</label>',
-      '<input id="hw-display-name" class="input" style="width:100%;margin-bottom:12px;">',
+     '<label>Hardware Label</label>',
+'<input id="hw-display-name" class="input" placeholder="e.g. HERMES / AdvGateway" style="width:100%;margin-bottom:12px;">',
 
-      '<label>Hardware Key</label>',
-      '<input id="hw-key" class="input" style="width:100%;margin-bottom:12px;">',
+    '<label>Type Code</label>',
+'<input id="hw-type-code" class="input" placeholder="e.g. HERMES, CAMERA, ATRACKER" style="width:100%;margin-bottom:12px;">',
 
-      '<label>Category</label>',
-      '<input id="hw-category" class="input" style="width:100%;margin-bottom:12px;">',
+'<label>Model Name</label>',
+'<input id="hw-model-name" class="input" placeholder="e.g. AdvGateway, MultiIQ, FlexSolar" style="width:100%;margin-bottom:12px;">',
 
-      '<label>Family</label>',
-      '<input id="hw-family" class="input" style="width:100%;margin-bottom:18px;">',
+'<label>Category</label>',
+'<input id="hw-category" class="input" placeholder="e.g. tracker, camera, asset tracker" style="width:100%;margin-bottom:18px;">',
 
       '<div style="display:flex;justify-content:flex-end;gap:8px;">',
 
@@ -197,9 +197,58 @@ addManual: function () {
   document.getElementById('hardware-panel-close').onclick = closePanel;
   document.getElementById('hardware-panel-cancel').onclick = closePanel;
 
-  document.getElementById('hardware-panel-save').onclick = function () {
-    alert('Save will be implemented in Build 004.');
+ document.getElementById('hardware-panel-save').onclick = async function () {
+  var label = document.getElementById('hw-display-name').value.trim();
+  var typeCode = document.getElementById('hw-type-code').value.trim();
+  var modelName = document.getElementById('hw-model-name').value.trim();
+  var category = document.getElementById('hw-category').value.trim();
+
+  if (!label) {
+    alert('Hardware label is required.');
+    return;
+  }
+
+  var keyParts = [];
+
+  if (typeCode) keyParts.push(typeCode.toUpperCase());
+  if (modelName) keyParts.push(modelName.toUpperCase().replace(/\s+/g, '_'));
+
+  var hardwareKey = keyParts.length
+    ? keyParts.join(':')
+    : label.toUpperCase().replace(/\s+/g, '_');
+
+  var payload = {
+    hardwareKey: hardwareKey,
+    hardwareLabel: label,
+    typeCode: typeCode || null,
+    modelName: modelName || null,
+    category: category || null
   };
+
+  var btn = document.getElementById('hardware-panel-save');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  try {
+    var res = await TGE.api('POST', '/api/vendors/' + state.vendorId + '/hardware-types', payload);
+
+    if (!res.ok) {
+      alert((res.data && res.data.error) || 'Save failed.');
+      return;
+    }
+
+    var p = document.getElementById('hardware-panel-overlay');
+    if (p) p.remove();
+
+    await loadHardware();
+
+  } catch (e) {
+    alert(e.message || 'Save failed.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save';
+  }
+};
 
 }
   };
