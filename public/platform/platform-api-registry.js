@@ -1376,7 +1376,7 @@
   method: method,
   url: url,
   notes: notes,
-  vendor: vendor,
+  vendor: null,
   vendorId: componentOptions.vendorId,
   sampleResponse: sample,
   fields: state.tags,
