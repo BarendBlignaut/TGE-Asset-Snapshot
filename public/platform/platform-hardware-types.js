@@ -147,21 +147,15 @@
         '<div>',
           '<div class="card-kicker">Hardware Library</div>',
           '<div class="card-title">Discover Hardware</div>',
-          '<p style="font-size:12px;color:var(--muted);margin:4px 0 0;">Select a vendor API used to confirm hardware definitions.</p>',
-        '</div>',
+                '</div>',
         '<button id="hardware-discovery-close" class="btn">✕</button>',
       '</div>',
-
-      '<label>Hardware Confirmation API</label>',
-      '<select id="hardware-discovery-api" class="input" style="width:100%;height:38px;margin-bottom:12px;">',
-        '<option value="">Loading APIs...</option>',
-      '</select>',
 
       '<div id="hardware-discovery-message" style="font-size:12px;color:var(--muted);margin-bottom:14px;"></div>',
 
       '<div style="display:flex;justify-content:flex-end;gap:8px;">',
         '<button id="hardware-discovery-cancel" class="btn">Cancel</button>',
-        '<button id="hardware-discovery-execute" class="btn btn-primary" disabled>Execute</button>',
+        '<button id="hardware-discovery-execute" class="btn btn-primary" disabled>Run</button>',
       '</div>',
     '</div>'
   ].join('');
@@ -176,49 +170,34 @@
   document.getElementById('hardware-discovery-close').onclick = closeDiscovery;
   document.getElementById('hardware-discovery-cancel').onclick = closeDiscovery;
 
-  var select = document.getElementById('hardware-discovery-api');
-  var msg = document.getElementById('hardware-discovery-message');
+var msg = document.getElementById('hardware-discovery-message');
   var executeBtn = document.getElementById('hardware-discovery-execute');
 
+  // No API selection: discovery references this vendor's API-1 directly.
+  // Once the flow engine exists, the flow supplies the definition instead.
   try {
     var res = await TGE.api('GET', '/api/vendors/' + state.vendorId + '/apis?all=1');
+    var apis = (res.ok && res.data.apis) ? res.data.apis : [];
+    var discoveryApi = apis.find(function (a) {
+      return String(a.api_id || a.apiId || '').toUpperCase() === 'API-1';
+    });
 
-    if (!res.ok) {
-      select.innerHTML = '<option value="">Could not load APIs</option>';
-      msg.textContent = (res.data && res.data.error) || 'Could not load vendor APIs.';
+    if (!discoveryApi) {
+      msg.textContent = 'This vendor has no API-1 defined. Create the hardware discovery API (API-1) in the API Registry tab first.';
       msg.style.color = 'var(--danger)';
       return;
     }
 
-    var apis = res.data.apis || [];
-    var deviceApis = apis.filter(function (a) {
-      return a.active !== false && (a.group === 'device' || /hardware|device/i.test(a.label || ''));
-    });
-
-    if (!deviceApis.length) {
-      select.innerHTML = '<option value="">No suitable device APIs found</option>';
-      msg.textContent = 'Create or activate a device API in API Registry first.';
-      return;
-    }
-
-    select.innerHTML = '<option value="">Select API...</option>' + deviceApis.map(function (a) {
-      return '<option value="' + escapeHtml(a.apiId) + '">' + escapeHtml(a.apiId + ' — ' + a.label) + '</option>';
-    }).join('');
-
-    msg.textContent = deviceApis.length + ' API option(s) available.';
-    executeBtn.disabled = true;
-
-    select.onchange = function () {
-      executeBtn.disabled = !select.value;
-    };
+    msg.textContent = 'Ready — Run executes ' + escapeHtml((discoveryApi.api_id || discoveryApi.apiId) + ' — ' + (discoveryApi.label || '')) + '.';
+    executeBtn.disabled = false;
 
     executeBtn.onclick = function () {
-      alert('Execute will be implemented in Build 006.');
+      msg.textContent = 'Execution lands with the flow engine — API-1 is referenced and ready.';
+      msg.style.color = 'var(--muted)';
     };
 
   } catch (e) {
-    select.innerHTML = '<option value="">Error loading APIs</option>';
-    msg.textContent = e.message || 'Error loading APIs.';
+    msg.textContent = e.message || 'Error checking for the discovery API.';
     msg.style.color = 'var(--danger)';
   }
 },
