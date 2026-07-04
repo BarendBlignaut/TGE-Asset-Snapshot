@@ -272,6 +272,7 @@
 
         '<div style="padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-shrink:0;">',
           '<button class="btn btn-primary" id="api-save-btn" type="button" onclick="TGE.apiSave()">Save API</button>',
+          '<button class="btn" type="button" onclick="TGE.apiOpenImportPanel()">Import API Data</button>',
           '<button class="btn" type="button" onclick="TGE.apiClosePanel()">Cancel</button>',
           '<p id="api-panel-message" style="margin:0;font-size:12px;"></p>',
         '</div>',
