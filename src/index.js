@@ -572,6 +572,69 @@ async function handleVendorHardwareTypeSave(request, env, vendorId) {
   return jsonResponse({ ok: true });
 }
 
+// ── Vendor Flows ──────────────────────────────────────────────────────────────
+
+async function handleGetVendorFlows(request, env, vendorId) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "vendor", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+
+  const flows = await env.DB.prepare("SELECT * FROM flows WHERE vendor_id = ? ORDER BY module_tag, name").bind(vendorId).all();
+  const steps = await env.DB.prepare(
+    "SELECT fs.* FROM flow_steps fs JOIN flows f ON f.id = fs.flow_id WHERE f.vendor_id = ? ORDER BY fs.flow_id, fs.sort_order"
+  ).bind(vendorId).all();
+
+  return jsonResponse({ ok: true, flows: flows.results || [], steps: steps.results || [] });
+}
+
+async function handleSaveVendorFlow(request, env, vendorId) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "vendor", "manage");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+
+  const body      = await safeJson(request);
+  const id        = body.id ? parseInt(body.id, 10) : null;
+  const name      = String(body.name      || "").trim();
+  const moduleTag = String(body.moduleTag || "").trim();
+  const notes     = String(body.notes     || "").trim();
+  const active    = body.active === false ? 0 : 1;
+  const steps     = Array.isArray(body.steps) ? body.steps : [];
+
+  if (!name)      return jsonResponse({ error: "Flow name is required." }, 400);
+  if (!moduleTag) return jsonResponse({ error: "Select which screen this flow feeds." }, 400);
+  if (!steps.length) return jsonResponse({ error: "A flow needs at least one step." }, 400);
+
+  const VALID_STEP_TYPES = ["api_definition", "control_table", "hardware_type"];
+  for (const s of steps) {
+    if (!VALID_STEP_TYPES.includes(String(s.stepType))) return jsonResponse({ error: "Invalid step type: " + s.stepType }, 400);
+    if (!String(s.stepRef || "").trim()) return jsonResponse({ error: "Every step must reference an item." }, 400);
+  }
+
+  const dupe = await env.DB.prepare("SELECT id FROM flows WHERE vendor_id = ? AND name = ? AND id != ?").bind(vendorId, name, id || 0).first();
+  if (dupe) return jsonResponse({ error: "This vendor already has a flow with that name." }, 400);
+
+  let flowId = id;
+  if (flowId) {
+    await env.DB.prepare("UPDATE flows SET name=?, module_tag=?, notes=?, active=?, updated_at=? WHERE id=? AND vendor_id=?")
+      .bind(name, moduleTag, notes || null, active, nowIso(), flowId, vendorId).run();
+    await env.DB.prepare("DELETE FROM flow_steps WHERE flow_id=?").bind(flowId).run();
+  } else {
+    const result = await env.DB.prepare("INSERT INTO flows (vendor_id, name, module_tag, notes, active, created_at, updated_at) VALUES (?,?,?,?,?,?,?)")
+      .bind(vendorId, name, moduleTag, notes || null, active, nowIso(), nowIso()).run();
+    flowId = result.meta.last_row_id;
+  }
+
+  for (let i = 0; i < steps.length; i++) {
+    await env.DB.prepare("INSERT INTO flow_steps (flow_id, sort_order, step_type, step_ref, notes, active, created_at, updated_at) VALUES (?,?,?,?,?,1,?,?)")
+      .bind(flowId, i, String(steps[i].stepType), String(steps[i].stepRef), steps[i].notes ? String(steps[i].notes) : null, nowIso(), nowIso()).run();
+  }
+
+  await logActivity(env, auth.session.user_id, "vendor", id ? "update" : "create", `${id ? "Updated" : "Created"} flow: ${name} (${moduleTag})`, null);
+  return jsonResponse({ ok: true, id: flowId });
+}
+
 // ── Image proxy ───────────────────────────────────────────────────────────────
 async function handleImageProxy(request, env) {
   const auth = await requireSession(request, env);
@@ -1952,6 +2015,14 @@ if (method === "POST" && path.match(/^\/api\/vendors\/\d+\/hardware-types$/)) {
   const vendorId = parseInt(path.split("/")[3], 10);
   return handleVendorHardwareTypeSave(request, env, vendorId);
 }
+
+      // Vendor flows
+      if (method === "GET" && path.match(/^\/api\/vendors\/\d+\/flows$/)) {
+        return handleGetVendorFlows(request, env, parseInt(path.split("/")[3], 10));
+      }
+      if (method === "POST" && path.match(/^\/api\/vendors\/\d+\/flows$/)) {
+        return handleSaveVendorFlow(request, env, parseInt(path.split("/")[3], 10));
+      }
 
       // Historical snapshots
       if (method === "POST" && path === "/api/historical-snapshots")             return handleHistoricalSnapshots(request, env);
