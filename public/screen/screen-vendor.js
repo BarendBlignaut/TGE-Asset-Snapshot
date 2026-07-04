@@ -22,6 +22,7 @@
     { key: 'api-registry',   label: 'API Registry' },
     { key: 'hardware-types', label: 'Hardware Types' },
     { key: 'control-tables', label: 'Control Tables' },
+    { key: 'flows',          label: 'Flows' },
     { key: 'import-history', label: 'Import History' },
   ];
 
@@ -240,11 +241,22 @@ function renderTab(key) {
     return;
   }
 
-  if (key === 'control-tables') {
+ if (key === 'control-tables') {
     el.innerHTML = '<div id="vendor-control-tables"></div>';
 
     TGE.Platform.ControlTables.render({
       container: TGE.el('vendor-control-tables'),
+      vendorId: v.id
+    });
+
+    return;
+  }
+
+  if (key === 'flows') {
+    el.innerHTML = '<div id="vendor-flows"></div>';
+
+    TGE.Platform.Flows.render({
+      container: TGE.el('vendor-flows'),
       vendorId: v.id
     });
 
