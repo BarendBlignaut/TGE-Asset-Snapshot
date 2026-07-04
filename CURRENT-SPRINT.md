@@ -24,14 +24,21 @@ Phase 5 — Fleet Utilisation — Static Fleet
 IN PROGRESS — backend live, real data loaded
 
 Phase 6 — Vendor Platform
-DESIGN LOCKED — not yet built
+ACTIVE DEVELOPMENT
 
-**Note on Phase 4:** SD Card Health review had not yet started when work
-shifted to Fleet Utilisation this sprint. Control Table Platform work is now
-superseded by the Vendor Platform design (Phase 6) — Control Tables will be
-rebuilt nested inside vendor records rather than as a standalone system. See
-PROJECT-ARCHITECTURE.md → Vendor Platform for full design.
+Architecture locked.
 
+Current objective:
+
+- Convert API Registry into a reusable Platform Component.
+- Render Platform API Registry inside Vendor.
+- Remove duplicate Admin implementation once validated.
+
+Next:
+
+- Control Tables
+- Hardware Types
+- Flow Builder
 ---
 
 ## Current Task
