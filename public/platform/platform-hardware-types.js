@@ -6,7 +6,9 @@
 
   var state = {
     vendorId: null,
-    hardware: []
+    hardware: [],
+    loading: false,
+    error: ''
   };
 
   function render(options) {
@@ -32,17 +34,59 @@
       '</div>',
 
       '<div class="card">',
-        '<div class="card-kicker">Saved Hardware</div>',
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">',
+          '<div class="card-kicker">Saved Hardware</div>',
+          '<button class="btn" type="button" onclick="TGE.Platform.HardwareTypes.load()" style="height:30px;font-size:12px;">Refresh</button>',
+        '</div>',
         '<div id="vendor-hardware-list" style="margin-top:10px;"></div>',
       '</div>'
     ].join('');
 
+    loadHardware();
+  }
+
+  async function loadHardware() {
+    if (!state.vendorId) {
+      state.error = 'Vendor ID is missing.';
+      renderList();
+      return;
+    }
+
+    state.loading = true;
+    state.error = '';
+    renderList();
+
+    try {
+      var res = await TGE.api('GET', '/api/vendors/' + state.vendorId + '/hardware-types');
+
+      if (!res.ok) {
+        state.error = (res.data && res.data.error) || 'Could not load hardware types.';
+        state.hardware = [];
+      } else {
+        state.hardware = res.data.hardware || [];
+      }
+    } catch (e) {
+      state.error = e.message || 'Could not load hardware types.';
+      state.hardware = [];
+    }
+
+    state.loading = false;
     renderList();
   }
 
   function renderList() {
     var el = document.getElementById('vendor-hardware-list');
     if (!el) return;
+
+    if (state.loading) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:20px;">Loading hardware types...</div>';
+      return;
+    }
+
+    if (state.error) {
+      el.innerHTML = '<div style="color:var(--danger);font-size:13px;padding:20px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;">' + escapeHtml(state.error) + '</div>';
+      return;
+    }
 
     if (!state.hardware.length) {
       el.innerHTML = [
@@ -57,12 +101,19 @@
 
     el.innerHTML = state.hardware.map(function (h) {
       return [
-        '<div style="display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--surface);">',
+        '<div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--surface);">',
           '<div>',
-            '<div style="font-size:13px;font-weight:700;color:var(--ink);">' + escapeHtml(h.hardware_label || h.hardware_key || 'Unnamed Hardware') + '</div>',
-            '<div style="font-size:11px;color:var(--muted);margin-top:2px;">' + escapeHtml(h.category || 'Uncategorised') + '</div>',
+            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">',
+              '<div style="font-size:13px;font-weight:700;color:var(--ink);">' + escapeHtml(h.hardware_label || h.hardware_key || 'Unnamed Hardware') + '</div>',
+              '<span class="badge badge-gray" style="font-size:10px;">' + escapeHtml(h.hardware_key || '') + '</span>',
+            '</div>',
+            '<div style="font-size:11px;color:var(--muted);margin-top:4px;">',
+              'Category: ' + escapeHtml(h.category || 'Uncategorised') +
+              ' · Type: ' + escapeHtml(h.type_code || '—') +
+              ' · Model: ' + escapeHtml(h.model_name || '—'),
+            '</div>',
           '</div>',
-          '<span class="badge badge-gray" style="font-size:10px;">' + escapeHtml(h.hardware_key || '') + '</span>',
+          '<button class="btn" type="button" style="height:28px;font-size:11px;">Edit</button>',
         '</div>'
       ].join('');
     }).join('');
@@ -81,6 +132,7 @@
 
   TGE.Platform.HardwareTypes = {
     render: render,
+    load: loadHardware,
 
     discover: function () {
       alert('Hardware discovery will be added next.');
