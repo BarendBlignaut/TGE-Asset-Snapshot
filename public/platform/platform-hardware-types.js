@@ -104,8 +104,8 @@
         '<div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--surface);">',
           '<div>',
             '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">',
-              '<div style="font-size:13px;font-weight:700;color:var(--ink);">' + escapeHtml(h.hardware_label || h.hardware_key || 'Unnamed Hardware') + '</div>',
-              '<span class="badge badge-gray" style="font-size:10px;">' + escapeHtml(h.hardware_key || '') + '</span>',
+              '<div style="font-size:13px;font-weight:700;color:var(--ink);">' + escapeHtml(h.name || h.code || 'Unnamed Hardware') + '</div>',
+              '<span class="badge badge-gray" style="font-size:10px;">' + escapeHtml(h.code || '') + '</span>',
             '</div>',
             '<div style="font-size:11px;color:var(--muted);margin-top:4px;">',
               'Category: ' + escapeHtml(h.category || 'Uncategorised') +
