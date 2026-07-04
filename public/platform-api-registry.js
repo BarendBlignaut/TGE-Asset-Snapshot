@@ -1475,19 +1475,19 @@
     };
   }
 
-  // ── Register ──────────────────────────────────────────────────────────────────
+// ── Register ──────────────────────────────────────────────────────────────────
+
 TGE.Platform = TGE.Platform || {};
 
 TGE.Platform.ApiRegistry = {
-    render: render
+  render: render
 };
 
 var _orig = TGE.onAppReady;
 TGE.onAppReady = function () {
-    if (typeof _orig === 'function') _orig();
+  if (typeof _orig === 'function') _orig();
+  render();
+};
 
-    // Existing Management screen
-    if (TGE.el('view-api')) {
-        render();
-    }
+})();
 };
