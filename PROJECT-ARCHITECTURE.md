@@ -10,7 +10,66 @@ Last Updated: 3 July 2026
 Platform-first architecture. Modules do not duplicate functionality. Shared services provide all common functionality. Business rules live in D1 tables, not in JS code. No hardware names or thresholds hardcoded in module files.
 
 ---
+Immediately after that heading insert:
 
+## Application Architecture
+
+The application follows a layered architecture.
+
+
+index.html
+↓
+tge-* (Core Framework)
+↓
+service-* (Shared Services)
+↓
+platform-* (Reusable Platform Components)
+↓
+screen-* (Navigation Screens)
+
+
+### Layer Definitions
+
+**index.html**
+- Application entry point.
+- Loads the application in the correct order.
+
+**tge-***
+- Shared application framework.
+- Navigation.
+- Diagnostics.
+- Output.
+- PDF.
+- Progress.
+- Shared UI components (Pill, etc.).
+
+**service-***
+- Reusable operational functions.
+- Email.
+- Import.
+- Export.
+- Merge.
+- PDF generation.
+- Any reusable action.
+
+**platform-***
+- Shared business components.
+- API Registry.
+- Control Tables.
+- Hardware Types.
+- Flow Builder.
+- File Specification.
+- Import History.
+- Roles.
+
+Platform components never belong to a screen.
+
+**screen-***
+- One file per navigation item.
+- Contains page layout.
+- Contains module-specific business logic.
+- Calls Platform Components and Services.
+- 
 ## Deployment Architecture
 
 ```
@@ -468,6 +527,17 @@ Design → Development → Platform Integration → Diagnostics → QA → LOCK 
 **Documentation:**
 - Update all three markdown files after: 10 bug fixes, major feature, architecture change, module lock
 
+### File Responsibility Rule
+
+Every new file must belong to one architectural layer.
+
+- index.html
+- tge-*
+- service-*
+- platform-*
+- screen-*
+
+If a file does not naturally belong to one of these layers, stop and review the design before creating it.
 ---
 
 ## Long-Term Roadmap
