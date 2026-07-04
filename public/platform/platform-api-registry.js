@@ -20,9 +20,7 @@
   // ── State ─────────────────────────────────────────────────────────────────────
   var VENDORS = [];
 
-  var state = {
-
-  var state = {
+   var state = {
     apis:          [],
     editingApi:    null,
     panelMode:     null,
