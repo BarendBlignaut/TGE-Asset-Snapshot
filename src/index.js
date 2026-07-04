@@ -419,16 +419,47 @@ async function handleAttachmentContent(request, env) {
 }
 
 // ── Registry ──────────────────────────────────────────────────────────────────
-async function handleRegistryGetApis(request, env) {
+async function handleRegistryGetApis(request, env, vendorId = null) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
-  const url   = new URL(request.url);
-  const all   = url.searchParams.get("all") === "1";
-  const query = all ? "SELECT * FROM registry_apis ORDER BY api_id" : "SELECT * FROM registry_apis WHERE active = 1 ORDER BY api_id";
-  const rows  = await env.DB.prepare(query).all();
-  const apis  = (rows.results || []).map(function(r) {
-    return { apiId: r.api_id, label: r.label, group: r.group_name, method: r.method, url: r.url, notes: r.notes, vendor: r.vendor, sampleResponse: r.sample_response, fields: r.fields ? JSON.parse(r.fields) : [], active: r.active === 1 };
+
+  const url = new URL(request.url);
+  const all = url.searchParams.get("all") === "1";
+
+  let query;
+  let params = [];
+
+  if (vendorId != null) {
+    query = all
+      ? "SELECT * FROM registry_apis WHERE vendor_id = ? ORDER BY api_id"
+      : "SELECT * FROM registry_apis WHERE vendor_id = ? AND active = 1 ORDER BY api_id";
+    params.push(vendorId);
+  } else {
+    query = all
+      ? "SELECT * FROM registry_apis ORDER BY api_id"
+      : "SELECT * FROM registry_apis WHERE active = 1 ORDER BY api_id";
+  }
+
+  const rows = params.length
+    ? await env.DB.prepare(query).bind(...params).all()
+    : await env.DB.prepare(query).all();
+
+  const apis = (rows.results || []).map(function(r) {
+    return {
+      apiId: r.api_id,
+      label: r.label,
+      group: r.group_name,
+      method: r.method,
+      url: r.url,
+      notes: r.notes,
+      vendor: r.vendor,
+      vendorId: r.vendor_id,
+      sampleResponse: r.sample_response,
+      fields: r.fields ? JSON.parse(r.fields) : [],
+      active: r.active === 1
+    };
   });
+
   return jsonResponse({ apis });
 }
 async function handleRegistryCreateApi(request, env) {
@@ -1810,7 +1841,11 @@ export default {
         return handleSaveControlTable(new Request(request.url, { method: "POST", headers: request.headers, body: JSON.stringify(body) }), env);
       }
 
-      // Registry
+           // Registry
+      if (method === "GET" && path.match(/^\/api\/vendors\/\d+\/apis$/)) {
+        const vendorId = parseInt(path.split("/")[3], 10);
+        return handleRegistryGetApis(request, env, vendorId);
+      }
       if (method === "GET"    && path === "/api/registry/apis")             return handleRegistryGetApis(request, env);
       if (method === "POST"   && path === "/api/registry/apis")             return handleRegistryCreateApi(request, env);
       if (method === "PUT"    && path.match(/^\/api\/registry\/apis\//))   return handleRegistryUpdateApi(request, env, decodeURIComponent(path.split("/").pop()));
