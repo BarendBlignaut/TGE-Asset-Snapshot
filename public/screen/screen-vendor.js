@@ -229,11 +229,22 @@ function renderTab(key) {
     return;
   }
 
-  if (key === 'hardware-types') {
+ if (key === 'hardware-types') {
     el.innerHTML = '<div id="vendor-hardware-types"></div>';
 
     TGE.Platform.HardwareTypes.render({
       container: TGE.el('vendor-hardware-types'),
+      vendorId: v.id
+    });
+
+    return;
+  }
+
+  if (key === 'control-tables') {
+    el.innerHTML = '<div id="vendor-control-tables"></div>';
+
+    TGE.Platform.ControlTables.render({
+      container: TGE.el('vendor-control-tables'),
       vendorId: v.id
     });
 
