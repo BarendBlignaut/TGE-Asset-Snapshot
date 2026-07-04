@@ -1368,7 +1368,7 @@
       return;
     }
 
-    var vendor = getCustomSelectValue('api-vendor');
+    var vendor = componentOptions.mode === 'vendor' ? null : getCustomSelectValue('api-vendor');
    var entry = {
   apiId: apiId,
   label: label,
