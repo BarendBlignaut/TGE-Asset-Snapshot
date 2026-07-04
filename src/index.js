@@ -288,6 +288,40 @@ async function handleCreateRole(request, env) {
   return jsonResponse({ ok: true, roleId: result.meta.last_row_id });
 }
 
+async function handleGetVendors(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "vendor", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+  const vendors = await env.DB.prepare("SELECT * FROM vendors ORDER BY name").all();
+  return jsonResponse({ ok: true, vendors: vendors.results || [] });
+}
+
+async function handleSaveVendor(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "vendor", "manage");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+  const body   = await safeJson(request);
+  const id     = body.id ? parseInt(body.id, 10) : null;
+  const name   = String(body.name  || "").trim();
+  const notes  = String(body.notes || "").trim();
+  const active = body.active === false ? 0 : 1;
+  if (!name) return jsonResponse({ error: "Vendor name is required." }, 400);
+  const dupe = await env.DB.prepare("SELECT id FROM vendors WHERE name = ? AND id != ?").bind(name, id || 0).first();
+  if (dupe) return jsonResponse({ error: "A vendor with this name already exists." }, 400);
+  let vendorId = id;
+  if (vendorId) {
+    await env.DB.prepare("UPDATE vendors SET name=?, notes=?, active=?, updated_at=? WHERE id=?").bind(name, notes || null, active, nowIso(), vendorId).run();
+    await logActivity(env, auth.session.user_id, "vendor", "update", `Updated vendor: ${name}`, null);
+  } else {
+    const result = await env.DB.prepare("INSERT INTO vendors (name, notes, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").bind(name, notes || null, active, nowIso(), nowIso()).run();
+    vendorId = result.meta.last_row_id;
+    await logActivity(env, auth.session.user_id, "vendor", "create", `Created vendor: ${name}`, null);
+  }
+  return jsonResponse({ ok: true, id: vendorId });
+}
+
 async function handleGetControlTables(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
@@ -1767,6 +1801,8 @@ export default {
       if (method === "GET"  && path === "/api/admin/activity")        return handleGetActivity(request, env);
       if (method === "GET"  && path === "/api/admin/control-tables")  return handleGetControlTables(request, env);
       if (method === "POST" && path === "/api/admin/control-tables")  return handleSaveControlTable(request, env);
+      if (method === "GET"  && path === "/api/admin/vendors")         return handleGetVendors(request, env);
+      if (method === "POST" && path === "/api/admin/vendors")         return handleSaveVendor(request, env);
       if (method === "PUT"  && path.match(/^\/api\/admin\/control-tables\/\d+$/)) {
         const id   = parseInt(path.split("/").pop(), 10);
         const body = await safeJson(request);
