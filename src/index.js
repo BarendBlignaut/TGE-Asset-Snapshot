@@ -489,12 +489,14 @@ async function handleRegistryDeleteApi(request, env, apiId) {
 async function handleVendorHardwareTypes(request, env, vendorId) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "vendor", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
 
   const rows = await env.DB.prepare(
     `SELECT *
-       FROM vendor_hardware_types
+       FROM hardware_types
       WHERE vendor_id = ?
-      ORDER BY hardware_label`
+      ORDER BY name`
   ).bind(vendorId).all();
 
   return jsonResponse({
@@ -508,12 +510,17 @@ async function handleVendorHardwareTypeSave(request, env, vendorId) {
 
   const body = await safeJson(request);
 
+ const perm = await hasPermission(env, auth.session.role_id, "vendor", "manage");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+  const dupe = await env.DB.prepare("SELECT id FROM hardware_types WHERE vendor_id = ? AND code = ?").bind(vendorId, body.hardwareKey).first();
+  if (dupe) return jsonResponse({ error: "This vendor already has hardware with that code." }, 400);
+
   await env.DB.prepare(`
-    INSERT INTO vendor_hardware_types
+    INSERT INTO hardware_types
     (
       vendor_id,
-      hardware_key,
-      hardware_label,
+      code,
+      name,
       device_type,
       type_id,
       type_code,
