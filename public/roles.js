@@ -4,28 +4,32 @@
 (function () {
   'use strict';
 
+ // Platform standard: every screen carrying the export pill exposes ALL
+  // its options as toggles. Defined once — never retype per feature.
+  var EXPORT_ACTIONS = ['export-pdf','export-email-pdf','export-csv','export-xlsx','export-json'];
+
   var FEATURES = [
     {
       group: 'Operations',
       items: [
-        { key: 'new-request',       label: 'New Request',       actions: ['view','run','cancel','export-pdf','export-email-pdf'] },
-        { key: 'snapshot',          label: 'Snapshot',          actions: ['view','run','cancel','refresh','export-pdf','export-email-pdf','export-csv','export-xlsx','export-json'] },
-        { key: 'asset-track',       label: 'Asset Track',       actions: ['view','user-mode','fleet-mode','run','cancel','refresh','export-pdf','export-email-pdf','export-csv','export-xlsx','export-json'], hasLimit: true },
-        { key: 'vpm',               label: 'VPM Analysis',      actions: ['view','user-mode','fleet-mode','run','cancel','refresh','export-pdf','export-email-pdf','export-csv','export-xlsx','export-json'], hasLimit: true },
-        { key: 'utilisation',       label: 'Fleet Utilisation', actions: ['view','run','cancel','refresh','export-csv','export-xlsx'] },
+{ key: 'snapshot',          label: 'Snapshot',          actions: ['view','run','cancel','refresh'].concat(EXPORT_ACTIONS) },
+        { key: 'asset-track',       label: 'Asset Track',       actions: ['view','user-mode','fleet-mode','run','cancel','refresh'].concat(EXPORT_ACTIONS), hasLimit: true },
+        { key: 'vpm',               label: 'VPM Analysis',      actions: ['view','user-mode','fleet-mode','run','cancel','refresh'].concat(EXPORT_ACTIONS), hasLimit: true },
+        { key: 'utilisation',       label: 'Fleet Utilisation', actions: ['view','run','cancel','refresh'].concat(EXPORT_ACTIONS) },
       ]
     },
     {
       group: 'Camera',
       items: [
-        { key: 'camera-snapshots',  label: 'Camera Snapshots',  actions: ['view','user-mode','fleet-mode','run','cancel','refresh','export-pdf','export-email-pdf','export-csv','export-xlsx'], hasLimit: true },
-        { key: 'sd-health',         label: 'SD Card Health',    actions: ['view','user-mode','fleet-mode','run','cancel','refresh','export-pdf','export-email-pdf','export-csv','export-xlsx'], hasLimit: true },
+{ key: 'camera-snapshots',  label: 'Camera Snapshots',  actions: ['view','user-mode','fleet-mode','run','cancel','refresh'].concat(EXPORT_ACTIONS), hasLimit: true },
+        { key: 'sd-health',         label: 'SD Card Health',    actions: ['view','user-mode','fleet-mode','run','cancel','refresh'].concat(EXPORT_ACTIONS), hasLimit: true },
       ]
     },
     {
       group: 'Management',
       items: [
         { key: 'admin',             label: 'Admin',             actions: ['view','run','export-csv','export-xlsx'] },
+        { key: 'vendor',            label: 'Vendor Platform',   actions: ['view','manage','import'].concat(EXPORT_ACTIONS) },
         { key: 'registry',          label: 'Registry',          actions: ['view','run','export-json'] },
         { key: 'diagnostics',       label: 'Diagnostics',       actions: ['view'] },
       ]
