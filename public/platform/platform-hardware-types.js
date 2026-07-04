@@ -138,9 +138,70 @@
       alert('Hardware discovery will be added next.');
     },
 
-    addManual: function () {
-      alert('Manual hardware entry will be added next.');
-    }
+addManual: function () {
+
+  if (document.getElementById('hardware-panel-overlay')) return;
+
+  var overlay = document.createElement('div');
+
+  overlay.id = 'hardware-panel-overlay';
+
+  overlay.style.cssText =
+    'position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:900;display:flex;justify-content:flex-end;';
+
+  overlay.innerHTML = [
+
+    '<div style="width:520px;max-width:96vw;height:100%;background:var(--surface);overflow:auto;padding:24px;box-shadow:-8px 0 24px rgba(0,0,0,.15);">',
+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">',
+
+        '<div>',
+          '<div class="card-kicker">Hardware Registry</div>',
+          '<div class="card-title">Add Hardware Type</div>',
+        '</div>',
+
+        '<button id="hardware-panel-close" class="btn">✕</button>',
+
+      '</div>',
+
+      '<label>Display Name</label>',
+      '<input id="hw-display-name" class="input" style="width:100%;margin-bottom:12px;">',
+
+      '<label>Hardware Key</label>',
+      '<input id="hw-key" class="input" style="width:100%;margin-bottom:12px;">',
+
+      '<label>Category</label>',
+      '<input id="hw-category" class="input" style="width:100%;margin-bottom:12px;">',
+
+      '<label>Family</label>',
+      '<input id="hw-family" class="input" style="width:100%;margin-bottom:18px;">',
+
+      '<div style="display:flex;justify-content:flex-end;gap:8px;">',
+
+        '<button id="hardware-panel-cancel" class="btn">Cancel</button>',
+        '<button id="hardware-panel-save" class="btn btn-primary">Save</button>',
+
+      '</div>',
+
+    '</div>'
+
+  ].join('');
+
+  document.body.appendChild(overlay);
+
+  function closePanel() {
+    var p = document.getElementById('hardware-panel-overlay');
+    if (p) p.remove();
+  }
+
+  document.getElementById('hardware-panel-close').onclick = closePanel;
+  document.getElementById('hardware-panel-cancel').onclick = closePanel;
+
+  document.getElementById('hardware-panel-save').onclick = function () {
+    alert('Save will be implemented in Build 004.');
+  };
+
+}
   };
 
 })();
