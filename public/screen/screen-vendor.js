@@ -192,54 +192,61 @@ wrap.innerHTML = [
     renderTab('overview');
   }
 
-if (key === 'api-registry') {
+function renderTab(key) {
+  var el = TGE.el('vendor-tab-content');
+  if (!el || !state.openVendor) return;
 
-  el.innerHTML = '<div id="vendor-api-registry"></div>';
+  var v = state.openVendor;
 
-  TGE.Platform.ApiRegistry.render({
-    container: TGE.el('vendor-api-registry'),
-    endpoint: '/api/vendors/' + v.id + '/apis',
-    vendorId: v.id,
-    mode: 'vendor',
-    showHero: false
-  });
+  if (key === 'overview') {
+    var canManage = TGE.can('vendor', 'manage');
 
-  return;
-}
+    el.innerHTML = [
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px;">',
+        infoCard('Status', v.active ? 'Active' : 'Inactive'),
+        infoCard('Created', TGE.formatDate(v.created_at)),
+        infoCard('Last Updated', TGE.formatDate(v.updated_at)),
+      '</div>',
+      '<div class="card" style="background:var(--surface-2);"><div class="card-kicker">Notes</div><p style="font-size:13px;margin:6px 0 0;">' + (escapeHtml(v.notes || '') || '<span style="color:var(--muted);">No notes.</span>') + '</p></div>',
+      canManage ? '<button class="btn" id="vendor-edit-btn" type="button" style="margin-top:14px;">Edit Vendor</button>' : '',
+    ].join('');
 
-if (key === 'hardware-types') {
-
-  el.innerHTML = '<div id="vendor-hardware-types"></div>';
-
-  TGE.Platform.HardwareTypes.render({
-    container: TGE.el('vendor-hardware-types'),
-    vendorId: v.id
-  });
-
-  return;
-}
-
-if (key === 'api-registry') {
-
-  el.innerHTML = '<div id="vendor-api-registry"></div>';
-
-  TGE.Platform.ApiRegistry.render({
-    container: TGE.el('vendor-api-registry'),
-    endpoint: '/api/vendors/' + v.id + '/apis',
-    vendorId: v.id,
-    mode: 'vendor',
-    showHero: false
-  });
-
-  return;
-}
-
-var tab = VENDOR_TABS.find(function (t) { return t.key === key; });
-el.innerHTML = '<div class="card" style="text-align:center;color:var(--muted);padding:36px 20px;background:var(--surface-2);">' +
-  '<div style="font-size:14px;font-weight:600;margin-bottom:6px;">' + escapeHtml(tab ? tab.label : key) + '</div>' +
-  '<p style="font-size:12px;margin:0;">Part of the standard vendor template — this section is being built next.</p></div>';
+    TGE.on('vendor-edit-btn', 'click', function () { openPanel(v); });
+    return;
   }
 
+  if (key === 'api-registry') {
+    el.innerHTML = '<div id="vendor-api-registry"></div>';
+
+    TGE.Platform.ApiRegistry.render({
+      container: TGE.el('vendor-api-registry'),
+      endpoint: '/api/vendors/' + v.id + '/apis',
+      vendorId: v.id,
+      mode: 'vendor',
+      showHero: false
+    });
+
+    return;
+  }
+
+  if (key === 'hardware-types') {
+    el.innerHTML = '<div id="vendor-hardware-types"></div>';
+
+    TGE.Platform.HardwareTypes.render({
+      container: TGE.el('vendor-hardware-types'),
+      vendorId: v.id
+    });
+
+    return;
+  }
+
+  var tab = VENDOR_TABS.find(function (t) { return t.key === key; });
+
+  el.innerHTML = '<div class="card" style="text-align:center;color:var(--muted);padding:36px 20px;background:var(--surface-2);">' +
+    '<div style="font-size:14px;font-weight:600;margin-bottom:6px;">' + escapeHtml(tab ? tab.label : key) + '</div>' +
+    '<p style="font-size:12px;margin:0;">Part of the standard vendor template — this section is being built next.</p></div>';
+}
+  
   function infoCard(label, value) {
     return '<div class="card" style="background:var(--surface-2);"><div class="card-kicker">' + escapeHtml(label) + '</div><div style="font-size:14px;font-weight:600;margin-top:4px;">' + escapeHtml(String(value)) + '</div></div>';
   }
