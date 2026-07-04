@@ -158,18 +158,18 @@
       return '<button class="hero-mode-btn' + (i === 0 ? ' active' : '') + '" data-vtab="' + t.key + '" type="button">' + t.label + '</button>';
     }).join('');
 
-    wrap.innerHTML = [
-      '<div class="card">',
-        '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px;">',
+wrap.innerHTML = [
+      '<div class="hero">',
+        '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">',
           '<div>',
-            '<div class="card-kicker">Vendor</div>',
-            '<div class="card-title">' + escapeHtml(vendor.name) + '</div>',
+            '<div class="hero-kicker">Vendor</div>',
+            '<div class="hero-title">' + escapeHtml(vendor.name) + '</div>',
           '</div>',
-          '<button class="btn" id="vendor-back-btn" type="button">← All Vendors</button>',
+          '<button class="hero-mode-btn" id="vendor-back-btn" type="button">← All Vendors</button>',
         '</div>',
-        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;">' + tabs + '</div>',
-        '<div id="vendor-tab-content"></div>',
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:14px;">' + tabs + '</div>',
       '</div>',
+      '<div class="card"><div id="vendor-tab-content"></div></div>',
     ].join('');
 
     TGE.hide('vendor-grid-wrap');
