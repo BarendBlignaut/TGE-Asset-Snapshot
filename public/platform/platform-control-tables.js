@@ -214,9 +214,9 @@
       msg.style.color = isError ? 'var(--danger)' : 'var(--muted)';
     };
 
-    var hardware = Array.prototype.slice.call(document.querySelectorAll('.vct-hardware'))
+var hardware = Array.prototype.slice.call(document.querySelectorAll('.vct-hardware'))
       .map(function (i) { return i.value.trim(); })
-      .filter(function (v) { return v.length; });
+      .filter(function (v, idx, arr) { return v.length && arr.indexOf(v) === idx; });
 
     var rules = Array.prototype.slice.call(document.querySelectorAll('#vct-rule-body tr'))
       .map(function (tr) {
@@ -248,8 +248,11 @@
     if (!hardware.length) { setMsg('At least one hardware match is required.', true); return; }
     if (!rules.length)    { setMsg('At least one rule is required.', true); return; }
 
+if (state.saving) return;
+    state.saving = true;
     setMsg('Saving...');
     var res = await TGE.api('POST', '/api/admin/control-tables', payload);
+    state.saving = false;
     if (!res.ok) { setMsg((res.data && res.data.error) || 'Save failed.', true); return; }
 
     cancel();
