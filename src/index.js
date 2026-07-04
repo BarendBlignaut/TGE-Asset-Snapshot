@@ -322,10 +322,16 @@ async function handleSaveVendor(request, env) {
   return jsonResponse({ ok: true, id: vendorId });
 }
 
-async function handleGetControlTables(request, env) {
+async function handleGetControlTables(request, env, vendorId = null) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
-  const tables   = await env.DB.prepare("SELECT * FROM control_tables ORDER BY feature, name").all();
+  if (vendorId != null) {
+    const perm = await hasPermission(env, auth.session.role_id, "vendor", "view");
+    if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+  }
+  const tables = vendorId != null
+    ? await env.DB.prepare("SELECT * FROM control_tables WHERE vendor_id = ? ORDER BY feature, name").bind(vendorId).all()
+    : await env.DB.prepare("SELECT * FROM control_tables ORDER BY feature, name").all();
   const rules    = await env.DB.prepare("SELECT * FROM control_table_rules ORDER BY control_table_id, sort_order, min_value").all();
   const hardware = await env.DB.prepare("SELECT * FROM control_table_hardware ORDER BY control_table_id, hardware_match").all();
   return jsonResponse({ ok: true, tables: tables.results || [], rules: rules.results || [], hardware: hardware.results || [] });
@@ -342,18 +348,23 @@ async function handleSaveControlTable(request, env) {
   const valueSource = String(body.valueSource || "").trim();
   const notes       = String(body.notes       || "").trim();
   const active      = body.active === false ? 0 : 1;
-  const hardware    = Array.isArray(body.hardware) ? body.hardware : [];
+const hardware    = Array.isArray(body.hardware) ? body.hardware : [];
   const rules       = Array.isArray(body.rules)    ? body.rules    : [];
+  const vendorId    = body.vendorId ? parseInt(body.vendorId, 10) : null;
+  if (vendorId != null) {
+    const perm = await hasPermission(env, auth.session.role_id, "vendor", "manage");
+    if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+  }
   if (!name || !feature || !outputField || !valueSource) return jsonResponse({ error: "name, feature, outputField and valueSource are required." }, 400);
   if (!hardware.length) return jsonResponse({ error: "At least one hardware assignment is required." }, 400);
   if (!rules.length)    return jsonResponse({ error: "At least one rule is required." }, 400);
   let tableId = id;
   if (tableId) {
-    await env.DB.prepare("UPDATE control_tables SET name=?, feature=?, output_field=?, value_source=?, hardware_match=?, active=?, notes=?, updated_at=? WHERE id=?").bind(name, feature, outputField, valueSource, hardware.join("|"), active, notes || null, nowIso(), tableId).run();
+    await env.DB.prepare("UPDATE control_tables SET name=?, feature=?, output_field=?, value_source=?, hardware_match=?, active=?, notes=?, vendor_id=COALESCE(?, vendor_id), updated_at=? WHERE id=?").bind(name, feature, outputField, valueSource, hardware.join("|"), active, notes || null, vendorId, nowIso(), tableId).run();
     await env.DB.prepare("DELETE FROM control_table_rules WHERE control_table_id=?").bind(tableId).run();
     await env.DB.prepare("DELETE FROM control_table_hardware WHERE control_table_id=?").bind(tableId).run();
   } else {
-    const result = await env.DB.prepare("INSERT INTO control_tables (name, feature, output_field, value_source, hardware_match, active, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(name, feature, outputField, valueSource, hardware.join("|"), active, notes || null, nowIso(), nowIso()).run();
+    const result = await env.DB.prepare("INSERT INTO control_tables (name, feature, output_field, value_source, hardware_match, active, notes, vendor_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(name, feature, outputField, valueSource, hardware.join("|"), active, notes || null, vendorId, nowIso(), nowIso()).run();
     tableId = result.meta.last_row_id;
   }
   for (let i = 0; i < hardware.length; i++) {
@@ -1907,6 +1918,9 @@ export default {
 
       // Admin — activity & control tables
       if (method === "GET"  && path === "/api/admin/activity")        return handleGetActivity(request, env);
+     if (method === "GET" && path.match(/^\/api\/vendors\/\d+\/control-tables$/)) {
+        return handleGetControlTables(request, env, parseInt(path.split("/")[3], 10));
+      }
       if (method === "GET"  && path === "/api/admin/control-tables")  return handleGetControlTables(request, env);
       if (method === "POST" && path === "/api/admin/control-tables")  return handleSaveControlTable(request, env);
       if (method === "GET"  && path === "/api/admin/vendors")         return handleGetVendors(request, env);
