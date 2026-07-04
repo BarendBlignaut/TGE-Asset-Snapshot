@@ -212,10 +212,25 @@ wrap.innerHTML = [
       return;
     }
 
-    var tab = VENDOR_TABS.find(function (t) { return t.key === key; });
-    el.innerHTML = '<div class="card" style="text-align:center;color:var(--muted);padding:36px 20px;background:var(--surface-2);">' +
-      '<div style="font-size:14px;font-weight:600;margin-bottom:6px;">' + escapeHtml(tab ? tab.label : key) + '</div>' +
-      '<p style="font-size:12px;margin:0;">Part of the standard vendor template — this section is being built next.</p></div>';
+if (key === 'api-registry') {
+
+  el.innerHTML = '<div id="vendor-api-registry"></div>';
+
+  TGE.Platform.ApiRegistry.render({
+    container: TGE.el('vendor-api-registry'),
+    endpoint: '/api/registry/apis?all=1',
+    vendorId: v.id,
+    mode: 'vendor',
+    showHero: false
+  });
+
+  return;
+}
+
+var tab = VENDOR_TABS.find(function (t) { return t.key === key; });
+el.innerHTML = '<div class="card" style="text-align:center;color:var(--muted);padding:36px 20px;background:var(--surface-2);">' +
+  '<div style="font-size:14px;font-weight:600;margin-bottom:6px;">' + escapeHtml(tab ? tab.label : key) + '</div>' +
+  '<p style="font-size:12px;margin:0;">Part of the standard vendor template — this section is being built next.</p></div>';
   }
 
   function infoCard(label, value) {
