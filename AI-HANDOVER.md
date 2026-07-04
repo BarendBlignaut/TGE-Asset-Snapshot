@@ -35,27 +35,123 @@ TGE Asset Snapshot is an internal fleet telematics web application built for Tea
 
 ```
 public/
-  admin.js              — Admin page (Users, Access History, API Reference, Mailer Data, Control Tables)
-  api.js                — Frontend API helper
-  app.js                — Application bootstrap, session management, navigation, permissions
-  asset-track.js        — Asset Track module (LOCKED v1.0)
-  camera-count.js       — Camera Count module
-  camera-snapshots.js   — Camera Snapshots module
-  camera.js             — Camera shared utilities (verify if legacy or active)
-  email-composer.js     — Shared email composer (used by Camera Snapshots, Camera Count, Merge Mail, Snapshot)
-  export-pill.js        — Shared output pill (TGE.buildOutputPill, TGE.wireOutputPill, TGE.closeOutputPill)
-  index.html            — Main HTML shell, nav, view containers, script tags
-  merge-mail.js         — Merge Mail module
-  roles.js              — Roles/permissions helper
-  snapshot.js           — Asset Snapshot module (LOCKED v1.0)
-  tge-diagnostics.js    — Diagnostics Platform (COMPLETE)
-  tge-output.js         — Output Platform (COMPLETE)
-  tge-pdf.js            — PDF Platform (COMPLETE)
-  tge-progress.js       — Progress Platform (COMPLETE)
-  utilisation.js        — Fleet Utilisation module (UI SHELL — not yet wired to live backend; backend itself is functional, see below)
-  vpm.js                — VPM module
+
+  index.html                    — Application entry point
+
+  tge-app.js                    — Application bootstrap, navigation, session management, permissions
+  tge-diagnostics.js            — Diagnostics Platform
+  tge-output.js                 — Output Platform
+  tge-pdf.js                    — PDF Platform
+  tge-progress.js               — Progress Platform
+
+  service-email.js              — Shared email service
+
+  platform-api-registry.js      — API Registry Platform
+  platform-roles.js             — Roles / permissions helper
+
+  screen-admin.js               — Admin module
+  screen-vendor.js              — Vendor Platform
+  screen-asset-track.js         — Asset Track (LOCKED v1.0)
+  screen-asset-snapshot.js      — Asset Snapshot (LOCKED v1.0)
+  screen-camera.js              — Camera utilities / camera module
+  screen-camera-count.js        — Camera Count
+  screen-camera-snapshots.js    — Camera Snapshots
+  screen-merge-mail.js          — Merge Mail
+  screen-sd-health.js           — SD Health
+  screen-utilisation.js         — Fleet Utilisation
+  screen-vpm.js                 — VPM
+
+  export-pill.js                — Shared Output Pill Platform (scheduled to migrate into TGE Core)
 
 src/
+
+  index.js                      — Cloudflare Worker (routing, auth, APIs, PDF generation)
+  utilisation-static-fleet.js   — Fleet Utilisation backend handlers
+  schema.sql                    — Database schema (always validate against live D1 before relying on it)
+
+Root/
+
+  AI-HANDOVER.md                — AI continuity document
+  CURRENT-SPRINT.md             — Active sprint and priorities
+  PROJECT-ARCHITECTURE.md       — Platform architecture and engineering rules
+  fleet-utilisation-spec.md     — Fleet Utilisation design log
+  package.json                  — Project dependencies
+  wrangler.jsonc                — Cloudflare Worker configuration
+  .gitignore
+```
+
+### Application Layers
+
+```
+index.html
+    ↓
+tge-*          Core Framework
+    ↓
+service-*      Shared Services
+    ↓
+platform-*     Shared Platform Components
+    ↓
+screen-*       Navigation Screens
+```
+
+**Core Framework (`tge-*`)**
+
+Provides the application framework and shared infrastructure.
+
+Examples:
+
+- Navigation
+- Session management
+- Diagnostics
+- Progress
+- PDF
+- Output
+- Shared UI components
+
+Core files never contain business-specific logic.
+
+**Shared Services (`service-*`)**
+
+Reusable operational functionality.
+
+Examples:
+
+- Email
+- Import
+- Export
+- Merge
+- PDF generation
+
+Services perform reusable actions and contain no screen-specific rendering.
+
+**Platform Components (`platform-*`)**
+
+Reusable business functionality shared across multiple screens.
+
+Examples:
+
+- API Registry
+- Control Tables
+- Hardware Types
+- Flow Builder
+- File Specification
+- Import History
+- Roles
+
+Platform Components are shared and must never be duplicated.
+
+**Navigation Screens (`screen-*`)**
+
+Each navigation item has one corresponding screen file.
+
+Screens are responsible for:
+
+- Rendering page layout.
+- Managing module-specific state.
+- Calling Platform Components.
+- Calling Shared Services.
+
+Screens should not duplicate business logic already provided by the Platform.
   index.js                        — Cloudflare Worker (all backend routes, PDF generation, email, auth)
   utilisation-static-fleet.js     — Fleet Utilisation static fleet handlers (import, field mappings, exclusions) — LIVE, working with real data
   schema.sql                      — ⚠️ Known to have drifted from live D1 in the past (see Known Issues). Verify against live schema before trusting it, don't assume it's current.
