@@ -1476,10 +1476,18 @@
   }
 
   // ── Register ──────────────────────────────────────────────────────────────────
-  var _orig = TGE.onAppReady;
-  TGE.onAppReady = function () {
-    if (typeof _orig === 'function') _orig();
-    render();
-  };
+TGE.Platform = TGE.Platform || {};
 
-})();
+TGE.Platform.ApiRegistry = {
+    render: render
+};
+
+var _orig = TGE.onAppReady;
+TGE.onAppReady = function () {
+    if (typeof _orig === 'function') _orig();
+
+    // Existing Management screen
+    if (TGE.el('view-api')) {
+        render();
+    }
+};
