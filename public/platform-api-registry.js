@@ -1490,4 +1490,4 @@ TGE.onAppReady = function () {
 };
 
 })();
-};
+
