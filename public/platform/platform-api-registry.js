@@ -1369,7 +1369,19 @@
     }
 
     var vendor = getCustomSelectValue('api-vendor');
-    var entry = { apiId:apiId, label:label, group:group, method:method, url:url, notes:notes, vendor:vendor, sampleResponse:sample, fields:state.tags, active:true };
+   var entry = {
+  apiId: apiId,
+  label: label,
+  group: group,
+  method: method,
+  url: url,
+  notes: notes,
+  vendor: vendor,
+  vendorId: componentOptions.vendorId,
+  sampleResponse: sample,
+  fields: state.tags,
+  active: true
+};
 
     state.saving = true;
     var btn = TGE.el('api-save-btn');
