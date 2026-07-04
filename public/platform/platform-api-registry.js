@@ -17,10 +17,10 @@
   var API_METHODS = ['GET','POST','PUT','DELETE','PATCH'];
 
   // ── State ─────────────────────────────────────────────────────────────────────
-  var VENDORS = [
-    'Teletrac Navman','Seeing Machines','Power Fleet',
-    'Carrier','Thermo King','Volvo','Mercedes-Benz','Toyota'
-  ];
+  // ── State ─────────────────────────────────────────────────────────────────────
+  var VENDORS = [];
+
+  var state = {
 
   var state = {
     apis:          [],
