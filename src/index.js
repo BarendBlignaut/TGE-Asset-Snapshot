@@ -484,6 +484,75 @@ async function handleRegistryDeleteApi(request, env, apiId) {
   await env.DB.prepare("DELETE FROM registry_apis WHERE api_id = ?").bind(apiId).run();
   return jsonResponse({ ok: true });
 }
+// ── Vendor Hardware Types ───────────────────────────────────────────────────
+
+async function handleVendorHardwareTypes(request, env, vendorId) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const rows = await env.DB.prepare(
+    `SELECT *
+       FROM vendor_hardware_types
+      WHERE vendor_id = ?
+      ORDER BY hardware_label`
+  ).bind(vendorId).all();
+
+  return jsonResponse({
+    hardware: rows.results || []
+  });
+}
+
+async function handleVendorHardwareTypeSave(request, env, vendorId) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const body = await safeJson(request);
+
+  await env.DB.prepare(`
+    INSERT INTO vendor_hardware_types
+    (
+      vendor_id,
+      hardware_key,
+      hardware_label,
+      device_type,
+      type_id,
+      type_code,
+      type_name,
+      model_id,
+      model_name,
+      category,
+      family,
+      capabilities,
+      raw_example,
+      active,
+      created_at,
+      updated_at
+    )
+    VALUES
+    (
+      ?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+      datetime('now'),
+      datetime('now')
+    )
+  `).bind(
+      vendorId,
+      body.hardwareKey,
+      body.hardwareLabel,
+      body.deviceType || null,
+      body.typeId || null,
+      body.typeCode || null,
+      body.typeName || null,
+      body.modelId || null,
+      body.modelName || null,
+      body.category || null,
+      body.family || null,
+      JSON.stringify(body.capabilities || []),
+      body.rawExample || null,
+      1
+  ).run();
+
+  return jsonResponse({ ok: true });
+}
 
 // ── Image proxy ───────────────────────────────────────────────────────────────
 async function handleImageProxy(request, env) {
@@ -1851,6 +1920,17 @@ export default {
       if (method === "POST"   && path === "/api/registry/apis")             return handleRegistryCreateApi(request, env);
       if (method === "PUT"    && path.match(/^\/api\/registry\/apis\//))   return handleRegistryUpdateApi(request, env, decodeURIComponent(path.split("/").pop()));
       if (method === "DELETE" && path.match(/^\/api\/registry\/apis\//))   return handleRegistryDeleteApi(request, env, decodeURIComponent(path.split("/").pop()));
+
+      // Vendor hardware types
+if (method === "GET" && path.match(/^\/api\/vendors\/\d+\/hardware-types$/)) {
+  const vendorId = parseInt(path.split("/")[3], 10);
+  return handleVendorHardwareTypes(request, env, vendorId);
+}
+
+if (method === "POST" && path.match(/^\/api\/vendors\/\d+\/hardware-types$/)) {
+  const vendorId = parseInt(path.split("/")[3], 10);
+  return handleVendorHardwareTypeSave(request, env, vendorId);
+}
 
       // Historical snapshots
       if (method === "POST" && path === "/api/historical-snapshots")             return handleHistoricalSnapshots(request, env);
