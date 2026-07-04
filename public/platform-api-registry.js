@@ -34,7 +34,15 @@
     parsedRaw:     {},   // raw values per path (for JSON string detection)
   };
 
-  var api = TGE.api;
+   var api = TGE.api;
+
+  var componentOptions = {
+    container: null,
+    mode: 'admin',
+    vendorId: null,
+    endpoint: '/api/registry/apis?all=1',
+    showHero: true
+  };
 
   // ── Helper: custom dropdown ───────────────────────────────────────────────────
   // Renders a <select> with a "+ Custom..." option at the bottom
@@ -86,14 +94,17 @@
   }
 
   // ── Render page ───────────────────────────────────────────────────────────────
-  function render() {
-    var view = TGE.el('view-api');
+  function render(options) {
+    options = options || {};
+    componentOptions = Object.assign({}, componentOptions, options);
+
+    var view = componentOptions.container || TGE.el('view-api');
     if (!view) return;
 
     view.innerHTML = [
-      '<div class="hero">',
-        '<div class="hero-kicker">Management</div>',
-        '<div class="hero-title">API Registry</div>',
+      componentOptions.showHero ? '<div class="hero">' : '',
+      componentOptions.showHero ? '<div class="hero-kicker">Management</div>' : '',
+      componentOptions.showHero ? '<div class="hero-title">API Registry</div>' : '',
         '<div class="hero-bar" style="margin-top:14px;">',
           '<div class="hero-bar-left">',
             '<button class="hero-mode-btn active" id="api-tab-definitions" type="button">API Definitions</button>',
@@ -312,7 +323,7 @@
 
   // ── Load / render APIs ────────────────────────────────────────────────────────
   async function loadApis() {
-    var result = await api('GET', '/api/registry/apis?all=1');
+   var result = await api('GET', componentOptions.endpoint);
     state.apis = (result.ok && result.data.apis && result.data.apis.length)
       ? result.data.apis : [];
     renderApiList();
