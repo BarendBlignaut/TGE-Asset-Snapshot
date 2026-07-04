@@ -218,7 +218,7 @@ if (key === 'api-registry') {
 
   TGE.Platform.ApiRegistry.render({
     container: TGE.el('vendor-api-registry'),
-    endpoint: '/api/registry/apis?all=1',
+    endpoint: '/api/vendors/' + v.id + '/apis',
     vendorId: v.id,
     mode: 'vendor',
     showHero: false
