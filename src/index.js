@@ -537,7 +537,13 @@ async function handleRegistryTestApi(request, env, apiId) {
   const def = await env.DB.prepare("SELECT * FROM registry_apis WHERE api_id=?").bind(apiId).first();
   if (!def) return jsonResponse({ error: "Definition not found." }, 404);
 
+const reqBody = await safeJson(request);
   let finalUrl = def.url;
+  if (reqBody && reqBody.params && typeof reqBody.params === "object") {
+    for (const [k, val] of Object.entries(reqBody.params)) {
+      finalUrl = finalUrl.split("{" + k + "}").join(encodeURIComponent(String(val)));
+    }
+  }
   const headers = { "Content-Type": "application/json" };
   let secretName = null;
 
