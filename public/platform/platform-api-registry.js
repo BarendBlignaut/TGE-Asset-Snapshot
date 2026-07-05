@@ -489,9 +489,10 @@ if (componentOptions.mode === 'vendor') {
       if (componentOptions.mode === 'vendor' && componentOptions.vendorId) {
         TGE.api('GET', '/api/vendors/' + componentOptions.vendorId + '/auth-profiles').then(function (res) {
           var profiles = (res.ok && res.data.profiles) || [];
+          var escOpt = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
           sel.innerHTML = '<option value="">None — no authentication</option>' +
             profiles.map(function (p) {
-              return '<option value="' + p.id + '"' + (v.authProfileId === p.id ? ' selected' : '') + '>' + escapeHtml(p.name + ' (' + p.auth_type + (p.secret_ref ? ' → ' + p.secret_ref : '') + ')') + '</option>';
+              return '<option value="' + p.id + '"' + (v.authProfileId === p.id ? ' selected' : '') + '>' + escOpt(p.name + ' (' + p.auth_type + (p.secret_ref ? ' → ' + p.secret_ref : '') + ')') + '</option>';
             }).join('') +
             '<option value="__new__">+ New auth profile...</option>';
         });
