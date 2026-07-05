@@ -229,7 +229,16 @@
             '<div id="api-test-result" style="display:none;margin-top:10px;">',
               '<div id="api-test-status" style="font-size:12px;font-weight:700;margin-bottom:6px;"></div>',
               '<pre id="api-test-body" style="max-height:220px;overflow:auto;font-size:10.5px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:10px;white-space:pre-wrap;word-break:break-all;"></pre>',
-              '<button class="btn" style="height:30px;font-size:11px;margin-top:6px;" onclick="TGE.apiUseTestAsSample()">Use as Sample Response</button>',
+             '<div id="api-test-picker" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;">',
+                '<button class="btn" style="height:30px;font-size:11px;" onclick="TGE.apiUseTestAsSample()">Use first 2 records</button>',
+                '<span style="font-size:11px;color:var(--muted);">or records</span>',
+                '<input id="api-test-from" type="number" min="1" value="1" style="width:60px;height:30px;font-size:11px;">',
+                '<span style="font-size:11px;color:var(--muted);">to</span>',
+                '<input id="api-test-to" type="number" min="1" value="2" style="width:60px;height:30px;font-size:11px;">',
+                '<button class="btn" style="height:30px;font-size:11px;" onclick="TGE.apiUseTestRange()">Use range</button>',
+                '<span id="api-test-count" style="font-size:11px;color:var(--muted);"></span>',
+              '</div>',
+              '<button id="api-test-use-btn" class="btn" style="height:30px;font-size:11px;margin-top:6px;" onclick="TGE.apiUseTestAsSample()">Use as Sample Response</button>',
             '</div>',
           '</div>',
 
@@ -533,9 +542,37 @@ if (componentOptions.mode === 'vendor') {
     statusEl.textContent = (res.data.ok ? '✓ ' : '✕ ') + 'HTTP ' + res.data.status + ' — ' + (res.data.executedUrl || '');
     statusEl.style.color = res.data.ok ? 'var(--green-700)' : 'var(--danger)';
     bodyEl.textContent = res.data.body || '';
+    state.testRecords = Array.isArray(res.data.records) ? res.data.records : null;
+    var picker = TGE.el('api-test-picker'), useBtn = TGE.el('api-test-use-btn'), countEl = TGE.el('api-test-count');
+    if (state.testRecords && state.testRecords.length) {
+      if (picker) picker.style.display = 'flex';
+      if (useBtn) useBtn.style.display = 'none';
+      if (countEl) countEl.textContent = res.data.recordCount + ' records returned, first ' + state.testRecords.length + ' available here.';
+      var toEl = TGE.el('api-test-to'); if (toEl) toEl.max = state.testRecords.length;
+      var fromEl = TGE.el('api-test-from'); if (fromEl) fromEl.max = state.testRecords.length;
+    } else {
+      if (picker) picker.style.display = 'none';
+      if (useBtn) useBtn.style.display = '';
+    }
   };
 
-  TGE.apiUseTestAsSample = function () {
+  TGE.apiUseTestRange = function () {
+    if (!state.testRecords || !state.testRecords.length) return;
+    var from = parseInt((TGE.el('api-test-from') || {}).value, 10) || 1;
+    var to   = parseInt((TGE.el('api-test-to')   || {}).value, 10) || from;
+    if (to < from) { var t = from; from = to; to = t; }
+    from = Math.max(1, from); to = Math.min(state.testRecords.length, to);
+    if (to - from + 1 > 5) to = from + 4; // sample is shape, not volume — max 5 records
+    TGE.el('api-sample').value = JSON.stringify(state.testRecords.slice(from - 1, to), null, 2);
+    TGE.apiParseSample && TGE.apiParseSample();
+  };
+
+TGE.apiUseTestAsSample = function () {
+    if (state.testRecords && state.testRecords.length) {
+      TGE.el('api-sample').value = JSON.stringify(state.testRecords.slice(0, 2), null, 2);
+      TGE.apiParseSample && TGE.apiParseSample();
+      return;
+    }
     var body = (TGE.el('api-test-body') || {}).textContent || '';
     if (!body) return;
     // Big-list responses: keep only the first 2 records — a sample shows shape, not volume.
