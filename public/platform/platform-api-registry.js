@@ -537,7 +537,19 @@ if (componentOptions.mode === 'vendor') {
 
   TGE.apiUseTestAsSample = function () {
     var body = (TGE.el('api-test-body') || {}).textContent || '';
-    if (body) { TGE.el('api-sample').value = body; TGE.apiParseSample && TGE.apiParseSample(); }
+    if (!body) return;
+    // Big-list responses: keep only the first 2 records — a sample shows shape, not volume.
+    try {
+      var parsed = JSON.parse(body);
+      if (Array.isArray(parsed) && parsed.length > 2) body = JSON.stringify(parsed.slice(0, 2), null, 2);
+    } catch (e) {
+      // Not valid JSON (e.g. truncated) — refuse rather than store garbage.
+      var st = TGE.el('api-test-status');
+      if (st) { st.textContent = '✕ Response too large/truncated to use as sample — paste a trimmed example manually.'; st.style.color = 'var(--danger)'; }
+      return;
+    }
+    TGE.el('api-sample').value = body;
+    TGE.apiParseSample && TGE.apiParseSample();
   };
 
   TGE.apiView = function(apiId) {
