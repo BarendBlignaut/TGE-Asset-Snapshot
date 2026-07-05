@@ -465,9 +465,11 @@ async function handleRegistryGetApis(request, env, vendorId = null) {
       notes: r.notes,
       vendor: r.vendor,
       vendorId: r.vendor_id,
-      sampleResponse: r.sample_response,
+     sampleResponse: r.sample_response,
       fields: r.fields ? JSON.parse(r.fields) : [],
-      active: r.active === 1
+      active: r.active === 1,
+      authProfileId: r.auth_profile_id != null ? r.auth_profile_id : null,
+      callSpec: r.call_spec || null
     };
   });
 
