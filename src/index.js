@@ -502,14 +502,18 @@ async function handleRegistryCreateApi(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
   const body = await safeJson(request);
+  if (body.sampleResponse && String(body.sampleResponse).length > 100000) {
+    return jsonResponse({ error: "Sample response too large (max 100KB). Trim to 1–2 example records — a sample shows shape, not volume." }, 400);
+  }
   const authProfileId = await resolveAuthProfile(env, body.vendorId ? parseInt(body.vendorId, 10) : null, body);
-  await env.DB.prepare("INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, vendor, vendor_id, sample_response, fields, active, auth_profile_id, call_spec, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)").bind(body.apiId, body.label, body.group, body.method, body.url, body.notes||null, null, body.vendorId||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), 1, authProfileId, normalizeCallSpec(body), nowIso()).run();
-  return jsonResponse({ ok: true });
 }
 async function handleRegistryUpdateApi(request, env, apiId) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
   const body   = await safeJson(request);
+  if (body.sampleResponse && String(body.sampleResponse).length > 100000) {
+    return jsonResponse({ error: "Sample response too large (max 100KB). Trim to 1–2 example records — a sample shows shape, not volume." }, 400);
+  }
   const active = body.active === false ? 0 : 1;
   const authProfileId = await resolveAuthProfile(env, body.vendorId ? parseInt(body.vendorId, 10) : null, body);
   await env.DB.prepare("INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, vendor, vendor_id, sample_response, fields, active, auth_profile_id, call_spec, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)").bind(apiId, body.label, body.group, body.method, body.url, body.notes||null, null, body.vendorId||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), active, authProfileId, normalizeCallSpec(body), nowIso()).run();
