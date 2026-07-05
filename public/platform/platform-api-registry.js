@@ -712,7 +712,7 @@ if (componentOptions.mode === 'vendor') {
           this.textContent = 'Saved as Sample!';
           this.style.background = 'var(--green-600)';
         };
-        };
+    
 
         document.getElementById('at-use-sample-btn').onclick = async function() {
           // Save as sample response for this API
