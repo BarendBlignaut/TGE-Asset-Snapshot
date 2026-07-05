@@ -473,22 +473,98 @@ async function handleRegistryGetApis(request, env, vendorId = null) {
 
   return jsonResponse({ apis });
 }
+// ── Auth profiles: resolve-or-create (deduped on recipe) ─────────────────────
+async function resolveAuthProfile(env, vendorId, body) {
+  if (body.authProfileId) return parseInt(body.authProfileId, 10);
+  const p = body.newAuthProfile;
+  if (!p || !vendorId || !String(p.name || "").trim() || !String(p.authType || "").trim()) return null;
+  const name = String(p.name).trim(), authType = String(p.authType).trim();
+  const authName = String(p.authName || "").trim() || null, secretRef = String(p.secretRef || "").trim() || null;
+  const existing = await env.DB.prepare(
+    "SELECT id FROM vendor_auth_profiles WHERE vendor_id=? AND auth_type=? AND IFNULL(auth_name,'')=IFNULL(?,'') AND IFNULL(secret_ref,'')=IFNULL(?,'')"
+  ).bind(vendorId, authType, authName, secretRef).first();
+  if (existing) return existing.id;
+  const result = await env.DB.prepare(
+    "INSERT INTO vendor_auth_profiles (vendor_id, name, auth_type, auth_name, secret_ref, active, created_at, updated_at) VALUES (?,?,?,?,?,1,?,?)"
+  ).bind(vendorId, name, authType, authName, secretRef, nowIso(), nowIso()).run();
+  return result.meta.last_row_id;
+}
+
+function normalizeCallSpec(body) {
+  if (!body.callSpec) return null;
+  try { return JSON.stringify(typeof body.callSpec === "string" ? JSON.parse(body.callSpec) : body.callSpec); }
+  catch (e) { return null; }
+}
+
 async function handleRegistryCreateApi(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
   const body = await safeJson(request);
-  await env.DB.prepare("INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, vendor, vendor_id, sample_response, fields, active, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)").bind(body.apiId, body.label, body.group, body.method, body.url, body.notes||null, null, body.vendorId||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), 1, nowIso()).run();
+  const authProfileId = await resolveAuthProfile(env, body.vendorId ? parseInt(body.vendorId, 10) : null, body);
+  await env.DB.prepare("INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, vendor, vendor_id, sample_response, fields, active, auth_profile_id, call_spec, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)").bind(body.apiId, body.label, body.group, body.method, body.url, body.notes||null, null, body.vendorId||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), 1, authProfileId, normalizeCallSpec(body), nowIso()).run();
   return jsonResponse({ ok: true });
 }
-
 async function handleRegistryUpdateApi(request, env, apiId) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
   const body   = await safeJson(request);
   const active = body.active === false ? 0 : 1;
-  await env.DB.prepare("INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, vendor, vendor_id, sample_response, fields, active, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)").bind(apiId, body.label, body.group, body.method, body.url, body.notes||null, null, body.vendorId||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), active, nowIso()).run();
+  const authProfileId = await resolveAuthProfile(env, body.vendorId ? parseInt(body.vendorId, 10) : null, body);
+  await env.DB.prepare("INSERT OR REPLACE INTO registry_apis (api_id, label, group_name, method, url, notes, vendor, vendor_id, sample_response, fields, active, auth_profile_id, call_spec, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)").bind(apiId, body.label, body.group, body.method, body.url, body.notes||null, null, body.vendorId||null, body.sampleResponse||null, JSON.stringify(body.fields||[]), active, authProfileId, normalizeCallSpec(body), nowIso()).run();
   return jsonResponse({ ok: true });
 }
+async function handleGetAuthProfiles(request, env, vendorId) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "vendor", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+  const rows = await env.DB.prepare("SELECT id, name, auth_type, auth_name, secret_ref, active FROM vendor_auth_profiles WHERE vendor_id=? ORDER BY name").bind(vendorId).all();
+  return jsonResponse({ ok: true, profiles: rows.results || [] });
+}
+
+async function handleRegistryTestApi(request, env, apiId) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "vendor", "manage");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+
+  const def = await env.DB.prepare("SELECT * FROM registry_apis WHERE api_id=?").bind(apiId).first();
+  if (!def) return jsonResponse({ error: "Definition not found." }, 404);
+
+  let finalUrl = def.url;
+  const headers = { "Content-Type": "application/json" };
+  let secretName = null;
+
+  if (def.auth_profile_id) {
+    const profile = await env.DB.prepare("SELECT * FROM vendor_auth_profiles WHERE id=?").bind(def.auth_profile_id).first();
+    if (profile) {
+      secretName = profile.secret_ref;
+      const secret = secretName ? env[secretName] : null;
+      if (secretName && !secret) return jsonResponse({ error: `Secret '${secretName}' is not configured in the worker. Set it with: wrangler secret put ${secretName}` }, 503);
+      const t = String(profile.auth_type || "");
+      if (t === "query_param" && secret)   finalUrl += (finalUrl.includes("?") ? "&" : "?") + encodeURIComponent(profile.auth_name || "key") + "=" + encodeURIComponent(secret);
+      else if (t === "header_bearer" && secret) headers["Authorization"] = `Bearer ${secret}`;
+      else if (t === "header_token" && secret)  headers[profile.auth_name || "Authorization"] = `Token token="${secret}"`;
+      else if (t === "header_custom" && secret) headers[profile.auth_name || "X-Api-Key"] = secret;
+      else if (t === "session_passthrough") return jsonResponse({ error: "This definition uses a session token supplied at run time — raw test not applicable." }, 400);
+    }
+  }
+
+  try {
+    const upstream = await fetch(finalUrl, { method: def.method || "GET", headers });
+    const text = await upstream.text();
+    const redactedUrl = secretName && env[secretName] ? finalUrl.split(env[secretName]).join("***") : finalUrl;
+    return jsonResponse({
+      ok: upstream.ok,
+      status: upstream.status,
+      executedUrl: redactedUrl,
+      body: text.length > 60000 ? text.slice(0, 60000) + "\n... [truncated]" : text,
+    });
+  } catch (e) {
+    return jsonResponse({ error: "Call failed: " + e.message }, 502);
+  }
+}
+
 async function handleRegistryDeleteApi(request, env, apiId) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
@@ -1999,6 +2075,12 @@ export default {
       if (method === "GET" && path.match(/^\/api\/vendors\/\d+\/apis$/)) {
         const vendorId = parseInt(path.split("/")[3], 10);
         return handleRegistryGetApis(request, env, vendorId);
+      }
+      if (method === "GET" && path.match(/^\/api\/vendors\/\d+\/auth-profiles$/)) {
+        return handleGetAuthProfiles(request, env, parseInt(path.split("/")[3], 10));
+      }
+      if (method === "POST" && path.match(/^\/api\/registry\/apis\/[^\/]+\/test$/)) {
+        return handleRegistryTestApi(request, env, decodeURIComponent(path.split("/")[4]));
       }
       if (method === "GET"    && path === "/api/registry/apis")             return handleRegistryGetApis(request, env);
       if (method === "POST"   && path === "/api/registry/apis")             return handleRegistryCreateApi(request, env);
