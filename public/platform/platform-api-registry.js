@@ -176,14 +176,60 @@
             '</div>',
           '</div>',
 
+// ── Section 1b — Authentication & Call Constraints ──
+          '<div style="padding:16px 20px;border-bottom:1px solid var(--line);">',
+            '<div class="card-kicker" style="margin-bottom:6px;">Authentication & Call Constraints</div>',
+            '<div class="field" style="margin:0 0 10px;">',
+              '<label>Auth Profile</label>',
+              '<select id="api-auth-profile" style="width:100%;height:38px;" onchange="TGE.apiAuthProfileChanged()"><option value="">None — no authentication</option></select>',
+            '</div>',
+            '<div id="api-auth-new" style="display:none;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;">',
+              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">',
+                '<div class="field" style="margin:0;"><label>Profile Name</label><input id="api-auth-name-new" type="text" placeholder="e.g. REST Key" style="height:36px;"></div>',
+                '<div class="field" style="margin:0;"><label>Auth Type</label><select id="api-auth-type" style="width:100%;height:36px;">',
+                  '<option value="query_param">Query param (?key=...)</option>',
+                  '<option value="header_bearer">Header — Bearer</option>',
+                  '<option value="header_token">Header — Token token="..."</option>',
+                  '<option value="header_custom">Header — custom</option>',
+                  '<option value="session_passthrough">Session token (run-time)</option>',
+                '</select></div>',
+                '<div class="field" style="margin:0;"><label>Param / Header Name</label><input id="api-auth-param" type="text" placeholder="e.g. key or Authorization" style="height:36px;"></div>',
+                '<div class="field" style="margin:0;"><label>Cloud Secret Name</label><input id="api-auth-secret" type="text" placeholder="e.g. TN360_API_KEY" style="height:36px;"></div>',
+              '</div>',
+              '<p style="font-size:11px;color:var(--muted);margin:8px 0 0;">The secret NAME only — the key value lives in Cloudflare (wrangler secret put), never here.</p>',
+            '</div>',
+            '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">',
+              '<div class="field" style="margin:0;"><label>Date Format</label><select id="api-spec-dateformat" style="width:100%;height:36px;">',
+                '<option value="">Not applicable</option>',
+                '<option value="iso8601">ISO 8601 (2026-07-04T10:00:00+10:00)</option>',
+                '<option value="epoch_ms">Epoch milliseconds</option>',
+                '<option value="epoch_s">Epoch seconds</option>',
+                '<option value="date_only">Date only (YYYY-MM-DD)</option>',
+              '</select></div>',
+              '<div class="field" style="margin:0;"><label>Timezone</label><select id="api-spec-timezone" style="width:100%;height:36px;">',
+                '<option value="">Not applicable</option>',
+                '<option value="Australia/Sydney">AEST/AEDT (Australia/Sydney)</option>',
+                '<option value="UTC">UTC</option>',
+              '</select></div>',
+              '<div class="field" style="margin:0;"><label>Max Range (days)</label><input id="api-spec-maxrange" type="number" min="1" placeholder="e.g. 7" style="height:36px;"></div>',
+            '</div>',
+            '<div class="field" style="margin:10px 0 0;"><label>Constraint Notes</label><input id="api-spec-notes" type="text" placeholder="e.g. rejects windows crossing month boundaries" style="height:36px;"></div>',
+          '</div>',
+
           // ── Section 2 ──
           '<div style="padding:16px 20px;border-bottom:1px solid var(--line);">',
             '<div class="card-kicker" style="margin-bottom:6px;">Section 2 — Sample Response</div>',
             '<p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Paste a real JSON response from this API. Used to build the field picker in Section 3.</p>',
             '<textarea id="api-sample" rows="6" placeholder=\'[{"id":886814,"username":"bare1234","externalPin":"12345678",...}]\' style="width:100%;font-family:monospace;font-size:11px;border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical;background:var(--surface);color:var(--ink);"></textarea>',
             '<div style="display:flex;gap:8px;margin-top:8px;">',
-              '<button class="btn" style="height:32px;font-size:12px;" onclick="TGE.apiParseSample()">Parse JSON → load field picker</button>',
+'<button class="btn" style="height:32px;font-size:12px;" onclick="TGE.apiParseSample()">Parse JSON → load field picker</button>',
+              '<button class="btn" style="height:32px;font-size:12px;" onclick="TGE.apiTestCall()">▶ Test Call (saved definition)</button>',
               '<span id="api-parse-status" style="font-size:12px;color:var(--muted);align-self:center;"></span>',
+            '</div>',
+            '<div id="api-test-result" style="display:none;margin-top:10px;">',
+              '<div id="api-test-status" style="font-size:12px;font-weight:700;margin-bottom:6px;"></div>',
+              '<pre id="api-test-body" style="max-height:220px;overflow:auto;font-size:10.5px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:10px;white-space:pre-wrap;word-break:break-all;"></pre>',
+              '<button class="btn" style="height:30px;font-size:11px;margin-top:6px;" onclick="TGE.apiUseTestAsSample()">Use as Sample Response</button>',
             '</div>',
           '</div>',
 
@@ -343,6 +389,8 @@
       sampleResponse: row.sampleResponse || row.sample_response || '',
       fields:         Array.isArray(fields) ? fields : [],
       active:         row.active === true || row.active === 1,
+      authProfileId:  row.authProfileId != null ? row.authProfileId : (row.auth_profile_id != null ? row.auth_profile_id : null),
+      callSpec:       (function () { var cs = row.callSpec != null ? row.callSpec : row.call_spec; if (!cs) return null; if (typeof cs === 'object') return cs; try { return JSON.parse(cs); } catch (e) { return null; } })(),
     };
   }
 
@@ -427,6 +475,32 @@ if (componentOptions.mode === 'vendor') {
   TGE.el('api-vendor-wrap').innerHTML = customSelect('api-vendor', VENDORS, v.vendor || '', 'Select vendor...');
 }
 
+// Auth profiles + call constraints
+    (function () {
+      var sel = TGE.el('api-auth-profile');
+      var spec = v.callSpec || {};
+      TGE.el('api-spec-dateformat').value = spec.dateFormat || '';
+      TGE.el('api-spec-timezone').value   = spec.timezone   || '';
+      TGE.el('api-spec-maxrange').value   = spec.maxRangeDays || '';
+      TGE.el('api-spec-notes').value      = spec.notes || '';
+      TGE.el('api-auth-new').style.display = 'none';
+      if (!sel) return;
+      sel.innerHTML = '<option value="">Loading profiles...</option>';
+      if (componentOptions.mode === 'vendor' && componentOptions.vendorId) {
+        TGE.api('GET', '/api/vendors/' + componentOptions.vendorId + '/auth-profiles').then(function (res) {
+          var profiles = (res.ok && res.data.profiles) || [];
+          sel.innerHTML = '<option value="">None — no authentication</option>' +
+            profiles.map(function (p) {
+              return '<option value="' + p.id + '"' + (v.authProfileId === p.id ? ' selected' : '') + '>' + escapeHtml(p.name + ' (' + p.auth_type + (p.secret_ref ? ' → ' + p.secret_ref : '') + ')') + '</option>';
+            }).join('') +
+            '<option value="__new__">+ New auth profile...</option>';
+        });
+      } else {
+        sel.innerHTML = '<option value="">None — no authentication</option>';
+      }
+    })();
+    TGE.el('api-test-result') && (TGE.el('api-test-result').style.display = 'none');
+
     // Hide tag form
     TGE.el('tag-inline-form').style.display = 'none';
     TGE.el('tag-add-btn-wrap').style.display = '';
@@ -438,7 +512,32 @@ if (componentOptions.mode === 'vendor') {
     TGE.el('api-panel').style.display         = 'flex';
   }
 
-  TGE.apiEdit = function(id) { openPanel('edit', id); };
+ TGE.apiEdit = function(id) { openPanel('edit', id); };
+
+  TGE.apiAuthProfileChanged = function () {
+    var sel = TGE.el('api-auth-profile');
+    TGE.el('api-auth-new').style.display = (sel && sel.value === '__new__') ? '' : 'none';
+  };
+
+  TGE.apiTestCall = async function () {
+    var apiId = ((TGE.el('api-id') || {}).value || '').trim();
+    var statusEl = TGE.el('api-test-status'), bodyEl = TGE.el('api-test-body');
+    if (!apiId) return;
+    TGE.el('api-test-result').style.display = '';
+    statusEl.textContent = 'Running...'; statusEl.style.color = 'var(--muted)'; bodyEl.textContent = '';
+    var res = await TGE.api('POST', '/api/registry/apis/' + encodeURIComponent(apiId) + '/test', {});
+    if (res.data && res.data.error) {
+      statusEl.textContent = '✕ ' + res.data.error; statusEl.style.color = 'var(--danger)'; return;
+    }
+    statusEl.textContent = (res.data.ok ? '✓ ' : '✕ ') + 'HTTP ' + res.data.status + ' — ' + (res.data.executedUrl || '');
+    statusEl.style.color = res.data.ok ? 'var(--green-700)' : 'var(--danger)';
+    bodyEl.textContent = res.data.body || '';
+  };
+
+  TGE.apiUseTestAsSample = function () {
+    var body = (TGE.el('api-test-body') || {}).textContent || '';
+    if (body) { TGE.el('api-sample').value = body; TGE.apiParseSample && TGE.apiParseSample(); }
+  };
 
   TGE.apiView = function(apiId) {
     var a = state.apis.find(function(x) { return x.apiId === apiId; });
@@ -1398,7 +1497,31 @@ if (componentOptions.mode === 'vendor') {
     }
 
     var vendor = componentOptions.mode === 'vendor' ? null : getCustomSelectValue('api-vendor');
-   var entry = {
+   var authSel = TGE.el('api-auth-profile');
+    var authProfileId = null, newAuthProfile = null;
+    if (authSel && authSel.value === '__new__') {
+      newAuthProfile = {
+        name:      (TGE.el('api-auth-name-new') || {}).value || '',
+        authType:  (TGE.el('api-auth-type')     || {}).value || '',
+        authName:  (TGE.el('api-auth-param')    || {}).value || '',
+        secretRef: (TGE.el('api-auth-secret')   || {}).value || '',
+      };
+    } else if (authSel && authSel.value) {
+      authProfileId = parseInt(authSel.value, 10);
+    }
+    var callSpec = null;
+    (function () {
+      var df = (TGE.el('api-spec-dateformat') || {}).value || '';
+      var tz = (TGE.el('api-spec-timezone')   || {}).value || '';
+      var mr = (TGE.el('api-spec-maxrange')   || {}).value || '';
+      var cn = (TGE.el('api-spec-notes')      || {}).value || '';
+      if (df || tz || mr || cn) callSpec = { dateFormat: df || null, timezone: tz || null, maxRangeDays: mr ? parseInt(mr, 10) : null, notes: cn || null };
+    })();
+
+    var entry = {
+      authProfileId: authProfileId,
+      newAuthProfile: newAuthProfile,
+      callSpec: callSpec,
   apiId: apiId,
   label: label,
   group: group,
