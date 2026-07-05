@@ -226,20 +226,6 @@
               '<button class="btn" style="height:32px;font-size:12px;" onclick="TGE.apiTestCall()">▶ Test Call (saved definition)</button>',
               '<span id="api-parse-status" style="font-size:12px;color:var(--muted);align-self:center;"></span>',
             '</div>',
-            '<div id="api-test-result" style="display:none;margin-top:10px;">',
-              '<div id="api-test-status" style="font-size:12px;font-weight:700;margin-bottom:6px;"></div>',
-              '<pre id="api-test-body" style="max-height:220px;overflow:auto;font-size:10.5px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:10px;white-space:pre-wrap;word-break:break-all;"></pre>',
-             '<div id="api-test-picker" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;">',
-                '<button class="btn" style="height:30px;font-size:11px;" onclick="TGE.apiUseTestAsSample()">Use first 2 records</button>',
-                '<span style="font-size:11px;color:var(--muted);">or records</span>',
-                '<input id="api-test-from" type="number" min="1" value="1" style="width:60px;height:30px;font-size:11px;">',
-                '<span style="font-size:11px;color:var(--muted);">to</span>',
-                '<input id="api-test-to" type="number" min="1" value="2" style="width:60px;height:30px;font-size:11px;">',
-                '<button class="btn" style="height:30px;font-size:11px;" onclick="TGE.apiUseTestRange()">Use range</button>',
-                '<span id="api-test-count" style="font-size:11px;color:var(--muted);"></span>',
-              '</div>',
-              '<button id="api-test-use-btn" class="btn" style="height:30px;font-size:11px;margin-top:6px;" onclick="TGE.apiUseTestAsSample()">Use as Sample Response</button>',
-            '</div>',
           '</div>',
 
           // ── Section 3 ──
@@ -529,66 +515,6 @@ if (componentOptions.mode === 'vendor') {
     TGE.el('api-auth-new').style.display = (sel && sel.value === '__new__') ? '' : 'none';
   };
 
-  TGE.apiTestCall = async function () {
-    var apiId = ((TGE.el('api-id') || {}).value || '').trim();
-    var statusEl = TGE.el('api-test-status'), bodyEl = TGE.el('api-test-body');
-    if (!apiId) return;
-    TGE.el('api-test-result').style.display = '';
-    statusEl.textContent = 'Running...'; statusEl.style.color = 'var(--muted)'; bodyEl.textContent = '';
-    var res = await TGE.api('POST', '/api/registry/apis/' + encodeURIComponent(apiId) + '/test', {});
-    if (res.data && res.data.error) {
-      statusEl.textContent = '✕ ' + res.data.error; statusEl.style.color = 'var(--danger)'; return;
-    }
-    statusEl.textContent = (res.data.ok ? '✓ ' : '✕ ') + 'HTTP ' + res.data.status + ' — ' + (res.data.executedUrl || '');
-    statusEl.style.color = res.data.ok ? 'var(--green-700)' : 'var(--danger)';
-    bodyEl.textContent = res.data.body || '';
-    state.testRecords = Array.isArray(res.data.records) ? res.data.records : null;
-    var picker = TGE.el('api-test-picker'), useBtn = TGE.el('api-test-use-btn'), countEl = TGE.el('api-test-count');
-    if (state.testRecords && state.testRecords.length) {
-      if (picker) picker.style.display = 'flex';
-      if (useBtn) useBtn.style.display = 'none';
-      if (countEl) countEl.textContent = res.data.recordCount + ' records returned, first ' + state.testRecords.length + ' available here.';
-      var toEl = TGE.el('api-test-to'); if (toEl) toEl.max = state.testRecords.length;
-      var fromEl = TGE.el('api-test-from'); if (fromEl) fromEl.max = state.testRecords.length;
-    } else {
-      if (picker) picker.style.display = 'none';
-      if (useBtn) useBtn.style.display = '';
-    }
-  };
-
-  TGE.apiUseTestRange = function () {
-    if (!state.testRecords || !state.testRecords.length) return;
-    var from = parseInt((TGE.el('api-test-from') || {}).value, 10) || 1;
-    var to   = parseInt((TGE.el('api-test-to')   || {}).value, 10) || from;
-    if (to < from) { var t = from; from = to; to = t; }
-    from = Math.max(1, from); to = Math.min(state.testRecords.length, to);
-    if (to - from + 1 > 5) to = from + 4; // sample is shape, not volume — max 5 records
-    TGE.el('api-sample').value = JSON.stringify(state.testRecords.slice(from - 1, to), null, 2);
-    TGE.apiParseSample && TGE.apiParseSample();
-  };
-
-TGE.apiUseTestAsSample = function () {
-    if (state.testRecords && state.testRecords.length) {
-      TGE.el('api-sample').value = JSON.stringify(state.testRecords.slice(0, 2), null, 2);
-      TGE.apiParseSample && TGE.apiParseSample();
-      return;
-    }
-    var body = (TGE.el('api-test-body') || {}).textContent || '';
-    if (!body) return;
-    // Big-list responses: keep only the first 2 records — a sample shows shape, not volume.
-    try {
-      var parsed = JSON.parse(body);
-      if (Array.isArray(parsed) && parsed.length > 2) body = JSON.stringify(parsed.slice(0, 2), null, 2);
-    } catch (e) {
-      // Not valid JSON (e.g. truncated) — refuse rather than store garbage.
-      var st = TGE.el('api-test-status');
-      if (st) { st.textContent = '✕ Response too large/truncated to use as sample — paste a trimmed example manually.'; st.style.color = 'var(--danger)'; }
-      return;
-    }
-    TGE.el('api-sample').value = body;
-    TGE.apiParseSample && TGE.apiParseSample();
-  };
-
   TGE.apiView = function(apiId) {
     var a = state.apis.find(function(x) { return x.apiId === apiId; });
     if (!a) return;
@@ -718,38 +644,74 @@ TGE.apiUseTestAsSample = function () {
         testUrl = testUrl.replace('{' + inp.dataset.param + '}', inp.value.trim());
       });
 
-      // Strip base URL and key — proxy through worker
-      var tnPath = testUrl
-        .replace('https://api-au.telematics.com', '')
-        .replace(/\?key=<apiKey>&?/, '?')
-        .replace(/&key=<apiKey>/, '');
-
-      var proxyUrl = '/api/tn360' + tnPath;
+  // Execute via the platform test endpoint: auth profile + secret assembled
+      // server-side, vendor-agnostic, key never exposed. Params substitute {placeholders}.
+      var params = {};
+      modal.querySelectorAll('.api-test-param').forEach(function(inp) {
+        params[inp.dataset.param] = inp.value.trim();
+      });
 
       var statusEl = document.getElementById('at-status');
       var responseEl = document.getElementById('at-response');
       var responseText = document.getElementById('at-response-text');
 
       try {
-        var res = await fetch(proxyUrl, {
-          method: a.method,
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' }
-        });
+        var res = await TGE.api('POST', '/api/registry/apis/' + encodeURIComponent(a.apiId) + '/test', { params: params });
+        var d = res.data || {};
+        var json = d.body || (d.error ? d.error : '');
+        var testRecords = Array.isArray(d.records) ? d.records : null;
 
-        var data = await res.json().catch(function() { return { raw: 'Non-JSON response' }; });
-        var json = JSON.stringify(data, null, 2);
-
-        statusEl.textContent = res.ok ? '✅ ' + res.status + ' OK' : '❌ ' + res.status + ' Error';
-        statusEl.style.color = res.ok ? 'var(--green-600)' : 'var(--danger)';
+        statusEl.textContent = d.error ? '❌ ' + d.error : (d.ok ? '✅ ' + d.status + ' OK' : '❌ ' + d.status + ' Error');
+        statusEl.style.color = (d.ok && !d.error) ? 'var(--green-600)' : 'var(--danger)';
         responseText.value = json;
         responseEl.style.display = '';
+
+        // Record picker: appears only for array responses
+        var pickerEl = document.getElementById('at-picker');
+        if (pickerEl) pickerEl.remove();
+        if (testRecords && testRecords.length) {
+          pickerEl = document.createElement('div');
+          pickerEl.id = 'at-picker';
+          pickerEl.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:11px;color:var(--muted);';
+          pickerEl.innerHTML = 'Sample: records <input id="at-from" type="number" min="1" max="' + testRecords.length + '" value="1" style="width:56px;height:30px;font-size:11px;"> to <input id="at-to" type="number" min="1" max="' + testRecords.length + '" value="' + Math.min(2, testRecords.length) + '" style="width:56px;height:30px;font-size:11px;"> of ' + (d.recordCount || testRecords.length) + ' returned (max 5)';
+          responseText.parentNode.insertBefore(pickerEl, responseText.nextSibling);
+        }
 
         document.getElementById('at-copy-btn').onclick = function() {
           navigator.clipboard.writeText(json).then(function() {
             document.getElementById('at-copy-btn').textContent = 'Copied!';
             setTimeout(function() { document.getElementById('at-copy-btn').textContent = 'Copy Response'; }, 2000);
           });
+        };
+
+        document.getElementById('at-use-sample-btn').onclick = async function() {
+          var sample = json;
+          if (testRecords && testRecords.length) {
+            var from = parseInt((document.getElementById('at-from') || {}).value, 10) || 1;
+            var to   = parseInt((document.getElementById('at-to')   || {}).value, 10) || from;
+            if (to < from) { var t = from; from = to; to = t; }
+            from = Math.max(1, from); to = Math.min(testRecords.length, to, from + 4);
+            sample = JSON.stringify(testRecords.slice(from - 1, to), null, 2);
+          } else {
+            try { JSON.parse(sample); } catch (e) {
+              this.textContent = 'Response not valid JSON — trim manually';
+              this.style.background = 'var(--danger)';
+              return;
+            }
+            if (sample.length > 100000) {
+              this.textContent = 'Too large — pick a range or trim manually';
+              this.style.background = 'var(--danger)';
+              return;
+            }
+          }
+          a.sampleResponse = sample;
+          await TGE.api('PUT', '/api/registry/apis/' + encodeURIComponent(a.apiId), a);
+          var idx = state.apis.findIndex(function(x) { return x.apiId === a.apiId; });
+          if (idx !== -1) state.apis[idx] = a;
+          renderApiList();
+          this.textContent = 'Saved as Sample!';
+          this.style.background = 'var(--green-600)';
+        };
         };
 
         document.getElementById('at-use-sample-btn').onclick = async function() {
