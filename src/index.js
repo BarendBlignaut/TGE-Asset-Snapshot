@@ -557,14 +557,23 @@ async function handleRegistryTestApi(request, env, apiId) {
   }
 
   try {
-    const upstream = await fetch(finalUrl, { method: def.method || "GET", headers });
+   const upstream = await fetch(finalUrl, { method: def.method || "GET", headers });
     const text = await upstream.text();
     const redactedUrl = secretName && env[secretName] ? finalUrl.split(env[secretName]).join("***") : finalUrl;
+    // Parse the FULL body (before display truncation) so the sample picker
+    // always slices complete, valid records regardless of display cutoff.
+    let records = null, recordCount = null;
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) { recordCount = parsed.length; records = parsed.slice(0, 25); }
+    } catch (e) { /* not JSON or unparseable — picker simply won't show */ }
     return jsonResponse({
       ok: upstream.ok,
       status: upstream.status,
       executedUrl: redactedUrl,
       body: text.length > 60000 ? text.slice(0, 60000) + "\n... [truncated]" : text,
+      records: records,
+      recordCount: recordCount,
     });
   } catch (e) {
     return jsonResponse({ error: "Call failed: " + e.message }, 502);
