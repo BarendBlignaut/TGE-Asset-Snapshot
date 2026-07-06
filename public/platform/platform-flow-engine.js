@@ -53,6 +53,20 @@
       warnings.push(def.api_id + ': no field tags — response ignored.');
       return [];
     }
+// Recover filter structure from display paths when the structured
+    // properties were stripped (the tag edit form rebuilds tags and loses
+    // unknown fields — known issue). Path form: any[where key=val].field
+    tags.forEach(function (t) {
+      if (!t.filterKey && t.path) {
+        var m = String(t.path).match(/\[where\s+([^=\]]+)=([^\]]+)\]\.(.+)$/);
+        if (m) {
+          t.filterKey = m[1].trim();
+          t.filterVal = m[2].trim();
+          t.extractField = m[3].trim();
+          t.isArrayFilter = true;
+        }
+      }
+    });
     var plain  = tags.filter(function (t) { return !t.isArrayFilter; });
     var filters = tags.filter(function (t) { return t.isArrayFilter; });
 
