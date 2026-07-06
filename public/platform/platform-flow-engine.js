@@ -256,11 +256,12 @@ function extractTagged(def, payload, warnings) {
             var key = String(assetId);
             // Device-shaped records (carry Model ID / Device Type Code) attach
             // as devices; everything else merges into the asset row.
-            if (rec['Model ID'] !== undefined || rec['Device Type Code'] !== undefined) {
-              (assetDevices[key] = assetDevices[key] || []).push(rec);
-            } else {
-              assetRows[key] = Object.assign(assetRows[key] || { 'Asset ID': assetId }, rec);
-            }
+          if (rec['Model ID'] !== undefined || rec['Device Type Code'] !== undefined) {
+  (assetDevices[key] = assetDevices[key] || []).push(rec);
+  assetRows[key] = Object.assign(assetRows[key] || { 'Asset ID': assetId }, rec);
+} else {
+  assetRows[key] = Object.assign(assetRows[key] || { 'Asset ID': assetId }, rec);
+}
           });
           continue;
         }
