@@ -951,8 +951,8 @@ if (componentOptions.mode === 'vendor') {
       // Filter button for arrays
       var filterBtn = isArray
         ? '<button class="bulk-filter-btn" data-idx="' + idx + '" data-path="' + path + '" ' +
-            'onclick="TGE.bulkExpandArray(this)" ' +
-            'style="height:24px;padding:0 8px;border-radius:5px;border:1px solid var(--yellow-dim,#b8d520);background:rgba(212,240,38,0.1);color:var(--ink);font:inherit;font-size:11px;cursor:pointer;white-space:nowrap;margin-left:6px;">+ Filter Array</button>'
+'onclick="TGE.bulkExpandArray(this)" ' +
+            'style="height:24px;padding:0 8px;border-radius:5px;border:1px solid var(--yellow-dim,#b8d520);background:rgba(212,240,38,0.1);color:var(--ink);font:inherit;font-size:11px;cursor:pointer;white-space:nowrap;margin-left:6px;">+ Expand Array</button>'
         : '';
 
       return '<tr id="bulk-row-' + idx + '" style="border-bottom:1px solid var(--line-2);' + (preTick?'':'opacity:0.5;') + '">' +
@@ -1202,158 +1202,163 @@ if (componentOptions.mode === 'vendor') {
   };
 
   // Expand an array field — opens dedicated filter screen
-  TGE.bulkExpandArray = function(btn) {
+ TGE.bulkExpandArray = function(btn) {
     var path   = btn.dataset.path;
     var rawVal = state.parsedRaw[path];
     if (!Array.isArray(rawVal) || !rawVal.length) return;
-    var item = rawVal[0];
-    if (typeof item !== 'object') return;
+    if (typeof rawVal[0] !== 'object') return;
 
     var existing = document.getElementById('array-filter-modal');
     if (existing) existing.remove();
 
-    // Get all flat keys for filter dropdown
-    var allKeys = [];
-    function getAllKeys(obj, prefix) {
-      Object.keys(obj).forEach(function(k) {
+    var items = rawVal.slice(0, 50);
+
+    // Flatten one item's leaves
+    function leavesOf(obj, prefix) {
+      var out = [];
+      Object.keys(obj || {}).forEach(function(k) {
         var p = prefix ? prefix + '.' + k : k;
         var v = obj[k];
-        if (Array.isArray(v) && v.length && typeof v[0] !== 'object') {
-          allKeys.push({ path: p, example: String(v[0]) });
-        } else if (typeof v !== 'object' || v === null) {
-          allKeys.push({ path: p, example: String(v).slice(0,30) });
-        } else if (!Array.isArray(v)) {
-          getAllKeys(v, p);
-        }
+        if (v && typeof v === 'object' && !Array.isArray(v)) out = out.concat(leavesOf(v, p));
+        else if (!Array.isArray(v)) out.push({ path: p, example: String(v).slice(0, 40) });
       });
+      return out;
     }
-    getAllKeys(item, '');
 
-    var keyOptions = allKeys.map(function(f) {
-      return '<option value="' + f.path + '">' + f.path + ' · e.g. ' + f.example + '</option>';
-    }).join('');
+    // Discriminator candidates: string-ish leaves shared across items
+    function candidateKeys() {
+      var first = leavesOf(items[0], '');
+      return first.filter(function(f) {
+        var vals = {};
+        var ok = true;
+        items.forEach(function(it) {
+          var v = f.path.split('.').reduce(function(o, k) { return o == null ? o : o[k]; }, it);
+          if (v == null || typeof v === 'object') { ok = false; return; }
+          vals[String(v)] = true;
+        });
+        var distinct = Object.keys(vals).length;
+        return ok && distinct > 1 && distinct <= items.length && String(items[0][f.path]).length < 40;
+      }).map(function(f) { return f.path; });
+    }
 
-    // Get leaf fields for extract dropdown
-    var leafFields = [];
-    function getLeafs(obj, prefix) {
-      Object.keys(obj).forEach(function(k) {
-        var p = prefix ? prefix + '.' + k : k;
-        var v = obj[k];
-        if (v && typeof v === 'object' && !Array.isArray(v)) getLeafs(v, p);
-        else if (!Array.isArray(v)) leafFields.push({ path: p, example: String(v).slice(0,30) });
+    var cands = candidateKeys();
+    // Auto-pick: prefer a key literally named 'type' or containing 'type'/'code', else first candidate
+    var autoKey = cands.find(function(k){ return k === 'type'; }) ||
+                  cands.find(function(k){ return /type|code|kind|category/i.test(k); }) ||
+                  cands[0] || '';
+
+    function valAt(obj, p) {
+      return p.split('.').reduce(function(o, k) { return o == null ? o : o[k]; }, obj);
+    }
+    function humanize(s) {
+      return String(s).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_.-]/g, ' ')
+        .replace(/\b\w/g, function(c){ return c.toUpperCase(); }).trim();
+    }
+    function escA(s) {
+      return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function renderGroups(discKey) {
+      var groups = {};
+      items.forEach(function(it) {
+        var key = discKey ? String(valAt(it, discKey)) : 'items';
+        if (!groups[key]) groups[key] = it; // first item of each kind defines the shape
       });
+      return Object.keys(groups).map(function(gval, gi) {
+        var rows = leavesOf(groups[gval], '').map(function(f, fi) {
+          var rid = 'ax-' + gi + '-' + fi;
+          return '<tr style="border-bottom:1px solid var(--line-2);">' +
+            '<td style="padding:4px 8px;text-align:center;width:32px;"><input type="checkbox" class="ax-tick" id="' + rid + '" ' +
+              'data-gval="' + escA(gval) + '" data-field="' + escA(f.path) + '" style="width:15px;height:15px;cursor:pointer;"></td>' +
+            '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:var(--green-700);white-space:nowrap;">' + escA(f.path) +
+              '<div style="color:var(--muted);font-size:10px;">' + escA(f.example) + '</div></td>' +
+            '<td style="padding:4px 8px;"><input type="text" class="ax-label" data-for="' + rid + '" value="' + escA(humanize(gval) + ' ' + humanize(f.path)) + '" ' +
+              'style="width:100%;height:30px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font-size:12px;background:var(--surface);color:var(--ink);"></td>' +
+            '<td style="padding:4px 8px;width:150px;"><select class="ax-use" data-for="' + rid + '" style="width:100%;height:30px;font-size:11px;">' +
+              '<option value="display">Display data</option>' +
+              '<option value="feeds-next">Feeds next API call</option>' +
+              '<option value="filter-rule">Filter / rule only</option>' +
+              '<option value="match">Match / validate</option>' +
+              '<option value="internal">Internal</option>' +
+            '</select></td>' +
+          '</tr>';
+        }).join('');
+        return '<div style="margin-bottom:10px;border:1px solid var(--line);border-radius:10px;overflow:hidden;">' +
+          '<div style="padding:8px 12px;background:var(--surface-2);font-size:12px;font-weight:700;color:var(--ink);">' +
+            escA(discKey || 'items') + ' = ' + escA(gval) + '</div>' +
+          '<table style="width:100%;border-collapse:collapse;background:var(--surface);"><tbody>' + rows + '</tbody></table>' +
+        '</div>';
+      }).join('');
     }
-    getLeafs(item, '');
-    var leafOptions = leafFields.map(function(f) {
-      return '<option value="' + f.path + '">' + f.path + ' · ' + f.example + '</option>';
+
+    var candOptions = cands.map(function(k) {
+      return '<option value="' + escA(k) + '"' + (k === autoKey ? ' selected' : '') + '>' + escA(k) + '</option>';
     }).join('');
 
     var modal = document.createElement('div');
     modal.id = 'array-filter-modal';
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:700;display:flex;align-items:center;justify-content:center;padding:20px;';
-
-    modal.innerHTML = '<div style="background:var(--surface);border-radius:14px;width:min(580px,100%);display:flex;flex-direction:column;overflow:hidden;max-height:85vh;">' +
-      '<div style="padding:14px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">' +
+    modal.innerHTML = '<div style="background:var(--surface);border-radius:14px;width:min(860px,100%);display:flex;flex-direction:column;overflow:hidden;max-height:88vh;">' +
+      '<div style="padding:14px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;">' +
         '<div>' +
-          '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:rgba(212,240,38,0.7);">Filter Array Field</div>' +
-          '<div style="font-size:15px;font-weight:700;color:#fff;">' + path + '[]</div>' +
+          '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:rgba(212,240,38,0.7);">Expand Array — tick to tag</div>' +
+          '<div style="font-size:15px;font-weight:700;color:#fff;">' + escA(path) + '[] · ' + rawVal.length + ' items</div>' +
         '</div>' +
-        '<button id="af-close" style="border:none;background:rgba(255,255,255,0.1);border-radius:6px;color:#fff;font-size:16px;cursor:pointer;width:30px;height:30px;">✕</button>' +
-      '</div>' +
-      '<div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px;">' +
-        '<p style="margin:0;font-size:12px;color:var(--muted);">This array has <strong>' + rawVal.length + ' items</strong>. Define which item to pick and what field to extract from it.</p>' +
-
-        '<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:14px;">' +
-          '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--green-600);margin-bottom:10px;">Step 1 — Filter: which item?</div>' +
-          '<div style="display:grid;grid-template-columns:1fr 60px 1fr;gap:8px;align-items:center;">' +
-            '<select id="af-filter-key" style="height:38px;border:1px solid var(--line);border-radius:7px;padding:0 8px;font:inherit;font-size:12px;">' + keyOptions + '</select>' +
-            '<div style="text-align:center;font-size:12px;font-weight:700;color:var(--muted);">=</div>' +
-            '<input id="af-filter-val" type="text" placeholder="e.g. ROAD_FACING" style="height:38px;border:1px solid var(--line);border-radius:7px;padding:0 10px;font:inherit;font-size:12px;" />' +
-          '</div>' +
-          '<p style="margin:6px 0 0;font-size:11px;color:var(--muted-2);">Pick the item where this field matches this value</p>' +
-        '</div>' +
-
-        '<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:14px;">' +
-          '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--green-600);margin-bottom:10px;">Step 2 — Extract: which field?</div>' +
-          '<select id="af-extract-field" style="width:100%;height:38px;border:1px solid var(--line);border-radius:7px;padding:0 10px;font:inherit;font-size:12px;">' + leafOptions + '</select>' +
-          '<p style="margin:6px 0 0;font-size:11px;color:var(--muted-2);">Pick the field to extract from the matching item</p>' +
-        '</div>' +
-
-        '<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:14px;">' +
-          '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--green-600);margin-bottom:10px;">Step 3 — Define the tag</div>' +
-          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
-            '<div class="field" style="margin:0;"><label>Tag Name</label><input id="af-tag-name" type="text" placeholder="e.g. roadFacingUrl" style="height:38px;" /></div>' +
-            '<div class="field" style="margin:0;"><label>Display As</label><input id="af-display" type="text" placeholder="e.g. Road Facing Image" style="height:38px;" /></div>' +
-            '<div class="field" style="margin:0;"><label>Use</label>' +
-              '<select id="af-use" style="height:38px;width:100%;border:1px solid var(--line);border-radius:7px;padding:0 8px;font:inherit;font-size:12px;">' +
-                TAG_USES.map(function(u){ return '<option value="'+u.value+'">'+u.label+'</option>'; }).join('') +
-              '</select>' +
-            '</div>' +
-            '<div class="field" style="margin:0;"><label>Description</label><input id="af-desc" type="text" placeholder="e.g. URL for road camera" style="height:38px;" /></div>' +
-          '</div>' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<span style="font-size:11px;color:rgba(255,255,255,0.7);">Group by</span>' +
+          '<select id="ax-disc" style="height:30px;font-size:12px;border-radius:6px;">' + candOptions + '</select>' +
+          '<button id="ax-close" style="border:none;background:rgba(255,255,255,0.1);border-radius:6px;color:#fff;font-size:16px;cursor:pointer;width:30px;height:30px;">✕</button>' +
         '</div>' +
       '</div>' +
-      '<div style="padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:8px;flex-shrink:0;background:var(--surface-2);">' +
-        '<button id="af-save-btn" class="btn btn-primary" style="height:36px;" data-path="' + path + '">Add as Tag</button>' +
-        '<button id="af-cancel" class="btn" style="height:36px;">Cancel</button>' +
+      '<div id="ax-body" style="padding:14px 20px;overflow-y:auto;">' + renderGroups(autoKey) + '</div>' +
+      '<div style="padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:8px;flex-shrink:0;align-items:center;">' +
+        '<button id="ax-save" class="btn btn-primary" style="height:36px;" data-path="' + escA(path) + '">Add Ticked as Tags</button>' +
+        '<button id="ax-cancel" class="btn" style="height:36px;">Cancel</button>' +
+        '<span id="ax-count" style="font-size:12px;color:var(--muted);"></span>' +
       '</div>' +
     '</div>';
-
     document.body.appendChild(modal);
-    document.getElementById('af-close').onclick  = function() { modal.remove(); };
-    document.getElementById('af-cancel').onclick = function() { modal.remove(); };
-    document.getElementById('af-save-btn').addEventListener('click', function() {
-      TGE.bulkSaveArrayFilter(this.dataset.path);
-    });
-    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
-  };
 
-  TGE.arrayFilterClose = function() {
-    var m = document.getElementById('array-filter-modal');
-    if (m) m.remove();
-  };
-
-  TGE.bulkSaveArrayFilter = function(arrayPath) {
-    var name        = document.getElementById('af-tag-name').value.trim();
-    var label       = document.getElementById('af-display').value.trim();
-    var filterKey   = document.getElementById('af-filter-key').value;
-    var filterVal   = document.getElementById('af-filter-val').value.trim();
-    var extractField= document.getElementById('af-extract-field').value;
-    var use         = document.getElementById('af-use').value;
-    var desc        = document.getElementById('af-desc').value.trim();
-
-    if (!name || !filterVal || !extractField) {
-      alert('Tag name, filter value and extract field are all required.');
-      return;
-    }
-
-    // Build a descriptive path that encodes the filter
-    var tagPath = arrayPath + '[where ' + filterKey + '=' + filterVal + '].' + extractField;
-
-    var tag = {
-      name:        name,
-      label:       label || name,
-      use:         use,
-      description: desc || ('From ' + arrayPath + '[] where ' + filterKey + ' = ' + filterVal),
-      path:        tagPath,
-      filterKey:   filterKey,
-      filterVal:   filterVal,
-      extractField:extractField,
-      arrayPath:   arrayPath,
-      example:     '',
-      hardCheck:   false,
-      isArrayFilter: true,
+    document.getElementById('ax-close').onclick  = function() { modal.remove(); };
+    document.getElementById('ax-cancel').onclick = function() { modal.remove(); };
+    document.getElementById('ax-disc').onchange  = function() {
+      document.getElementById('ax-body').innerHTML = renderGroups(this.value);
     };
-
-    state.tags.push(tag);
-    document.getElementById('array-filter-modal').remove();
-    renderTagsList();
-
-    // Show success in parse status
-    var s = TGE.el('api-parse-status');
-    if (s) { s.textContent = 'Array filter tag added: ' + name; s.style.color = 'var(--green-600)'; }
+    document.getElementById('ax-save').onclick = function() {
+      var discKey = document.getElementById('ax-disc').value;
+      var added = 0;
+      modal.querySelectorAll('.ax-tick:checked').forEach(function(cb) {
+        var gval  = cb.dataset.gval;
+        var field = cb.dataset.field;
+        var label = (modal.querySelector('.ax-label[data-for="' + cb.id + '"]') || {}).value || field;
+        var use   = (modal.querySelector('.ax-use[data-for="' + cb.id + '"]')  || {}).value || 'display';
+        var dupe = state.tags.some(function(t) {
+          return t.isArrayFilter && t.filterKey === discKey && t.filterVal === gval && t.extractField === field;
+        });
+        if (dupe) return;
+        state.tags.push({
+          name:        (gval + ' ' + field).replace(/[^a-zA-Z0-9]+(.)/g, function(m, c){ return c.toUpperCase(); }),
+          label:       label.trim(),
+          use:         use,
+          description: 'From ' + path + '[] where ' + discKey + ' = ' + gval,
+          path:        path + '[where ' + discKey + '=' + gval + '].' + field,
+          filterKey:   discKey,
+          filterVal:   gval,
+          extractField: field,
+          arrayPath:   path,
+          example:     '',
+          hardCheck:   false,
+          isArrayFilter: true,
+        });
+        added++;
+      });
+      modal.remove();
+      renderTagsList();
+      var s = TGE.el('api-parse-status');
+      if (s) { s.textContent = added + ' array tag' + (added !== 1 ? 's' : '') + ' added.'; s.style.color = 'var(--green-600)'; }
+    };
   };
-
+  
   TGE.bulkRowToggle = function(idx, checked) {
     var row = document.getElementById('bulk-row-' + idx);
     if (row) row.style.opacity = checked ? '1' : '0.5';
