@@ -705,7 +705,7 @@ async function handleSaveVendorFlow(request, env, vendorId) {
   if (!moduleTag) return jsonResponse({ error: "Select which screen this flow feeds." }, 400);
   if (!steps.length) return jsonResponse({ error: "A flow needs at least one step." }, 400);
 
-  const VALID_STEP_TYPES = ["api_definition", "control_table", "hardware_type"];
+  const VALID_STEP_TYPES = ["api_definition", "control_table", "hardware_type", "hardware_set"];
   for (const s of steps) {
     if (!VALID_STEP_TYPES.includes(String(s.stepType))) return jsonResponse({ error: "Invalid step type: " + s.stepType }, 400);
     if (!String(s.stepRef || "").trim()) return jsonResponse({ error: "Every step must reference an item." }, 400);
