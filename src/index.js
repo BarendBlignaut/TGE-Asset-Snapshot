@@ -624,11 +624,12 @@ async function handleVendorHardwareTypeSave(request, env, vendorId) {
   if (dupe) return jsonResponse({ error: "This vendor already has hardware with that code." }, 400);
 
   await env.DB.prepare(`
-    INSERT INTO hardware_types
+   INSERT INTO hardware_types
     (
       vendor_id,
       code,
       name,
+      applies_to_feature,
       device_type,
       type_id,
       type_code,
@@ -644,8 +645,9 @@ async function handleVendorHardwareTypeSave(request, env, vendorId) {
       updated_at
     )
     VALUES
+VALUES
     (
-      ?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+      ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
       datetime('now'),
       datetime('now')
     )
@@ -653,6 +655,7 @@ async function handleVendorHardwareTypeSave(request, env, vendorId) {
       vendorId,
       body.hardwareKey,
       body.hardwareLabel,
+      body.appliesToFeature || null,
       body.deviceType || null,
       body.typeId || null,
       body.typeCode || null,
