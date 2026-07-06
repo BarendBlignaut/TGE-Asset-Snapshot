@@ -850,10 +850,13 @@ if (componentOptions.mode === 'vendor') {
 
     var hardCheckEl = TGE.el('tag-hard-check-toggle');
     var hardCheck = hardCheckEl ? hardCheckEl.classList.contains('on') : false;
-    var tag = { name: name || path, label: label, use: use, description: desc, path: path, example: example, hardCheck: hardCheck };
+  var tag = { name: name || path, label: label, use: use, description: desc, path: path, example: example, hardCheck: hardCheck };
 
     if (state.editingTagIdx !== null && state.editingTagIdx !== undefined) {
-      state.tags[state.editingTagIdx] = tag;
+      // Merge over the existing tag — structured properties the form doesn't
+      // know about (filterKey/filterVal/extractField/isArrayFilter/arrayPath,
+      // and anything future) must survive an edit, not be silently dropped.
+      state.tags[state.editingTagIdx] = Object.assign({}, state.tags[state.editingTagIdx], tag);
     } else {
       state.tags.push(tag);
     }
