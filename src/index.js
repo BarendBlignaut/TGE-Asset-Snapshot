@@ -528,6 +528,73 @@ async function handleGetAuthProfiles(request, env, vendorId) {
   return jsonResponse({ ok: true, profiles: rows.results || [] });
 }
 
+// ── Flow engine call primitive ────────────────────────────────────────────────
+// Executes a saved definition with its auth profile + {param} substitution and
+// returns the FULL parsed response. Gated on the consuming screen's own
+// 'run' permission (body.feature), so flow access follows tick-and-flick —
+// a user who can run Asset Track can run its flows, and nothing else.
+async function handleRegistryExecuteApi(request, env, apiId) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const reqBody = await safeJson(request);
+  const feature = String(reqBody.feature || "").trim();
+  if (!feature) return jsonResponse({ error: "Missing feature context." }, 400);
+  const perm = await hasPermission(env, auth.session.role_id, feature, "run");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+
+  const def = await env.DB.prepare("SELECT * FROM registry_apis WHERE api_id=? AND active=1").bind(apiId).first();
+  if (!def) return jsonResponse({ error: "Definition not found or inactive: " + apiId }, 404);
+
+  let finalUrl = def.url;
+  if (reqBody.params && typeof reqBody.params === "object") {
+    for (const [k, val] of Object.entries(reqBody.params)) {
+      finalUrl = finalUrl.split("{" + k + "}").join(encodeURIComponent(String(val)));
+    }
+  }
+  if (finalUrl.includes("{")) {
+    return jsonResponse({ error: "Unresolved placeholder in URL: " + finalUrl.replace(/key=[^&]+/, "key=***") }, 400);
+  }
+
+  const headers = { "Content-Type": "application/json" };
+  let secretName = null;
+
+  if (def.auth_profile_id) {
+    const profile = await env.DB.prepare("SELECT * FROM vendor_auth_profiles WHERE id=? AND active=1").bind(def.auth_profile_id).first();
+    if (profile) {
+      secretName = profile.secret_ref;
+      const secret = secretName ? env[secretName] : null;
+      if (secretName && !secret) return jsonResponse({ error: `Secret '${secretName}' is not configured in the worker.` }, 503);
+      const t = String(profile.auth_type || "");
+      if (t === "query_param" && secret)        finalUrl += (finalUrl.includes("?") ? "&" : "?") + encodeURIComponent(profile.auth_name || "key") + "=" + encodeURIComponent(secret);
+      else if (t === "header_bearer" && secret) headers["Authorization"] = `Bearer ${secret}`;
+      else if (t === "header_token" && secret)  headers[profile.auth_name || "Authorization"] = `Token token="${secret}"`;
+      else if (t === "header_custom" && secret) headers[profile.auth_name || "X-Api-Key"] = secret;
+      else if (t === "session_passthrough") {
+        const sess = request.headers.get("X-TN360-Token");
+        if (!sess) return jsonResponse({ error: "This definition requires a session token." }, 400);
+        headers[profile.auth_name || "X-TN360-Token"] = sess;
+      }
+    }
+  }
+
+  try {
+    const upstream = await fetch(finalUrl, { method: def.method || "GET", headers });
+    const text = await upstream.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch (e) { data = null; }
+    return jsonResponse({
+      ok: upstream.ok,
+      status: upstream.status,
+      apiId: apiId,
+      data: data,
+      raw: data === null ? text.slice(0, 2000) : undefined,
+    });
+  } catch (e) {
+    return jsonResponse({ error: "Call failed: " + e.message }, 502);
+  }
+}
+
 async function handleRegistryTestApi(request, env, apiId) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
@@ -2103,7 +2170,10 @@ export default {
         return handleGetAuthProfiles(request, env, parseInt(path.split("/")[3], 10));
       }
       if (method === "POST" && path.match(/^\/api\/registry\/apis\/[^\/]+\/test$/)) {
-        return handleRegistryTestApi(request, env, decodeURIComponent(path.split("/")[4]));
+       return handleRegistryTestApi(request, env, decodeURIComponent(path.split("/")[4]));
+      }
+      if (method === "POST" && path.match(/^\/api\/registry\/apis\/[^\/]+\/execute$/)) {
+        return handleRegistryExecuteApi(request, env, decodeURIComponent(path.split("/")[4]));
       }
       if (method === "GET"    && path === "/api/registry/apis")             return handleRegistryGetApis(request, env);
       if (method === "POST"   && path === "/api/registry/apis")             return handleRegistryCreateApi(request, env);
