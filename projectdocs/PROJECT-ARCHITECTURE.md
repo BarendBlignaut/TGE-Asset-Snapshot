@@ -557,3 +557,140 @@ If a file does not naturally belong to one of these layers, stop and review the 
 13. ⏳ Diagnostics Platform enhancements
 
 Asset Track v1.0 is and remains the reference implementation for all future module development.
+
+
+
+evrything above was previouse update,
+
+everything below is current update 06/07/2026
+
+# PROJECT-ARCHITECTURE.md
+**Updated: 6 July 2026 — Vendor Platform built end to end (definition layer complete)**
+
+## The core model (LOCKED)
+Business rules live in D1, not JS. No vendor, hardware, or screen name
+is hardcoded anywhere. The vendor tables dictate; flows align; modules
+consume by tag. Adding a vendor is pure data entry: create vendor →
+auth profile → API definitions → hardware types → control tables →
+flow. Zero code.
+
+## Runtime model (LOCKED — engine not yet built)
+A screen module asks: "give me every active flow tagged for me"
+(`flows.module_tag` = screen key, e.g. `asset-track`). It runs each
+vendor's flow, merges results per asset, renders. Flows REPLACE direct
+API calls and direct CT lookups at runtime; the definition tabs are
+the reusable parts library, flows are the assembly, modules consume
+only flows. A control table with no flow referencing it does nothing.
+
+A flow = ordered steps. Step types (open list, worker-validated —
+new types are one string, never a migration):
+- `api_definition` — call this definition (auth profile + call_spec applied)
+- `control_table` — apply these rules to gathered data
+- `hardware_type` — reference one hardware row (surgical cases)
+- `hardware_set` — reference ALL hardware rows where
+  `applies_to_feature = <tag>`; membership is data, so new hardware
+  joins every referencing flow by insertion alone
+Steps are lenses/calls in declared order; the engine may optimise
+(e.g. hardware filtering before later calls).
+
+## Vendor template (identical for every vendor, used or not)
+Card grid (screen-vendor.js) → detail with tabs:
+Overview · File Spec · API Registry (Definitions) · Hardware Types ·
+Control Tables · Flows · Import History.
+Built and live: Overview, API Registry, Hardware Types, Control
+Tables, Flows. Placeholder: File Spec, Import History (File Spec's
+first real use = TGE Static Fleet mappings + container/trailer
+"tick and flick" exclusions — deferred by design).
+
+## Data model — as deployed (source of truth: live D1 + src/migrations/)
+**Migration 001:** `vendors` (id, name, active, notes, timestamps) ·
+`flows` (vendor_id, name, module_tag, notes, active; UNIQUE(vendor_id,
+name)) · `flow_steps` (flow_id, sort_order, step_type TEXT open,
+step_ref TEXT — holds text api_ids and numeric ids) · `hardware_types`
+(base) · `control_tables.vendor_id` + `registry_apis.vendor_id`
+(nullable; children inherit vendor via parent — rules/hardware tables
+deliberately do NOT carry vendor_id).
+**Migration 002:** `hardware_types` rich device identity — device_type,
+type_id, type_code, type_name, model_id, model_name, category, family,
+capabilities (JSON), raw_example. Vendor identifiers verbatim from the
+vendor's API. `applies_to_feature` = hardware-set tag (screen keys as
+vocabulary; NULL = identified, not yet routed). UNIQUE(vendor_id,
+code). Future need logged: multi-set membership (list or join table)
+when one device serves two screens. (`vendor_hardware_types` from a
+parallel build was dropped here.)
+**Migration 003:** `vendor_auth_profiles` (vendor_id, name, auth_type,
+auth_name, secret_ref, active; UNIQUE(vendor_id, name)) ·
+`registry_apis.auth_profile_id` · `registry_apis.call_spec` (JSON:
+dateFormat, timezone, maxRangeDays, notes).
+
+`registry_apis.fields` (JSON) tag schema: {name, label, use
+(display|feeds-next|filter-rule|match|internal), description, path,
+example, hardCheck} + array-filter tags add {isArrayFilter,
+arrayPath, filterKey, filterVal, extractField} — engine executes the
+structured filter, not the display path (display paths may embed a
+literal map key; Constraint Notes carry map-iteration instructions).
+
+## Auth profiles (how calls authenticate)
+Recipe per key, defined once per vendor, selected per definition
+(inline "+ New" in the editor auto-creates; deduped on recipe;
+same-name-different-recipe updates in place). auth_type open list:
+query_param | header_bearer | header_token | header_custom |
+session_passthrough | none. secret_ref = NAME of a Cloudflare Worker
+secret; value never touches the app. TN360 reality: at least three
+profiles (REST Key ?key= / TN360_API_KEY; Token token="…" styles on
+TN360_PERSONAL_KEY and TN360_SNAPSHOT_KEY; plus per-user session
+passthrough for history).
+
+## Definition workflow (LOCKED): define → save → test → lock
+Test modal (one test feature; legacy /api/tn360 proxy path in the
+modal was removed) executes the SAVED definition via
+POST /api/registry/apis/{id}/test — worker assembles URL + profile +
+secret, substitutes {placeholder} params from the modal's inputs,
+returns status + body (display-truncated 60KB) + first 25 parsed
+records for array responses. Record picker: default first 2, any
+range, max 5 → "Use as Sample" saves straight to the definition.
+Non-array/oversized refused politely; worker guard 400s >100KB.
+
+## Capture tooling
+Bulk tag editor (tick/label/use per field) + **Expand Array** (Stage
+1, built): arrays of objects render grouped by auto-detected
+discriminator (prefers a field named/like `type`; overridable),
+every leaf tickable with inline label+use, one save emits structured
+conditional tags. Stage 2 (specced, not built): sub-value definitions
+— split packed strings (GPIO/camera lines) into tagged segments; build
+against the first real specimen. Stage 3 (specced, flow-engine era):
+structure learning — engine diffs live responses vs definitions,
+queues unseen kinds/keys on the definition for tagging ("living
+definitions").
+
+## Worker route pattern (all new endpoints follow it)
+Vendor-scoped REST: /api/vendors/{id}/… (hardware-types, control-
+tables, flows, auth-profiles) + /api/registry/apis[…]. Every handler:
+requireSession → hasPermission('vendor','view'|'manage') → work →
+logActivity on writes. Duplicate prechecks return clean 400s. Old
+admin endpoints (session-only) remain until clear-out.
+
+## Permissions
+Feature `vendor`: view, manage, import + EXPORT_ACTIONS (full pill).
+FEATURES composes the shared EXPORT_ACTIONS constant — pill assigned
+⇒ all options toggleable. New features dark until ticked per role.
+
+## First flow (exists as data — flow id 1)
+"Asset Track — Teletrac Navman", module_tag asset-track:
+API-1 (vehicles) → API-2 (devices) → API-3 (meters) →
+hardware_set:asset-track (Oyster 433 + Flex Solar 85) → CT-001.
+Semantics: fetch vehicles → fetch devices → fetch meters → keep the
+asset-track hardware → apply battery rules → feed the screen.
+The hardcoded runAssetTrack()/getBatteryStatus()/isOysterTracker()
+pipeline remains LIVE and untouched until the flow engine replaces it
+(deliberate duplication as safety net; deletion happens at cutover).
+
+## Flow engine (NEXT PHASE — parts already exist)
+Call primitive = the test endpoint's assembly (auth + params).
+call_spec drives date formatting and range chunking (camera-history's
+hardcoded chunking becomes generic). Tags drive output mapping: labels
+are the standard names (projectdocs/standard-output-names.md) that
+merge multi-vendor data into screen columns (the mapsTo concept).
+Hardware sets matched via type_code/model_id discriminators. Map-
+shaped responses iterated per Constraint Notes. Undefined-structure
+queue = Stage 3.
