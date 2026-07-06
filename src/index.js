@@ -191,7 +191,7 @@ async function handleUpdateUser(request, env, userId) {
   const loginType = ["db_only","db_vendor"].includes(body.loginType) ? body.loginType : "db_only";
   let sql    = "UPDATE users SET first_name=?, last_name=?, username=?, email=?, role_id=?, status=?, login_type=?, updated_at=?";
   let params = [firstName, lastName, username, email || null, roleId, status, loginType, nowIso()];
-  console.log("[Worker] UPDATE params:", JSON.stringify({ sql, params, userId }));
+  
   if (body.password && String(body.password).trim()) {
     const hash = await sha256(String(body.password).trim());
     sql += ", password_hash=?";
@@ -391,13 +391,13 @@ async function handleTelematicsProxy(request, env, path) {
   if (!env.TN360_API_KEY) return jsonResponse({ error: "Telematics API key not configured." }, 503);
   const url          = new URL(request.url);
   const sessionToken = request.headers.get("X-TN360-Token") || request.headers.get("x-tn360-token") || url.searchParams.get("_token") || null;
-  console.log("[Worker] sessionToken present:", !!sessionToken, sessionToken ? sessionToken.slice(0,8) + "..." : "none");
+
   url.searchParams.delete("_token");
   const upstream   = sessionToken ? `https://api-au.telematics.com${path}?${url.searchParams.toString()}` : `https://api-au.telematics.com${path}?key=${env.TN360_API_KEY}&${url.searchParams.toString()}`;
-  console.log("[Worker] upstream:", upstream.slice(0, 80));
+  
   const authHeader = sessionToken ? `Token token="${sessionToken}"` : null;
   const fetchOpts  = { method: request.method, headers: authHeader ? { "Authorization": authHeader, "Content-Type": "application/json" } : { "Content-Type": "application/json" } };
-  console.log("[Worker] auth header:", authHeader ? authHeader.slice(0,20) + "..." : "none");
+ 
   if (request.method === "POST" || request.method === "PUT") {
     const body = await request.text();
     if (body) fetchOpts.body = body;
