@@ -2224,8 +2224,9 @@ export default {
 if (method === "POST" && path.match(/^\/api\/registry\/apis\/[^\/]+\/execute$/)) {
         return handleRegistryExecuteApi(request, env, decodeURIComponent(path.split("/")[4]));
       }
-      if (method === "GET" && path.match(/^\/api\/engine\/flows\/[^\/]+$/)) {
-        return handleEngineFlowBundle(request, env, decodeURIComponent(path.split("/")[3]));
+if (method === "GET" && path.match(/^\/api\/engine\/flows\/[^\/]+$/)) {
+        return handleEngineFlowBundle(request, env, decodeURIComponent(path.split("/")[4]));
+      }
       }
       if (method === "GET"    && path === "/api/registry/apis")             return handleRegistryGetApis(request, env);
       if (method === "POST"   && path === "/api/registry/apis")             return handleRegistryCreateApi(request, env);
