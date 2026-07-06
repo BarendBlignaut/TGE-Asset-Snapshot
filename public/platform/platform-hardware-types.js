@@ -238,7 +238,20 @@ addManual: function () {
 '<input id="hw-model-name" class="input" placeholder="e.g. AdvGateway, MultiIQ, FlexSolar" style="width:100%;margin-bottom:12px;">',
 
 '<label>Category</label>',
-'<input id="hw-category" class="input" placeholder="e.g. tracker, camera, asset tracker" style="width:100%;margin-bottom:18px;">',
+'<input id="hw-category" class="input" placeholder="e.g. tracker, camera, asset tracker" style="width:100%;margin-bottom:12px;">',
+
+'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">',
+  '<div><label>Type ID (vendor)</label>',
+  '<input id="hw-type-id" class="input" placeholder="e.g. 3" style="width:100%;margin-bottom:12px;"></div>',
+  '<div><label>Model ID (vendor)</label>',
+  '<input id="hw-model-id" class="input" placeholder="e.g. 433" style="width:100%;margin-bottom:12px;"></div>',
+'</div>',
+
+'<label>Type Name (vendor)</label>',
+'<input id="hw-type-name" class="input" placeholder="e.g. Asset Tracker" style="width:100%;margin-bottom:12px;">',
+
+'<label>Applies to Feature (hardware set)</label>',
+'<input id="hw-applies" class="input" placeholder="e.g. asset-track — blank = not yet routed" style="width:100%;margin-bottom:18px;">',
 
       '<div style="display:flex;justify-content:flex-end;gap:8px;">',
 
@@ -281,12 +294,16 @@ addManual: function () {
     ? keyParts.join(':')
     : label.toUpperCase().replace(/\s+/g, '_');
 
-  var payload = {
+var payload = {
     hardwareKey: hardwareKey,
     hardwareLabel: label,
     typeCode: typeCode || null,
     modelName: modelName || null,
-    category: category || null
+    category: category || null,
+    typeId: (document.getElementById('hw-type-id') || {}).value ? document.getElementById('hw-type-id').value.trim() : null,
+    modelId: (document.getElementById('hw-model-id') || {}).value ? document.getElementById('hw-model-id').value.trim() : null,
+    typeName: (document.getElementById('hw-type-name') || {}).value ? document.getElementById('hw-type-name').value.trim() : null,
+    appliesToFeature: (document.getElementById('hw-applies') || {}).value ? document.getElementById('hw-applies').value.trim() : null
   };
 
   var btn = document.getElementById('hardware-panel-save');
