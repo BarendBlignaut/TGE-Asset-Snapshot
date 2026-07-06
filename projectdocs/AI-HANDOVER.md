@@ -540,3 +540,106 @@ vendors, hardware_types (+ vendor_id added to control_tables / control_table_har
 - Camera trigger endpoint (API-6) — returns 405. Awaiting Teletrac fix.
 - Camera model → slot count hardcoded: MultiIQ=5, IQCamera=2
 - History approach agreed: 7-day window, events endpoint direct, S3 URL expiry check (X-Amz-Date + X-Amz-Expires), display valid images only, no storage
+
+
+evrything above is the previous update.
+New update below 06/07/2026
+
+# AI-HANDOVER.md
+**Updated: 6 July 2026 — post Vendor Platform build session**
+Read this first. Then PROJECT-ARCHITECTURE.md, then CURRENT-SPRINT.md.
+
+## What this project is
+TGE Asset Snapshot — a Cloudflare Worker (vanilla JS frontend, D1 database)
+fleet operations platform. One worker: `tge-asset-snapshot`
+(blignaut-barend.workers.dev). Deploys automatically on push to `main`
+(GitHub: BarendBlignaut/TGE-Asset-Snapshot — PRIVATE; owner shares files
+into chat, attachments of .js/.md files often arrive empty — request
+plain-text paste or true file upload; images work).
+
+## The owner and how to work with him
+- Non-developer building a production system. Explain plainly, define
+  jargon on first use, give click-by-click steps for anything in a UI.
+- **Process (strict): one change at a time — ask, answer, discuss,
+  confirm, move on.** One question per message. Do not stack
+  evaluations or bundle multiple open questions. He will pull you back
+  if you drift; do not make him.
+- **No code until the approach is agreed.**
+- Code changes delivered as **File / Find / Replace / Reason**. Find
+  blocks must be verbatim from his actual files — ask for a paste when
+  a file may have drifted from your copy.
+- For deletions spanning many lines: give the exact first line, exact
+  last line, and the first line that must remain after.
+- He edits by hand: paste artifacts happen (doubled lines, lost
+  braces). After any manual splice, expect a possible SyntaxError; the
+  browser console names the line.
+
+## The three consoles (keep this map in every session)
+| Window | Where | Speaks | Used for |
+|---|---|---|---|
+| F12 console | browser, in the app | JavaScript | `await TGE.api(...)` checks |
+| D1 console | Cloudflare dash → D1 | SQL only | SELECT/INSERT/UPDATE, verification |
+| Terminal | VS Code bottom panel | commands | `npx wrangler ...` (secrets, d1 --file) |
+Plus: Workers → Logs → **Begin log stream** = point-and-click `wrangler tail`.
+
+## Standing engineering rules
+1. **No hardcoding of vendors, hardware, or screens.** Vendor tables
+   dictate; flows align; code consumes by tag.
+2. **No legacy code** — remove during refactoring; one way to do one
+   thing (duplicated features get consolidated, loser deleted).
+3. **Every new feature gets tick-and-flick permissions** (roles.js →
+   platform-roles.js FEATURES). New features start OFF for all roles,
+   including superuser (no implicit bypass). Export pill assigned to a
+   screen ⇒ ALL export actions visible as toggles (shared
+   EXPORT_ACTIONS constant — never retype the list).
+4. **Database changes only via numbered migration files** in
+   `src/migrations/` (001, 002, 003...), run once against live D1,
+   committed as the permanent record. D1 console rejects comments and
+   sometimes multi-statement pastes — run statements one at a time.
+   ALTER TABLE lines are not re-runnable.
+5. **Version bump rule:** any changed .js file gets its `?v=` bumped
+   in index.html in the same commit. Only bump what changed; never
+   bump backwards.
+6. **Verify at the source:** after any save that matters, a D1 SELECT
+   is the proof — the re-rendered card list is not (ghost cards have
+   happened three times).
+7. **Sample = shape, not volume:** API sample responses are 1–5
+   complete records. Worker guard refuses >100KB. Use the test modal's
+   record picker.
+8. **Naming standard:** display labels ("display as" tags) come from
+   `projectdocs/standard-output-names.md`. One spelling everywhere —
+   the label is what merges multi-vendor data into one screen column.
+   New names get added to the doc the moment they're invented.
+9. **Capture rule (the 433 lesson):** vendor identifiers (type/model
+   ids and names) are recorded verbatim from real API responses only —
+   never from code comments or memory. Hardware rows are created only
+   for hardware actually seen. (Hardcoded belief said 85/433 =
+   oyster/at301; reality: 85 = Flex Solar Tracker, 433 = DMT Oyster
+   Cellular 3; "AT301" does not exist in TN360.)
+10. **First-save practice:** before saving a NEW definition/record of
+    a kind that has failed before, arm the Cloudflare log stream. A
+    recurring transient pattern exists: first save of large registry
+    inserts sometimes 500s, identical retry succeeds. Backlog item:
+    wrap registry create/update handlers in try/catch returning the
+    error as JSON (makes failures self-naming).
+
+## Security model
+- API keys NEVER in D1, screens, exports, or logs. Keys live as
+  Cloudflare Worker secrets (`npx wrangler secret put NAME`). The app
+  stores only the secret's NAME (auth profile `secret_ref`). The test
+  endpoint redacts key values from reported URLs.
+- Known accepted risk (backlog): a vendor:manage user could point a
+  definition URL anywhere and the worker would send the key there.
+  Hardening = per-profile allowed-domain check, not yet built.
+
+## Session-continuity notes
+- These three docs are the memory between chats. Update them at the
+  end of any session that changes state.
+- The schema source of truth is the live D1 dump + migration files;
+  `src/schema.sql` is STALE (utilisation-only) — parity rebuild is a
+  backlog task; `db:init` in package.json is currently unsafe for
+  fresh environments.
+- Attachment quirk: this owner's chat attachments of text files often
+  arrive empty. Images and genuine file-uploads work. Ask for
+  plain-text paste when in doubt.
+
