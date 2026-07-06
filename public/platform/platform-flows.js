@@ -10,10 +10,11 @@
 (function () {
   'use strict';
 
-  var STEP_TYPES = [
+var STEP_TYPES = [
     { key: 'api_definition', label: 'API Definition' },
     { key: 'control_table',  label: 'Control Table' },
     { key: 'hardware_type',  label: 'Hardware Type' },
+    { key: 'hardware_set',   label: 'Hardware Set' },
   ];
 
   var state = {
@@ -85,8 +86,16 @@
     state.refs.controlTables = ((results[2].ok && results[2].data.tables) || []).map(function (t) {
       return { ref: String(t.id), label: 'CT-' + String(t.id).padStart(3, '0') + ' \u2014 ' + (t.name || '') };
     });
-    state.refs.hardware = ((results[3].ok && results[3].data.hardware) || []).map(function (h) {
+var hwRows = (results[3].ok && results[3].data.hardware) || [];
+    state.refs.hardware = hwRows.map(function (h) {
       return { ref: String(h.id), label: (h.name || h.code || 'Hardware #' + h.id) };
+    });
+    var setCounts = {};
+    hwRows.forEach(function (h) {
+      if (h.applies_to_feature) setCounts[h.applies_to_feature] = (setCounts[h.applies_to_feature] || 0) + 1;
+    });
+    state.refs.hardwareSets = Object.keys(setCounts).map(function (tag) {
+      return { ref: tag, label: tag + ' (' + setCounts[tag] + ' hardware type' + (setCounts[tag] !== 1 ? 's' : '') + ')' };
     });
 
     var steps = flowsRes.data.steps || [];
@@ -108,7 +117,8 @@
   function refListFor(stepType) {
     if (stepType === 'api_definition') return state.refs.apis;
     if (stepType === 'control_table')  return state.refs.controlTables;
-    if (stepType === 'hardware_type')  return state.refs.hardware;
+ if (stepType === 'hardware_type')  return state.refs.hardware;
+    if (stepType === 'hardware_set')   return state.refs.hardwareSets || [];
     return [];
   }
 
