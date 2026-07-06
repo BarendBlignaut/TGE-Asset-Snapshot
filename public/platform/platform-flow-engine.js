@@ -30,6 +30,32 @@
     try { return JSON.parse(s); } catch (e) { return fallback; }
   }
 
+  function outputKey(tag) {
+  return tag.mapsTo || tag.label || tag.name;
+}
+
+function cleanPath(path) {
+  if (!path) return '';
+  var p = String(path).trim();
+  if (p.indexOf('[].') !== -1) p = p.split('[].').pop();
+  p = p.replace(/^\[\]\./, '');
+  return p;
+}
+
+function ensureAssetId(out, source, mapKey) {
+  if (out['Asset ID'] != null) return;
+
+  var id =
+    out.assetId ||
+    out.vehicleId ||
+    (source && source.vehicleId) ||
+    (source && source.assetId) ||
+    (source && source.id) ||
+    mapKey;
+
+  if (id != null) out['Asset ID'] = id;
+}
+
   // ── The cache seam: every upstream call passes through here ────────────────
   async function execFetch(apiId, moduleTag, params) {
     var res = await TGE.api('POST', '/api/registry/apis/' + encodeURIComponent(apiId) + '/execute', {
@@ -47,75 +73,84 @@
   // Returns an array of per-record objects keyed by tag LABEL (standard names).
   // Handles: plain arrays of records, and map-shaped responses (object whose
   // values are record arrays — e.g. meters keyed by vehicleId).
-  function extractTagged(def, payload, warnings) {
-    var tags = parseJsonSafe(def.fields, []);
-    if (!Array.isArray(tags) || !tags.length) {
-      warnings.push(def.api_id + ': no field tags — response ignored.');
-      return [];
-    }
-// Recover filter structure from display paths when the structured
-    // properties were stripped (the tag edit form rebuilds tags and loses
-    // unknown fields — known issue). Path form: any[where key=val].field
-    tags.forEach(function (t) {
-      if (!t.filterKey && t.path) {
-        var m = String(t.path).match(/\[where\s+([^=\]]+)=([^\]]+)\]\.(.+)$/);
-        if (m) {
-          t.filterKey = m[1].trim();
-          t.filterVal = m[2].trim();
-          t.extractField = m[3].trim();
-          t.isArrayFilter = true;
-        }
-      }
-    });
-    var plain  = tags.filter(function (t) { return !t.isArrayFilter; });
-    var filters = tags.filter(function (t) { return t.isArrayFilter; });
-
-    // Normalise payload into a list of "record units".
-    // Array → each element is a unit. Map-of-arrays → each VALUE is a unit
-    // (an array the filter tags dig into; plain tags read its first item).
-    var units = [];
-    if (Array.isArray(payload)) {
-      units = payload;
-    } else if (payload && typeof payload === 'object') {
-      units = Object.keys(payload).map(function (k) { return payload[k]; });
-    } else {
-      warnings.push(def.api_id + ': unrecognised response shape — ignored.');
-      return [];
-    }
-
-    return units.map(function (unit) {
-      var out = {};
-      var plainSource = Array.isArray(unit) ? (unit[0] || {}) : unit;
-      plain.forEach(function (t) {
-        // Plain tag paths may embed the sample's literal map key (e.g.
-        // "409611[].vehicleId") — use the trailing field name in that case.
-        var p = t.path || t.name;
-        if (p && p.indexOf('[]') !== -1) p = p.split('[].').pop();
-        var v = valAt(plainSource, p);
-        if (v !== undefined) out[t.label || t.name] = v;
-      });
-      if (Array.isArray(unit)) {
-        filters.forEach(function (t) {
-          var hit = unit.find(function (item) {
-            return String(valAt(item, t.filterKey)) === String(t.filterVal);
-          });
-          if (hit) {
-            var v = valAt(hit, t.extractField);
-            if (v !== undefined) out[t.label || t.name] = v;
-          }
-        });
-      } else if (filters.length) {
-        // Filters against a flat record list: apply per record when the key matches
-        filters.forEach(function (t) {
-          if (String(valAt(unit, t.filterKey)) === String(t.filterVal)) {
-            var v = valAt(unit, t.extractField);
-            if (v !== undefined) out[t.label || t.name] = v;
-          }
-        });
-      }
-      return out;
-    });
+function extractTagged(def, payload, warnings) {
+  var tags = parseJsonSafe(def.fields, []);
+  if (!Array.isArray(tags) || !tags.length) {
+    warnings.push(def.api_id + ': no field tags — response ignored.');
+    return [];
   }
+
+  tags.forEach(function (t) {
+    if (!t.filterKey && t.path) {
+      var m = String(t.path).match(/\[where\s+([^=\]]+)=([^\]]+)\]\.(.+)$/);
+      if (m) {
+        t.filterKey = cleanPath(m[1]);
+        t.filterVal = m[2].trim();
+        t.extractField = cleanPath(m[3]);
+        t.isArrayFilter = true;
+      }
+    }
+
+    if (t.path) t.path = cleanPath(t.path);
+    if (t.filterKey) t.filterKey = cleanPath(t.filterKey);
+    if (t.extractField) t.extractField = cleanPath(t.extractField);
+  });
+
+  var plain = tags.filter(function (t) { return !t.isArrayFilter; });
+  var filters = tags.filter(function (t) { return t.isArrayFilter; });
+
+  var units = [];
+  if (Array.isArray(payload)) {
+    units = payload.map(function (v) {
+      return { mapKey: null, value: v };
+    });
+  } else if (payload && typeof payload === 'object') {
+    units = Object.keys(payload).map(function (k) {
+      return { mapKey: k, value: payload[k] };
+    });
+  } else {
+    warnings.push(def.api_id + ': unrecognised response shape — ignored.');
+    return [];
+  }
+
+  return units.map(function (wrapped) {
+    var unit = wrapped.value;
+    var mapKey = wrapped.mapKey;
+    var out = {};
+    var plainSource = Array.isArray(unit) ? (unit[0] || {}) : unit;
+
+    plainSource = Object.assign({ __mapKey: mapKey }, plainSource || {});
+
+    plain.forEach(function (t) {
+      var v = valAt(plainSource, cleanPath(t.path || t.name));
+      if (v !== undefined) out[outputKey(t)] = v;
+    });
+
+    if (Array.isArray(unit)) {
+      filters.forEach(function (t) {
+        var hit = unit.find(function (item) {
+          return String(valAt(item, t.filterKey)) === String(t.filterVal);
+        });
+
+        if (hit) {
+          var v = valAt(hit, t.extractField);
+          if (v !== undefined) out[outputKey(t)] = v;
+          ensureAssetId(out, hit, mapKey);
+        }
+      });
+    } else if (filters.length) {
+      filters.forEach(function (t) {
+        if (String(valAt(unit, t.filterKey)) === String(t.filterVal)) {
+          var v = valAt(unit, t.extractField);
+          if (v !== undefined) out[outputKey(t)] = v;
+        }
+      });
+    }
+
+    ensureAssetId(out, plainSource, mapKey);
+    return out;
+  });
+}
 
   // ── Hardware set: which of an asset's devices belong to the set ────────────
   function matchHardware(deviceRecords, setMembers) {
