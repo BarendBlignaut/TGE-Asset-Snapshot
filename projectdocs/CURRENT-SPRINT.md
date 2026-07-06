@@ -250,3 +250,121 @@ Waiting on (external):
 - Teletrac Navman: API key scope expansion for attachment content endpoint — currently returns 401
 - Teletrac Navman: camera trigger endpoint fix — currently returns 405
 - Teletrac Navman: direction on camera history API approach (7-day window confirmed, implementation TBD)
+
+
+Everything above was previous updated
+
+everything below is current update 06/07/2026
+
+# CURRENT-SPRINT.md
+**Updated: 6 July 2026 — end of Vendor Platform definition-layer build**
+
+## Where we are (one paragraph)
+The Vendor Platform is built and verified end to end at the definition
+layer: vendors, auth profiles (secrets by name only), API definitions
+with test-and-lock workflow and record-picker sampling, rich hardware
+types with hardware sets, vendor-scoped control tables, and the flow
+builder. Vendor 3 = Teletrac Navman carries the first complete data
+set: 3 tested API definitions (vehicles/devices/meters), 11 hardware
+types (2 routed to asset-track), CT-001 reassigned under the vendor,
+and flow id 1 "Asset Track — Teletrac Navman" (5 steps). The old
+hardcoded Asset Track pipeline still runs production — by design —
+until the flow engine exists. TGE Static Fleet exists as vendor id
+(see grid); its File Spec tab is the future home of utilisation
+mappings and container/trailer exclusions.
+
+## Completed this session (4–6 July)
+- Migrations 001–003 (vendors/flows/flow_steps/hardware_types base;
+  hardware rich columns + drop of parallel vendor_hardware_types;
+  vendor_auth_profiles + auth_profile_id + call_spec) — all in
+  src/migrations/, all applied to live D1.
+- Vendor screen: card grid, create/edit panel, hero tab shell.
+- Permissions: `vendor` feature (view/manage/import + full export
+  pill); EXPORT_ACTIONS shared constant fixed camera-snapshots &
+  sd-health missing export-json toggles.
+- Worker: vendors CRUD, hardware-types (repointed + applies_to_feature
+  + gating + dupe check), vendor control-tables route with COALESCE
+  vendor protection, flows CRUD (step validation incl. hardware_set),
+  auth-profiles list, registry create/update carrying vendor_id /
+  auth_profile_id / call_spec + resolve-or-create profiles (name-clash
+  updates in place) + 100KB sample guard, test endpoint (auth
+  assembly, {param} substitution, parsed records, key redaction).
+- Registry frontend: normalizeApiRow (fixed edit-500/undefined-row
+  bug), auth & call-constraint editor sections, test consolidation
+  (modal only; legacy TN360-proxy path deleted), record picker,
+  Expand Array capture (Stage 1), auto-trim/refuse sampling.
+- Hardware form: type/model ids, type name, applies-to-feature.
+- Control Tables platform module (free-text hardware matches replacing
+  admin's hardcoded checkboxes; working +Add Rule; dedupe; save guard).
+- Flows platform module (Power-Automate-style builder, dynamic
+  Operations+Camera screen targets from nav, hardware_set steps).
+- Data: 11 TN360 hardware types (verbatim taxonomy), 3 API definitions
+  tested green, CT-001 → vendor 3, flow 1 saved and verified in D1.
+- Truth correction: model 85 = Flex Solar Tracker, 433 = DMT Oyster
+  Cellular 3; "AT301" does not exist. Old code's comments were wrong.
+- Docs: standard-output-names.md created (commit to projectdocs/).
+
+## NEXT PHASE — Flow Engine (do not start without ask-answer-confirm)
+Goal: modules consume flows; hardcoded pipelines retire at cutover.
+1. Engine core in worker: load flow by module_tag → execute steps —
+   api_definition via the test-endpoint assembly (batched/per-asset
+   per definition), hardware_set matching devices on type_code/
+   model_id, control_table application, tag-driven output mapping to
+   standard names. Respect call_spec (dates, chunking) and Constraint
+   Notes (map iteration).
+2. First consumer: Asset Track behind a comparison switch (run flow,
+   compare against hardcoded output, then cut over and DELETE
+   getBatteryStatus/isOysterTracker/findAssetTrackerDevice + direct
+   TN360 calls in that module).
+3. Discover Hardware: replace API-1-by-convention with "run this
+   vendor's hardware-discovery flow"; harvest/refresh hardware rows.
+4. Stage 3 living definitions: unseen-structure queue on definitions.
+
+## Backlog (ordered-ish)
+- try/catch wrap on registry create/update → self-naming errors
+  (recurring transient first-save 500; log-stream ritual until then).
+- Vendor UI polish: Delete/deactivate for control tables; prettier
+  hardware `code` generation; paste raw_example + capabilities into
+  the 4 hardware rows with captured specimens; capabilities input UI.
+- Datalist suggestions on "display as" (Option A naming aid); output
+  dictionary (Option B) lands with the engine's mapsTo work.
+- Stage 2 sub-value definitions — build against first GPIO/camera
+  specimen.
+- Test-endpoint hardening: per-profile allowed-domain check.
+- Record picker for map-shaped responses.
+- File Spec tab (TGE Static Fleet mappings, container/trailer tick-
+  and-flick) + Import History tab (utilisation_import_runs surface).
+- schema.sql full parity rebuild from live D1 (db:init currently
+  unsafe); commit standard-output-names.md to projectdocs/.
+- Multi-set hardware membership (applies_to_feature → list/join) when
+  first real dual-screen device appears.
+- Utilisation permissions: add manage-field-mappings /
+  manage-static-sanitising toggles to FEATURES when File Spec UI lands.
+
+## Clear-out list (only after flow-engine cutover per item)
+- Admin > Control Tables tab (incl. broken duplicate
+  addControlTableRuleRow) and Admin > API Reference tab (hardcoded
+  API_REFS docs).
+- Standalone API Registry screen/nav (functionality lives in vendor).
+- Dead `registry` permission toggles in FEATURES.
+- registry_apis free-text `vendor` column (vendor_id authoritative).
+- Hardcoded TN360 proxy routes as modules cut over to flows.
+- Old data wipe: owner deletes remaining pre-vendor rows in
+  registry_apis/control tables when ready (rows only, tables stay) —
+  export files from 4 July are the safety net.
+- Verify camera.js / vpm.js status (docs flag: unknown/legacy).
+- Stale ?v= audit (tge-app.js at v=3 predates restructure changes);
+  fix stray unclosed </button> near Fleet Utilisation nav item;
+  update view-container comments to new filenames.
+
+## Known issues / quirks
+- Transient first-save 500 on large registry inserts (retry works;
+  see backlog fix). Arm CF log stream before first saves.
+- D1 console: no comments, prefers one statement at a time; ALTERs
+  not re-runnable.
+- Owner's chat attachments of text files often arrive empty — use
+  plain-text paste or true file upload; images fine.
+- Sample rule: 1–5 records; worker refuses >100KB.
+- Flow display paths for array-filter tags embed a literal example
+  map key — engine must use structured filterKey/filterVal/
+  extractField + Constraint Notes, not the display path.
