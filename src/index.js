@@ -533,6 +533,55 @@ async function handleGetAuthProfiles(request, env, vendorId) {
 // returns the FULL parsed response. Gated on the consuming screen's own
 // 'run' permission (body.feature), so flow access follows tick-and-flick —
 // a user who can run Asset Track can run its flows, and nothing else.
+// ── Flow bundle: everything the engine needs for one screen, one fetch ───────
+// Gated on the screen's own run permission. Returns active flows for the tag
+// with steps, plus referenced definitions (tags/call_spec), hardware sets,
+// and control tables with rules + hardware matches.
+async function handleEngineFlowBundle(request, env, moduleTag) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, moduleTag, "run");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+
+  const flows = await env.DB.prepare("SELECT * FROM flows WHERE module_tag=? AND active=1 ORDER BY vendor_id, name").bind(moduleTag).all();
+  const flowRows = flows.results || [];
+  if (!flowRows.length) return jsonResponse({ ok: true, flows: [], steps: [], definitions: [], hardwareSets: {}, controlTables: [] });
+
+  const flowIds = flowRows.map(f => f.id);
+  const qMarks = flowIds.map(() => "?").join(",");
+  const steps = (await env.DB.prepare(`SELECT * FROM flow_steps WHERE flow_id IN (${qMarks}) AND active=1 ORDER BY flow_id, sort_order`).bind(...flowIds).all()).results || [];
+
+  const apiIds = [...new Set(steps.filter(s => s.step_type === "api_definition").map(s => s.step_ref))];
+  let definitions = [];
+  if (apiIds.length) {
+    const qa = apiIds.map(() => "?").join(",");
+    definitions = (await env.DB.prepare(`SELECT api_id, label, method, url, fields, call_spec, notes FROM registry_apis WHERE api_id IN (${qa}) AND active=1`).bind(...apiIds).all()).results || [];
+  }
+
+  const hardwareSets = {};
+  for (const s of steps.filter(x => x.step_type === "hardware_set")) {
+    const flow = flowRows.find(f => f.id === s.flow_id);
+    const key = s.flow_id + ":" + s.step_ref;
+    hardwareSets[key] = (await env.DB.prepare("SELECT * FROM hardware_types WHERE vendor_id=? AND applies_to_feature=? AND active=1").bind(flow.vendor_id, s.step_ref).all()).results || [];
+  }
+
+  const ctIds = [...new Set(steps.filter(s => s.step_type === "control_table").map(s => parseInt(s.step_ref, 10)).filter(n => !isNaN(n)))];
+  let controlTables = [];
+  if (ctIds.length) {
+    const qc = ctIds.map(() => "?").join(",");
+    const cts   = (await env.DB.prepare(`SELECT * FROM control_tables WHERE id IN (${qc}) AND active=1`).bind(...ctIds).all()).results || [];
+    const rules = (await env.DB.prepare(`SELECT * FROM control_table_rules WHERE control_table_id IN (${qc}) AND active=1 ORDER BY control_table_id, sort_order`).bind(...ctIds).all()).results || [];
+    const hw    = (await env.DB.prepare(`SELECT * FROM control_table_hardware WHERE control_table_id IN (${qc}) AND active=1`).bind(...ctIds).all()).results || [];
+    controlTables = cts.map(ct => ({
+      ...ct,
+      rules: rules.filter(r => r.control_table_id === ct.id),
+      hardware: hw.filter(h => h.control_table_id === ct.id).map(h => h.hardware_match),
+    }));
+  }
+
+  return jsonResponse({ ok: true, flows: flowRows, steps, definitions, hardwareSets, controlTables });
+}
+
 async function handleRegistryExecuteApi(request, env, apiId) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
@@ -2172,8 +2221,11 @@ export default {
       if (method === "POST" && path.match(/^\/api\/registry\/apis\/[^\/]+\/test$/)) {
        return handleRegistryTestApi(request, env, decodeURIComponent(path.split("/")[4]));
       }
-      if (method === "POST" && path.match(/^\/api\/registry\/apis\/[^\/]+\/execute$/)) {
+if (method === "POST" && path.match(/^\/api\/registry\/apis\/[^\/]+\/execute$/)) {
         return handleRegistryExecuteApi(request, env, decodeURIComponent(path.split("/")[4]));
+      }
+      if (method === "GET" && path.match(/^\/api\/engine\/flows\/[^\/]+$/)) {
+        return handleEngineFlowBundle(request, env, decodeURIComponent(path.split("/")[3]));
       }
       if (method === "GET"    && path === "/api/registry/apis")             return handleRegistryGetApis(request, env);
       if (method === "POST"   && path === "/api/registry/apis")             return handleRegistryCreateApi(request, env);
