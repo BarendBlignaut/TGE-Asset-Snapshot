@@ -22,6 +22,7 @@
     'UVC':                           'incab',
     'LEFT_BLIND_SPOT':               'incab',
     'RIGHT_BLIND_SPOT':              'incab',
+    'ADDITIONAL_DRIVER_FACING_CAMERA': 'incab',
     'ADDITIONAL_REAR_FACING_CAMERA': 'ext2',
     'UNKNOWN':                       'unsure1',
   };
@@ -29,7 +30,7 @@
  var CAMERA_SLOTS = [
     { id:'road',    label:'Road Facing',    source:'ROAD_FACING',  sources:['ROAD']   },
     { id:'driver',  label:'Driver Facing',  source:'DRIVER_FACING',sources:['DRIVER'] },
-   { id:'incab',   label:'In-Cab Driver',  source:'MDVR',         sources:['UVC','LEFT_BLIND_SPOT','RIGHT_BLIND_SPOT'] },
+  { id:'incab',   label:'In-Cab Driver',  source:'MDVR',         sources:['UVC','LEFT_BLIND_SPOT','RIGHT_BLIND_SPOT','ADDITIONAL_DRIVER_FACING_CAMERA'] },
     { id:'ext1',    label:'Right External', source:'MDVR',         sources:['TVI1']   },
     { id:'ext2',    label:'Left External',  source:'MDVR',         sources:['TVI2']   },
     { id:'unsure1', label:'Additional 1',   source:'',             sources:[]         },
