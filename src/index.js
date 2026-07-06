@@ -2227,7 +2227,6 @@ if (method === "POST" && path.match(/^\/api\/registry\/apis\/[^\/]+\/execute$/))
 if (method === "GET" && path.match(/^\/api\/engine\/flows\/[^\/]+$/)) {
         return handleEngineFlowBundle(request, env, decodeURIComponent(path.split("/")[4]));
       }
-      }
       if (method === "GET"    && path === "/api/registry/apis")             return handleRegistryGetApis(request, env);
       if (method === "POST"   && path === "/api/registry/apis")             return handleRegistryCreateApi(request, env);
       if (method === "PUT"    && path.match(/^\/api\/registry\/apis\//))   return handleRegistryUpdateApi(request, env, decodeURIComponent(path.split("/").pop()));
