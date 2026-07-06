@@ -645,7 +645,6 @@ async function handleVendorHardwareTypeSave(request, env, vendorId) {
       updated_at
     )
     VALUES
-VALUES
     (
       ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
       datetime('now'),
