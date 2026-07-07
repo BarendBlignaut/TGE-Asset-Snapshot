@@ -10,7 +10,26 @@
 (function () {
   'use strict';
 
-var STEP_TYPES = [
+var STEP_ROLES = {
+    api_definition: [
+      { key: 'seed',   label: 'Seed — creates the population' },
+      { key: 'join',   label: 'Join — merge & prune on Asset ID' },
+      { key: 'enrich', label: 'Enrich — add data, never prune' },
+    ],
+    hardware_set: [
+      { key: 'filter',   label: 'Filter — keep matching assets' },
+      { key: 'annotate', label: 'Annotate — attach, never prune' },
+    ],
+    hardware_type: [
+      { key: 'filter',   label: 'Filter — keep matching assets' },
+      { key: 'annotate', label: 'Annotate — attach, never prune' },
+    ],
+    control_table: [
+      { key: 'grade', label: 'Grade — apply rules to output field' },
+    ],
+  };
+
+  var STEP_TYPES = [
     { key: 'api_definition', label: 'API Definition' },
     { key: 'control_table',  label: 'Control Table' },
     { key: 'hardware_type',  label: 'Hardware Type' },
@@ -172,7 +191,7 @@ var hwRows = (results[3].ok && results[3].data.hardware) || [];
   // ── Builder ───────────────────────────────────────────────────────────────
   function openEditor(flow) {
     state.editing = flow || {};
-    state.editingSteps = (flow && flow.steps) ? flow.steps.map(function (s) { return { stepType: s.stepType, stepRef: s.stepRef }; }) : [];
+  state.editingSteps = (flow && flow.steps) ? flow.steps.map(function (s) { return { stepType: s.stepType, stepRef: s.stepRef, stepRole: s.stepRole || '' }; }) : [];
 
     var editor = TGE.el('vendor-flow-editor');
     if (!editor) return;
@@ -225,17 +244,23 @@ var hwRows = (results[3].ok && results[3].data.hardware) || [];
     wrap.innerHTML = state.editingSteps.map(function (step, idx) {
       var options = refListFor(step.stepType);
       return [
-        '<div style="display:grid;grid-template-columns:auto 170px 1fr auto;gap:8px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:6px;background:var(--surface);">',
+       '<div style="display:grid;grid-template-columns:auto 150px 1fr 230px auto;gap:8px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:6px;background:var(--surface);">',
           '<span style="font-size:11px;font-weight:700;color:var(--muted);width:22px;text-align:center;">' + (idx + 1) + '</span>',
           '<select onchange="TGE.Platform.Flows.setStepType(' + idx + ', this.value)" style="height:32px;">' +
             STEP_TYPES.map(function (t) {
               return '<option value="' + t.key + '"' + (step.stepType === t.key ? ' selected' : '') + '>' + t.label + '</option>';
             }).join('') +
           '</select>',
-          '<select onchange="TGE.Platform.Flows.setStepRef(' + idx + ', this.value)" style="height:32px;">' +
+'<select onchange="TGE.Platform.Flows.setStepRef(' + idx + ', this.value)" style="height:32px;">' +
             '<option value="">' + (options.length ? 'Select item...' : 'None defined for this vendor yet') + '</option>' +
             options.map(function (o) {
               return '<option value="' + esc(o.ref) + '"' + (step.stepRef === o.ref ? ' selected' : '') + '>' + esc(o.label) + '</option>';
+            }).join('') +
+          '</select>',
+          '<select onchange="TGE.Platform.Flows.setStepRole(' + idx + ', this.value)" style="height:32px;">' +
+            '<option value="">Role...</option>' +
+            (STEP_ROLES[step.stepType] || []).map(function (r) {
+              return '<option value="' + r.key + '"' + (step.stepRole === r.key ? ' selected' : '') + '>' + esc(r.label) + '</option>';
             }).join('') +
           '</select>',
           '<div style="display:flex;gap:4px;">',
@@ -322,9 +347,13 @@ var hwRows = (results[3].ok && results[3].data.hardware) || [];
       state.editingSteps[idx].stepRef = '';
       renderSteps();
     },
-    setStepRef: function (idx, ref) {
+setStepRef: function (idx, ref) {
       if (!state.editingSteps[idx]) return;
       state.editingSteps[idx].stepRef = ref;
+    },
+    setStepRole: function (idx, role) {
+      if (!state.editingSteps[idx]) return;
+      state.editingSteps[idx].stepRole = role;
     },
     save:   save,
     cancel: cancel,
