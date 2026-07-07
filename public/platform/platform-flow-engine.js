@@ -1,338 +1,221 @@
-// TGE Asset Snapshot — Platform Flow Engine (v1)
+// TGE Asset Snapshot — Platform Flow Engine (v3 — declared funnel)
 // public/platform/platform-flow-engine.js
 //
-// Executes the flows defined for a screen. One public call:
+// Executes a screen's flows as a declared funnel, reading step_role:
+//   seed   (api)          → build the working set (one row per Asset ID)
+//   join   (api)          → merge devices onto assets AND prune both orphans
+//   filter (hardware_set) → keep only assets carrying set-matching hardware
+//   annotate (hardware)   → attach hardware info, never prune
+//   enrich (api)          → left-join extra data onto survivors, never prune
+//   grade  (control_table)→ apply CT rules (number | days_since), hardware-scoped
+//
+// One public call:
 //   TGE.Platform.FlowEngine.run('asset-track', { onProgress: fn })
 //     → { ok, rows, warnings, meta }
-//
-// v1 scope = exactly what flow 1 exercises (grows per consumer):
-//   - fleet-wide api_definition steps (no {placeholder} per-asset loops yet)
-//   - hardware_set steps (match devices on model_id / type_code)
-//   - control_table threshold steps (min/max → output + colour)
-//   - tag mapping: plain path tags + structured array-filter tags,
-//     map-shaped responses iterated by values (per Constraint Notes)
-// All upstream calls go through one internal function (execFetch) —
-// the deliberate cache seam for engine phase 2.
 
 (function () {
   'use strict';
 
-  // ── Small utils ────────────────────────────────────────────────────────────
   function valAt(obj, path) {
     if (!path) return undefined;
-    return String(path).split('.').reduce(function (o, k) {
-      return o == null ? o : o[k];
-    }, obj);
+    return String(path).split('.').reduce(function (o, k) { return o == null ? o : o[k]; }, obj);
   }
-  function parseJsonSafe(s, fallback) {
-    if (s == null) return fallback;
+  function parseJsonSafe(s, fb) {
+    if (s == null) return fb;
     if (typeof s === 'object') return s;
-    try { return JSON.parse(s); } catch (e) { return fallback; }
+    try { return JSON.parse(s); } catch (e) { return fb; }
+  }
+  function round2(v) {
+    if (typeof v !== 'number' || !isFinite(v)) return v;
+    return Math.round(v * 100) / 100;
   }
 
-  function outputKey(tag) {
-  return tag.mapsTo || tag.label || tag.name;
-}
-
-function cleanPath(path) {
-  if (!path) return '';
-  var p = String(path).trim();
-  if (p.indexOf('[].') !== -1) p = p.split('[].').pop();
-  p = p.replace(/^\[\]\./, '');
-  return p;
-}
-
-function ensureAssetId(out, source, mapKey) {
-  if (out['Asset ID'] != null) return;
-
-  var id =
-    out.assetId ||
-    out.vehicleId ||
-    (source && source.vehicleId) ||
-    (source && source.assetId) ||
-    (source && source.id) ||
-    mapKey;
-
-  if (id != null) out['Asset ID'] = id;
-}
-
-  // ── The cache seam: every upstream call passes through here ────────────────
-  async function execFetch(apiId, moduleTag, params) {
-    var res = await TGE.api('POST', '/api/registry/apis/' + encodeURIComponent(apiId) + '/execute', {
-      feature: moduleTag,
-      params: params || {},
-    });
+  async function execFetch(apiId, moduleTag) {
+    var res = await TGE.api('POST', '/api/registry/apis/' + encodeURIComponent(apiId) + '/execute', { feature: moduleTag, params: {} });
     if (!res.ok || !res.data || res.data.ok === false) {
-      var msg = (res.data && (res.data.error || ('HTTP ' + res.data.status))) || 'execute failed';
-      throw new Error(apiId + ': ' + msg);
+      throw new Error(apiId + ': ' + ((res.data && (res.data.error || ('HTTP ' + res.data.status))) || 'execute failed'));
     }
-    return res.data.data; // full parsed upstream response
+    return res.data.data;
   }
 
-  // ── Tag extraction ──────────────────────────────────────────────────────────
-  // Returns an array of per-record objects keyed by tag LABEL (standard names).
-  // Handles: plain arrays of records, and map-shaped responses (object whose
-  // values are record arrays — e.g. meters keyed by vehicleId).
-function extractTagged(def, payload, warnings) {
-  var tags = parseJsonSafe(def.fields, []);
-  if (!Array.isArray(tags) || !tags.length) {
-    warnings.push(def.api_id + ': no field tags — response ignored.');
-    return [];
-  }
-
-  tags.forEach(function (t) {
-    if (!t.filterKey && t.path) {
-      var m = String(t.path).match(/\[where\s+([^=\]]+)=([^\]]+)\]\.(.+)$/);
-      if (m) {
-        t.filterKey = cleanPath(m[1]);
-        t.filterVal = m[2].trim();
-        t.extractField = cleanPath(m[3]);
-        t.isArrayFilter = true;
+  function extractTagged(def, payload, warnings) {
+    var tags = parseJsonSafe(def.fields, []);
+    if (!Array.isArray(tags) || !tags.length) { warnings.push(def.api_id + ': no field tags.'); return []; }
+    tags.forEach(function (t) {
+      if (!t.filterKey && t.path) {
+        var m = String(t.path).match(/\[where\s+([^=\]]+)=([^\]]+)\]\.(.+)$/);
+        if (m) { t.filterKey = m[1].trim(); t.filterVal = m[2].trim(); t.extractField = m[3].trim(); t.isArrayFilter = true; }
       }
-    }
-
-    if (t.path) t.path = cleanPath(t.path);
-    if (t.filterKey) t.filterKey = cleanPath(t.filterKey);
-    if (t.extractField) t.extractField = cleanPath(t.extractField);
-  });
-
-  var plain = tags.filter(function (t) { return !t.isArrayFilter; });
-  var filters = tags.filter(function (t) { return t.isArrayFilter; });
-
-  var units = [];
-  if (Array.isArray(payload)) {
-    units = payload.map(function (v) {
-      return { mapKey: null, value: v };
     });
-  } else if (payload && typeof payload === 'object') {
-    units = Object.keys(payload).map(function (k) {
-      return { mapKey: k, value: payload[k] };
-    });
-  } else {
-    warnings.push(def.api_id + ': unrecognised response shape — ignored.');
-    return [];
-  }
+    var plain   = tags.filter(function (t) { return !t.isArrayFilter; });
+    var filters = tags.filter(function (t) { return t.isArrayFilter; });
 
-  return units.map(function (wrapped) {
-    var unit = wrapped.value;
-    var mapKey = wrapped.mapKey;
-    var out = {};
-    var plainSource = Array.isArray(unit) ? (unit[0] || {}) : unit;
+    var units;
+    if (Array.isArray(payload)) units = payload;
+    else if (payload && typeof payload === 'object') units = Object.keys(payload).map(function (k) { return payload[k]; });
+    else { warnings.push(def.api_id + ': unrecognised response shape.'); return []; }
 
-    plainSource = Object.assign({ __mapKey: mapKey }, plainSource || {});
-
-    plain.forEach(function (t) {
-      var v = valAt(plainSource, cleanPath(t.path || t.name));
-      if (v !== undefined) out[outputKey(t)] = v;
-    });
-
-    if (Array.isArray(unit)) {
-      filters.forEach(function (t) {
-        var hit = unit.find(function (item) {
-          return String(valAt(item, t.filterKey)) === String(t.filterVal);
+    return units.map(function (unit) {
+      var out = {};
+      var flat = Array.isArray(unit) ? (unit[0] || {}) : unit;
+      plain.forEach(function (t) {
+        var p = t.path || t.name;
+        if (p && p.indexOf('[]') !== -1) p = p.split('[].').pop();
+        var v = valAt(flat, p);
+        if (v !== undefined) out[t.label || t.name] = round2(v);
+      });
+      if (Array.isArray(unit)) {
+        filters.forEach(function (t) {
+          var hit = unit.find(function (it) { return String(valAt(it, t.filterKey)) === String(t.filterVal); });
+          if (hit) { var v = valAt(hit, t.extractField); if (v !== undefined) out[t.label || t.name] = round2(v); }
         });
-
-        if (hit) {
-          var v = valAt(hit, t.extractField);
-          if (v !== undefined) out[outputKey(t)] = v;
-          ensureAssetId(out, hit, mapKey);
-        }
-      });
-    } else if (filters.length) {
-      filters.forEach(function (t) {
-        if (String(valAt(unit, t.filterKey)) === String(t.filterVal)) {
-          var v = valAt(unit, t.extractField);
-          if (v !== undefined) out[outputKey(t)] = v;
-        }
-      });
-    }
-
-    ensureAssetId(out, plainSource, mapKey);
-    return out;
-  });
-}
-
-  // ── Hardware set: which of an asset's devices belong to the set ────────────
-  function matchHardware(deviceRecords, setMembers) {
-    // deviceRecords: tagged device rows for one asset (need Model ID / Device Type Code)
-    // setMembers: hardware_types rows (model_id, type_code)
-    return deviceRecords.filter(function (d) {
-      var mid  = d['Model ID']         != null ? String(d['Model ID'])         : null;
-      var tcode = d['Device Type Code'] != null ? String(d['Device Type Code']) : null;
-      return setMembers.some(function (m) {
-        if (m.model_id != null && mid != null) return String(m.model_id) === mid;
-        if (m.type_code && tcode) return String(m.type_code) === tcode;
-        return false;
-      });
+      }
+      return out;
     });
   }
 
-  // ── Control table: threshold rules → output value + colour ─────────────────
-  function applyControlTable(ct, row, matchedHardware, warnings) {
-    var outField = ct.output_field || 'ctOutput';
-    // Which value do we evaluate? The CT's value_source names the field —
-    // match it against the row's standard-named outputs (case-insensitive,
-    // ignoring spaces) so 'battCurrent' finds 'Batt Current'.
-    var srcKey = null;
-    var want = String(ct.value_source || '').toLowerCase().replace(/[\s_]/g, '');
-    Object.keys(row).forEach(function (k) {
-      if (k.toLowerCase().replace(/[\s_]/g, '') === want) srcKey = k;
-    });
+  function assetKey(rec) { return rec['Asset ID'] != null ? String(rec['Asset ID']) : null; }
+  function isDeviceShaped(rec) {
+    return rec['Model ID'] !== undefined || rec['Device Type Code'] !== undefined || rec['Model'] !== undefined;
+  }
 
-    // Hardware scoping: CT applies only where a matched device fits one of
-    // the CT's hardware_match strings (case-insensitive substring — same
-    // semantics as the admin editor's free text).
-    var applies = (ct.hardware || []).length === 0 || matchedHardware.some(function (d) {
+  function deviceMatchesSet(dev, members) {
+    var mid = dev['Model ID'] != null ? String(dev['Model ID']) : null;
+    var tc  = dev['Device Type Code'] != null ? String(dev['Device Type Code']) : null;
+    return members.some(function (m) {
+      if (m.model_id != null && mid != null && String(m.model_id) === mid) return true;
+      if (m.type_code && tc && String(m.type_code) === tc) return true;
+      return false;
+    });
+  }
+
+  function applyCT(ct, row, matchedDevices, warnings) {
+    var outField = ct.output_field || 'ctOutput';
+    var scoped = (ct.hardware || []).length === 0 || matchedDevices.some(function (d) {
       var name = String(d['Model'] || d['Device Type'] || '').toLowerCase();
+      if (!name) return false;
       return (ct.hardware || []).some(function (h) {
-        return name.indexOf(String(h).toLowerCase()) !== -1 ||
-               String(h).toLowerCase().indexOf(name) !== -1 && name.length > 0;
+        var hs = String(h).toLowerCase();
+        return name.indexOf(hs) !== -1 || hs.indexOf(name) !== -1;
       });
     });
-    if (!applies) { row[outField] = 'N/A'; row[outField + 'Colour'] = 'gray'; return; }
+    if (!scoped) { row[outField] = 'N/A'; row[outField + 'Colour'] = 'gray'; return; }
 
+    var want = String(ct.value_source || '').toLowerCase().replace(/[\s_]/g, '');
+    var srcKey = null;
+    Object.keys(row).forEach(function (k) { if (k.toLowerCase().replace(/[\s_]/g, '') === want) srcKey = k; });
     var raw = srcKey != null ? row[srcKey] : undefined;
-    var val = typeof raw === 'number' ? raw : parseFloat(raw);
-    if (raw === undefined || isNaN(val)) {
-      row[outField] = 'Unknown'; row[outField + 'Colour'] = 'gray'; return;
+
+    var evalVal;
+    if (String(ct.evaluate_as) === 'days_since') {
+      var d = raw ? new Date(raw) : null;
+      evalVal = (d && !isNaN(d.getTime())) ? Math.floor((Date.now() - d.getTime()) / 86400000) : NaN;
+    } else {
+      evalVal = typeof raw === 'number' ? raw : parseFloat(raw);
     }
+    if (raw === undefined || isNaN(evalVal)) { row[outField] = 'Unknown'; row[outField + 'Colour'] = 'gray'; return; }
 
     var rule = (ct.rules || []).find(function (r) {
-      var minOk = r.min_value == null || val >= r.min_value;
-      var maxOk = r.max_value == null || val <= r.max_value;
-      return minOk && maxOk;
+      return (r.min_value == null || evalVal >= r.min_value) && (r.max_value == null || evalVal <= r.max_value);
     });
     if (rule) { row[outField] = rule.output_value; row[outField + 'Colour'] = rule.output_colour || 'gray'; }
     else      { row[outField] = 'Unknown'; row[outField + 'Colour'] = 'gray'; }
   }
 
-  // ── The engine ──────────────────────────────────────────────────────────────
   async function run(moduleTag, options) {
     options = options || {};
     var progress = typeof options.onProgress === 'function' ? options.onProgress : function () {};
     var warnings = [];
 
     progress('Loading flows for ' + moduleTag + '...');
-    var bundleRes = await TGE.api('GET', '/api/engine/flows/' + encodeURIComponent(moduleTag));
-    if (!bundleRes.ok || !bundleRes.data.ok) {
-      return { ok: false, error: (bundleRes.data && bundleRes.data.error) || 'Could not load flows.', rows: [], warnings: warnings };
-    }
-    var bundle = bundleRes.data;
-    if (!bundle.flows.length) {
-      return { ok: true, rows: [], warnings: ['No active flows tagged ' + moduleTag + '.'], meta: { flows: 0 } };
-    }
+    var bRes = await TGE.api('GET', '/api/engine/flows/' + encodeURIComponent(moduleTag));
+    if (!bRes.ok || !bRes.data.ok) return { ok: false, error: (bRes.data && bRes.data.error) || 'Could not load flows.', rows: [], warnings: warnings };
+    var bundle = bRes.data;
+    if (!bundle.flows.length) return { ok: true, rows: [], warnings: ['No active flows tagged ' + moduleTag + '.'], meta: { flows: 0 } };
 
     var allRows = [];
 
     for (var fi = 0; fi < bundle.flows.length; fi++) {
       var flow = bundle.flows[fi];
-      var steps = bundle.steps.filter(function (s) { return s.flow_id === flow.id; });
+      var steps = bundle.steps.filter(function (s) { return s.flow_id === flow.id; })
+                              .sort(function (a, b) { return a.sort_order - b.sort_order; });
 
-      // Per-flow working state
-    var apiResults = {};     // apiId → tagged record arrays
-    var assetRows = {};      // Asset ID → merged row
-    var assetDevices = {};   // Asset ID → tagged device records
-    var matchedByAsset = {}; // Asset ID → devices matching the hardware set
-    var ctQueue = [];
-    var scopeLocked = false; // after hardware_set, API steps enrich only
+      var assets = {};
+      var devicesByAsset = {};
+      var matchedByAsset = {};
+      var seeded = false;
 
       for (var si = 0; si < steps.length; si++) {
         var step = steps[si];
+        var role = step.step_role || '';
 
         if (step.step_type === 'api_definition') {
           var def = bundle.definitions.find(function (d) { return d.api_id === step.step_ref; });
-          if (!def) { warnings.push(flow.name + ': definition ' + step.step_ref + ' missing/inactive — skipped.'); continue; }
-          if (String(def.url).indexOf('{') !== -1) {
-            warnings.push(flow.name + ': ' + def.api_id + ' needs per-asset params — not supported in engine v1, skipped.');
-            continue;
+          if (!def) { warnings.push(flow.name + ': definition ' + step.step_ref + ' missing.'); continue; }
+          if (String(def.url).indexOf('{') !== -1) { warnings.push(flow.name + ': ' + def.api_id + ' needs per-asset params — not in engine v1.'); continue; }
+          progress('[' + (role || 'api') + '] ' + def.api_id + ' — ' + (def.label || '') + '...');
+          var tagged = extractTagged(def, await execFetch(def.api_id, moduleTag), warnings);
+
+          if (role === 'seed' || !seeded) {
+            tagged.forEach(function (rec) { var k = assetKey(rec); if (k) assets[k] = Object.assign(assets[k] || {}, rec); });
+            seeded = true;
+          } else if (role === 'join') {
+            tagged.forEach(function (rec) {
+              var k = assetKey(rec); if (!k) return;
+              if (isDeviceShaped(rec)) (devicesByAsset[k] = devicesByAsset[k] || []).push(rec);
+              else if (assets[k]) assets[k] = Object.assign(assets[k], rec);
+            });
+            Object.keys(assets).forEach(function (k) { if (!devicesByAsset[k]) delete assets[k]; });
+          } else {
+            tagged.forEach(function (rec) {
+              var k = assetKey(rec); if (!k) return;
+              if (assets[k]) assets[k] = Object.assign({}, rec, assets[k]);
+            });
           }
-          progress('Calling ' + def.api_id + ' — ' + (def.label || '') + '...');
-          var payload = await execFetch(def.api_id, moduleTag, null);
-          var tagged = extractTagged(def, payload, warnings);
-          apiResults[def.api_id] = tagged;
-
-          tagged.forEach(function (rec) {
-            var assetId = rec['Asset ID'];
-            if (assetId == null) return;
-          var key = String(assetId);
-
-    // After hardware_set has run, API steps are enrichment only.
-    // They may update existing in-scope rows, but must not create new rows.
-    if (scopeLocked && !assetRows[key]) return;
-
-    if (rec['Model ID'] !== undefined || rec['Device Type Code'] !== undefined) {
-      (assetDevices[key] = assetDevices[key] || []).push(rec);
-      assetRows[key] = Object.assign(assetRows[key] || { 'Asset ID': assetId }, rec);
-    } else {
-      assetRows[key] = Object.assign(assetRows[key] || { 'Asset ID': assetId }, rec);
-}
-          });
           continue;
         }
 
         if (step.step_type === 'hardware_set') {
           var members = bundle.hardwareSets[flow.id + ':' + step.step_ref] || [];
-          if (!members.length) { warnings.push(flow.name + ': hardware set "' + step.step_ref + '" is empty.'); }
-          progress('Matching hardware set: ' + step.step_ref + '...');
-          Object.keys(assetDevices).forEach(function (key) {
-            var matched = matchHardware(assetDevices[key], members);
+          progress('[' + (role || 'filter') + '] hardware set: ' + step.step_ref + '...');
+          Object.keys(devicesByAsset).forEach(function (k) {
+            var matched = devicesByAsset[k].filter(function (d) { return deviceMatchesSet(d, members); });
             if (matched.length) {
-              matchedByAsset[key] = matched;
-              var row = assetRows[key] = assetRows[key] || { 'Asset ID': assetDevices[key][0]['Asset ID'] };
-              row['Hardware'] = matched.map(function (d) { return d['Model'] || d['Device Type'] || ''; }).join(', ');
-              matched.forEach(function (d) { row = Object.assign(row, {}); });
+              matchedByAsset[k] = matched;
+              if (assets[k]) {
+                assets[k]['Hardware'] = matched.map(function (d) { return d['Model'] || ''; }).filter(Boolean).join(', ');
+                if (assets[k]['Model'] === undefined && matched[0]['Model'] !== undefined) assets[k]['Model'] = matched[0]['Model'];
+              }
             }
           });
-          // Assets with devices but none in the set are out of this flow's scope
-          Object.keys(assetRows).forEach(function (key) {
-  if (assetDevices[key] && !matchedByAsset[key]) assetRows[key].__outOfSet = true;
-});
-
-// Hardware set is the module scope lock.
-// API steps after this point can only enrich existing rows.
-scopeLocked = true;
-
+          if (role !== 'annotate') {
+            Object.keys(assets).forEach(function (k) { if (!matchedByAsset[k]) delete assets[k]; });
+          }
           continue;
         }
 
         if (step.step_type === 'control_table') {
           var ct = bundle.controlTables.find(function (c) { return String(c.id) === String(step.step_ref); });
-          if (!ct) { warnings.push(flow.name + ': control table ' + step.step_ref + ' missing/inactive — skipped.'); continue; }
-          ctQueue.push(ct); // applied after all data steps, over final rows
+          if (!ct) { warnings.push(flow.name + ': control table ' + step.step_ref + ' missing.'); continue; }
+          progress('[grade] ' + (ct.name || ('CT-' + ct.id)) + '...');
+          Object.keys(assets).forEach(function (k) { applyCT(ct, assets[k], matchedByAsset[k] || [], warnings); });
           continue;
         }
 
-        if (step.step_type === 'hardware_type') {
-          warnings.push(flow.name + ': individual hardware_type steps not yet implemented in engine v1 — use a hardware set.');
-          continue;
-        }
-
-        warnings.push(flow.name + ': unknown step type "' + step.step_type + '" — skipped.');
+        if (step.step_type === 'hardware_type') { warnings.push(flow.name + ': individual hardware_type steps not in engine v1 — use a hardware set.'); continue; }
+        warnings.push(flow.name + ': unknown step type "' + step.step_type + '".');
       }
 
-      // Apply queued control tables to every in-scope asset row
-      if (ctQueue.length) progress('Applying control tables...');
-      var rows = Object.keys(assetRows)
-        .filter(function (key) { return !assetRows[key].__outOfSet; })
-        .map(function (key) {
-          var row = assetRows[key];
-          delete row.__outOfSet;
-          row.__vendor = flow.vendor_id;
-          row.__flow = flow.name;
-          ctQueue.forEach(function (ct) {
-            applyControlTable(ct, row, matchedByAsset[key] || [], warnings);
-          });
-          return row;
-        });
-
-      allRows = allRows.concat(rows);
+      Object.keys(assets).forEach(function (k) {
+        assets[k].__flow = flow.name; assets[k].__vendor = flow.vendor_id;
+        allRows.push(assets[k]);
+      });
     }
 
     progress('Done — ' + allRows.length + ' assets.');
     return { ok: true, rows: allRows, warnings: warnings, meta: { flows: bundle.flows.length } };
   }
 
-  // ── Register ────────────────────────────────────────────────────────────────
   window.TGE = window.TGE || {};
   TGE.Platform = TGE.Platform || {};
   TGE.Platform.FlowEngine = { run: run };
