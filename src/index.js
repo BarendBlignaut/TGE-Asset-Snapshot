@@ -821,10 +821,32 @@ async function handleSaveVendorFlow(request, env, vendorId) {
   if (!moduleTag) return jsonResponse({ error: "Select which screen this flow feeds." }, 400);
   if (!steps.length) return jsonResponse({ error: "A flow needs at least one step." }, 400);
 
-  const VALID_STEP_TYPES = ["api_definition", "control_table", "hardware_type", "hardware_set"];
-  for (const s of steps) {
-    if (!VALID_STEP_TYPES.includes(String(s.stepType))) return jsonResponse({ error: "Invalid step type: " + s.stepType }, 400);
+ const VALID_STEP_TYPES = ["api_definition", "control_table", "hardware_type", "hardware_set"];
+  // Per-type role vocabularies (open lists — new roles are words here, never migrations)
+  const VALID_ROLES = {
+    api_definition: ["seed", "join", "enrich"],
+    hardware_set:   ["filter", "annotate"],
+    control_table:  ["grade"],
+    hardware_type:  ["filter", "annotate"],
+  };
+  const ROLE_DEFAULTS = { hardware_set: "filter", control_table: "grade", hardware_type: "filter" };
+
+  let seenSeed = false;
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    const type = String(s.stepType);
+    if (!VALID_STEP_TYPES.includes(type)) return jsonResponse({ error: "Invalid step type: " + s.stepType }, 400);
     if (!String(s.stepRef || "").trim()) return jsonResponse({ error: "Every step must reference an item." }, 400);
+
+    let role = String(s.stepRole || "").trim();
+    if (!role && ROLE_DEFAULTS[type]) role = ROLE_DEFAULTS[type];
+    if (type === "api_definition") {
+      if (!role) return jsonResponse({ error: `Step ${i + 1}: API steps must declare a role (seed, join or enrich).` }, 400);
+      if (!seenSeed && role !== "seed") return jsonResponse({ error: `Step ${i + 1}: the first API step must be 'seed' — a flow needs a population before it can ${role}.` }, 400);
+      if (role === "seed") seenSeed = true;
+    }
+    if (!(VALID_ROLES[type] || []).includes(role)) return jsonResponse({ error: `Step ${i + 1}: '${role}' is not a valid role for ${type}.` }, 400);
+    s.stepRole = role; // normalised — defaults written into the row
   }
 
   const dupe = await env.DB.prepare("SELECT id FROM flows WHERE vendor_id = ? AND name = ? AND id != ?").bind(vendorId, name, id || 0).first();
@@ -842,8 +864,8 @@ async function handleSaveVendorFlow(request, env, vendorId) {
   }
 
   for (let i = 0; i < steps.length; i++) {
-    await env.DB.prepare("INSERT INTO flow_steps (flow_id, sort_order, step_type, step_ref, notes, active, created_at, updated_at) VALUES (?,?,?,?,?,1,?,?)")
-      .bind(flowId, i, String(steps[i].stepType), String(steps[i].stepRef), steps[i].notes ? String(steps[i].notes) : null, nowIso(), nowIso()).run();
+await env.DB.prepare("INSERT INTO flow_steps (flow_id, sort_order, step_type, step_ref, step_role, notes, active, created_at, updated_at) VALUES (?,?,?,?,?,?,1,?,?)")
+      .bind(flowId, i, String(steps[i].stepType), String(steps[i].stepRef), steps[i].stepRole || null, steps[i].notes ? String(steps[i].notes) : null, nowIso(), nowIso()).run();
   }
 
   await logActivity(env, auth.session.user_id, "vendor", id ? "update" : "create", `${id ? "Updated" : "Created"} flow: ${name} (${moduleTag})`, null);
