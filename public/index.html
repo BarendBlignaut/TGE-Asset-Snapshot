@@ -1,223 +1,698 @@
-// TGE Asset Snapshot — Platform Flow Engine (v3 — declared funnel)
-// public/platform/platform-flow-engine.js
-//
-// Executes a screen's flows as a declared funnel, reading step_role:
-//   seed   (api)          → build the working set (one row per Asset ID)
-//   join   (api)          → merge devices onto assets AND prune both orphans
-//   filter (hardware_set) → keep only assets carrying set-matching hardware
-//   annotate (hardware)   → attach hardware info, never prune
-//   enrich (api)          → left-join extra data onto survivors, never prune
-//   grade  (control_table)→ apply CT rules (number | days_since), hardware-scoped
-//
-// One public call:
-//   TGE.Platform.FlowEngine.run('asset-track', { onProgress: fn })
-//     → { ok, rows, warnings, meta }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TGE Asset Snapshot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ── RESET ─────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "Inter", "Segoe UI", Arial, sans-serif; font-size: 14px; line-height: 1.5; background: #f0f4f1; color: #0f1a13; }
+    button, input, select, textarea { font: inherit; }
 
-(function () {
-  'use strict';
-
-  function valAt(obj, path) {
-    if (!path) return undefined;
-    return String(path).split('.').reduce(function (o, k) { return o == null ? o : o[k]; }, obj);
-  }
-  function parseJsonSafe(s, fb) {
-    if (s == null) return fb;
-    if (typeof s === 'object') return s;
-    try { return JSON.parse(s); } catch (e) { return fb; }
-  }
-  function round2(v) {
-    if (typeof v !== 'number' || !isFinite(v)) return v;
-    return Math.round(v * 100) / 100;
-  }
-
-  async function execFetch(apiId, moduleTag) {
-    var res = await TGE.api('POST', '/api/registry/apis/' + encodeURIComponent(apiId) + '/execute', { feature: moduleTag, params: {} });
-    if (!res.ok || !res.data || res.data.ok === false) {
-      throw new Error(apiId + ': ' + ((res.data && (res.data.error || ('HTTP ' + res.data.status))) || 'execute failed'));
-    }
-    return res.data.data;
-  }
-
-  function extractTagged(def, payload, warnings) {
-    var tags = parseJsonSafe(def.fields, []);
-    if (!Array.isArray(tags) || !tags.length) { warnings.push(def.api_id + ': no field tags.'); return []; }
-    tags.forEach(function (t) {
-      if (!t.filterKey && t.path) {
-        var m = String(t.path).match(/\[where\s+([^=\]]+)=([^\]]+)\]\.(.+)$/);
-        if (m) { t.filterKey = m[1].trim(); t.filterVal = m[2].trim(); t.extractField = m[3].trim(); t.isArrayFilter = true; }
-      }
-    });
-    var plain   = tags.filter(function (t) { return !t.isArrayFilter; });
-    var filters = tags.filter(function (t) { return t.isArrayFilter; });
-
-    var units;
-    if (Array.isArray(payload)) units = payload;
-    else if (payload && typeof payload === 'object') units = Object.keys(payload).map(function (k) { return payload[k]; });
-    else { warnings.push(def.api_id + ': unrecognised response shape.'); return []; }
-
-    return units.map(function (unit) {
-      var out = {};
-      var flat = Array.isArray(unit) ? (unit[0] || {}) : unit;
-      plain.forEach(function (t) {
-        var p = t.path || t.name;
-        if (p && p.indexOf('[]') !== -1) p = p.split('[].').pop();
-        var v = valAt(flat, p);
-        if (v !== undefined) out[t.label || t.name] = round2(v);
-      });
-      if (Array.isArray(unit)) {
-        filters.forEach(function (t) {
-          var hit = unit.find(function (it) { return String(valAt(it, t.filterKey)) === String(t.filterVal); });
-          if (hit) { var v = valAt(hit, t.extractField); if (v !== undefined) out[t.label || t.name] = round2(v); }
-        });
-      }
-      return out;
-    });
-  }
-
-  function assetKey(rec) { return rec['Asset ID'] != null ? String(rec['Asset ID']) : null; }
-  function isDeviceShaped(rec) {
-    return rec['Model ID'] !== undefined || rec['Device Type Code'] !== undefined || rec['Model'] !== undefined;
-  }
-
-  function deviceMatchesSet(dev, members) {
-    var mid = dev['Model ID'] != null ? String(dev['Model ID']) : null;
-    var tc  = dev['Device Type Code'] != null ? String(dev['Device Type Code']) : null;
-    return members.some(function (m) {
-      if (m.model_id != null && mid != null && String(m.model_id) === mid) return true;
-      if (m.type_code && tc && String(m.type_code) === tc) return true;
-      return false;
-    });
-  }
-
-  function applyCT(ct, row, matchedDevices, warnings) {
-    var outField = ct.output_field || 'ctOutput';
-    var scoped = (ct.hardware || []).length === 0 || matchedDevices.some(function (d) {
-      var name = String(d['Model'] || d['Device Type'] || '').toLowerCase();
-      if (!name) return false;
-      return (ct.hardware || []).some(function (h) {
-        var hs = String(h).toLowerCase();
-        return name.indexOf(hs) !== -1 || hs.indexOf(name) !== -1;
-      });
-    });
-    if (!scoped) { row[outField] = 'N/A'; row[outField + 'Colour'] = 'gray'; return; }
-
-    var want = String(ct.value_source || '').toLowerCase().replace(/[\s_]/g, '');
-    var srcKey = null;
-    Object.keys(row).forEach(function (k) { if (k.toLowerCase().replace(/[\s_]/g, '') === want) srcKey = k; });
-    var raw = srcKey != null ? row[srcKey] : undefined;
-
-    var evalVal;
-    if (String(ct.evaluate_as) === 'days_since') {
-      var d = raw ? new Date(raw) : null;
-      evalVal = (d && !isNaN(d.getTime())) ? Math.floor((Date.now() - d.getTime()) / 86400000) : NaN;
-    } else {
-      evalVal = typeof raw === 'number' ? raw : parseFloat(raw);
-    }
-    if (raw === undefined || isNaN(evalVal)) { row[outField] = 'Unknown'; row[outField + 'Colour'] = 'gray'; return; }
-
-    var rule = (ct.rules || []).find(function (r) {
-      return (r.min_value == null || evalVal >= r.min_value) && (r.max_value == null || evalVal <= r.max_value);
-    });
-    if (rule) { row[outField] = rule.output_value; row[outField + 'Colour'] = rule.output_colour || 'gray'; }
-    else      { row[outField] = 'Unknown'; row[outField + 'Colour'] = 'gray'; }
-  }
-
-  async function run(moduleTag, options) {
-    options = options || {};
-    var progress = typeof options.onProgress === 'function' ? options.onProgress : function () {};
-    var warnings = [];
-
-    progress('Loading flows for ' + moduleTag + '...');
-    var bRes = await TGE.api('GET', '/api/engine/flows/' + encodeURIComponent(moduleTag));
-    if (!bRes.ok || !bRes.data.ok) return { ok: false, error: (bRes.data && bRes.data.error) || 'Could not load flows.', rows: [], warnings: warnings };
-    var bundle = bRes.data;
-    if (!bundle.flows.length) return { ok: true, rows: [], warnings: ['No active flows tagged ' + moduleTag + '.'], meta: { flows: 0 } };
-
-    var allRows = [];
-
-    for (var fi = 0; fi < bundle.flows.length; fi++) {
-      var flow = bundle.flows[fi];
-      var steps = bundle.steps.filter(function (s) { return s.flow_id === flow.id; })
-                              .sort(function (a, b) { return a.sort_order - b.sort_order; });
-
-      var assets = {};
-      var devicesByAsset = {};
-      var matchedByAsset = {};
-      var seeded = false;
-
-      for (var si = 0; si < steps.length; si++) {
-        var step = steps[si];
-        var role = step.step_role || '';
-
-        if (step.step_type === 'api_definition') {
-          var def = bundle.definitions.find(function (d) { return d.api_id === step.step_ref; });
-          if (!def) { warnings.push(flow.name + ': definition ' + step.step_ref + ' missing.'); continue; }
-          if (String(def.url).indexOf('{') !== -1) { warnings.push(flow.name + ': ' + def.api_id + ' needs per-asset params — not in engine v1.'); continue; }
-          progress('[' + (role || 'api') + '] ' + def.api_id + ' — ' + (def.label || '') + '...');
-          var tagged = extractTagged(def, await execFetch(def.api_id, moduleTag), warnings);
-
-          if (role === 'seed' || !seeded) {
-            tagged.forEach(function (rec) { var k = assetKey(rec); if (k) assets[k] = Object.assign(assets[k] || {}, rec); });
-            seeded = true;
-          } else if (role === 'join') {
-            tagged.forEach(function (rec) {
-              var k = assetKey(rec); if (!k) return;
-              if (isDeviceShaped(rec)) (devicesByAsset[k] = devicesByAsset[k] || []).push(rec);
-              else if (assets[k]) assets[k] = Object.assign(assets[k], rec);
-            });
-            Object.keys(assets).forEach(function (k) { if (!devicesByAsset[k]) delete assets[k]; });
-          } else {
-            tagged.forEach(function (rec) {
-              var k = assetKey(rec); if (!k) return;
-              if (assets[k]) assets[k] = Object.assign({}, rec, assets[k]);
-            });
-          }
-          continue;
-        }
-
-        if (step.step_type === 'hardware_set') {
-          var members = bundle.hardwareSets[flow.id + ':' + step.step_ref] || [];
-          progress('[' + (role || 'filter') + '] hardware set: ' + step.step_ref + '...');
-          Object.keys(devicesByAsset).forEach(function (k) {
-            var matched = devicesByAsset[k].filter(function (d) { return deviceMatchesSet(d, members); });
-            if (matched.length) {
-              matchedByAsset[k] = matched;
-              if (assets[k]) {
-                assets[k]['Hardware'] = matched.map(function (d) { return d['Model'] || ''; }).filter(Boolean).join(', ');
-                if (assets[k]['Model'] === undefined && matched[0]['Model'] !== undefined) assets[k]['Model'] = matched[0]['Model'];
-              }
-            }
-          });
-          if (role !== 'annotate') {
-            Object.keys(assets).forEach(function (k) { if (!matchedByAsset[k]) delete assets[k]; });
-          }
-          continue;
-        }
-
-        if (step.step_type === 'control_table') {
-          var ct = bundle.controlTables.find(function (c) { return String(c.id) === String(step.step_ref); });
-          if (!ct) { warnings.push(flow.name + ': control table ' + step.step_ref + ' missing.'); continue; }
-          progress('[grade] ' + (ct.name || ('CT-' + ct.id)) + '...');
-          Object.keys(assets).forEach(function (k) { applyCT(ct, assets[k], matchedByAsset[k] || [], warnings); });
-          continue;
-        }
-
-        if (step.step_type === 'hardware_type') { warnings.push(flow.name + ': individual hardware_type steps not in engine v1 — use a hardware set.'); continue; }
-        warnings.push(flow.name + ': unknown step type "' + step.step_type + '".');
-      }
-
-      Object.keys(assets).forEach(function (k) {
-        assets[k].__flow = flow.name; assets[k].__vendor = flow.vendor_id;
-        allRows.push(assets[k]);
-      });
+    /* ── DESIGN TOKENS ─────────────────────────── */
+    :root {
+      --green-900: #0a2d14;
+      --green-800: #0f4a22;
+      --green-700: #007a3b;
+      --green-600: #00a651;
+      --green-100: #e6f5ec;
+      --green-50:  #f0faf4;
+      --yellow:    #d4f026;
+      --yellow-dim:#b8d520;
+      --ink:       #0f1a13;
+      --ink-2:     #2d3d34;
+      --muted:     #5a6e62;
+      --muted-2:   #8a9e92;
+      --line:      #dce8e0;
+      --line-2:    #eaf2ec;
+      --surface:   #ffffff;
+      --surface-2: #f5f9f6;
+      --surface-3: #eef5f0;
+      --danger:    #c0392b;
+      --danger-bg: #fdf0ee;
+      --warning:   #b45309;
+      --sidebar-w: 220px;
+      --topbar-h:  52px;
+      --radius:    10px;
+      --radius-lg: 14px;
+      --shadow-sm: 0 1px 3px rgba(10,40,20,0.08);
     }
 
-    progress('Done — ' + allRows.length + ' assets.');
-    return { ok: true, rows: allRows, warnings: warnings, meta: { flows: bundle.flows.length } };
-  }
+    /* ── LAYOUT ────────────────────────────────── */
+    .shell {
+      display: grid;
+      grid-template-columns: var(--sidebar-w) 1fr;
+      grid-template-rows: var(--topbar-h) 1fr;
+      min-height: 100vh;
+    }
 
-  window.TGE = window.TGE || {};
-  TGE.Platform = TGE.Platform || {};
-  TGE.Platform.FlowEngine = { run: run };
+    /* ── SIDEBAR ───────────────────────────────── */
+    .sidebar {
+      grid-row: 1 / -1;
+      background: var(--green-900);
+      display: none;
+      flex-direction: column;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: hidden;
+      transition: width 0.25s cubic-bezier(0.4,0,0.2,1);
+    }
+    .sidebar.visible { display: flex; }
 
-})();
+    .sidebar-brand {
+      padding: 14px 14px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: var(--topbar-h);
+      flex-shrink: 0;
+    }
+    .brand-mark {
+      width: 30px; height: 30px; border-radius: 8px;
+      background: rgba(255,255,255,0.10);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .brand-mark svg { width: 18px; height: 18px; color: var(--yellow); }
+    .brand-text strong { display: block; font-size: 12px; font-weight: 700; color: #fff; }
+    .brand-text span   { display: block; font-size: 10px; color: rgba(255,255,255,0.35); }
+
+    .sidebar-nav { flex: 1; overflow-y: auto; padding: 10px 8px; }
+
+    /* Nav groups */
+    .nav-group-btn {
+      display: flex; align-items: center; justify-content: space-between;
+      width: 100%; padding: 7px 10px; border-radius: 7px;
+      border: none; background: none; cursor: pointer;
+      color: rgba(255,255,255,0.38); font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.09em;
+      margin-top: 8px; transition: background 140ms, color 140ms;
+    }
+    .nav-group-btn:first-child { margin-top: 0; }
+    .nav-group-btn:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.7); }
+    .nav-group-btn.open { color: rgba(255,255,255,0.65); }
+    .nav-group-btn.has-active { color: var(--yellow); }
+    .nav-group-left { display: flex; align-items: center; gap: 6px; }
+    .nav-group-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--yellow); display: none; flex-shrink: 0;
+    }
+    .nav-group-btn.has-active .nav-group-dot { display: block; }
+    .nav-group-btn.has-active.open .nav-group-dot { display: none; }
+    .nav-chevron { width: 12px; height: 12px; flex-shrink: 0; opacity: 0.5; transition: transform 200ms ease; }
+    .nav-group-btn.open .nav-chevron { transform: rotate(180deg); }
+
+    /* Nav children */
+    .nav-children { overflow: hidden; max-height: 0; transition: max-height 220ms cubic-bezier(0.4,0,0.2,1); }
+    .nav-children.open { max-height: 600px; }
+
+    /* Nav items */
+    .nav-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 10px 7px 20px; border-radius: 7px;
+      color: rgba(255,255,255,0.52); font-size: 12px; font-weight: 500;
+      cursor: pointer; border: none; background: none; width: 100%;
+      text-align: left; margin-top: 2px;
+      transition: background 140ms, color 140ms;
+    }
+    .nav-item:hover { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.85); }
+    .nav-item.active { background: var(--yellow); color: var(--green-900); font-weight: 600; }
+    .nav-icon { width: 13px; height: 13px; flex-shrink: 0; }
+
+    /* Sidebar footer */
+    .sidebar-footer {
+      padding: 10px 8px;
+      border-top: 1px solid rgba(255,255,255,0.07);
+      flex-shrink: 0;
+    }
+    .sidebar-user {
+      display: flex; align-items: center; gap: 9px;
+      padding: 7px 10px; border-radius: 7px;
+    }
+    .user-avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--green-700); color: var(--yellow);
+      font-size: 10px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .user-info strong { display: block; font-size: 11px; color: #fff; }
+    .user-info span   { display: block; font-size: 10px; color: rgba(255,255,255,0.38); }
+
+    /* ── TOPBAR ────────────────────────────────── */
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      display: flex; align-items: center;
+      justify-content: space-between;
+      padding: 0 20px; gap: 12px;
+      box-shadow: var(--shadow-sm);
+    }
+    .topbar-left { display: flex; align-items: center; gap: 10px; }
+    .topbar-right { display: flex; align-items: center; gap: 8px; }
+    .topbar-title { font-size: 14px; font-weight: 600; color: var(--ink); }
+    .topbar-breadcrumb { font-size: 11px; color: var(--muted); }
+    .topbar-sep { font-size: 11px; color: var(--line); }
+
+    .sidebar-toggle {
+      width: 32px; height: 32px; border-radius: 7px;
+      border: 1px solid var(--line); background: var(--surface-2);
+      color: var(--muted); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 140ms;
+    }
+    .sidebar-toggle:hover { background: var(--surface-3); }
+    .sidebar-toggle svg { width: 15px; height: 15px; }
+
+    .sign-out-btn {
+      height: 32px; padding: 0 12px; border-radius: 7px;
+      border: 1px solid rgba(192,57,43,0.3);
+      background: var(--danger-bg); color: var(--danger);
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      transition: background 140ms;
+    }
+    .sign-out-btn:hover { background: rgba(192,57,43,0.12); }
+
+    /* ── MAIN ──────────────────────────────────── */
+    .main { overflow-y: auto; background: var(--surface-2); }
+    .page { padding: 20px; max-width: 1400px; margin: 0 auto; }
+
+    /* ── LOGIN OVERLAY ─────────────────────────── */
+    .login-overlay {
+      position: fixed; inset: 0; z-index: 500;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+      background: linear-gradient(135deg, var(--green-900) 0%, #0f4a22 100%);
+    }
+    .login-card {
+      width: min(420px, 100%);
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 24px 60px rgba(0,0,0,0.3);
+      padding: 32px;
+    }
+    .login-brand {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 24px; padding-bottom: 20px;
+      border-bottom: 1px solid var(--line-2);
+    }
+    .login-brand-mark {
+      width: 44px; height: 44px; border-radius: 10px;
+      background: var(--green-900);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .login-brand-mark svg { width: 26px; height: 26px; color: var(--yellow); }
+    .login-brand-text h2  { font-size: 15px; font-weight: 700; color: var(--ink); }
+    .login-brand-text p   { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .login-field { margin-bottom: 14px; }
+    .login-field label {
+      display: block; font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--muted); margin-bottom: 6px;
+    }
+    .login-field input {
+      width: 100%; height: 42px;
+      border: 1px solid var(--line); border-radius: 8px;
+      padding: 0 12px; color: var(--ink); background: var(--surface);
+      transition: border-color 140ms;
+    }
+    .login-field input:focus { outline: none; border-color: var(--green-600); }
+    .login-btn {
+      width: 100%; height: 42px; border-radius: 8px; border: none;
+      background: var(--green-700); color: var(--yellow);
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      margin-top: 6px; transition: background 140ms;
+    }
+    .login-btn:hover { background: var(--green-800); }
+    .login-error {
+      margin-top: 10px; font-size: 13px; color: var(--danger);
+      min-height: 18px;
+    }
+
+    /* ── HERO BAR ──────────────────────────────── */
+    .hero {
+      background: linear-gradient(135deg, var(--green-900) 0%, var(--green-800) 100%);
+      border-radius: var(--radius-lg);
+      padding: 20px 24px;
+      margin-bottom: 16px;
+      position: relative; overflow: hidden;
+    }
+    .hero::before {
+      content: ""; position: absolute;
+      top: -60px; right: -60px;
+      width: 220px; height: 220px; border-radius: 50%;
+      background: rgba(212,240,38,0.05); pointer-events: none;
+    }
+    .hero-kicker {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.1em; color: rgba(212,240,38,0.7); margin-bottom: 4px;
+    }
+    .hero-title { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 2px; }
+    .hero-sub   { font-size: 12px; color: rgba(255,255,255,0.55); margin-bottom: 14px; }
+
+    /* Hero action bar */
+    .hero-bar {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      gap: 10px; flex-wrap: wrap;
+    }
+    .hero-bar-left  { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .hero-bar-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+    .hero-mode-btn {
+      height: 34px; padding: 0 14px; border-radius: 7px;
+      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: background 140ms, border-color 140ms;
+    }
+    .hero-mode-btn:hover { background: rgba(255,255,255,0.15); }
+    .hero-mode-btn.active { background: var(--yellow); border-color: var(--yellow); color: var(--green-900); }
+
+    .hero-divider { width: 1px; height: 22px; background: rgba(255,255,255,0.15); margin: 0 2px; }
+
+    .hero-run-btn {
+      height: 34px; padding: 0 18px; border-radius: 7px; border: none;
+      background: var(--yellow); color: var(--green-900);
+      font-size: 12px; font-weight: 700; cursor: pointer;
+      transition: background 140ms;
+    }
+    .hero-run-btn:hover { background: var(--yellow-dim); }
+
+    .hero-action-btn {
+      height: 34px; padding: 0 14px; border-radius: 7px;
+      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: background 140ms;
+    }
+    .hero-action-btn:hover { background: rgba(255,255,255,0.15); }
+
+    .hero-export-btn {
+      height: 34px; padding: 0 12px; border-radius: 7px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.05);
+      color: rgba(255,255,255,0.3); font-size: 11px; font-weight: 600;
+      cursor: default; transition: background 140ms, color 140ms, border-color 140ms;
+      pointer-events: none;
+    }
+    .hero-export-btn.active {
+      color: rgba(255,255,255,0.85); border-color: rgba(255,255,255,0.28);
+      background: rgba(255,255,255,0.12); pointer-events: auto; cursor: pointer;
+    }
+    .hero-export-btn.active:hover { background: rgba(255,255,255,0.20); }
+
+    .hero-message { font-size: 12px; color: rgba(255,255,255,0.6); margin-top: 8px; min-height: 16px; }
+    .hero-message.error { color: #ff8a80; }
+
+    /* ── CONTENT CARDS ─────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      margin-bottom: 14px;
+      animation: fadeUp 0.3s ease both;
+    }
+    .card-kicker {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--green-600); margin-bottom: 4px;
+    }
+    .card-title { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 14px; }
+
+    /* ── DATA GRIDS ────────────────────────────── */
+    .data-grid { display: grid; gap: 10px; }
+    .data-grid-4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
+    .data-grid-3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .data-grid-2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .data-item {
+      padding: 12px; border: 1px solid var(--line-2);
+      border-radius: var(--radius); background: var(--surface-2);
+    }
+    .data-item span { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; }
+    .data-item strong { display: block; font-size: 13px; font-weight: 600; word-break: break-word; }
+
+    /* ── TABLES ────────────────────────────────── */
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--line-2); font-size: 13px; vertical-align: middle; }
+    th { background: var(--surface-2); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); white-space: nowrap; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--surface-2); }
+
+    /* ── FORM ELEMENTS ─────────────────────────── */
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin-bottom: 6px; }
+    .field input, .field select, .field textarea {
+      width: 100%; height: 40px; border: 1px solid var(--line);
+      border-radius: 8px; padding: 0 12px;
+      color: var(--ink); background: var(--surface);
+      transition: border-color 140ms;
+    }
+    .field textarea { height: auto; padding: 10px 12px; resize: vertical; }
+    .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--green-600); }
+
+    /* ── BUTTONS ───────────────────────────────── */
+    .btn {
+      height: 38px; padding: 0 16px; border-radius: 8px;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--line); background: var(--surface);
+      color: var(--ink-2); transition: background 140ms;
+    }
+    .btn:hover { background: var(--surface-3); }
+    .btn-primary { background: var(--green-700); color: var(--yellow); border-color: var(--green-700); }
+    .btn-primary:hover { background: var(--green-800); }
+    .btn-danger { background: var(--danger-bg); color: var(--danger); border-color: rgba(192,57,43,0.3); }
+
+    /* ── STATUS BADGES ─────────────────────────── */
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; }
+    .badge-green  { background: var(--green-100); color: var(--green-700); }
+    .badge-gray   { background: var(--surface-3); color: var(--muted); }
+    .badge-red    { background: var(--danger-bg); color: var(--danger); }
+    .badge-yellow { background: rgba(212,240,38,0.15); color: #5a6e00; }
+
+    /* ── INPUT AREA ────────────────────────────── */
+    .input-area {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: var(--radius); padding: 14px;
+      margin-top: 12px;
+    }
+    .input-area label {
+      display: block; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.07em;
+      color: rgba(255,255,255,0.5); margin-bottom: 8px;
+    }
+    .input-area textarea {
+      width: 100%; border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 7px; padding: 10px 12px;
+      background: rgba(255,255,255,0.08); color: #fff;
+      font: inherit; resize: vertical; min-height: 90px;
+    }
+    .input-area textarea:focus { outline: none; border-color: var(--yellow); }
+    .input-area textarea::placeholder { color: rgba(255,255,255,0.3); }
+    .input-area-info { font-size: 12px; color: rgba(255,255,255,0.55); padding: 10px 0; }
+
+    /* ── PAGE VIEWS ────────────────────────────── */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ── PERMISSION TOGGLES ───────────────────── */
+    .perm-toggle {
+      width: 40px; height: 22px; border-radius: 999px;
+      background: var(--line); position: relative;
+      cursor: pointer; transition: background 200ms;
+      flex-shrink: 0;
+    }
+    .perm-toggle.on { background: var(--green-600); }
+    .perm-toggle-knob {
+      width: 16px; height: 16px; border-radius: 50%;
+      background: #fff; position: absolute;
+      top: 3px; left: 3px;
+      transition: transform 200ms;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .perm-toggle.on .perm-toggle-knob { transform: translateX(18px); }
+
+    /* ── ANIMATIONS ───────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── RESPONSIVE ────────────────────────────── */
+    @media (max-width: 768px) {
+      .shell { grid-template-columns: 1fr; }
+      .sidebar { display: none !important; }
+      .data-grid-4 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .data-grid-3 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── LOGIN ── -->
+  <div class="login-overlay" id="login-overlay">
+    <div class="login-card">
+      <div class="login-brand">
+        <div class="login-brand-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        </div>
+        <div class="login-brand-text">
+          <h2>TGE Asset </h2>
+          <p>Fleet Operations Platform</p>
+        </div>
+      </div>
+      <form id="login-form">
+        <div class="login-field">
+          <label for="login-username">Username</label>
+          <input id="login-username" type="text" autocomplete="username" placeholder="Enter username" required />
+        </div>
+        <div class="login-field">
+          <label for="login-password">Password</label>
+          <input id="login-password" type="password" autocomplete="current-password" placeholder="Enter password" required />
+        </div>
+        <button class="login-btn" type="submit" id="login-btn">Sign In</button>
+        <p class="login-error" id="login-error"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── APP SHELL ── -->
+  <div class="shell" id="app-shell" style="display:none;">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <strong>TGE Asset </strong>
+          <span>Fleet Operations</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav" id="sidebar-nav">
+
+        <!-- OPERATIONS -->
+        <button class="nav-group-btn open has-active" id="grp-operations" type="button">
+          <div class="nav-group-left">
+            <span class="nav-group-dot"></span>
+            <span>Operations</span>
+          </div>
+          <svg class="nav-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
+        </button>
+        <div class="nav-children open" id="children-operations">
+          <button class="nav-item" id="nav-new-request" type="button" data-view="new-request" data-group="operations" data-title="New Request">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="8"/><path d="M10 6v8M6 10h8"/></svg>
+            New Request
+          </button>
+          <button class="nav-item active" id="nav-snapshot" type="button" data-view="snapshot" data-group="operations" data-title="Asset Snapshot">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="7" height="7" rx="1"/><rect x="11" y="2" width="7" height="7" rx="1"/><rect x="2" y="11" width="7" height="7" rx="1"/><rect x="11" y="11" width="7" height="7" rx="1"/></svg>
+            Asset Snapshot
+          </button>
+          <button class="nav-item" id="nav-asset-track" type="button" data-view="asset-track" data-group="operations" data-title="Asset Track">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2L18 6v8l-8 4-8-4V6l8-4z"/><path d="M10 2v12M2 6l8 4 8-4"/></svg>
+            Asset Track
+              </button>
+          <button class="nav-item" id="nav-utilisation" type="button" data-view="utilisation" data-group="operations" data-title="Fleet Utilisation">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="10" width="3" height="8" rx="1"/><rect x="7" y="6" width="3" height="12" rx="1"/><rect x="12" y="3" width="3" height="15" rx="1"/><rect x="17" y="7" width="1" height="11" rx="1"/></svg>
+            Fleet Utilisation
+          </button>
+          </button>
+          <button class="nav-item" id="nav-vpm" type="button" data-view="vpm" data-group="operations" data-title="VPM Analysis">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12l4-4 4 4 6-7"/><path d="M17 5h-4v4"/></svg>
+            VPM Analysis
+          </button>
+          <button class="nav-item" id="nav-merge-mail" type="button" data-view="merge-mail" data-group="operations" data-title="Merge Mail">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 5l8 6 8-6M2 5v10h16V5"/></svg>
+            Merge Mail
+        
+        </div>
+
+        <!-- CAMERA -->
+        <button class="nav-group-btn" id="grp-camera" type="button">
+          <div class="nav-group-left">
+            <span class="nav-group-dot"></span>
+            <span>Camera</span>
+          </div>
+          <svg class="nav-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
+        </button>
+        <div class="nav-children" id="children-camera">
+          <button class="nav-item" id="nav-camera-snapshots" type="button" data-view="camera-snapshots" data-group="camera" data-title="Camera Snapshots">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 7a2 2 0 012-2h1l1.5-2h5L13 5h1a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V7z"/><circle cx="10" cy="10.5" r="2.5"/></svg>
+            Camera Snapshots
+          </button>
+          <button class="nav-item" id="nav-camera-count" type="button" data-view="camera-count" data-group="camera" data-title="Camera Count">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="16" height="16" rx="2"/><path d="M6 10h8M10 6v8"/></svg>
+            Camera Count
+          </button>
+          <button class="nav-item" id="nav-sd-health" type="button" data-view="sd-health" data-group="camera" data-title="SD Card Health">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="16" height="16" rx="3"/><path d="M6 2v8M10 2v8M14 2v8"/><circle cx="6" cy="14" r="1" fill="currentColor"/><circle cx="10" cy="14" r="1" fill="currentColor"/></svg>
+            SD Card Health
+          </button>
+        </div>
+
+        <!-- MANAGEMENT -->
+        <button class="nav-group-btn" id="grp-management" type="button">
+          <div class="nav-group-left">
+            <span class="nav-group-dot"></span>
+            <span>Management</span>
+          </div>
+          <svg class="nav-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
+        </button>
+        <div class="nav-children" id="children-management">
+          <button class="nav-item" id="nav-admin" type="button" data-view="admin" data-group="management" data-title="Admin">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="7" r="3"/><path d="M3 17c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>
+            Admin
+          </button>
+          <button class="nav-item" id="nav-vendor" type="button" data-view="vendor" data-group="management" data-title="Vendor Platform">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="3" width="7" height="7" rx="1.5"/><rect x="11" y="3" width="7" height="7" rx="1.5"/><rect x="2" y="12" width="7" height="7" rx="1.5"/><rect x="11" y="12" width="7" height="7" rx="1.5"/></svg>
+            Vendor Platform
+          </button>
+          <button class="nav-item" id="nav-roles" type="button" data-view="roles" data-group="management" data-title="Roles">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M2 7h16"/><path d="M7 7v10"/></svg>
+            Roles
+          </button>
+          <button class="nav-item" id="nav-api" type="button" data-view="api" data-group="management" data-title="API Registry">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 9l-2 2 2 2M16 9l2 2-2 2M12 5l-4 10"/></svg>
+            API Registry
+          </button>
+         
+         </div>
+
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-user" id="sidebar-user">
+          <div class="user-avatar" id="user-avatar">--</div>
+          <div class="user-info">
+            <strong id="user-display-name">--</strong>
+            <span id="user-role-label">--</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="10" y2="8"/><line x1="2" y1="12" x2="14" y2="12"/>
+          </svg>
+        </button>
+        <span class="topbar-breadcrumb" id="topbar-group">Operations</span>
+        <span class="topbar-sep">›</span>
+        <span class="topbar-title" id="topbar-title">Asset Snapshot</span>
+      </div>
+      <div class="topbar-right">
+        <button class="sign-out-btn" id="sign-out-btn" type="button">Sign out</button>
+      </div>
+    </header>
+
+    <!-- Main content -->
+    <main class="main" id="main-content">
+      <div class="page">
+
+        <!-- Each view is a separate div, shown/hidden by app.js -->
+        <div class="view" id="view-new-request">
+          <!-- Populated by new-request.js -->
+        </div>
+
+        <div class="view" id="view-merge-mail">
+          <!-- Populated by merge-mail.js -->
+        </div>
+
+        <div class="view active" id="view-snapshot">
+          <!-- Populated by snapshot.js -->
+        </div>
+
+        <div class="view" id="view-asset-track">
+          <!-- Populated by asset-track.js -->
+        </div>
+
+        <div class="view" id="view-vpm">
+          <!-- Populated by vpm.js -->
+        </div>
+
+        <div class="view" id="view-utilisation">
+          <!-- Populated by utilisation.js -->
+        </div>
+
+        <div class="view" id="view-camera-snapshots">
+          <!-- Populated by camera.js -->
+        </div>
+
+        <div class="view" id="view-camera-count">
+          <!-- Populated by camera-count.js -->
+        </div>
+
+        <div class="view" id="view-sd-health">
+          <!-- Populated by camera.js -->
+        </div>
+
+        <div class="view" id="view-admin">
+          <!-- Populated by admin.js -->
+        </div>
+
+        <div class="view" id="view-roles">
+          <!-- Populated by roles.js -->
+        </div>
+
+        <div class="view" id="view-vendor">
+          <!-- Populated by vendor.js -->
+        </div>
+
+        <div class="view" id="view-api">
+          <!-- Populated by api.js -->
+        </div>
+
+      </div>
+    </main>
+
+  </div><!-- /shell -->
+
+  <!-- Scripts — Core -->
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+  <script src="./core/tge-app.js?v=3" defer></script>
+  <script src="./core/tge-output.js?v=1" defer></script>
+  <script src="./core/tge-progress.js?v=1" defer></script>
+  <script src="./core/tge-pdf.js?v=1" defer></script>
+  <script src="./core/tge-diagnostics.js?v=1" defer></script>
+  <!-- Services -->
+  <script src="./services/service-email.js?v=3" defer></script>
+  <!-- Platform -->
+  <script src="./platform/platform-roles.js?v=4" defer></script>
+  <script src="./platform/platform-api-registry.js?v11" defer></script>
+  <script src="./platform/platform-hardware-types.js?v=3" defer></script>
+  <script src="./platform/platform-control-tables.js?v=3" defer></script>
+  <script src="./platform/platform-flows.js?v=5" defer></script>
+  <script src="./platform/platform-flow-engine.js?v=5" defer></script>
+  <!-- Screens -->
+  <script src="./screen/screen-asset-snapshot.js?v=3" defer></script>
+  <script src="./screen/screen-asset-track.js?v=3" defer></script>
+  <script src="./screen/screen-sd-health.js?v=2" defer></script>
+  <script src="./screen/screen-vpm.js?v=3" defer></script>
+  <script src="./screen/screen-camera.js?v=3" defer></script>
+  <script src="./screen/screen-camera-snapshots.js?v=3" defer></script>
+  <script src="./screen/screen-camera-count.js?v=3" defer></script>
+  <script src="./screen/screen-admin.js?v=3" defer></script>
+  <script src="./screen/screen-utilisation.js?v=3" defer></script>
+  <script src="./screen/screen-merge-mail.js?v=3" defer></script>
+  <script src="./screen/screen-vendor.js?v=2" defer></script>
+</body>
+</html>
