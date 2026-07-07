@@ -229,11 +229,12 @@ function extractTagged(def, payload, warnings) {
       var steps = bundle.steps.filter(function (s) { return s.flow_id === flow.id; });
 
       // Per-flow working state
-      var apiResults = {};     // apiId → tagged record arrays
-      var assetRows = {};      // Asset ID → merged row
-      var assetDevices = {};   // Asset ID → tagged device records
-      var matchedByAsset = {}; // Asset ID → devices matching the hardware set
-      var ctQueue = [];
+    var apiResults = {};     // apiId → tagged record arrays
+    var assetRows = {};      // Asset ID → merged row
+    var assetDevices = {};   // Asset ID → tagged device records
+    var matchedByAsset = {}; // Asset ID → devices matching the hardware set
+    var ctQueue = [];
+    var scopeLocked = false; // after hardware_set, API steps enrich only
 
       for (var si = 0; si < steps.length; si++) {
         var step = steps[si];
@@ -253,14 +254,17 @@ function extractTagged(def, payload, warnings) {
           tagged.forEach(function (rec) {
             var assetId = rec['Asset ID'];
             if (assetId == null) return;
-            var key = String(assetId);
-            // Device-shaped records (carry Model ID / Device Type Code) attach
-            // as devices; everything else merges into the asset row.
-          if (rec['Model ID'] !== undefined || rec['Device Type Code'] !== undefined) {
-  (assetDevices[key] = assetDevices[key] || []).push(rec);
-  assetRows[key] = Object.assign(assetRows[key] || { 'Asset ID': assetId }, rec);
-} else {
-  assetRows[key] = Object.assign(assetRows[key] || { 'Asset ID': assetId }, rec);
+          var key = String(assetId);
+
+    // After hardware_set has run, API steps are enrichment only.
+    // They may update existing in-scope rows, but must not create new rows.
+    if (scopeLocked && !assetRows[key]) return;
+
+    if (rec['Model ID'] !== undefined || rec['Device Type Code'] !== undefined) {
+      (assetDevices[key] = assetDevices[key] || []).push(rec);
+      assetRows[key] = Object.assign(assetRows[key] || { 'Asset ID': assetId }, rec);
+    } else {
+      assetRows[key] = Object.assign(assetRows[key] || { 'Asset ID': assetId }, rec);
 }
           });
           continue;
@@ -281,8 +285,15 @@ function extractTagged(def, payload, warnings) {
           });
           // Assets with devices but none in the set are out of this flow's scope
           Object.keys(assetRows).forEach(function (key) {
-            if (assetDevices[key] && !matchedByAsset[key]) assetRows[key].__outOfSet = true;
-          });
+  if (assetDevices[key] && !matchedByAsset[key]) assetRows[key].__outOfSet = true;
+});
+
+// Hardware set is the module scope lock.
+// API steps after this point can only enrich existing rows.
+scopeLocked = true;
+
+continue;
+}
           continue;
         }
 
