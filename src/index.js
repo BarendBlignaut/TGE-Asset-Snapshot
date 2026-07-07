@@ -315,7 +315,7 @@ async function handleSaveVendor(request, env) {
     await env.DB.prepare("UPDATE vendors SET name=?, notes=?, active=?, updated_at=? WHERE id=?").bind(name, notes || null, active, nowIso(), vendorId).run();
     await logActivity(env, auth.session.user_id, "vendor", "update", `Updated vendor: ${name}`, null);
   } else {
-    const result = await env.DB.prepare("INSERT INTO vendors (name, notes, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").bind(name, notes || null, active, nowIso(), nowIso()).run();
+    const result = await env.DB.prepare("INSERT INTO control_tables (name, feature, output_field, value_source, hardware_match, active, notes, vendor_id, evaluate_as, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(name, feature, outputField, valueSource, hardware.join("|"), active, notes || null, vendorId, String(body.evaluateAs || "number"), nowIso(), nowIso()).run();
     vendorId = result.meta.last_row_id;
     await logActivity(env, auth.session.user_id, "vendor", "create", `Created vendor: ${name}`, null);
   }
@@ -360,7 +360,7 @@ const hardware    = Array.isArray(body.hardware) ? body.hardware : [];
   if (!rules.length)    return jsonResponse({ error: "At least one rule is required." }, 400);
   let tableId = id;
   if (tableId) {
-    await env.DB.prepare("UPDATE control_tables SET name=?, feature=?, output_field=?, value_source=?, hardware_match=?, active=?, notes=?, vendor_id=COALESCE(?, vendor_id), updated_at=? WHERE id=?").bind(name, feature, outputField, valueSource, hardware.join("|"), active, notes || null, vendorId, nowIso(), tableId).run();
+    await env.DB.prepare("UPDATE control_tables SET name=?, feature=?, output_field=?, value_source=?, hardware_match=?, active=?, notes=?, vendor_id=COALESCE(?, vendor_id), evaluate_as=?, updated_at=? WHERE id=?").bind(name, feature, outputField, valueSource, hardware.join("|"), active, notes || null, vendorId, String(body.evaluateAs || "number"), nowIso(), tableId).run();
     await env.DB.prepare("DELETE FROM control_table_rules WHERE control_table_id=?").bind(tableId).run();
     await env.DB.prepare("DELETE FROM control_table_hardware WHERE control_table_id=?").bind(tableId).run();
   } else {
