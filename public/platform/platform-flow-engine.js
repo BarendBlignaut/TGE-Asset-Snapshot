@@ -292,8 +292,6 @@ function extractTagged(def, payload, warnings) {
 // API steps after this point can only enrich existing rows.
 scopeLocked = true;
 
-continue;
-}
           continue;
         }
 
