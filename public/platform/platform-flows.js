@@ -125,8 +125,8 @@ var hwRows = (results[3].ok && results[3].data.hardware) || [];
         moduleTag: f.module_tag,
         notes:     f.notes || '',
         active:    f.active === 1 || f.active === true,
-        steps:     steps.filter(function (s) { return s.flow_id === f.id; })
-                        .map(function (s) { return { stepType: s.step_type, stepRef: String(s.step_ref) }; }),
+steps:     steps.filter(function (s) { return s.flow_id === f.id; })
+                        .map(function (s) { return { stepType: s.step_type, stepRef: String(s.step_ref), stepRole: s.step_role || '' }; }),
       };
     });
 
@@ -341,10 +341,11 @@ var hwRows = (results[3].ok && results[3].data.hardware) || [];
       state.editingSteps[target] = tmp;
       renderSteps();
     },
-    setStepType: function (idx, type) {
+setStepType: function (idx, type) {
       if (!state.editingSteps[idx]) return;
       state.editingSteps[idx].stepType = type;
       state.editingSteps[idx].stepRef = '';
+      state.editingSteps[idx].stepRole = '';
       renderSteps();
     },
 setStepRef: function (idx, ref) {
