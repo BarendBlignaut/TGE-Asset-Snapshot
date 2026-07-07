@@ -65,6 +65,7 @@
         feature:     t.feature,
         outputField: t.output_field,
         valueSource: t.value_source,
+        evaluateAs:  t.evaluate_as || 'number',
         notes:       t.notes || '',
         active:      t.active === 1 || t.active === true,
         hardware:    hardware.filter(function (h) { return h.control_table_id === t.id; })
@@ -136,7 +137,11 @@
           '<div class="field"><label>Table Name</label><input id="vct-name" type="text" placeholder="Oyster Battery Status" value="' + escCt(t.name || '') + '"></div>',
           '<div class="field"><label>Feature</label><input id="vct-feature" type="text" placeholder="asset-track" value="' + escCt(t.feature || '') + '"></div>',
           '<div class="field"><label>Output Field</label><input id="vct-output" type="text" placeholder="battStatus" value="' + escCt(t.outputField || '') + '"></div>',
-          '<div class="field"><label>Evaluate Field</label><input id="vct-source" type="text" placeholder="battCurrent" value="' + escCt(t.valueSource || '') + '"></div>',
+         '<div class="field"><label>Evaluate Field</label><input id="vct-source" type="text" placeholder="battCurrent" value="' + escCt(t.valueSource || '') + '"></div>',
+          '<div class="field"><label>Evaluate As</label><select id="vct-evaluate-as">',
+            '<option value="number"' + ((t.evaluateAs || 'number') === 'number' ? ' selected' : '') + '>Number — rules judge the value itself</option>',
+            '<option value="days_since"' + (t.evaluateAs === 'days_since' ? ' selected' : '') + '>Days since — rules judge days elapsed from a date</option>',
+          '</select></div>',
         '</div>',
 
         '<div style="margin-top:16px;">',
@@ -235,6 +240,7 @@ var hardware = Array.prototype.slice.call(document.querySelectorAll('.vct-hardwa
       feature:     (TGE.el('vct-feature') || {}).value ? TGE.el('vct-feature').value.trim() : '',
       outputField: (TGE.el('vct-output')  || {}).value ? TGE.el('vct-output').value.trim()  : '',
       valueSource: (TGE.el('vct-source')  || {}).value ? TGE.el('vct-source').value.trim()  : '',
+      evaluateAs:  (TGE.el('vct-evaluate-as') || {}).value || 'number',
       hardware:    hardware,
       rules:       rules,
       vendorId:    state.vendorId,
