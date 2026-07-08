@@ -16,6 +16,34 @@
   var THRESHOLD_REPORTING_DAYS = 7;
   var THRESHOLD_REVIEW_DAYS    = 14;
 
+  // ── Screen output contract ──────────────────────────────────────────
+  // The declared list of outputs this screen renders. Field-objects carry
+  // type/format so rendering and the API editor's Display As dropdown read
+  // one authoritative source. Add/remove a column here in step with the
+  // render change — this array is what the dropdown auto-populates from.
+  var ASSET_TRACK_FIELDS = [
+    { key: 'fleetNo',      label: 'Fleet No',      type: 'text' },
+    { key: 'registration', label: 'Registration',  type: 'text' },
+    { key: 'imei',         label: 'Tracker IMEI',   type: 'text' },
+    { key: 'model',        label: 'Model',          type: 'text' },
+    { key: 'battBase',     label: 'Batt Base',      type: 'number',   format: { decimals: 2 } },
+    { key: 'battCurrent',  label: 'Batt Current',   type: 'number',   format: { decimals: 2 } },
+    { key: 'battStatus',   label: 'Batt Status',    type: 'text' },
+    { key: 'lastSeen',     label: 'Last Seen',      type: 'datetime' },
+    { key: 'status',       label: 'Status',         type: 'text' }
+  ];
+
+  // Self-register into the neutral platform store. Idempotent guard means
+  // no load-order dependency: the registry reads TGE.ScreenFields, never
+  // this file — keeping platform-* independent of screen-* per the layering
+  // rule. Category identity travels with the manifest.
+  TGE.ScreenFields = TGE.ScreenFields || {};
+  TGE.ScreenFields['asset-track'] = {
+    category: 'asset-track',
+    label: 'Asset Track',
+    fields: ASSET_TRACK_FIELDS
+  };
+
 var state = {
     running: false,
     mode: 'user',
