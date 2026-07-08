@@ -1297,8 +1297,10 @@ if (componentOptions.mode === 'vendor') {
               'data-gval="' + escA(gval) + '" data-field="' + escA(f.path) + '" style="width:15px;height:15px;cursor:pointer;"></td>' +
             '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:var(--green-700);white-space:nowrap;">' + escA(f.path) +
               '<div style="color:var(--muted);font-size:10px;">' + escA(f.example) + '</div></td>' +
-            '<td style="padding:4px 8px;"><input type="text" class="ax-label" data-for="' + rid + '" value="' + escA(humanize(gval) + ' ' + humanize(f.path)) + '" ' +
-              'style="width:100%;height:30px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font-size:12px;background:var(--surface);color:var(--ink);"></td>' +
+'<td style="padding:4px 8px;"><select class="ax-label" data-for="' + rid + '" ' +
+              'style="width:100%;height:30px;border:1px solid var(--line);border-radius:6px;padding:0 6px;font-size:12px;background:var(--surface);color:var(--ink);">' +
+              displayAsOptions(humanize(gval) + ' ' + humanize(f.path), humanize(gval) + ' ' + humanize(f.path)) +
+              '</select></td>' +
             '<td style="padding:4px 8px;width:150px;"><select class="ax-use" data-for="' + rid + '" style="width:100%;height:30px;font-size:11px;">' +
               '<option value="display">Display data</option>' +
               '<option value="feeds-next">Feeds next API call</option>' +
