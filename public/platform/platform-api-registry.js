@@ -379,7 +379,8 @@
     }
     return {
       apiId:          row.apiId          || row.api_id          || '',
-      label:          row.label          || '',
+    label:          row.label          || '',
+      category:       row.category        || row.module_tag      || '',
       group:          row.group          || row.group_name      || '',
       method:         row.method         || 'GET',
       url:            row.url            || '',
@@ -1529,13 +1530,21 @@ if (componentOptions.mode === 'vendor') {
     var notes  = TGE.el('api-notes').value.trim();
     var sample = TGE.el('api-sample').value.trim();
 
-    if (!apiId || !label || !url) {
+if (!apiId || !label || !url) {
       msgEl.textContent = 'API ID, label and URL are required.';
       msgEl.style.color = 'var(--danger)';
       return;
     }
 
-    var vendor = componentOptions.mode === 'vendor' ? null : getCustomSelectValue('api-vendor');
+    var category = (TGE.el('api-category') || {}).value || '';
+    if (!category) {
+      msgEl.textContent = 'Screen / Category is required — it scopes the outputs this API can map to.';
+      msgEl.style.color = 'var(--danger)';
+      return;
+    }
+
+   var vendor = componentOptions.mode === 'vendor' ? null : getCustomSelectValue('api-vendor');
+    var category = (TGE.el('api-category') || {}).value || '';
    var authSel = TGE.el('api-auth-profile');
     var authProfileId = null, newAuthProfile = null;
     if (authSel && authSel.value === '__new__') {
@@ -1561,12 +1570,13 @@ if (componentOptions.mode === 'vendor') {
       authProfileId: authProfileId,
       newAuthProfile: newAuthProfile,
       callSpec: callSpec,
-  apiId: apiId,
+apiId: apiId,
   label: label,
   group: group,
   method: method,
   url: url,
   notes: notes,
+  category: category,
   vendor: null,
   vendorId: componentOptions.vendorId,
   sampleResponse: sample,
