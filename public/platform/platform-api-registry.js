@@ -993,9 +993,11 @@ if (componentOptions.mode === 'vendor') {
           '</div>' +
           (example && !isJson ? '<span style="font-size:10px;color:var(--muted-2);display:block;margin-top:2px;">' + example.slice(0,40) + '</span>' : '') +
         '</td>' +
-        '<td style="padding:6px 8px;min-width:140px;">' +
-          '<input type="text" class="bulk-label" data-idx="' + idx + '" value="' + autoLabel + '" ' +
-            'style="width:100%;height:32px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font:inherit;font-size:12px;" />' +
+          '<td style="padding:6px 8px;min-width:140px;">' +
+          '<select class="bulk-label" data-idx="' + idx + '" ' +
+            'style="width:100%;height:32px;border:1px solid var(--line);border-radius:6px;padding:0 6px;font:inherit;font-size:12px;background:var(--surface);color:var(--ink);">' +
+            displayAsOptions(autoLabel, autoLabel) +
+          '</select>' +
         '</td>' +
         '<td style="padding:6px 8px;min-width:150px;">' +
           '<select class="bulk-use" data-idx="' + idx + '" ' +
@@ -1402,6 +1404,35 @@ if (componentOptions.mode === 'vendor') {
     var count = document.querySelectorAll('.bulk-include:checked').length;
     var label = document.getElementById('bulk-count-label');
     if (label) label.textContent = count + ' field' + (count!==1?'s':'') + ' selected to save as tags';
+  }
+
+// ── Display As option builder ───────────────────────────────────────
+  // Closed list, no freehand: the field's ORIGINAL name first (selecting it
+  // = passthrough / not a screen output), then the selected screen's manifest
+  // outputs (selecting one = a mapped screen column). Roles (Use, Hard Check)
+  // stay independent — any field can carry any role regardless of this choice.
+  function _daEsc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function currentManifestFields() {
+    var cat   = (TGE.el('api-category') || {}).value || '';
+    var store = (typeof TGE !== 'undefined' && TGE.ScreenFields) ? TGE.ScreenFields : {};
+    return (store[cat] && Array.isArray(store[cat].fields)) ? store[cat].fields : [];
+  }
+  function displayAsOptions(originalLabel, selectedLabel) {
+    var sel = (selectedLabel != null && selectedLabel !== '') ? selectedLabel : originalLabel;
+    var out = ['<option value="' + _daEsc(originalLabel) + '"' +
+               (sel === originalLabel ? ' selected' : '') + '>' +
+               _daEsc(originalLabel) + ' (original)</option>'];
+    currentManifestFields().forEach(function (f) {
+      if (!f || f.label === originalLabel) return; // de-dupe if names coincide
+      out.push('<option value="' + _daEsc(f.label) + '"' +
+               (sel === f.label ? ' selected' : '') + '>' +
+               _daEsc(f.label) + '</option>');
+    });
+    return out.join('');
   }
 
   TGE.bulkSaveTags = function() {
