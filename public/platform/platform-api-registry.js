@@ -137,7 +137,12 @@
 
           // ── Section 1 ──
           '<div style="padding:16px 20px;border-bottom:1px solid var(--line);">',
-            '<div class="card-kicker" style="margin-bottom:12px;">Section 1 — Basic Info</div>',
+           '<div class="card-kicker" style="margin-bottom:12px;">Section 1 — Basic Info</div>',
+
+            '<div class="field" style="margin-bottom:10px;">',
+              '<label>Screen / Category</label>',
+              '<div id="api-category-wrap"></div>',
+            '</div>',
 
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">',
               '<div class="field" style="margin:0;">',
@@ -463,6 +468,20 @@
 // Render group, method and vendor dropdowns
 TGE.el('api-group-wrap').innerHTML  = customSelect('api-group', API_GROUPS, v.group || 'other', 'Select group...');
 TGE.el('api-method-wrap').innerHTML = customSelect('api-method', API_METHODS, v.method || 'GET', 'Select method...');
+
+// Screen / Category — closed vocabulary drawn from the shared store.
+// No "+ Custom" option by design: category must be a registered data screen,
+// so the Display As dropdown (next step) always has a real manifest to read.
+(function () {
+  var store = (typeof TGE !== 'undefined' && TGE.ScreenFields) ? TGE.ScreenFields : {};
+  var opts  = ['<option value="">Select screen…</option>'];
+  Object.keys(store).forEach(function (k) {
+    var sel = (v.category === k) ? ' selected' : '';
+    opts.push('<option value="' + k + '"' + sel + '>' + (store[k].label || k) + '</option>');
+  });
+  TGE.el('api-category-wrap').innerHTML =
+    '<select id="api-category" style="width:100%;height:38px;">' + opts.join('') + '</select>';
+})();
 
 if (componentOptions.mode === 'vendor') {
   TGE.el('api-vendor-wrap').innerHTML = '';
