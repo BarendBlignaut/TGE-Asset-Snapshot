@@ -800,19 +800,9 @@ totalAssets: assetTrackRows().length,
       return;
     }
 
-    TGE.openEmailComposer({
+ TGE.openEmailComposer({
       rows: assetTrackRows(),
-      fields: [
-        { key: 'fleetNo', label: 'Fleet No' },
-        { key: 'registration', label: 'Registration' },
-        { key: 'imei', label: 'Tracker IMEI' },
-        { key: 'model', label: 'Model' },
-        { key: 'battBase', label: 'Batt Base' },
-        { key: 'battCurrent', label: 'Batt Current' },
-        { key: 'battStatus', label: 'Batt Status' },
-        { key: 'lastSeen', label: 'Last Seen' },
-        { key: 'status', label: 'Status' }
-      ],
+      fields: ASSET_TRACK_FIELDS,
       attachmentBuilder: function () {
         return buildAssetTrackAttachment();
       },
