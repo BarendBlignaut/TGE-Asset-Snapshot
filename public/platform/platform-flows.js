@@ -100,7 +100,7 @@ var STEP_ROLES = {
 
     // Reference data for step dropdowns (tolerant of raw row shape)
     state.refs.apis = ((results[1].ok && results[1].data.apis) || []).map(function (a) {
-      return { ref: String(a.api_id || a.apiId || ''), label: String(a.api_id || a.apiId || '') + ' \u2014 ' + (a.label || '') };
+    return { ref: String(a.api_id || a.apiId || ''), label: String(a.api_id || a.apiId || '') + ' \u2014 ' + (a.label || ''), moduleTag: String(a.module_tag || a.category || a.moduleTag || '') };
     });
     state.refs.controlTables = ((results[2].ok && results[2].data.tables) || []).map(function (t) {
       return { ref: String(t.id), label: 'CT-' + String(t.id).padStart(3, '0') + ' \u2014 ' + (t.name || '') };
@@ -134,7 +134,14 @@ steps:     steps.filter(function (s) { return s.flow_id === f.id; })
   }
 
   function refListFor(stepType) {
-    if (stepType === 'api_definition') return state.refs.apis;
+    if (stepType === 'api_definition') {
+      // Scope to the flow's feeds-screen: only APIs tagged for the selected
+      // screen appear. No screen chosen yet → show all, so the picker isn't
+      // mysteriously empty before a screen is picked.
+      var screenTag = (TGE.el('vfl-module') || {}).value || '';
+      if (!screenTag) return state.refs.apis;
+      return state.refs.apis.filter(function (a) { return a.moduleTag === screenTag; });
+    }
     if (stepType === 'control_table')  return state.refs.controlTables;
  if (stepType === 'hardware_type')  return state.refs.hardware;
     if (stepType === 'hardware_set')   return state.refs.hardwareSets || [];
@@ -208,7 +215,7 @@ steps:     steps.filter(function (s) { return s.flow_id === f.id; })
 
         '<div class="data-grid data-grid-2">',
           '<div class="field"><label>Flow Name</label><input id="vfl-name" type="text" placeholder="Asset Track \u2014 Device Data" value="' + esc(f.name || '') + '"></div>',
-          '<div class="field"><label>Feeds Screen</label><select id="vfl-module">' +
+          '<div class="field"><label>Feeds Screen</label><select id="vfl-module" onchange="TGE.Platform.Flows.rescreen()">' +
             '<option value="">Select screen...</option>' +
             screens.map(function (s) {
               return '<option value="' + esc(s.view) + '"' + (f.moduleTag === s.view ? ' selected' : '') + '>' + esc(s.title) + '</option>';
@@ -331,6 +338,7 @@ steps:     steps.filter(function (s) { return s.flow_id === f.id; })
       var f = state.flows.find(function (x) { return x.id === id; });
       if (f) openEditor(f);
     },
+ rescreen:   function () { renderSteps(); },
     addStep:    function () { state.editingSteps.push({ stepType: 'api_definition', stepRef: '' }); renderSteps(); },
     removeStep: function (idx) { state.editingSteps.splice(idx, 1); renderSteps(); },
     moveStep:   function (idx, dir) {
