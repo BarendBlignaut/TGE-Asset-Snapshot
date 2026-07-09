@@ -1006,6 +1006,15 @@ if (componentOptions.mode === 'vendor') {
             '<option value="__custom__">+ Custom...</option>' +
           '</select>' +
         '</td>' +
+'<td style="padding:6px 8px;text-align:center;width:70px;">' +
+          '<select class="bulk-key" data-idx="' + idx + '" ' +
+            'style="width:100%;height:32px;border:1px solid var(--line);border-radius:6px;padding:0 4px;font:inherit;font-size:12px;background:var(--surface);color:var(--ink);">' +
+            '<option value="">\u2014</option>' +
+            '<option value="a">A</option>' +
+            '<option value="b">B</option>' +
+            '<option value="c">C</option>' +
+          '</select>' +
+        '</td>' +
         '<td style="padding:6px 8px;text-align:center;width:80px;">' +
           '<div class="perm-toggle bulk-hard-check" data-idx="' + idx + '" ' +
             'onclick="TGE.bulkToggleHard(this)" style="margin:0 auto;"></div>' +
@@ -1043,6 +1052,7 @@ if (componentOptions.mode === 'vendor') {
               '<th style="padding:8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);text-align:left;">Field Path · Example</th>' +
               '<th style="padding:8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);text-align:left;">Display As</th>' +
               '<th style="padding:8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);text-align:left;">Use</th>' +
+              '<th style="padding:8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);text-align:center;width:70px;">Key</th>' +
               '<th style="padding:8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);text-align:center;">Hard Check</th>' +
               '<th style="padding:8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);text-align:left;">Description</th>' +
             '</tr>' +
@@ -1444,6 +1454,7 @@ if (componentOptions.mode === 'vendor') {
       var path     = state.parsedFields[idx];
       var labelEl  = document.querySelector('.bulk-label[data-idx="' + idx + '"]');
       var useEl    = document.querySelector('.bulk-use[data-idx="' + idx + '"]');
+      var keyEl    = document.querySelector('.bulk-key[data-idx="' + idx + '"]');
       var hardEl   = document.querySelector('.bulk-hard-check[data-idx="' + idx + '"]');
       var descEl   = document.querySelector('.bulk-desc[data-idx="' + idx + '"]');
 
@@ -1459,8 +1470,10 @@ if (componentOptions.mode === 'vendor') {
         use:         useVal,
         description: descEl ? descEl.value.trim() : '',
         path:        path,
+        path:        path,
         example:     state.parsedExamples[path] || '',
         hardCheck:   hardEl ? hardEl.classList.contains('on') : false,
+        key:         keyEl ? keyEl.value : '',
       });
     });
 
