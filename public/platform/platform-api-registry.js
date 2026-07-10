@@ -1311,13 +1311,22 @@ if (componentOptions.mode === 'vendor') {
               'style="width:100%;height:30px;border:1px solid var(--line);border-radius:6px;padding:0 6px;font-size:12px;background:var(--surface);color:var(--ink);">' +
               displayAsOptions(humanize(gval) + ' ' + humanize(f.path), humanize(gval) + ' ' + humanize(f.path)) +
               '</select></td>' +
-            '<td style="padding:4px 8px;width:150px;"><select class="ax-use" data-for="' + rid + '" style="width:100%;height:30px;font-size:11px;">' +
+           '<td style="padding:4px 8px;width:150px;"><select class="ax-use" data-for="' + rid + '" style="width:100%;height:30px;font-size:11px;">' +
               '<option value="display">Display data</option>' +
               '<option value="feeds-next">Feeds next API call</option>' +
               '<option value="filter-rule">Filter / rule only</option>' +
               '<option value="match">Match / validate</option>' +
               '<option value="internal">Internal</option>' +
             '</select></td>' +
+            '<td style="padding:4px 8px;width:64px;text-align:center;"><select class="ax-key" data-for="' + rid + '" style="width:100%;height:30px;font-size:11px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;">' +
+              '<option value="">\u2014</option>' +
+              '<option value="a">A</option>' +
+              '<option value="b">B</option>' +
+              '<option value="c">C</option>' +
+            '</select></td>' +
+            '<td style="padding:4px 8px;width:64px;text-align:center;">' +
+              '<div class="perm-toggle ax-hard" data-for="' + rid + '" onclick="TGE.bulkToggleHard(this)" style="margin:0 auto;"></div>' +
+            '</td>' +
           '</tr>';
         }).join('');
         return '<div style="margin-bottom:10px;border:1px solid var(--line);border-radius:10px;overflow:hidden;">' +
@@ -1367,8 +1376,11 @@ if (componentOptions.mode === 'vendor') {
       modal.querySelectorAll('.ax-tick:checked').forEach(function(cb) {
         var gval  = cb.dataset.gval;
         var field = cb.dataset.field;
-        var label = (modal.querySelector('.ax-label[data-for="' + cb.id + '"]') || {}).value || field;
-        var use   = (modal.querySelector('.ax-use[data-for="' + cb.id + '"]')  || {}).value || 'display';
+        var label  = (modal.querySelector('.ax-label[data-for="' + cb.id + '"]') || {}).value || field;
+        var use    = (modal.querySelector('.ax-use[data-for="' + cb.id + '"]')  || {}).value || 'display';
+        var keyv   = (modal.querySelector('.ax-key[data-for="' + cb.id + '"]')  || {}).value || '';
+        var hardEl = modal.querySelector('.ax-hard[data-for="' + cb.id + '"]');
+        var hard   = hardEl ? hardEl.classList.contains('on') : false;
         var dupe = state.tags.some(function(t) {
           return t.isArrayFilter && t.filterKey === discKey && t.filterVal === gval && t.extractField === field;
         });
@@ -1382,9 +1394,10 @@ if (componentOptions.mode === 'vendor') {
           filterKey:   discKey,
           filterVal:   gval,
           extractField: field,
-          arrayPath:   path,
+         arrayPath:   path,
           example:     '',
-          hardCheck:   false,
+          hardCheck:   hard,
+          key:         keyv,
           isArrayFilter: true,
         });
         added++;
