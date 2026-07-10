@@ -64,17 +64,34 @@
         var v = valAt(flat, p);
         if (v !== undefined) out[t.label || t.name] = round2(v);
       });
-      if (Array.isArray(unit)) {
+if (Array.isArray(unit)) {
         filters.forEach(function (t) {
           var hit = unit.find(function (it) { return String(valAt(it, t.filterKey)) === String(t.filterVal); });
           if (hit) { var v = valAt(hit, t.extractField); if (v !== undefined) out[t.label || t.name] = round2(v); }
         });
       }
+      // Attach declared key VALUES (A/B/C) from tags carrying a key selector.
+      // This is what the join reads — not a guessed label.
+      var kv = {};
+      tags.forEach(function (t) {
+        if (!t.key) return;
+        var kp = t.path || t.name;
+        if (kp && kp.indexOf('[]') !== -1) kp = kp.split('[].').pop();
+        var val = valAt(flat, kp);
+        if (val != null) kv[t.key] = String(val);
+      });
+      if (Object.keys(kv).length) out.__keys = kv;
+      return out;
       return out;
     });
   }
 
-  function assetKey(rec) { return rec['Asset ID'] != null ? String(rec['Asset ID']) : null; }
+  function assetKey(rec) {
+    // Join key = declared key A (from the A/B/C selector). Falls back to a
+    // literal "Asset ID" label for any pre-key definitions, so nothing breaks.
+    if (rec.__keys && rec.__keys.a != null) return String(rec.__keys.a);
+    return rec['Asset ID'] != null ? String(rec['Asset ID']) : null;
+  }
   function isDeviceShaped(rec) {
     return rec['Model ID'] !== undefined || rec['Device Type Code'] !== undefined || rec['Model'] !== undefined;
   }
@@ -159,11 +176,17 @@
           if (role === 'seed' || !seeded) {
             tagged.forEach(function (rec) { var k = assetKey(rec); if (k) assets[k] = Object.assign(assets[k] || {}, rec); });
             seeded = true;
-          } else if (role === 'join') {
+} else if (role === 'join') {
             tagged.forEach(function (rec) {
               var k = assetKey(rec); if (!k) return;
-              if (isDeviceShaped(rec)) (devicesByAsset[k] = devicesByAsset[k] || []).push(rec);
-              else if (assets[k]) assets[k] = Object.assign(assets[k], rec);
+              if (isDeviceShaped(rec)) {
+                (devicesByAsset[k] = devicesByAsset[k] || []).push(rec);
+                // Merge device fields onto the asset row NOW, keyed on A —
+                // independent of any hardware-set step. Existing fields win.
+                if (assets[k]) assets[k] = Object.assign({}, rec, assets[k]);
+              } else if (assets[k]) {
+                assets[k] = Object.assign(assets[k], rec);
+              }
             });
             Object.keys(assets).forEach(function (k) { if (!devicesByAsset[k]) delete assets[k]; });
           } else {
@@ -206,7 +229,8 @@
         warnings.push(flow.name + ': unknown step type "' + step.step_type + '".');
       }
 
-      Object.keys(assets).forEach(function (k) {
+Object.keys(assets).forEach(function (k) {
+        delete assets[k].__keys;
         assets[k].__flow = flow.name; assets[k].__vendor = flow.vendor_id;
         allRows.push(assets[k]);
       });
