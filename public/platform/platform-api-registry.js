@@ -891,12 +891,59 @@ if (componentOptions.mode === 'vendor') {
     setTimeout(function() { TGE.apiOpenTagForm(null); }, 100);
   };
 
+// ── Sample normaliser ─────────────────────────────────────────────────────────
+  // Collapses a "data-keyed map" (object whose keys are id-like and whose values
+  // are all the same shape — e.g. {"9456":[...], "306532":[...]}) down to one
+  // representative value, so literal asset ids never enter field paths.
+  //   strip=true         → scalars become type placeholders ("string", 0, true)
+  //   reduceArrays=true  → arrays reduce to a single representative element
+  // Used with (false,false) for tagging (keep real values so Expand Array can
+  // group by type) and (true,true) on save (store a clean skeleton, never data).
+  function _idLikeKey(k) {
+    return /^\d+$/.test(k) ||
+           /^[0-9a-fA-F]{8}-[0-9a-fA-F-]{4,}$/.test(k) ||
+           /^[0-9a-fA-F]{16,}$/.test(k);
+  }
+  function _shapeOf(v) { return Array.isArray(v) ? 'array' : (v === null ? 'null' : typeof v); }
+  function _isDataKeyedMap(obj) {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+    var keys = Object.keys(obj);
+    if (keys.length < 2) return false;
+    if (!keys.every(_idLikeKey)) return false;
+    var first = _shapeOf(obj[keys[0]]);
+    return keys.every(function (k) { return _shapeOf(obj[k]) === first; });
+  }
+  function normaliseSample(value, strip, reduceArrays) {
+    if (Array.isArray(value)) {
+      var arr = value.map(function (v) { return normaliseSample(v, strip, reduceArrays); });
+      return reduceArrays ? (arr.length ? [arr[0]] : []) : arr;
+    }
+    if (value && typeof value === 'object') {
+      if (_isDataKeyedMap(value)) {
+        return normaliseSample(value[Object.keys(value)[0]], strip, reduceArrays);
+      }
+      var out = {};
+      Object.keys(value).forEach(function (k) { out[k] = normaliseSample(value[k], strip, reduceArrays); });
+      return out;
+    }
+    if (!strip) return value;
+    if (typeof value === 'number')  return 0;
+    if (typeof value === 'boolean') return true;
+    if (value === null)             return null;
+    return 'string';
+  }
+
   // ── JSON sample parser ────────────────────────────────────────────────────────
   TGE.apiParseSample = function() {
     var raw = TGE.el('api-sample').value.trim();
     if (!raw) { alert('Paste a JSON response first.'); return; }
     var parsed;
+var parsed;
     try { parsed = JSON.parse(raw); } catch(e) { alert('Invalid JSON: ' + e.message); return; }
+
+    // Collapse data-keyed maps so literal ids (e.g. "306532") never enter paths.
+    // Values kept real here so Expand Array can still group by type.
+    parsed = normaliseSample(parsed, false, false);
 
     // Extract all field paths with example values
     state.parsedFields = [];
@@ -1587,9 +1634,15 @@ if (componentOptions.mode === 'vendor') {
     var method = getCustomSelectValue('api-method');
     var url    = TGE.el('api-url').value.trim();
     var notes  = TGE.el('api-notes').value.trim();
-    var sample = TGE.el('api-sample').value.trim();
+var sample = TGE.el('api-sample').value.trim();
+    // Persist a normalised, value-stripped skeleton — never raw sample data.
+    // No literal asset value is stored; only structure + type placeholders.
+    if (sample) {
+      try { sample = JSON.stringify(normaliseSample(JSON.parse(sample), true, true)); }
+      catch (e) { /* unparseable — leave as-is */ }
+    }
 
-if (!apiId || !label || !url) {
+    if (!apiId || !label || !url) {
       msgEl.textContent = 'API ID, label and URL are required.';
       msgEl.style.color = 'var(--danger)';
       return;
