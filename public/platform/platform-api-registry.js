@@ -907,8 +907,8 @@ if (componentOptions.mode === 'vendor') {
   function _shapeOf(v) { return Array.isArray(v) ? 'array' : (v === null ? 'null' : typeof v); }
   function _isDataKeyedMap(obj) {
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
-    var keys = Object.keys(obj);
-    if (keys.length < 2) return false;
+var keys = Object.keys(obj);
+    if (!keys.length) return false;
     if (!keys.every(_idLikeKey)) return false;
     var first = _shapeOf(obj[keys[0]]);
     return keys.every(function (k) { return _shapeOf(obj[k]) === first; });
