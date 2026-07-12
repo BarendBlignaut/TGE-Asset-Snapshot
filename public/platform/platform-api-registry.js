@@ -1750,17 +1750,19 @@ apiId: apiId,
     btn.textContent = 'Saving...'; btn.disabled = true;
 
     try {
+    try {
       if (state.panelMode === 'edit') {
         await api('PUT', '/api/registry/apis/' + encodeURIComponent(state.editingApi.apiId), entry);
-        var idx = state.apis.findIndex(function(a) { return a.apiId === state.editingApi.apiId; });
-        if (idx !== -1) state.apis[idx] = entry; else state.apis.push(entry);
       } else {
         await api('POST', '/api/registry/apis', entry);
-        state.apis.push(entry);
       }
+      // Re-read from the server rather than hand-patching the cache with the
+      // raw payload. The payload is NOT the normalised row shape — patching it
+      // in dropped fields the payload doesn't carry (authProfileId, callSpec),
+      // so the next save wrote a damaged row back. Reload = one source of truth.
+      await loadApis();
       msgEl.textContent = 'Saved successfully.';
       msgEl.style.color = 'var(--green-600)';
-      renderApiList();
       setTimeout(function() { TGE.apiClosePanel(); }, 600);
     } catch(e) {
       msgEl.textContent = 'Error: ' + e.message;
