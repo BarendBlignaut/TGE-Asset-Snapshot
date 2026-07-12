@@ -1748,8 +1748,6 @@ apiId: apiId,
     state.saving = true;
     var btn = TGE.el('api-save-btn');
     btn.textContent = 'Saving...'; btn.disabled = true;
-
-    try {
     try {
       if (state.panelMode === 'edit') {
         await api('PUT', '/api/registry/apis/' + encodeURIComponent(state.editingApi.apiId), entry);
