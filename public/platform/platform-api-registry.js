@@ -271,8 +271,19 @@
                 '<span style="font-size:12px;font-weight:600;color:var(--ink);">Hard Check</span>',
                 '<div style="display:flex;align-items:center;gap:12px;">',
                   '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;">',
-                    '<div class="perm-toggle" id="tag-hard-check-toggle" onclick="TGE.apiToggleHardCheck(this)" style="flex-shrink:0;"></div>',
+                  '<div class="perm-toggle" id="tag-hard-check-toggle" onclick="TGE.apiToggleHardCheck(this)" style="flex-shrink:0;"></div>',
                     '<span style="font-size:12px;color:var(--ink);" id="tag-hard-check-label">Off — soft check only</span>',
+                  '</div>',
+                '</div>',
+                '<div class="field">',
+                  '<label>Join Key</label>',
+                  '<select id="tag-key" style="width:100%;height:38px;border:1px solid var(--line);border-radius:8px;padding:0 8px;font:inherit;background:var(--surface);color:var(--ink);">',
+                    '<option value="">\u2014 not a join key</option>',
+                    '<option value="a">A</option>',
+                    '<option value="b">B</option>',
+                    '<option value="c">C</option>',
+                  '</select>',
+                  '<div style="font-size:11px;color:var(--muted);margin-top:4px;">Key + Hard Check = establish. Key alone = match.</div>',
                   '</label>',
                 '</div>',
                 '<p style="margin:3px 0 0;font-size:10px;color:var(--muted-2);grid-column:2;">If ON — this field must match or the entire request fails immediately</p>',
@@ -823,6 +834,8 @@ if (componentOptions.mode === 'vendor') {
     var exEl = TGE.el('tag-example-value');
     if (exEl) exEl.value = tag.example || '';
     // Set hard check toggle
+   var keyEl = TGE.el('tag-key');
+    if (keyEl) keyEl.value = tag.key || '';
     var hcEl = TGE.el('tag-hard-check-toggle');
     var hcLb = TGE.el('tag-hard-check-label');
     if (hcEl) {
@@ -868,9 +881,10 @@ if (componentOptions.mode === 'vendor') {
 
     if (!name && !path) { alert('Field name or path is required.'); return; }
 
-    var hardCheckEl = TGE.el('tag-hard-check-toggle');
+   var hardCheckEl = TGE.el('tag-hard-check-toggle');
     var hardCheck = hardCheckEl ? hardCheckEl.classList.contains('on') : false;
-  var tag = { name: name || path, label: label, use: use, description: desc, path: path, example: example, hardCheck: hardCheck };
+    var keyVal = TGE.el('tag-key') ? TGE.el('tag-key').value : '';
+    var tag = { name: name || path, label: label, use: use, description: desc, path: path, example: example, hardCheck: hardCheck, key: keyVal };
 
     if (state.editingTagIdx !== null && state.editingTagIdx !== undefined) {
       // Merge over the existing tag — structured properties the form doesn't
