@@ -941,14 +941,59 @@ var keys = Object.keys(obj);
 var parsed;
     try { parsed = JSON.parse(raw); } catch(e) { alert('Invalid JSON: ' + e.message); return; }
 
-    // Collapse data-keyed maps so literal ids (e.g. "306532") never enter paths.
-    // Values kept real here so Expand Array can still group by type.
+// 1 — Collapse data-keyed maps (e.g. {"396317":[...]}) so a literal asset id
+    //     can never enter a field path. The key is a position, not a field name.
     parsed = normaliseSample(parsed, false, false);
 
-    // Extract all field paths with example values
-    state.parsedFields = [];
+    state.parsedFields   = [];
     state.parsedExamples = {};
-    extractPaths(Array.isArray(parsed) ? parsed[0] : parsed, '');
+    state.parsedRaw      = {};
+
+    // 2 — Find the repeating unit and enumerate EVERY addressable value in it.
+    //     Where a unit is an array of typed rows (meters: many rows sharing the
+    //     same field names, told apart by `type`), a bare `base` is ambiguous —
+    //     battery.base and odometer.base are different values. So each
+    //     (discriminator × field) pair becomes its own tag-able row. No two tags
+    //     can ever contend for one field, so the engine never has to guess.
+    var unit = Array.isArray(parsed) ? parsed : null;
+    var disc = null;
+
+    if (unit && unit.length && unit[0] && typeof unit[0] === 'object' && !Array.isArray(unit[0])) {
+      ['type', 'code', 'kind', 'category'].some(function (c) {
+        var vals = unit.map(function (r) { return r ? r[c] : undefined; });
+        var usable = vals.every(function (v) { return v != null && typeof v !== 'object'; });
+        if (usable && new Set(vals.map(String)).size > 1) { disc = c; return true; }
+        return false;
+      });
+    }
+
+    if (disc) {
+      // Fields identical across every row (e.g. vehicleId) — plain, unambiguous.
+      Object.keys(unit[0]).forEach(function (k) {
+        var v = unit[0][k];
+        if (k === disc || (v && typeof v === 'object')) return;
+        var same = unit.every(function (r) { return String(r[k]) === String(unit[0][k]); });
+        if (!same) return;
+        state.parsedFields.push(k);
+        state.parsedRaw[k]      = v;
+        state.parsedExamples[k] = String(v);
+      });
+      // Every (type × field) pair — each separately addressable and tag-able.
+      unit.forEach(function (row) {
+        var dv = String(row[disc]);
+        Object.keys(row).forEach(function (k) {
+          if (k === disc || (row[k] && typeof row[k] === 'object')) return;
+          if (state.parsedFields.indexOf(k) !== -1) return;   // already plain
+          var p = '[where ' + disc + '=' + dv + '].' + k;
+          if (state.parsedFields.indexOf(p) !== -1) return;
+          state.parsedFields.push(p);
+          state.parsedRaw[p]      = row[k];
+          state.parsedExamples[p] = String(row[k]);
+        });
+      });
+    } else {
+      extractPaths(Array.isArray(parsed) ? parsed[0] : parsed, '');
+    }
 
     TGE.el('api-parse-status').textContent = state.parsedFields.length + ' fields found — opening bulk editor...';
     TGE.el('api-parse-status').style.color = 'var(--green-600)';
