@@ -3,8 +3,8 @@
 //
 // Stage 1: live view of the Static Fleet master list — stats bar, export
 // pill, and a scrollable table of every mapped column against every active
-// asset. No exclusion or filter interactivity yet — those arrive in later
-// stages on top of this same table.
+// asset. Stage 2 adds per-column exclusions (values + whole-word phrases),
+// live-previewed against the table, nothing saved yet.
 
 (function () {
   'use strict';
@@ -14,8 +14,30 @@
     columns: [],   // field defs, in display_order
     rows: [],      // active fleet rows
     loading: false,
-    error: ''
+    error: '',
+    exclusions: {},   // { sourceColumn: { values: {}, phrases: [] } }
+    openDropdownColumn: null
   };
+
+  var STYLES_INJECTED = false;
+  function injectPillStyles() {
+    if (STYLES_INJECTED) return;
+    STYLES_INJECTED = true;
+    var style = document.createElement('style');
+    style.textContent = [
+      '.snap-hero-menu{position:relative;display:inline-flex;align-items:center;}',
+      '.snap-menu-trigger{height:34px;display:inline-flex;align-items:center;gap:8px;padding:0 11px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink-2);font-size:11px;font-weight:700;cursor:pointer;transition:background 140ms,border-color 140ms,color 140ms;}',
+      '.snap-menu-trigger:hover,.snap-hero-menu.open .snap-menu-trigger{background:var(--surface-3);border-color:var(--green-600);color:var(--green-800);}',
+      '.snap-menu-caret{width:10px;height:10px;opacity:0.75;transition:transform 140ms;}',
+      '.snap-hero-menu.open .snap-menu-caret{transform:rotate(180deg);}',
+      '.snap-menu-panel{position:fixed;min-width:190px;padding:6px;border-radius:12px;background:#fff;border:1px solid rgba(15,26,19,0.10);box-shadow:0 18px 42px rgba(10,45,20,0.22);display:none;z-index:500;}',
+      '.snap-hero-menu.open .snap-menu-panel{display:block;}',
+      '.snap-menu-item{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px;border:none;border-radius:9px;background:transparent;color:var(--ink-2);font-size:12px;font-weight:600;text-align:left;cursor:pointer;opacity:0.4;pointer-events:none;}',
+      '.snap-menu-item.active{opacity:1;pointer-events:auto;}',
+      '.snap-menu-item.active:hover{background:var(--green-50);color:var(--green-800);}'
+    ].join('');
+    document.head.appendChild(style);
+  }
 
   function render(options) {
     options = options || {};
@@ -23,6 +45,8 @@
 
     var container = options.container;
     if (!container) return;
+
+    injectPillStyles();
 
     container.innerHTML = [
       '<div class="card">',
@@ -84,10 +108,62 @@
     if (wrap) wrap.innerHTML = '<div style="padding:30px;text-align:center;color:var(--danger);">' + escapeHtml(state.error) + '</div>';
   }
 
+  function getExclusion(sourceColumn) {
+    if (!state.exclusions[sourceColumn]) {
+      state.exclusions[sourceColumn] = { values: {}, phrases: [] };
+    }
+    return state.exclusions[sourceColumn];
+  }
+
+  function wholeWordMatch(text, phrase) {
+    if (!phrase) return false;
+    var escaped = String(phrase).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    var re = new RegExp('(^|[^A-Za-z0-9])' + escaped + '([^A-Za-z0-9]|$)', 'i');
+    return re.test(String(text));
+  }
+
+  function rowIsExcluded(row) {
+    var fields = row.fields || {};
+    for (var i = 0; i < state.columns.length; i++) {
+      var col = state.columns[i].source_column;
+      var ex = state.exclusions[col];
+      if (!ex) continue;
+      var raw = fields[col];
+      if (raw == null || raw === '') continue;
+      var val = String(raw);
+      if (ex.values[val]) return true;
+      for (var p = 0; p < ex.phrases.length; p++) {
+        if (wholeWordMatch(val, ex.phrases[p])) return true;
+      }
+    }
+    return false;
+  }
+
   function currentVisibleRows() {
-    // Stage 1 has no exclusion logic yet — every active row is visible.
-    // Later stages filter this same list before it reaches the table/export.
-    return state.rows;
+    var hasAnyExclusion = Object.keys(state.exclusions).some(function (col) {
+      var ex = state.exclusions[col];
+      return Object.keys(ex.values).some(function (v) { return ex.values[v]; }) || ex.phrases.length > 0;
+    });
+    if (!hasAnyExclusion) return state.rows;
+    return state.rows.filter(function (row) { return !rowIsExcluded(row); });
+  }
+
+  function distinctValuesFor(sourceColumn) {
+    var counts = {};
+    for (var i = 0; i < state.rows.length; i++) {
+      var raw = (state.rows[i].fields || {})[sourceColumn];
+      if (raw == null || raw === '') continue;
+      var val = String(raw);
+      counts[val] = (counts[val] || 0) + 1;
+    }
+    return Object.keys(counts)
+      .map(function (v) { return { value: v, count: counts[v] }; })
+      .sort(function (a, b) { return b.count - a.count; });
+  }
+
+  function refreshAfterExclusionChange() {
+    renderStats();
+    renderTable();
   }
 
   function renderStats() {
@@ -161,43 +237,66 @@
     var wrap = TGE.el('fs-table-wrap');
     if (!wrap) return;
 
-    var visible = currentVisibleRows();
-
-    if (!visible.length) {
+    if (!state.rows.length) {
       wrap.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);">No assets to display.</div>';
       return;
     }
 
     var headerCells = state.columns.map(function (c) {
+      var ex = state.exclusions[c.source_column];
+      var hasActive = ex && (Object.keys(ex.values).some(function (v) { return ex.values[v]; }) || ex.phrases.length > 0);
       return '<th style="position:sticky;top:0;background:var(--surface-2);border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">' +
-        escapeHtml(c.display_label || c.source_column) + '</th>';
+        '<span style="display:inline-flex;align-items:center;gap:6px;">' +
+          '<span>' + escapeHtml(c.display_label || c.source_column) + '</span>' +
+          '<button type="button" data-fs-arrow="' + escapeHtml(c.source_column) + '" style="border:none;background:none;cursor:pointer;padding:2px;color:' + (hasActive ? 'var(--green-600)' : 'var(--muted-2)') + ';font-size:10px;line-height:1;">▾</button>' +
+        '</span>' +
+      '</th>';
     }).join('');
 
-    var bodyRows = visible.map(function (row, i) {
+    var bodyRows = state.rows.map(function (row, i) {
+      var excluded = rowIsExcluded(row);
       var cells = state.columns.map(function (c) {
         var v = row.fields ? row.fields[c.source_column] : '';
-        return '<td style="padding:6px 10px;font-size:12.5px;color:var(--ink-2);white-space:nowrap;border-bottom:1px solid var(--line-2);">' +
+        return '<td style="padding:6px 10px;font-size:12.5px;color:' + (excluded ? 'var(--muted-2)' : 'var(--ink-2)') + ';white-space:nowrap;border-bottom:1px solid var(--line-2);' + (excluded ? 'text-decoration:line-through;' : '') + '">' +
           escapeHtml(v == null ? '' : String(v)) + '</td>';
       }).join('');
-      return '<tr style="background:' + (i % 2 === 1 ? 'var(--surface-2)' : 'var(--surface)') + ';">' + cells + '</tr>';
+      return '<tr style="background:' + (excluded ? 'var(--danger-bg)' : (i % 2 === 1 ? 'var(--surface-2)' : 'var(--surface)')) + ';">' + cells + '</tr>';
     }).join('');
 
     wrap.innerHTML =
       '<table style="border-collapse:collapse;width:max-content;min-width:100%;">' +
         '<thead><tr>' + headerCells + '</tr></thead>' +
         '<tbody>' + bodyRows + '</tbody>' +
-      '</table>';
+      '</table>' +
+      '<div id="fs-dropdown-host"></div>';
+
+    wrap.querySelectorAll('[data-fs-arrow]').forEach(function (btn) {
+      btn.onclick = function (e) {
+        e.stopPropagation();
+        var col = btn.dataset.fsArrow;
+        if (state.openDropdownColumn === col) { closeDropdown(); return; }
+        openDropdown(col, btn);
+      };
+    });
   }
 
-  function escapeHtml(s) {
-    var div = document.createElement('div');
-    div.textContent = s || '';
-    return div.innerHTML;
+  function closeDropdown() {
+    state.openDropdownColumn = null;
+    var host = TGE.el('fs-dropdown-host');
+    if (host) host.innerHTML = '';
   }
 
-  // ── Register ──────────────────────────────────────────────────────────────
-  window.TGE = window.TGE || {};
-  TGE.Platform = TGE.Platform || {};
-  TGE.Platform.FileSpec = { render: render };
+  function openDropdown(sourceColumn, anchorBtn) {
+    state.openDropdownColumn = sourceColumn;
+    var host = TGE.el('fs-dropdown-host');
+    if (!host) return;
 
-})();
+    var values = distinctValuesFor(sourceColumn);
+    var ex = getExclusion(sourceColumn);
+    var rect = anchorBtn.getBoundingClientRect();
+
+    var rows = values.map(function (v) {
+      var checked = !ex.values[v.value]; // checked = included (Excel semantics: untick to exclude)
+      return '<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:12px;color:var(--ink-2);cursor:pointer;">' +
+        '<input type="checkbox" data-fs-value="' + escapeAttr(v.value) + '"' + (checked ? ' checked' : '') + ' />' +
+        '<span style="flex:1;">' + escapeHtml(v.value) + '</span>' +
