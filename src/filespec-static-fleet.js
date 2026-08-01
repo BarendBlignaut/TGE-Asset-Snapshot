@@ -828,3 +828,60 @@ export async function handlePromoteStaticFleet(request, env) {
     );
   }
 }
+
+// Runs the complete Static Fleet workflow for a newly received import.
+// Intended for background execution after the original file is stored in R2.
+export async function runStaticFleetPipeline(env, importId) {
+  const internalHeaders = new Headers({
+    "X-Import-Key": env.UTILISATION_IMPORT_KEY,
+  });
+
+  const processRequest = new Request(
+    `https://internal/api/filespec/process-static-fleet?id=${importId}`,
+    {
+      method: "POST",
+      headers: internalHeaders,
+    }
+  );
+
+  const processResponse = await handleProcessStaticFleet(
+    processRequest,
+    env
+  );
+
+  const processResult = await processResponse.json();
+
+  if (!processResponse.ok || processResult.status !== "parsed") {
+    throw new Error(
+      processResult.error ||
+      `Static Fleet parsing failed for import ${importId}.`
+    );
+  }
+
+  const promoteRequest = new Request(
+    `https://internal/api/filespec/promote-static-fleet?id=${importId}`,
+    {
+      method: "POST",
+      headers: internalHeaders,
+    }
+  );
+
+  const promoteResponse = await handlePromoteStaticFleet(
+    promoteRequest,
+    env
+  );
+
+  const promoteResult = await promoteResponse.json();
+
+  if (!promoteResponse.ok || promoteResult.status !== "completed") {
+    throw new Error(
+      promoteResult.error ||
+      `Static Fleet promotion failed for import ${importId}.`
+    );
+  }
+
+  return {
+    process: processResult,
+    promotion: promoteResult,
+  };
+}
