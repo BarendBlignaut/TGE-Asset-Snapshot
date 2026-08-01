@@ -16,6 +16,7 @@ import {
 import {
   handleProcessStaticFleet,
   handlePromoteStaticFleet,
+  runStaticFleetPipeline,
 } from "./filespec-static-fleet.js";
 
 const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12 hours
@@ -2252,7 +2253,7 @@ export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runDailySync(env));
   },
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url    = new URL(request.url);
     const path   = url.pathname;
     const method = request.method;
@@ -2365,7 +2366,47 @@ if (method === "POST" && path.match(/^\/api\/vendors\/\d+\/hardware-types$/)) {
       if (method === "POST" && path === "/api/send-email")                  return handleSendEmail(request, env);
 
       // Utilisation
-      if (method === "POST" && path === "/api/filespec/ingest") return handleFileSpecIngest(request, env);
+     if (method === "POST" && path === "/api/filespec/ingest") {
+  const ingestResponse = await handleFileSpecIngest(request, env);
+
+  if (ingestResponse.ok) {
+    try {
+      const ingestResult = await ingestResponse.clone().json();
+
+      if (
+        ingestResult.source === "Static Fleet" &&
+        Number.isInteger(Number(ingestResult.importId))
+      ) {
+        ctx.waitUntil(
+          runStaticFleetPipeline(
+            env,
+            Number(ingestResult.importId)
+          ).catch(async (error) => {
+            await env.DB.prepare(
+              `UPDATE filespec_imports
+               SET error = ?
+               WHERE id = ?`
+            )
+              .bind(
+                error instanceof Error
+                  ? error.message
+                  : String(error),
+                Number(ingestResult.importId)
+              )
+              .run();
+          })
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Unable to start Static Fleet pipeline:",
+        error
+      );
+    }
+  }
+
+  return ingestResponse;
+}
       if (method === "POST" && path === "/api/filespec/process-static-fleet") {
   return handleProcessStaticFleet(request, env);
 }
