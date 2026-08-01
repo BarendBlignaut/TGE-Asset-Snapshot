@@ -9,8 +9,6 @@ import {
   handleSaveStaticExclusionsDraft,
   handlePreviewStaticExclusions,
   handlePublishStaticExclusions,
-  handleImportStaticFleet,
-  handleGetStaticFleet,
 handleImportStaticFleet,
   handleGetStaticFleet,
   handleGetStaticColumnValues,
