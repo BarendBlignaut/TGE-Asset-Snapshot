@@ -277,14 +277,15 @@ export async function handleProcessStaticFleet(request, env) {
     );
   }
 
-  if (importRecord.status === "success") {
-    return jsonResponse(
-      {
-        error: `Import ${importRecord.id} has already been completed.`,
-      },
-      409
-    );
-  }
+if (importRecord.processed_at) {
+  return jsonResponse(
+    {
+      error: `Import ${importRecord.id} has already been promoted.`,
+      processedAt: importRecord.processed_at,
+    },
+    409
+  );
+}
 
   const startedAt = nowIso();
 
@@ -397,6 +398,427 @@ export async function handleProcessStaticFleet(request, env) {
         ok: false,
         importId: importRecord.id,
         status: "failed",
+        error: message,
+        liveFleetChanged: false,
+        buHistoryChanged: false,
+        assetsDefleeted: false,
+      },
+      500
+    );
+  }
+}
+// Promotes a fully parsed Static Fleet import from staging into the live fleet.
+// This is separate from parsing so the staged data can be checked first.
+export async function handlePromoteStaticFleet(request, env) {
+  const keyCheck = await requireImportKey(request, env);
+
+  if (!keyCheck.ok) {
+    return keyCheck.response;
+  }
+
+  const url = new URL(request.url);
+  const importId = Number.parseInt(
+    url.searchParams.get("id") || "",
+    10
+  );
+
+  if (!Number.isInteger(importId) || importId < 1) {
+    return jsonResponse(
+      { error: "A valid import id is required." },
+      400
+    );
+  }
+
+  const importRecord = await env.DB.prepare(
+    `SELECT *
+     FROM filespec_imports
+     WHERE id = ?`
+  )
+    .bind(importId)
+    .first();
+
+  if (!importRecord) {
+    return jsonResponse(
+      { error: `Import ${importId} was not found.` },
+      404
+    );
+  }
+
+  if (importRecord.source !== SOURCE_NAME) {
+    return jsonResponse(
+      { error: `Import ${importId} is not a Static Fleet import.` },
+      400
+    );
+  }
+
+  if (importRecord.status !== "parsed") {
+    return jsonResponse(
+      {
+        error:
+          `Import ${importId} must have status 'parsed' before promotion. ` +
+          `Current status: ${importRecord.status}`,
+      },
+      409
+    );
+  }
+
+  if (importRecord.processed_at) {
+    return jsonResponse(
+      {
+        error: `Import ${importId} has already been promoted.`,
+        processedAt: importRecord.processed_at,
+      },
+      409
+    );
+  }
+
+  const stagedCountRow = await env.DB.prepare(
+    `SELECT COUNT(*) AS count
+     FROM utilisation_static_fleet_staging
+     WHERE import_id = ?`
+  )
+    .bind(importId)
+    .first();
+
+  const stagedCount = Number(stagedCountRow?.count || 0);
+
+  if (stagedCount < 1) {
+    return jsonResponse(
+      {
+        error:
+          `Import ${importId} has no staged rows. ` +
+          "The live fleet has not been changed.",
+      },
+      400
+    );
+  }
+
+  if (
+    Number(importRecord.row_count || 0) !== stagedCount
+  ) {
+    return jsonResponse(
+      {
+        error:
+          `Staged row validation failed. Import record contains ` +
+          `${importRecord.row_count} rows but staging contains ` +
+          `${stagedCount} rows.`,
+        liveFleetChanged: false,
+        buHistoryChanged: false,
+        assetsDefleeted: false,
+      },
+      409
+    );
+  }
+
+  // Count the expected effects before making any live changes.
+  const effectCounts = await env.DB.prepare(
+    `SELECT
+       (
+         SELECT COUNT(*)
+         FROM utilisation_static_fleet_staging s
+         WHERE s.import_id = ?
+           AND NOT EXISTS (
+             SELECT 1
+             FROM utilisation_static_fleet f
+             WHERE f.legacy_number = s.legacy_number
+           )
+       ) AS inserted_count,
+
+       (
+         SELECT COUNT(*)
+         FROM utilisation_static_fleet_staging s
+         WHERE s.import_id = ?
+           AND EXISTS (
+             SELECT 1
+             FROM utilisation_static_fleet f
+             WHERE f.legacy_number = s.legacy_number
+           )
+       ) AS updated_count,
+
+       (
+         SELECT COUNT(*)
+         FROM utilisation_static_fleet_staging s
+         JOIN utilisation_asset_bu_history h
+           ON h.legacy_number = s.legacy_number
+          AND h.effective_to IS NULL
+         WHERE s.import_id = ?
+           AND COALESCE(h.business_unit, '') <>
+               COALESCE(s.business_unit, '')
+       ) AS bu_change_count,
+
+       (
+         SELECT COUNT(*)
+         FROM utilisation_static_fleet_staging s
+         JOIN utilisation_static_fleet f
+           ON f.legacy_number = s.legacy_number
+         WHERE s.import_id = ?
+           AND f.status = 'inactive'
+       ) AS reactivated_count,
+
+       (
+         SELECT COUNT(*)
+         FROM utilisation_static_fleet f
+         WHERE f.status = 'active'
+           AND NOT EXISTS (
+             SELECT 1
+             FROM utilisation_static_fleet_staging s
+             WHERE s.import_id = ?
+               AND s.legacy_number = f.legacy_number
+           )
+       ) AS deactivated_count`
+  )
+    .bind(
+      importId,
+      importId,
+      importId,
+      importId,
+      importId
+    )
+    .first();
+
+  const insertedCount = Number(
+    effectCounts?.inserted_count || 0
+  );
+
+  const updatedCount = Number(
+    effectCounts?.updated_count || 0
+  );
+
+  const buChangeCount = Number(
+    effectCounts?.bu_change_count || 0
+  );
+
+  const reactivatedCount = Number(
+    effectCounts?.reactivated_count || 0
+  );
+
+  const deactivatedCount = Number(
+    effectCounts?.deactivated_count || 0
+  );
+
+  const promotedAt = nowIso();
+  const sourceFile = importRecord.filename || null;
+
+  try {
+    await env.DB.batch([
+      // Close the current BU period when:
+      // 1. the asset has moved to another BU; or
+      // 2. the asset is absent from this successful complete import.
+      env.DB.prepare(
+        `UPDATE utilisation_asset_bu_history
+         SET effective_to = ?
+         WHERE effective_to IS NULL
+           AND (
+             EXISTS (
+               SELECT 1
+               FROM utilisation_static_fleet_staging s
+               WHERE s.import_id = ?
+                 AND s.legacy_number =
+                     utilisation_asset_bu_history.legacy_number
+                 AND COALESCE(s.business_unit, '') <>
+                     COALESCE(
+                       utilisation_asset_bu_history.business_unit,
+                       ''
+                     )
+             )
+             OR NOT EXISTS (
+               SELECT 1
+               FROM utilisation_static_fleet_staging s
+               WHERE s.import_id = ?
+                 AND s.legacy_number =
+                     utilisation_asset_bu_history.legacy_number
+             )
+           )`
+      ).bind(
+        promotedAt,
+        importId,
+        importId
+      ),
+
+      // Create an open BU-history record for:
+      // - new assets;
+      // - assets that changed BU;
+      // - previously inactive assets that returned.
+      env.DB.prepare(
+        `INSERT INTO utilisation_asset_bu_history
+          (
+            legacy_number,
+            business_unit,
+            effective_from,
+            effective_to,
+            source_import_id,
+            source_file,
+            created_at
+          )
+         SELECT
+           s.legacy_number,
+           s.business_unit,
+           ?,
+           NULL,
+           ?,
+           ?,
+           ?
+         FROM utilisation_static_fleet_staging s
+         WHERE s.import_id = ?
+           AND NOT EXISTS (
+             SELECT 1
+             FROM utilisation_asset_bu_history h
+             WHERE h.legacy_number = s.legacy_number
+               AND h.effective_to IS NULL
+           )`
+      ).bind(
+        promotedAt,
+        importId,
+        sourceFile,
+        promotedAt,
+        importId
+      ),
+
+      // Update assets that already exist and reactivate them where required.
+      env.DB.prepare(
+        `UPDATE utilisation_static_fleet
+         SET
+           field_values = (
+             SELECT s.field_values
+             FROM utilisation_static_fleet_staging s
+             WHERE s.import_id = ?
+               AND s.legacy_number =
+                   utilisation_static_fleet.legacy_number
+           ),
+           status = 'active',
+           source_file = ?,
+           last_seen_at = ?,
+           updated_at = ?
+         WHERE EXISTS (
+           SELECT 1
+           FROM utilisation_static_fleet_staging s
+           WHERE s.import_id = ?
+             AND s.legacy_number =
+                 utilisation_static_fleet.legacy_number
+         )`
+      ).bind(
+        importId,
+        sourceFile,
+        promotedAt,
+        promotedAt,
+        importId
+      ),
+
+      // Insert assets that have never previously appeared.
+      env.DB.prepare(
+        `INSERT INTO utilisation_static_fleet
+          (
+            legacy_number,
+            status,
+            field_values,
+            source_file,
+            first_seen_at,
+            last_seen_at,
+            created_at,
+            updated_at
+          )
+         SELECT
+           s.legacy_number,
+           'active',
+           s.field_values,
+           ?,
+           ?,
+           ?,
+           ?,
+           ?
+         FROM utilisation_static_fleet_staging s
+         WHERE s.import_id = ?
+           AND NOT EXISTS (
+             SELECT 1
+             FROM utilisation_static_fleet f
+             WHERE f.legacy_number = s.legacy_number
+           )`
+      ).bind(
+        sourceFile,
+        promotedAt,
+        promotedAt,
+        promotedAt,
+        promotedAt,
+        importId
+      ),
+
+      // Defleet only after a complete parsed import has reached promotion.
+      // Records are retained and changed to inactive, never deleted.
+      env.DB.prepare(
+        `UPDATE utilisation_static_fleet
+         SET
+           status = 'inactive',
+           updated_at = ?
+         WHERE status = 'active'
+           AND NOT EXISTS (
+             SELECT 1
+             FROM utilisation_static_fleet_staging s
+             WHERE s.import_id = ?
+               AND s.legacy_number =
+                   utilisation_static_fleet.legacy_number
+           )`
+      ).bind(
+        promotedAt,
+        importId
+      ),
+
+      // Record successful promotion.
+      // The existing status constraint uses 'parsed' as the completed status;
+      // processed_at distinguishes parsed-only from fully promoted.
+      env.DB.prepare(
+        `UPDATE filespec_imports
+         SET
+           status = 'parsed',
+           processed_at = ?,
+           inserted_count = ?,
+           updated_count = ?,
+           bu_change_count = ?,
+           error = NULL
+         WHERE id = ?`
+      ).bind(
+        promotedAt,
+        insertedCount,
+        updatedCount,
+        buChangeCount,
+        importId
+      ),
+    ]);
+
+    return jsonResponse({
+      ok: true,
+      importId,
+      status: "completed",
+      databaseStatus: "parsed",
+      processedAt: promotedAt,
+      stagedRowCount: stagedCount,
+      insertedCount,
+      updatedCount,
+      buChangeCount,
+      reactivatedCount,
+      deactivatedCount,
+      liveFleetChanged: true,
+      buHistoryChanged: true,
+      assetsDefleeted: deactivatedCount > 0,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : String(error);
+
+    await env.DB.prepare(
+      `UPDATE filespec_imports
+       SET error = ?
+       WHERE id = ?`
+    )
+      .bind(message, importId)
+      .run();
+
+    return jsonResponse(
+      {
+        ok: false,
+        importId,
+        status: "promotion_failed",
         error: message,
         liveFleetChanged: false,
         buHistoryChanged: false,
