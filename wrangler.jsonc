@@ -8,11 +8,17 @@
     "directory": "./public",
     "binding": "ASSETS"
   },
-  "d1_databases": [
+ "d1_databases": [
     {
       "binding": "DB",
       "database_name": "tge-asset-snapshot-db",
       "database_id": "c816090b-24c2-4ee0-8765-dce000b1d83d"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILESPEC_BUCKET",
+      "bucket_name": "tge-filespec-uploads"
     }
   ],
   "triggers": {
