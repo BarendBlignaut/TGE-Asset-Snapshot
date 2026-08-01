@@ -290,7 +290,7 @@ export async function handleProcessStaticFleet(request, env) {
 
   await env.DB.prepare(
     `UPDATE filespec_imports
-     SET status = 'processing',
+     SET status = 'parsing',
          processing_started_at = ?,
          processed_at = NULL,
          parsed_at = NULL,
@@ -351,7 +351,7 @@ export async function handleProcessStaticFleet(request, env) {
 
     await env.DB.prepare(
       `UPDATE filespec_imports
-       SET status = 'staged',
+       SET status = 'parsed',
            parsed_at = ?,
            row_count = ?,
            error = NULL
@@ -375,7 +375,7 @@ export async function handleProcessStaticFleet(request, env) {
       missingIdentityCount: validation.missingIdentityCount,
       duplicateCount: validation.duplicateCount,
       headerCount: validation.headers.length,
-      status: "staged",
+      status: "parsed",
       liveFleetChanged: false,
       buHistoryChanged: false,
       assetsDefleeted: false,
