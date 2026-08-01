@@ -400,6 +400,34 @@ async function handleImportStaticFleet(request, env) {
   }
 }
 
+// ── Column values (for the File Spec column browser) ─────────────────────────
+async function handleGetStaticColumnValues(request, env, auth) {
+  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "manage-static-sanitising");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
+
+  const url = new URL(request.url);
+  const column = url.searchParams.get("column");
+  if (!column) return jsonResponse({ error: "column is required." }, 400);
+
+  const rows = await env.DB.prepare("SELECT field_values FROM utilisation_static_fleet WHERE status = 'active'").all();
+  const counts = new Map();
+
+  for (const row of (rows.results || [])) {
+    let values;
+    try { values = JSON.parse(row.field_values); } catch { continue; }
+    const raw = values[column];
+    if (raw == null || raw === "") continue;
+    const val = String(raw);
+    counts.set(val, (counts.get(val) || 0) + 1);
+  }
+
+  const list = Array.from(counts.entries())
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => b.count - a.count);
+
+  return jsonResponse({ ok: true, column, values: list });
+}
+
 // ── Read ─────────────────────────────────────────────────────────────────────
 async function handleGetStaticFleet(request, env, auth) {
   const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "view");
@@ -445,6 +473,7 @@ export {
   handleSaveStaticExclusionsDraft,
   handlePreviewStaticExclusions,
   handlePublishStaticExclusions,
+  handleGetStaticColumnValues,
   handleImportStaticFleet,
   handleGetStaticFleet,
 };
