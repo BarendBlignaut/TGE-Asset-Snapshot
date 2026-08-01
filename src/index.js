@@ -13,7 +13,10 @@ import {
   handleGetStaticFleet,
 } from "./utilisation-static-fleet.js";
 
-import { handleProcessStaticFleet } from "./filespec-static-fleet.js";
+import {
+  handleProcessStaticFleet,
+  handlePromoteStaticFleet,
+} from "./filespec-static-fleet.js";
 
 const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12 hours
 const SESSION_COOKIE      = "tge_session";
@@ -2365,6 +2368,10 @@ if (method === "POST" && path.match(/^\/api\/vendors\/\d+\/hardware-types$/)) {
       if (method === "POST" && path === "/api/filespec/ingest") return handleFileSpecIngest(request, env);
       if (method === "POST" && path === "/api/filespec/process-static-fleet") {
   return handleProcessStaticFleet(request, env);
+}
+
+      if (method === "POST" && path === "/api/filespec/promote-static-fleet") {
+  return handlePromoteStaticFleet(request, env);
 }
       if (method === "POST" && path === "/api/utilisation/static-fleet/import") return handleImportStaticFleet(request, env);
       if (method === "GET"  && path === "/api/utilisation/static-fleet") {
