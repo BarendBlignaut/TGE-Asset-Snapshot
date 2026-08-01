@@ -11,13 +11,14 @@
 (function () {
   'use strict';
 
-  var state = {
+var state = {
     vendorId: null,
     columns: [],
     rows: [],
     loading: false,
     error: '',
     exclusions: {},   // { sourceColumn: { values: {}, phrases: [] } }
+    filterFlags: {},  // { sourceColumn: true|false } — seeded from use_as_filter
     openDropdownColumn: null
   };
 
@@ -97,10 +98,15 @@
       return;
     }
 
-    state.columns = (fieldsRes.data.fields || []).slice().sort(function (a, b) {
+state.columns = (fieldsRes.data.fields || []).slice().sort(function (a, b) {
       return (a.display_order || 0) - (b.display_order || 0);
     });
     state.rows = fleetRes.data.fleet || [];
+
+    state.filterFlags = {};
+    state.columns.forEach(function (c) {
+      state.filterFlags[c.source_column] = !!c.use_as_filter;
+    });
 
     renderStats();
     renderExportPill();
@@ -247,14 +253,16 @@
       return;
     }
 
-    var headerCells = state.columns.map(function (c) {
+var headerCells = state.columns.map(function (c) {
       var colKey = c.source_column;
       var ex = state.exclusions[colKey];
       var hasActive = ex && (Object.keys(ex.values).some(function (v) { return ex.values[v]; }) || ex.phrases.length > 0);
+      var isFilter = !!state.filterFlags[colKey];
       return '<th style="position:sticky;top:0;background:var(--surface-2);border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">' +
         '<span class="fs-th-wrap">' +
           '<span>' + escapeHtml(c.display_label || colKey) + '</span>' +
-          '<button type="button" data-fs-arrow="' + escapeAttr(colKey) + '" style="border:none;background:none;cursor:pointer;padding:2px;color:' + (hasActive ? 'var(--green-600)' : 'var(--muted-2)') + ';font-size:10px;line-height:1;">▾</button>' +
+          '<button type="button" data-fs-filter-toggle="' + escapeAttr(colKey) + '" title="Use as end-user filter" style="border:none;background:none;cursor:pointer;padding:2px;color:' + (isFilter ? 'var(--green-600)' : 'var(--muted-2)') + ';font-size:11px;line-height:1;">▽</button>' +
+          '<button type="button" data-fs-arrow="' + escapeAttr(colKey) + '" title="Exclude values" style="border:none;background:none;cursor:pointer;padding:2px;color:' + (hasActive ? 'var(--green-600)' : 'var(--muted-2)') + ';font-size:10px;line-height:1;">▾</button>' +
           '<span class="fs-dd-slot" data-fs-slot="' + escapeAttr(colKey) + '"></span>' +
         '</span>' +
       '</th>';
@@ -276,12 +284,21 @@
         '<tbody>' + bodyRows + '</tbody>' +
       '</table>';
 
-    wrap.querySelectorAll('[data-fs-arrow]').forEach(function (btn) {
+wrap.querySelectorAll('[data-fs-arrow]').forEach(function (btn) {
       btn.onclick = function (e) {
         e.stopPropagation();
         var col = btn.dataset.fsArrow;
         if (state.openDropdownColumn === col) { closeDropdown(); return; }
         openDropdown(col);
+      };
+    });
+
+    wrap.querySelectorAll('[data-fs-filter-toggle]').forEach(function (btn) {
+      btn.onclick = function (e) {
+        e.stopPropagation();
+        var col = btn.dataset.fsFilterToggle;
+        state.filterFlags[col] = !state.filterFlags[col];
+        renderTable();
       };
     });
 
