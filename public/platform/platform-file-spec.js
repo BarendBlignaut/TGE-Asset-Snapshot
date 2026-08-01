@@ -4,16 +4,17 @@
 // Stage 1: live view of the Static Fleet master list — stats bar, export
 // pill, and a scrollable table of every mapped column against every active
 // asset. Stage 2 adds per-column exclusions (values + whole-word phrases),
-// live-previewed against the table, cascading (each column's list reflects
-// what's already excluded elsewhere), nothing saved yet.
+// live-previewed against the table, cascading. The dropdown is anchored
+// via normal CSS flow (a relatively-positioned header slot), not JS math,
+// so it always opens directly under the column it belongs to.
 
 (function () {
   'use strict';
 
   var state = {
     vendorId: null,
-    columns: [],   // field defs, in display_order
-    rows: [],      // active fleet rows
+    columns: [],
+    rows: [],
     loading: false,
     error: '',
     exclusions: {},   // { sourceColumn: { values: {}, phrases: [] } }
@@ -35,7 +36,9 @@
       '.snap-hero-menu.open .snap-menu-panel{display:block;}',
       '.snap-menu-item{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px;border:none;border-radius:9px;background:transparent;color:var(--ink-2);font-size:12px;font-weight:600;text-align:left;cursor:pointer;opacity:0.4;pointer-events:none;}',
       '.snap-menu-item.active{opacity:1;pointer-events:auto;}',
-      '.snap-menu-item.active:hover{background:var(--green-50);color:var(--green-800);}'
+      '.snap-menu-item.active:hover{background:var(--green-50);color:var(--green-800);}',
+      '.fs-th-wrap{position:relative;display:inline-flex;align-items:center;gap:6px;}',
+      '.fs-dd-slot{position:absolute;top:100%;left:0;z-index:80;}'
     ].join('');
     document.head.appendChild(style);
   }
@@ -245,12 +248,14 @@
     }
 
     var headerCells = state.columns.map(function (c) {
-      var ex = state.exclusions[c.source_column];
+      var colKey = c.source_column;
+      var ex = state.exclusions[colKey];
       var hasActive = ex && (Object.keys(ex.values).some(function (v) { return ex.values[v]; }) || ex.phrases.length > 0);
       return '<th style="position:sticky;top:0;background:var(--surface-2);border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">' +
-        '<span style="display:inline-flex;align-items:center;gap:6px;">' +
-          '<span>' + escapeHtml(c.display_label || c.source_column) + '</span>' +
-          '<button type="button" data-fs-arrow="' + escapeHtml(c.source_column) + '" style="border:none;background:none;cursor:pointer;padding:2px;color:' + (hasActive ? 'var(--green-600)' : 'var(--muted-2)') + ';font-size:10px;line-height:1;">▾</button>' +
+        '<span class="fs-th-wrap">' +
+          '<span>' + escapeHtml(c.display_label || colKey) + '</span>' +
+          '<button type="button" data-fs-arrow="' + escapeAttr(colKey) + '" style="border:none;background:none;cursor:pointer;padding:2px;color:' + (hasActive ? 'var(--green-600)' : 'var(--muted-2)') + ';font-size:10px;line-height:1;">▾</button>' +
+          '<span class="fs-dd-slot" data-fs-slot="' + escapeAttr(colKey) + '"></span>' +
         '</span>' +
       '</th>';
     }).join('');
@@ -269,8 +274,7 @@
       '<table style="border-collapse:collapse;width:max-content;min-width:100%;">' +
         '<thead><tr>' + headerCells + '</tr></thead>' +
         '<tbody>' + bodyRows + '</tbody>' +
-      '</table>' +
-      '<div id="fs-dropdown-host"></div>';
+      '</table>';
 
     wrap.querySelectorAll('[data-fs-arrow]').forEach(function (btn) {
       btn.onclick = function (e) {
@@ -280,52 +284,37 @@
         openDropdown(col);
       };
     });
+
+    // If a dropdown was open before this re-render (e.g. after ticking a
+    // value), reopen it in its new slot so the panel stays visible.
+    if (state.openDropdownColumn) {
+      var reopenCol = state.openDropdownColumn;
+      state.openDropdownColumn = null;
+      openDropdown(reopenCol);
+    }
   }
 
   function closeDropdown() {
     state.openDropdownColumn = null;
-    var host = TGE.el('fs-dropdown-host');
-    if (host) host.innerHTML = '';
+    document.querySelectorAll('.fs-dd-slot').forEach(function (slot) { slot.innerHTML = ''; });
   }
 
-  function findArrowButton(sourceColumn) {
+  function findSlot(sourceColumn) {
     var wrap = TGE.el('fs-table-wrap');
     if (!wrap) return null;
-    var btns = wrap.querySelectorAll('[data-fs-arrow]');
-    for (var i = 0; i < btns.length; i++) {
-      if (btns[i].dataset.fsArrow === sourceColumn) return btns[i];
+    var slots = wrap.querySelectorAll('[data-fs-slot]');
+    for (var i = 0; i < slots.length; i++) {
+      if (slots[i].dataset.fsSlot === sourceColumn) return slots[i];
     }
     return null;
   }
 
-  function positionDropdownPanel(btn) {
-    var panel = TGE.el('fs-dropdown-panel');
-    if (!panel || !btn) return;
-    var btnRect   = btn.getBoundingClientRect();
-    var panelRect = panel.getBoundingClientRect();
-
-    var left = btnRect.left;
-    if (left + panelRect.width > window.innerWidth - 10) left = window.innerWidth - panelRect.width - 10;
-    if (left < 10) left = 10;
-
-    var top = btnRect.bottom + 6;
-    if (top + panelRect.height > window.innerHeight - 10) {
-      var above = btnRect.top - panelRect.height - 6;
-      top = above > 10 ? above : Math.max(10, window.innerHeight - panelRect.height - 10);
-    }
-
-    panel.style.left = left + 'px';
-    panel.style.top = top + 'px';
-    panel.style.visibility = 'visible';
-  }
-
   function openDropdown(sourceColumn) {
-    state.openDropdownColumn = sourceColumn;
-    var host = TGE.el('fs-dropdown-host');
-    if (!host) return;
+    document.querySelectorAll('.fs-dd-slot').forEach(function (slot) { slot.innerHTML = ''; });
 
-    var btn = findArrowButton(sourceColumn);
-    if (!btn) return;
+    state.openDropdownColumn = sourceColumn;
+    var slot = findSlot(sourceColumn);
+    if (!slot) return;
 
     var values = distinctValuesFor(sourceColumn);
     var ex = getExclusion(sourceColumn);
@@ -346,8 +335,8 @@
       '</div>';
     }).join('');
 
-    host.innerHTML =
-      '<div id="fs-dropdown-panel" style="position:fixed;visibility:hidden;left:0;top:0;width:300px;max-height:400px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 18px 42px rgba(10,45,20,0.22);z-index:600;padding:8px;">' +
+    slot.innerHTML =
+      '<div style="width:280px;max-height:380px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 18px 42px rgba(10,45,20,0.22);padding:8px;text-transform:none;">' +
         '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;padding:4px 8px;">Exclude a whole word</div>' +
         '<div style="display:flex;gap:6px;padding:0 8px 8px;">' +
           '<input type="text" id="fs-phrase-input" placeholder="e.g. E-TAG" style="flex:1;height:30px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font-size:12px;" />' +
@@ -358,25 +347,23 @@
         '<div>' + rows + '</div>' +
       '</div>';
 
-    host.onclick = function (e) { e.stopPropagation(); };
+    slot.onclick = function (e) { e.stopPropagation(); };
 
-    host.querySelectorAll('[data-fs-value]').forEach(function (input) {
+    slot.querySelectorAll('[data-fs-value]').forEach(function (input) {
       input.onchange = function () {
         var val = input.dataset.fsValue;
         var exx = getExclusion(sourceColumn);
         exx.values[val] = !input.checked; // unticked => excluded
         refreshAfterExclusionChange();
-        openDropdown(sourceColumn);
       };
     });
 
-    host.querySelectorAll('[data-fs-remove-phrase]').forEach(function (btn2) {
+    slot.querySelectorAll('[data-fs-remove-phrase]').forEach(function (btn2) {
       btn2.onclick = function () {
         var idx = parseInt(btn2.dataset.fsRemovePhrase, 10);
         var exx = getExclusion(sourceColumn);
         exx.phrases.splice(idx, 1);
         refreshAfterExclusionChange();
-        openDropdown(sourceColumn);
       };
     });
 
@@ -389,13 +376,8 @@
         var exx = getExclusion(sourceColumn);
         if (exx.phrases.indexOf(phrase) === -1) exx.phrases.push(phrase);
         refreshAfterExclusionChange();
-        openDropdown(sourceColumn);
       };
     }
-
-    // Position after the browser has laid out the (invisible) panel, so its
-    // real measured width/height are available, not a guess.
-    positionDropdownPanel(findArrowButton(sourceColumn));
   }
 
   document.addEventListener('click', function () {
