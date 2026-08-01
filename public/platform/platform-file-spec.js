@@ -275,7 +275,7 @@
         e.stopPropagation();
         var col = btn.dataset.fsArrow;
         if (state.openDropdownColumn === col) { closeDropdown(); return; }
-        openDropdown(col, btn);
+        openDropdown(col, e.clientX, e.clientY);
       };
     });
   }
@@ -286,14 +286,14 @@
     if (host) host.innerHTML = '';
   }
 
-  function openDropdown(sourceColumn, anchorBtn) {
+  function openDropdown(sourceColumn, clickX, clickY) {
     state.openDropdownColumn = sourceColumn;
+    state.dropdownPos = { x: clickX, y: clickY };
     var host = TGE.el('fs-dropdown-host');
     if (!host) return;
 
     var values = distinctValuesFor(sourceColumn);
     var ex = getExclusion(sourceColumn);
-    var rect = anchorBtn.getBoundingClientRect();
 
     var rows = values.map(function (v) {
       var checked = !ex.values[v.value]; // checked = included (Excel semantics: untick to exclude)
@@ -311,9 +311,13 @@
       '</div>';
     }).join('');
 
-var clampedTop = Math.min(rect.bottom + 6, window.innerHeight - 420);
+    var panelW = 300;
+    var clampedLeft = Math.min(clickX, window.innerWidth - panelW - 16);
+    var clampedTop  = Math.min(clickY + 10, window.innerHeight - 420);
     host.innerHTML =
-      '<div style="position:fixed;top:' + Math.max(clampedTop, 10) + 'px;left:' + rect.left + 'px;min-width:240px;max-width:320px;max-height:400px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 18px 42px rgba(10,45,20,0.22);z-index:600;padding:8px;">' +
+      '<div style="position:fixed;top:' + Math.max(clampedTop, 10) + 'px;left:' + Math.max(clampedLeft, 10) + 'px;width:' + panelW + 'px;max-height:400px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 18px 42px rgba(10,45,20,0.22);z-index:600;padding:8px;">' +
+        '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;padding:4px 8px;">Exclude a whole word</div>' +
+        '<div style="display:flex;gap:6px;padding:0 8px 8px;">' +
           '<input type="text" id="fs-phrase-input" placeholder="e.g. E-TAG" style="flex:1;height:30px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font-size:12px;" />' +
           '<button type="button" id="fs-phrase-add" class="btn" style="height:30px;font-size:12px;padding:0 10px;">Add</button>' +
         '</div>' +
@@ -330,7 +334,7 @@ var clampedTop = Math.min(rect.bottom + 6, window.innerHeight - 420);
         var exx = getExclusion(sourceColumn);
         exx.values[val] = !input.checked; // unticked => excluded
         refreshAfterExclusionChange();
-        openDropdown(sourceColumn, anchorBtn); // keep panel open, refresh header colour
+        openDropdown(sourceColumn, state.dropdownPos.x, state.dropdownPos.y);
       };
     });
 
@@ -340,7 +344,7 @@ var clampedTop = Math.min(rect.bottom + 6, window.innerHeight - 420);
         var exx = getExclusion(sourceColumn);
         exx.phrases.splice(idx, 1);
         refreshAfterExclusionChange();
-        openDropdown(sourceColumn, anchorBtn);
+        openDropdown(sourceColumn, state.dropdownPos.x, state.dropdownPos.y);
       };
     });
 
@@ -353,7 +357,7 @@ var clampedTop = Math.min(rect.bottom + 6, window.innerHeight - 420);
         var exx = getExclusion(sourceColumn);
         if (exx.phrases.indexOf(phrase) === -1) exx.phrases.push(phrase);
         refreshAfterExclusionChange();
-        openDropdown(sourceColumn, anchorBtn);
+        openDropdown(sourceColumn, state.dropdownPos.x, state.dropdownPos.y);
       };
     }
   }
