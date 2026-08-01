@@ -4,7 +4,8 @@
 // Stage 1: live view of the Static Fleet master list — stats bar, export
 // pill, and a scrollable table of every mapped column against every active
 // asset. Stage 2 adds per-column exclusions (values + whole-word phrases),
-// live-previewed against the table, nothing saved yet.
+// live-previewed against the table, cascading (each column's list reflects
+// what's already excluded elsewhere), nothing saved yet.
 
 (function () {
   'use strict';
@@ -150,8 +151,9 @@
 
   function distinctValuesFor(sourceColumn) {
     var counts = {};
-    for (var i = 0; i < state.rows.length; i++) {
-      var raw = (state.rows[i].fields || {})[sourceColumn];
+    var pool = currentVisibleRows();
+    for (var i = 0; i < pool.length; i++) {
+      var raw = (pool[i].fields || {})[sourceColumn];
       if (raw == null || raw === '') continue;
       var val = String(raw);
       counts[val] = (counts[val] || 0) + 1;
@@ -275,7 +277,7 @@
         e.stopPropagation();
         var col = btn.dataset.fsArrow;
         if (state.openDropdownColumn === col) { closeDropdown(); return; }
-        openDropdown(col, e.clientX, e.clientY);
+        openDropdown(col);
       };
     });
   }
@@ -286,11 +288,44 @@
     if (host) host.innerHTML = '';
   }
 
-  function openDropdown(sourceColumn, clickX, clickY) {
+  function findArrowButton(sourceColumn) {
+    var wrap = TGE.el('fs-table-wrap');
+    if (!wrap) return null;
+    var btns = wrap.querySelectorAll('[data-fs-arrow]');
+    for (var i = 0; i < btns.length; i++) {
+      if (btns[i].dataset.fsArrow === sourceColumn) return btns[i];
+    }
+    return null;
+  }
+
+  function positionDropdownPanel(btn) {
+    var panel = TGE.el('fs-dropdown-panel');
+    if (!panel || !btn) return;
+    var btnRect   = btn.getBoundingClientRect();
+    var panelRect = panel.getBoundingClientRect();
+
+    var left = btnRect.left;
+    if (left + panelRect.width > window.innerWidth - 10) left = window.innerWidth - panelRect.width - 10;
+    if (left < 10) left = 10;
+
+    var top = btnRect.bottom + 6;
+    if (top + panelRect.height > window.innerHeight - 10) {
+      var above = btnRect.top - panelRect.height - 6;
+      top = above > 10 ? above : Math.max(10, window.innerHeight - panelRect.height - 10);
+    }
+
+    panel.style.left = left + 'px';
+    panel.style.top = top + 'px';
+    panel.style.visibility = 'visible';
+  }
+
+  function openDropdown(sourceColumn) {
     state.openDropdownColumn = sourceColumn;
-    state.dropdownPos = { x: clickX, y: clickY };
     var host = TGE.el('fs-dropdown-host');
     if (!host) return;
+
+    var btn = findArrowButton(sourceColumn);
+    if (!btn) return;
 
     var values = distinctValuesFor(sourceColumn);
     var ex = getExclusion(sourceColumn);
@@ -311,11 +346,8 @@
       '</div>';
     }).join('');
 
-    var panelW = 300;
-    var clampedLeft = Math.min(clickX, window.innerWidth - panelW - 16);
-    var clampedTop  = Math.min(clickY + 10, window.innerHeight - 420);
     host.innerHTML =
-      '<div style="position:fixed;top:' + Math.max(clampedTop, 10) + 'px;left:' + Math.max(clampedLeft, 10) + 'px;width:' + panelW + 'px;max-height:400px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 18px 42px rgba(10,45,20,0.22);z-index:600;padding:8px;">' +
+      '<div id="fs-dropdown-panel" style="position:fixed;visibility:hidden;left:0;top:0;width:300px;max-height:400px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 18px 42px rgba(10,45,20,0.22);z-index:600;padding:8px;">' +
         '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;padding:4px 8px;">Exclude a whole word</div>' +
         '<div style="display:flex;gap:6px;padding:0 8px 8px;">' +
           '<input type="text" id="fs-phrase-input" placeholder="e.g. E-TAG" style="flex:1;height:30px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font-size:12px;" />' +
@@ -334,17 +366,17 @@
         var exx = getExclusion(sourceColumn);
         exx.values[val] = !input.checked; // unticked => excluded
         refreshAfterExclusionChange();
-        openDropdown(sourceColumn, state.dropdownPos.x, state.dropdownPos.y);
+        openDropdown(sourceColumn);
       };
     });
 
-    host.querySelectorAll('[data-fs-remove-phrase]').forEach(function (btn) {
-      btn.onclick = function () {
-        var idx = parseInt(btn.dataset.fsRemovePhrase, 10);
+    host.querySelectorAll('[data-fs-remove-phrase]').forEach(function (btn2) {
+      btn2.onclick = function () {
+        var idx = parseInt(btn2.dataset.fsRemovePhrase, 10);
         var exx = getExclusion(sourceColumn);
         exx.phrases.splice(idx, 1);
         refreshAfterExclusionChange();
-        openDropdown(sourceColumn, state.dropdownPos.x, state.dropdownPos.y);
+        openDropdown(sourceColumn);
       };
     });
 
@@ -357,9 +389,13 @@
         var exx = getExclusion(sourceColumn);
         if (exx.phrases.indexOf(phrase) === -1) exx.phrases.push(phrase);
         refreshAfterExclusionChange();
-        openDropdown(sourceColumn, state.dropdownPos.x, state.dropdownPos.y);
+        openDropdown(sourceColumn);
       };
     }
+
+    // Position after the browser has laid out the (invisible) panel, so its
+    // real measured width/height are available, not a guess.
+    positionDropdownPanel(findArrowButton(sourceColumn));
   }
 
   document.addEventListener('click', function () {
