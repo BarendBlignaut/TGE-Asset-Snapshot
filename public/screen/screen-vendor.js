@@ -252,6 +252,17 @@ function renderTab(key) {
     return;
   }
 
+  if (key === 'file-spec') {
+    el.innerHTML = '<div id="vendor-file-spec"></div>';
+
+    TGE.Platform.FileSpec.render({
+      container: TGE.el('vendor-file-spec'),
+      vendorId: v.id
+    });
+
+    return;
+  }
+
   if (key === 'flows') {
     el.innerHTML = '<div id="vendor-flows"></div>';
 
