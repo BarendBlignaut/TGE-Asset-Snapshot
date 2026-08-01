@@ -11,6 +11,9 @@ import {
   handlePublishStaticExclusions,
   handleImportStaticFleet,
   handleGetStaticFleet,
+handleImportStaticFleet,
+  handleGetStaticFleet,
+  handleGetStaticColumnValues,
 } from "./utilisation-static-fleet.js";
 
 import {
@@ -2419,6 +2422,12 @@ if (method === "POST" && path.match(/^\/api\/vendors\/\d+\/hardware-types$/)) {
         const auth = await requireSession(request, env);
         if (!auth.ok) return auth.response;
         return handleGetStaticFleet(request, env, { session: auth.session, ...utilisationAuthHelpers });
+      }
+
+      if (method === "GET" && path === "/api/utilisation/static-column-values") {
+        const auth = await requireSession(request, env);
+        if (!auth.ok) return auth.response;
+        return handleGetStaticColumnValues(request, env, { session: auth.session, ...utilisationAuthHelpers });
       }
       if (method === "GET" && path === "/api/utilisation/static-fields") {
         const auth = await requireSession(request, env);
