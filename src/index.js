@@ -2243,7 +2243,6 @@ async function handleFileSpecIngest(request, env) {
 }
 
 export default {
-export default {
   
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runDailySync(env));
