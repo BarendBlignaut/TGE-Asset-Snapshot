@@ -2196,7 +2196,55 @@ async function handleHistoricalSnapshotsAttachments(request, env) {
 // (handlers imported from utilisation-static-fleet.js)
 
 // ── Main fetch handler ────────────────────────────────────────────────────────
+// ── File Spec ingest: receive a raw file, park it in R2, record it in D1 ──────
+async function handleFileSpecIngest(request, env) {
+  const key = request.headers.get("X-Import-Key") || "";
+  if (!env.UTILISATION_IMPORT_KEY) {
+    return new Response(JSON.stringify({ error: "Import key not configured on server." }), { status: 503, headers: { "Content-Type": "application/json" } });
+  }
+  if (key !== env.UTILISATION_IMPORT_KEY) {
+    return new Response(JSON.stringify({ error: "Unauthorised." }), { status: 401, headers: { "Content-Type": "application/json" } });
+  }
+
+  const source   = request.headers.get("X-Source") || "";
+  const filename = request.headers.get("X-Filename") || "";
+  if (!source) {
+    return new Response(JSON.stringify({ error: "X-Source header is required." }), { status: 400, headers: { "Content-Type": "application/json" } });
+  }
+
+  const bytes = await request.arrayBuffer();
+  if (!bytes || bytes.byteLength === 0) {
+    return new Response(JSON.stringify({ error: "Empty file body." }), { status: 400, headers: { "Content-Type": "application/json" } });
+  }
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const safeSource = source.replace(/[^A-Za-z0-9 _-]/g, "").trim().replace(/\s+/g, "_");
+  const safeName = (filename || "upload.xlsx").replace(/[^A-Za-z0-9._-]/g, "_");
+  const r2Key = `${safeSource}/${stamp}__${safeName}`;
+
+  await env.FILESPEC_BUCKET.put(r2Key, bytes, {
+    httpMetadata: { contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+  });
+
+  const rec = await env.DB.prepare(
+    `INSERT INTO filespec_imports (source, filename, r2_key, size_bytes, status, received_at)
+     VALUES (?, ?, ?, ?, 'received', ?)`
+  ).bind(source, filename || null, r2Key, bytes.byteLength, new Date().toISOString()).run();
+
+  return new Response(JSON.stringify({
+    ok: true,
+    importId: rec.meta.last_row_id,
+    source,
+    filename: filename || null,
+    r2Key,
+    sizeBytes: bytes.byteLength,
+    status: "received",
+  }), { status: 200, headers: { "Content-Type": "application/json" } });
+}
+
 export default {
+export default {
+  
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runDailySync(env));
   },
@@ -2313,6 +2361,7 @@ if (method === "POST" && path.match(/^\/api\/vendors\/\d+\/hardware-types$/)) {
       if (method === "POST" && path === "/api/send-email")                  return handleSendEmail(request, env);
 
       // Utilisation
+      if (method === "POST" && path === "/api/filespec/ingest") return handleFileSpecIngest(request, env);
       if (method === "POST" && path === "/api/utilisation/static-fleet/import") return handleImportStaticFleet(request, env);
       if (method === "GET"  && path === "/api/utilisation/static-fleet") {
         const auth = await requireSession(request, env);
