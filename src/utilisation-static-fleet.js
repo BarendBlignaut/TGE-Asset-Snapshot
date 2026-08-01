@@ -79,8 +79,12 @@ function rowMatchesAnyRule(fieldValues, rules) {
     const strVal = String(value);
     const matchType = rule.matchType || rule.match_type;
     const matchValue = rule.matchValue || rule.match_value;
-    if (matchType === "exact" && strVal === matchValue) return true;
-    if (matchType === "contains" && strVal.toUpperCase().includes(String(matchValue).toUpperCase())) return true;
+if (matchType === "exact" && strVal === matchValue) return true;
+    if (matchType === "contains") {
+      const escaped = String(matchValue).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const wholeWordPattern = new RegExp(`(^|[^A-Za-z0-9])${escaped}([^A-Za-z0-9]|$)`, "i");
+      if (wholeWordPattern.test(strVal)) return true;
+    }
   }
   return false;
 }
@@ -167,12 +171,13 @@ async function handleSaveStaticExclusionsDraft(request, env, auth) {
 
   for (const r of rules) {
     if (!r.sourceColumn || !r.matchValue) continue;
-    const matchType = r.matchType === "exact" ? "exact" : "contains";
+const matchType = r.matchType === "exact" ? "exact" : "contains";
+    const groupName = matchType === "exact" && r.groupName ? String(r.groupName).trim() || null : null;
     await env.DB.prepare(
       `INSERT INTO utilisation_static_exclusion_rules
-        (status, source_column, match_type, match_value, reason, created_by, created_at)
-       VALUES ('draft', ?, ?, ?, ?, ?, ?)`
-    ).bind(r.sourceColumn, matchType, r.matchValue, r.reason || null, auth.session.user_id, nowIso()).run();
+        (status, source_column, match_type, match_value, reason, group_name, created_by, created_at)
+       VALUES ('draft', ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(r.sourceColumn, matchType, r.matchValue, r.reason || null, groupName, auth.session.user_id, nowIso()).run();
   }
 
   return jsonResponse({ ok: true });
@@ -202,8 +207,8 @@ async function handlePublishStaticExclusions(request, env, auth) {
   const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "manage-static-sanitising");
   if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
 
-  const draftRows = await env.DB.prepare(
-    "SELECT source_column, match_type, match_value, reason, created_by FROM utilisation_static_exclusion_rules WHERE status = 'draft'"
+const draftRows = await env.DB.prepare(
+    "SELECT source_column, match_type, match_value, reason, group_name, created_by FROM utilisation_static_exclusion_rules WHERE status = 'draft'"
   ).all();
 
   await env.DB.prepare("DELETE FROM utilisation_static_exclusion_rules WHERE status = 'published'").run();
@@ -211,9 +216,9 @@ async function handlePublishStaticExclusions(request, env, auth) {
   for (const r of (draftRows.results || [])) {
     await env.DB.prepare(
       `INSERT INTO utilisation_static_exclusion_rules
-        (status, source_column, match_type, match_value, reason, created_by, created_at, published_at)
-       VALUES ('published', ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(r.source_column, r.match_type, r.match_value, r.reason, r.created_by, nowIso(), nowIso()).run();
+        (status, source_column, match_type, match_value, reason, group_name, created_by, created_at, published_at)
+       VALUES ('published', ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(r.source_column, r.match_type, r.match_value, r.reason, r.group_name, r.created_by, nowIso(), nowIso()).run();
   }
 
   return jsonResponse({ ok: true, publishedCount: (draftRows.results || []).length });
