@@ -261,7 +261,7 @@ var headerCells = state.columns.map(function (c) {
       return '<th style="position:sticky;top:0;background:var(--surface-2);border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">' +
         '<span class="fs-th-wrap">' +
           '<span>' + escapeHtml(c.display_label || colKey) + '</span>' +
-          '<button type="button" data-fs-filter-toggle="' + escapeAttr(colKey) + '" title="Use as end-user filter" style="border:none;background:none;cursor:pointer;padding:2px;color:' + (isFilter ? 'var(--green-600)' : 'var(--muted-2)') + ';font-size:11px;line-height:1;">▽</button>' +
+'<button type="button" data-fs-filter-toggle="' + escapeAttr(colKey) + '" title="Use as end-user filter" style="border:none;cursor:pointer;padding:2px 5px;border-radius:5px;font-size:11px;line-height:1;' + (isFilter ? 'background:var(--green-600);color:#fff;' : 'background:var(--surface-3);color:var(--muted-2);') + '">▼</button>' +
           '<button type="button" data-fs-arrow="' + escapeAttr(colKey) + '" title="Exclude values" style="border:none;background:none;cursor:pointer;padding:2px;color:' + (hasActive ? 'var(--green-600)' : 'var(--muted-2)') + ';font-size:10px;line-height:1;">▾</button>' +
           '<span class="fs-dd-slot" data-fs-slot="' + escapeAttr(colKey) + '"></span>' +
         '</span>' +
