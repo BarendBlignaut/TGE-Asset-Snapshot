@@ -300,3 +300,82 @@
       return '<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:12px;color:var(--ink-2);cursor:pointer;">' +
         '<input type="checkbox" data-fs-value="' + escapeAttr(v.value) + '"' + (checked ? ' checked' : '') + ' />' +
         '<span style="flex:1;">' + escapeHtml(v.value) + '</span>' +
+        '<span style="color:var(--muted);font-size:11px;">' + v.count + '</span>' +
+      '</label>';
+    }).join('');
+
+    var phraseRows = ex.phrases.map(function (p, i) {
+      return '<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;font-size:12px;">' +
+        '<span style="flex:1;color:var(--ink-2);">contains word: <strong>' + escapeHtml(p) + '</strong></span>' +
+        '<button type="button" data-fs-remove-phrase="' + i + '" style="border:none;background:none;color:var(--danger);cursor:pointer;font-size:12px;">✕</button>' +
+      '</div>';
+    }).join('');
+
+    host.innerHTML =
+      '<div style="position:fixed;top:' + (rect.bottom + 6) + 'px;left:' + rect.left + 'px;min-width:240px;max-width:320px;max-height:400px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 18px 42px rgba(10,45,20,0.22);z-index:600;padding:8px;">' +
+        '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;padding:4px 8px;">Exclude a whole word</div>' +
+        '<div style="display:flex;gap:6px;padding:0 8px 8px;">' +
+          '<input type="text" id="fs-phrase-input" placeholder="e.g. E-TAG" style="flex:1;height:30px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font-size:12px;" />' +
+          '<button type="button" id="fs-phrase-add" class="btn" style="height:30px;font-size:12px;padding:0 10px;">Add</button>' +
+        '</div>' +
+        (phraseRows ? '<div style="border-top:1px solid var(--line-2);border-bottom:1px solid var(--line-2);margin-bottom:6px;">' + phraseRows + '</div>' : '') +
+        '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;padding:4px 8px;">Values (untick to exclude)</div>' +
+        '<div>' + rows + '</div>' +
+      '</div>';
+
+    host.onclick = function (e) { e.stopPropagation(); };
+
+    host.querySelectorAll('[data-fs-value]').forEach(function (input) {
+      input.onchange = function () {
+        var val = input.dataset.fsValue;
+        var exx = getExclusion(sourceColumn);
+        exx.values[val] = !input.checked; // unticked => excluded
+        refreshAfterExclusionChange();
+        openDropdown(sourceColumn, anchorBtn); // keep panel open, refresh header colour
+      };
+    });
+
+    host.querySelectorAll('[data-fs-remove-phrase]').forEach(function (btn) {
+      btn.onclick = function () {
+        var idx = parseInt(btn.dataset.fsRemovePhrase, 10);
+        var exx = getExclusion(sourceColumn);
+        exx.phrases.splice(idx, 1);
+        refreshAfterExclusionChange();
+        openDropdown(sourceColumn, anchorBtn);
+      };
+    });
+
+    var addBtn = TGE.el('fs-phrase-add');
+    if (addBtn) {
+      addBtn.onclick = function () {
+        var input = TGE.el('fs-phrase-input');
+        var phrase = input ? input.value.trim() : '';
+        if (!phrase) return;
+        var exx = getExclusion(sourceColumn);
+        if (exx.phrases.indexOf(phrase) === -1) exx.phrases.push(phrase);
+        refreshAfterExclusionChange();
+        openDropdown(sourceColumn, anchorBtn);
+      };
+    }
+  }
+
+  document.addEventListener('click', function () {
+    if (state.openDropdownColumn) closeDropdown();
+  });
+
+  function escapeHtml(s) {
+    var div = document.createElement('div');
+    div.textContent = s || '';
+    return div.innerHTML;
+  }
+
+  function escapeAttr(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+
+  // ── Register ──────────────────────────────────────────────────────────────
+  window.TGE = window.TGE || {};
+  TGE.Platform = TGE.Platform || {};
+  TGE.Platform.FileSpec = { render: render };
+
+})();
