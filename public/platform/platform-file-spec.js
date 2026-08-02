@@ -161,10 +161,11 @@
     return re.test(String(text));
   }
 
-  function rowIsExcluded(row) {
+function rowIsExcluded(row, ignoreColumn) {
     var fields = row.fields || {};
     for (var i = 0; i < state.columns.length; i++) {
       var col = state.columns[i].source_column;
+      if (col === ignoreColumn) continue;
       var ex = state.exclusions[col];
       if (!ex) continue;
       var raw = fields[col];
@@ -178,18 +179,19 @@
     return false;
   }
 
-  function currentVisibleRows() {
+  function currentVisibleRows(ignoreColumn) {
     var hasAnyExclusion = Object.keys(state.exclusions).some(function (col) {
+      if (col === ignoreColumn) return false;
       var ex = state.exclusions[col];
       return Object.keys(ex.values).some(function (v) { return ex.values[v]; }) || ex.phrases.length > 0;
     });
     if (!hasAnyExclusion) return state.rows;
-    return state.rows.filter(function (row) { return !rowIsExcluded(row); });
+    return state.rows.filter(function (row) { return !rowIsExcluded(row, ignoreColumn); });
   }
 
   function distinctValuesFor(sourceColumn) {
     var counts = {};
-    var pool = currentVisibleRows();
+    var pool = currentVisibleRows(sourceColumn);
     for (var i = 0; i < pool.length; i++) {
       var raw = (pool[i].fields || {})[sourceColumn];
       if (raw == null || raw === '') continue;
