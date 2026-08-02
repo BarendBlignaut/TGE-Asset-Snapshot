@@ -240,7 +240,95 @@ function renderTab(key) {
 
     return;
   }
+async function renderFileSpecFork(el, v) {
+    el.innerHTML = '<div class="card"><p style="font-size:13px;color:var(--muted);">Loading…</p></div>';
 
+    var result = await TGE.api('GET', '/api/vendors/' + v.id + '/filespec-config');
+    var config = (result.ok && result.data) ? result.data.config : null;
+
+    if (!config) {
+      renderFileSpecChoiceScreen(el, v);
+      return;
+    }
+
+    if (config.spec_type === 'master_list') {
+      el.innerHTML = '<div id="vendor-file-spec"></div>';
+      TGE.Platform.FileSpec.render({
+        container: TGE.el('vendor-file-spec'),
+        vendorId: v.id
+      });
+      return;
+    }
+
+    el.innerHTML =
+      '<div class="card">' +
+        '<div class="card-kicker">Vendor Platform</div>' +
+        '<div class="card-title">File Spec — ' + escapeHtml(v.name) + '</div>' +
+        '<p style="font-size:13px;color:var(--muted);margin-top:4px;">This vendor is configured as a Data Feed: ' +
+          escapeHtml(config.orientation || '') + ', ' + escapeHtml(config.table_count || '') + ' table(s). ' +
+          'The Data Feed reading engine hasn\'t been built yet.' +
+        '</p>' +
+      '</div>';
+  }
+
+  function renderFileSpecChoiceScreen(el, v) {
+    el.innerHTML =
+      '<div class="card">' +
+        '<div class="card-kicker">Vendor Platform</div>' +
+        '<div class="card-title">File Spec — ' + escapeHtml(v.name) + '</div>' +
+        '<p style="font-size:13px;color:var(--muted);margin:4px 0 14px;">Choose how this vendor supplies data. This is set once and remembered.</p>' +
+        '<div style="display:flex;gap:10px;">' +
+          '<button type="button" class="btn" id="fs-choose-master">Master List</button>' +
+          '<button type="button" class="btn" id="fs-choose-feed">Data Feed</button>' +
+        '</div>' +
+        '<div id="fs-choice-detail" style="margin-top:14px;"></div>' +
+      '</div>';
+
+    TGE.el('fs-choose-master').onclick = function () {
+      saveFileSpecConfig(v, { specType: 'master_list' });
+    };
+
+    TGE.el('fs-choose-feed').onclick = function () {
+      var detail = TGE.el('fs-choice-detail');
+      detail.innerHTML =
+        '<div style="display:flex;flex-direction:column;gap:10px;">' +
+          '<div>' +
+            '<div class="card-kicker">Orientation</div>' +
+            '<div style="display:flex;gap:8px;margin-top:4px;">' +
+              '<button type="button" class="btn" id="fs-orient-h">Horizontal</button>' +
+              '<button type="button" class="btn" id="fs-orient-v">Vertical</button>' +
+            '</div>' +
+          '</div>' +
+          '<div>' +
+            '<div class="card-kicker">Table Count</div>' +
+            '<div style="display:flex;gap:8px;margin-top:4px;">' +
+              '<button type="button" class="btn" id="fs-count-single">Single Table</button>' +
+              '<button type="button" class="btn" id="fs-count-multiple">Multiple Tables</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+
+      var chosen = { orientation: null, tableCount: null };
+
+      function trySave() {
+        if (chosen.orientation && chosen.tableCount) {
+          saveFileSpecConfig(v, { specType: 'data_feed', orientation: chosen.orientation, tableCount: chosen.tableCount });
+        }
+      }
+
+      TGE.el('fs-orient-h').onclick = function () { chosen.orientation = 'horizontal'; trySave(); };
+      TGE.el('fs-orient-v').onclick = function () { chosen.orientation = 'vertical'; trySave(); };
+      TGE.el('fs-count-single').onclick = function () { chosen.tableCount = 'single'; trySave(); };
+      TGE.el('fs-count-multiple').onclick = function () { chosen.tableCount = 'multiple'; trySave(); };
+    };
+  }
+
+  async function saveFileSpecConfig(v, payload) {
+    await TGE.api('POST', '/api/vendors/' + v.id + '/filespec-config', payload);
+    var container = document.querySelector('#vendor-file-spec-fork');
+    if (container) renderFileSpecFork(container, v);
+  }
+  
  if (key === 'control-tables') {
     el.innerHTML = '<div id="vendor-control-tables"></div>';
 
@@ -253,17 +341,8 @@ function renderTab(key) {
   }
 
 if (key === 'file-spec') {
-    if (v.name !== 'TGE Static Fleet') {
-      el.innerHTML = '<div class="card"><div class="card-kicker">Vendor Platform</div><div class="card-title">File Spec</div><p style="font-size:13px;color:var(--muted);margin-top:4px;">File Spec for ' + escapeHtml(v.name) + ' hasn\'t been built yet. Only TGE Static Fleet is wired up so far.</p></div>';
-      return;
-    }
-
-    el.innerHTML = '<div id="vendor-file-spec"></div>';
-
-    TGE.Platform.FileSpec.render({
-      container: TGE.el('vendor-file-spec'),
-      vendorId: v.id
-    });
+    el.innerHTML = '<div id="vendor-file-spec-fork"></div>';
+    renderFileSpecFork(TGE.el('vendor-file-spec-fork'), v);
 
     return;
   }
