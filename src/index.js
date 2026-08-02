@@ -10,8 +10,9 @@ import {
   handlePreviewStaticExclusions,
   handlePublishStaticExclusions,
 handleImportStaticFleet,
-  handleGetStaticFleet,
+handleGetStaticFleet,
   handleGetStaticColumnValues,
+  handleGetStaticFleetRaw,
 } from "./utilisation-static-fleet.js";
 
 import {
