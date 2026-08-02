@@ -112,6 +112,18 @@ state.filterFlags = {};
       if (c.is_telematics_source) state.telematicsSource = c.source_column;
     });
 
+    state.exclusions = {};
+    if (exclRes.ok) {
+      (exclRes.data.rules || []).forEach(function (r) {
+        var ex = getExclusion(r.source_column);
+        if (r.match_type === 'exact') {
+          ex.values[r.match_value] = true;
+        } else {
+          ex.phrases.push(r.match_value);
+        }
+      });
+    }
+
     renderStats();
     renderExportPill();
     renderTable();
