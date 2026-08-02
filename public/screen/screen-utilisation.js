@@ -473,7 +473,7 @@
       '.ud-primary{background:#c8f135!important;color:#143200!important;border-color:#c8f135!important;font-weight:800;}',
       '.ud-disabled{opacity:.45;cursor:not-allowed;}',
       '.ud-control-strip{display:flex;gap:8px;padding:8px 0;background:#f4f5f7;overflow-x:auto;align-items:stretch;flex-shrink:0;}',
-      '.ud-card{background:#fff;border:1px solid #e6e8ec;border-radius:10px;padding:7px 9px;min-width:145px;max-width:172px;flex-shrink:0;display:flex;flex-direction:column;gap:5px;}',
+      '.ud-filter-cards-wrap{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px;}',
       '.ud-card-label{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#6b778c;font-weight:700;}',
       '.ud-card-value{font-size:18px;font-weight:800;color:#143200;}',
       '.ud-cutoff input[type=range]{width:100%;accent-color:#143200;}',
