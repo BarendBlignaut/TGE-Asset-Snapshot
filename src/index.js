@@ -13,6 +13,7 @@ handleImportStaticFleet,
 handleGetStaticFleet,
   handleGetStaticColumnValues,
   handleGetStaticFleetRaw,
+  handleGetVendorMetrics,
 } from "./utilisation-static-fleet.js";
 
 import {
@@ -2475,7 +2476,10 @@ if (method === "GET"  && path === "/api/utilisation/static-fleet") {
       if (method === "GET"  && path === "/api/utilisation/static-fleet-raw") {
         const auth = await requireSession(request, env);
         if (!auth.ok) return auth.response;
-        return handleGetStaticFleetRaw(request, env, { session: auth.session, ...utilisationAuthHelpers });
+       if (method === "GET" && path === "/api/utilisation/vendor-metrics") {
+        const auth = await requireSession(request, env);
+        if (!auth.ok) return auth.response;
+        return handleGetVendorMetrics(request, env, { session: auth.session, ...utilisationAuthHelpers });
       }
 
       if (method === "GET" && path === "/api/utilisation/static-column-values") {
