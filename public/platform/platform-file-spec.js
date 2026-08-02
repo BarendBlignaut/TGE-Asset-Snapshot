@@ -1,25 +1,28 @@
 // TGE Asset Snapshot — Platform File Spec
 // public/platform/platform-file-spec.js
 //
-// Stage 1: live view of the Static Fleet master list — stats bar, export
-// pill, and a scrollable table of every mapped column against every active
-// asset. Stage 2 adds per-column exclusions (values + whole-word phrases),
-// live-previewed against the table, cascading. The dropdown is anchored
-// via normal CSS flow (a relatively-positioned header slot), not JS math,
-// so it always opens directly under the column it belongs to.
+// Live view of the Static Fleet master list — stats bar, Save, export pill,
+// and a scrollable table of every mapped column against every active asset.
+// Per-column exclusions (values + whole-word phrases), a filter-flag toggle,
+// and a single telematics-source picker, all live-previewed and cascading.
+//
+// PERFORMANCE NOTE: the table (11k+ rows) is built ONCE. Ticking a value,
+// adding a phrase, or toggling a filter/telematics icon never rebuilds the
+// whole table again — it patches only the affected row(s) and header icon(s)
+// via classList/style, which is what keeps this from crashing the tab.
 
 (function () {
   'use strict';
 
-var state = {
+  var state = {
     vendorId: null,
     columns: [],
     rows: [],
     loading: false,
     error: '',
-exclusions: {},   // { sourceColumn: { values: {}, phrases: [] } }
-    filterFlags: {},  // { sourceColumn: true|false } — off until picked, never seeded
-    telematicsSource: null,  // single source_column, or null — off until picked
+    exclusions: {},   // { sourceColumn: { values: {}, phrases: [] } }
+    filterFlags: {},  // { sourceColumn: true|false } — seeded from use_as_filter
+    telematicsSource: null,  // single source_column, or null — seeded from DB
     openDropdownColumn: null
   };
 
@@ -40,7 +43,15 @@ exclusions: {},   // { sourceColumn: { values: {}, phrases: [] } }
       '.snap-menu-item.active{opacity:1;pointer-events:auto;}',
       '.snap-menu-item.active:hover{background:var(--green-50);color:var(--green-800);}',
       '.fs-th-wrap{position:relative;display:inline-flex;align-items:center;gap:6px;}',
-      '.fs-dd-slot{position:absolute;top:100%;left:0;z-index:80;}'
+      '.fs-dd-slot{position:absolute;top:100%;left:0;z-index:80;}',
+      '.fs-row-odd{background:var(--surface-2);}',
+      '.fs-row-even{background:var(--surface);}',
+      '.fs-excluded{background:var(--danger-bg) !important;}',
+      '.fs-excluded td{color:var(--muted-2) !important;text-decoration:line-through;}',
+      '.fs-icon-on{background:var(--green-600) !important;color:#fff !important;}',
+      '.fs-icon-off{background:var(--surface-3) !important;color:var(--muted-2) !important;}',
+      '.fs-arrow-on{color:var(--green-600) !important;}',
+      '.fs-arrow-off{color:var(--muted-2) !important;}'
     ].join('');
     document.head.appendChild(style);
   }
@@ -84,7 +95,7 @@ exclusions: {},   // { sourceColumn: { values: {}, phrases: [] } }
     state.loading = true;
     state.error = '';
 
-var fieldsRes = await TGE.api('GET', '/api/utilisation/static-fields');
+    var fieldsRes = await TGE.api('GET', '/api/utilisation/static-fields');
     var fleetRes  = await TGE.api('GET', '/api/utilisation/static-fleet');
     var exclRes   = await TGE.api('GET', '/api/utilisation/static-exclusions?status=published');
 
@@ -101,12 +112,12 @@ var fieldsRes = await TGE.api('GET', '/api/utilisation/static-fields');
       return;
     }
 
-state.columns = (fieldsRes.data.fields || []).slice().sort(function (a, b) {
+    state.columns = (fieldsRes.data.fields || []).slice().sort(function (a, b) {
       return (a.display_order || 0) - (b.display_order || 0);
     });
     state.rows = fleetRes.data.fleet || [];
 
-state.filterFlags = {};
+    state.filterFlags = {};
     state.telematicsSource = null;
     state.columns.forEach(function (c) {
       state.filterFlags[c.source_column] = !!c.use_as_filter;
@@ -125,60 +136,10 @@ state.filterFlags = {};
       });
     }
 
-renderStats();
+    renderStats();
     renderExportPill();
     renderTable();
     wireSaveButton();
-  }
-
-  function wireSaveButton() {
-    var btn = TGE.el('fs-save-btn');
-    if (!btn) return;
-    btn.onclick = async function () {
-      btn.disabled = true;
-      btn.textContent = 'Saving...';
-
-      var fieldUpdates = state.columns.map(function (c) {
-        return {
-          id: c.id,
-          sourceColumn: c.source_column,
-          displayLabel: c.display_label,
-          saveToDb: !!c.save_to_db,
-          isIdentity: !!c.is_identity,
-          useAsFilter: !!state.filterFlags[c.source_column],
-          filterLabel: c.filter_label,
-          filterType: c.filter_type,
-          displayOrder: c.display_order,
-          enabled: c.enabled !== 0,
-          isTelematicsSource: state.telematicsSource === c.source_column
-        };
-      });
-
-      var rules = [];
-      Object.keys(state.exclusions).forEach(function (col) {
-        var ex = state.exclusions[col];
-        Object.keys(ex.values).forEach(function (val) {
-          if (ex.values[val]) rules.push({ sourceColumn: col, matchType: 'exact', matchValue: val });
-        });
-        ex.phrases.forEach(function (p) {
-          rules.push({ sourceColumn: col, matchType: 'contains', matchValue: p });
-        });
-      });
-
-      var fieldsSave = await TGE.api('PUT', '/api/utilisation/static-fields', { fields: fieldUpdates });
-      var draftSave  = await TGE.api('PUT', '/api/utilisation/static-exclusions/draft', { rules: rules });
-      var publish    = await TGE.api('POST', '/api/utilisation/static-exclusions/publish', {});
-
-      btn.disabled = false;
-      btn.textContent = 'Save';
-
-      if (fieldsSave.ok && draftSave.ok && publish.ok) {
-        alert('Saved. Changes are now live on the dashboard.');
-      } else {
-        var err = (fieldsSave.data && fieldsSave.data.error) || (draftSave.data && draftSave.data.error) || (publish.data && publish.data.error) || 'Unknown error.';
-        alert('Save failed: ' + err);
-      }
-    };
   }
 
   function renderError() {
@@ -240,9 +201,37 @@ renderStats();
       .sort(function (a, b) { return b.count - a.count; });
   }
 
-  function refreshAfterExclusionChange() {
+  // ── Lightweight updates (no full table rebuild) ───────────────────────────
+
+  function updateRowVisualStates() {
+    var wrap = TGE.el('fs-table-wrap');
+    if (!wrap) return;
+    var trs = wrap.querySelectorAll('tbody tr');
+    for (var i = 0; i < trs.length && i < state.rows.length; i++) {
+      var excluded = rowIsExcluded(state.rows[i]);
+      trs[i].classList.toggle('fs-excluded', excluded);
+    }
+  }
+
+  function updateExclusionArrowIcon(sourceColumn) {
+    var wrap = TGE.el('fs-table-wrap');
+    if (!wrap) return;
+    var btn = wrap.querySelector('[data-fs-arrow="' + cssEscape(sourceColumn) + '"]');
+    if (!btn) return;
+    var ex = state.exclusions[sourceColumn];
+    var hasActive = ex && (Object.keys(ex.values).some(function (v) { return ex.values[v]; }) || ex.phrases.length > 0);
+    btn.classList.toggle('fs-arrow-on', !!hasActive);
+    btn.classList.toggle('fs-arrow-off', !hasActive);
+  }
+
+  function afterExclusionChange(sourceColumn) {
+    updateExclusionArrowIcon(sourceColumn);
+    updateRowVisualStates();
     renderStats();
-    renderTable();
+  }
+
+  function cssEscape(s) {
+    return String(s).replace(/["\\]/g, '\\$&');
   }
 
   function renderStats() {
@@ -312,6 +301,9 @@ renderStats();
     URL.revokeObjectURL(url);
   }
 
+  // ── Table: built ONCE per load. Never rebuilt on exclusion/filter/telematics
+  // interactions — those patch the DOM directly instead. ──────────────────────
+
   function renderTable() {
     var wrap = TGE.el('fs-table-wrap');
     if (!wrap) return;
@@ -321,18 +313,18 @@ renderStats();
       return;
     }
 
-var headerCells = state.columns.map(function (c) {
+    var headerCells = state.columns.map(function (c) {
       var colKey = c.source_column;
       var ex = state.exclusions[colKey];
       var hasActive = ex && (Object.keys(ex.values).some(function (v) { return ex.values[v]; }) || ex.phrases.length > 0);
-var isFilter = !!state.filterFlags[colKey];
+      var isFilter = !!state.filterFlags[colKey];
       var isTelematicsSource = state.telematicsSource === colKey;
       return '<th style="position:sticky;top:0;background:var(--surface-2);border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">' +
         '<span class="fs-th-wrap">' +
           '<span>' + escapeHtml(c.display_label || colKey) + '</span>' +
-          '<button type="button" data-fs-telematics-toggle="' + escapeAttr(colKey) + '" title="Telematics source column" style="border:none;cursor:pointer;padding:2px 5px;border-radius:5px;font-size:11px;line-height:1;' + (isTelematicsSource ? 'background:var(--green-600);color:#fff;' : 'background:var(--surface-3);color:var(--muted-2);') + '">📡</button>' +
-          '<button type="button" data-fs-filter-toggle="' + escapeAttr(colKey) + '" title="Use as end-user filter" style="border:none;cursor:pointer;padding:2px 5px;border-radius:5px;font-size:11px;line-height:1;' + (isFilter ? 'background:var(--green-600);color:#fff;' : 'background:var(--surface-3);color:var(--muted-2);') + '">▼</button>' +
-          '<button type="button" data-fs-arrow="' + escapeAttr(colKey) + '" title="Exclude values" style="border:none;background:none;cursor:pointer;padding:2px;color:' + (hasActive ? 'var(--green-600)' : 'var(--muted-2)') + ';font-size:10px;line-height:1;">▾</button>' +
+          '<button type="button" data-fs-telematics-toggle="' + escapeAttr(colKey) + '" title="Telematics source column" class="' + (isTelematicsSource ? 'fs-icon-on' : 'fs-icon-off') + '" style="border:none;cursor:pointer;padding:2px 5px;border-radius:5px;font-size:11px;line-height:1;">📡</button>' +
+          '<button type="button" data-fs-filter-toggle="' + escapeAttr(colKey) + '" title="Use as end-user filter" class="' + (isFilter ? 'fs-icon-on' : 'fs-icon-off') + '" style="border:none;cursor:pointer;padding:2px 5px;border-radius:5px;font-size:11px;line-height:1;">▼</button>' +
+          '<button type="button" data-fs-arrow="' + escapeAttr(colKey) + '" title="Exclude values" class="' + (hasActive ? 'fs-arrow-on' : 'fs-arrow-off') + '" style="border:none;background:none;cursor:pointer;padding:2px;font-size:10px;line-height:1;">▾</button>' +
           '<span class="fs-dd-slot" data-fs-slot="' + escapeAttr(colKey) + '"></span>' +
         '</span>' +
       '</th>';
@@ -340,12 +332,13 @@ var isFilter = !!state.filterFlags[colKey];
 
     var bodyRows = state.rows.map(function (row, i) {
       var excluded = rowIsExcluded(row);
+      var rowClass = (excluded ? 'fs-excluded ' : '') + (i % 2 === 1 ? 'fs-row-odd' : 'fs-row-even');
       var cells = state.columns.map(function (c) {
         var v = row.fields ? row.fields[c.source_column] : '';
-        return '<td style="padding:6px 10px;font-size:12.5px;color:' + (excluded ? 'var(--muted-2)' : 'var(--ink-2)') + ';white-space:nowrap;border-bottom:1px solid var(--line-2);' + (excluded ? 'text-decoration:line-through;' : '') + '">' +
+        return '<td style="padding:6px 10px;font-size:12.5px;color:var(--ink-2);white-space:nowrap;border-bottom:1px solid var(--line-2);">' +
           escapeHtml(v == null ? '' : String(v)) + '</td>';
       }).join('');
-      return '<tr style="background:' + (excluded ? 'var(--danger-bg)' : (i % 2 === 1 ? 'var(--surface-2)' : 'var(--surface)')) + ';">' + cells + '</tr>';
+      return '<tr class="' + rowClass + '">' + cells + '</tr>';
     }).join('');
 
     wrap.innerHTML =
@@ -354,7 +347,7 @@ var isFilter = !!state.filterFlags[colKey];
         '<tbody>' + bodyRows + '</tbody>' +
       '</table>';
 
-wrap.querySelectorAll('[data-fs-arrow]').forEach(function (btn) {
+    wrap.querySelectorAll('[data-fs-arrow]').forEach(function (btn) {
       btn.onclick = function (e) {
         e.stopPropagation();
         var col = btn.dataset.fsArrow;
@@ -363,12 +356,13 @@ wrap.querySelectorAll('[data-fs-arrow]').forEach(function (btn) {
       };
     });
 
-wrap.querySelectorAll('[data-fs-filter-toggle]').forEach(function (btn) {
+    wrap.querySelectorAll('[data-fs-filter-toggle]').forEach(function (btn) {
       btn.onclick = function (e) {
         e.stopPropagation();
         var col = btn.dataset.fsFilterToggle;
         state.filterFlags[col] = !state.filterFlags[col];
-        renderTable();
+        btn.classList.toggle('fs-icon-on', state.filterFlags[col]);
+        btn.classList.toggle('fs-icon-off', !state.filterFlags[col]);
       };
     });
 
@@ -377,17 +371,13 @@ wrap.querySelectorAll('[data-fs-filter-toggle]').forEach(function (btn) {
         e.stopPropagation();
         var col = btn.dataset.fsTelematicsToggle;
         state.telematicsSource = (state.telematicsSource === col) ? null : col;
-        renderTable();
+        wrap.querySelectorAll('[data-fs-telematics-toggle]').forEach(function (b2) {
+          var on = state.telematicsSource === b2.dataset.fsTelematicsToggle;
+          b2.classList.toggle('fs-icon-on', on);
+          b2.classList.toggle('fs-icon-off', !on);
+        });
       };
     });
-
-    // If a dropdown was open before this re-render (e.g. after ticking a
-    // value), reopen it in its new slot so the panel stays visible.
-    if (state.openDropdownColumn) {
-      var reopenCol = state.openDropdownColumn;
-      state.openDropdownColumn = null;
-      openDropdown(reopenCol);
-    }
   }
 
   function closeDropdown() {
@@ -412,11 +402,15 @@ wrap.querySelectorAll('[data-fs-filter-toggle]').forEach(function (btn) {
     var slot = findSlot(sourceColumn);
     if (!slot) return;
 
+    renderDropdownContents(sourceColumn, slot);
+  }
+
+  function renderDropdownContents(sourceColumn, slot) {
     var values = distinctValuesFor(sourceColumn);
     var ex = getExclusion(sourceColumn);
 
     var rows = values.map(function (v) {
-      var checked = !ex.values[v.value]; // checked = included (Excel semantics: untick to exclude)
+      var checked = !ex.values[v.value];
       return '<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:12px;color:var(--ink-2);cursor:pointer;">' +
         '<input type="checkbox" data-fs-value="' + escapeAttr(v.value) + '"' + (checked ? ' checked' : '') + ' />' +
         '<span style="flex:1;">' + escapeHtml(v.value) + '</span>' +
@@ -449,8 +443,9 @@ wrap.querySelectorAll('[data-fs-filter-toggle]').forEach(function (btn) {
       input.onchange = function () {
         var val = input.dataset.fsValue;
         var exx = getExclusion(sourceColumn);
-        exx.values[val] = !input.checked; // unticked => excluded
-        refreshAfterExclusionChange();
+        exx.values[val] = !input.checked;
+        afterExclusionChange(sourceColumn);
+        renderDropdownContents(sourceColumn, slot);
       };
     });
 
@@ -459,7 +454,8 @@ wrap.querySelectorAll('[data-fs-filter-toggle]').forEach(function (btn) {
         var idx = parseInt(btn2.dataset.fsRemovePhrase, 10);
         var exx = getExclusion(sourceColumn);
         exx.phrases.splice(idx, 1);
-        refreshAfterExclusionChange();
+        afterExclusionChange(sourceColumn);
+        renderDropdownContents(sourceColumn, slot);
       };
     });
 
@@ -471,7 +467,8 @@ wrap.querySelectorAll('[data-fs-filter-toggle]').forEach(function (btn) {
         if (!phrase) return;
         var exx = getExclusion(sourceColumn);
         if (exx.phrases.indexOf(phrase) === -1) exx.phrases.push(phrase);
-        refreshAfterExclusionChange();
+        afterExclusionChange(sourceColumn);
+        renderDropdownContents(sourceColumn, slot);
       };
     }
   }
@@ -479,6 +476,56 @@ wrap.querySelectorAll('[data-fs-filter-toggle]').forEach(function (btn) {
   document.addEventListener('click', function () {
     if (state.openDropdownColumn) closeDropdown();
   });
+
+  function wireSaveButton() {
+    var btn = TGE.el('fs-save-btn');
+    if (!btn) return;
+    btn.onclick = async function () {
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      var fieldUpdates = state.columns.map(function (c) {
+        return {
+          id: c.id,
+          sourceColumn: c.source_column,
+          displayLabel: c.display_label,
+          saveToDb: !!c.save_to_db,
+          isIdentity: !!c.is_identity,
+          useAsFilter: !!state.filterFlags[c.source_column],
+          filterLabel: c.filter_label,
+          filterType: c.filter_type,
+          displayOrder: c.display_order,
+          enabled: c.enabled !== 0,
+          isTelematicsSource: state.telematicsSource === c.source_column
+        };
+      });
+
+      var rules = [];
+      Object.keys(state.exclusions).forEach(function (col) {
+        var ex = state.exclusions[col];
+        Object.keys(ex.values).forEach(function (val) {
+          if (ex.values[val]) rules.push({ sourceColumn: col, matchType: 'exact', matchValue: val });
+        });
+        ex.phrases.forEach(function (p) {
+          rules.push({ sourceColumn: col, matchType: 'contains', matchValue: p });
+        });
+      });
+
+      var fieldsSave = await TGE.api('PUT', '/api/utilisation/static-fields', { fields: fieldUpdates });
+      var draftSave  = await TGE.api('PUT', '/api/utilisation/static-exclusions/draft', { rules: rules });
+      var publish    = await TGE.api('POST', '/api/utilisation/static-exclusions/publish', {});
+
+      btn.disabled = false;
+      btn.textContent = 'Save';
+
+      if (fieldsSave.ok && draftSave.ok && publish.ok) {
+        alert('Saved. Changes are now live on the dashboard.');
+      } else {
+        var err = (fieldsSave.data && fieldsSave.data.error) || (draftSave.data && draftSave.data.error) || (publish.data && publish.data.error) || 'Unknown error.';
+        alert('Save failed: ' + err);
+      }
+    };
+  }
 
   function escapeHtml(s) {
     var div = document.createElement('div');
