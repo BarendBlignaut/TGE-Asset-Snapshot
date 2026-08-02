@@ -135,8 +135,13 @@ function positionOpenFilterPop() {
       if (selected.size === 1) summary = selected.values().next().value;
       else if (selected.size > 1) summary = selected.size + ' selected';
 
+var allHtml = '<label class="ud-filter-opt ud-filter-opt-all">' +
+        '<input type="checkbox" class="ud-filter-check-all" data-col="' + esc(col) + '"' + (selected.size === 0 ? ' checked' : '') + ' />' +
+        '<span>All</span>' +
+      '</label>';
+
       var listHtml = values.length
-        ? values.map(function (v) {
+        ? allHtml + values.map(function (v) {
             var checked = selected.has(v.value);
             return '<label class="ud-filter-opt">' +
               '<input type="checkbox" class="ud-filter-check" data-col="' + esc(col) + '" value="' + esc(v.value) + '"' + (checked ? ' checked' : '') + ' />' +
@@ -242,7 +247,14 @@ function getVisibleFleet() {
       }
     });
 
-    document.addEventListener('change', function (e) {
+document.addEventListener('change', function (e) {
+      if (e.target.classList && e.target.classList.contains('ud-filter-check-all')) {
+        delete state.filters[e.target.dataset.col];
+        renderTable();
+        updateTotalPill();
+        renderFilterCards();
+        return;
+      }
       if (!e.target.classList || !e.target.classList.contains('ud-filter-check')) return;
       var col = e.target.dataset.col;
       var val = e.target.value;
@@ -592,9 +604,12 @@ async function loadFieldDefs() {
       '.mr-daterange{display:inline-block;margin-top:10px;background:rgba(255,255,255,.1);border:1px solid rgba(200,241,53,.35);border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;}' +
       '.mr-body{padding:20px 28px;}' +
       '.mr-controls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;align-items:flex-start;}' +
-      '.mr-filter{background:#fff;border:1px solid #dce8e0;border-radius:10px;padding:8px 10px;min-width:140px;}' +
+      '.mr-filter{background:#fff;border:1px solid #dce8e0;border-radius:10px;padding:8px 10px;min-width:140px;position:relative;}' +
       '.mr-filter label{font-size:10px;text-transform:uppercase;color:#6b778c;font-weight:700;display:block;margin-bottom:4px;}' +
-      '.mr-filter select{width:100%;font-size:12px;}' +
+      '.mr-filter-btn{width:100%;text-align:left;font-size:12px;padding:5px 6px;border:1px solid #dce8e0;border-radius:6px;background:#fff;cursor:pointer;}' +
+      '.mr-filter-pop{display:none;position:absolute;top:100%;left:0;margin-top:4px;width:220px;max-height:220px;overflow-y:auto;background:#fff;border:1px solid #dce8e0;border-radius:8px;box-shadow:0 12px 28px rgba(0,0,0,.18);z-index:50;padding:6px;}' +
+      '.mr-filter-pop.open{display:block;}' +
+      '.mr-filter-opt{display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 2px;font-weight:400;text-transform:none;color:#1a2b1e;}' +
       '.mr-cutoff{background:#fff;border:1px solid #dce8e0;border-radius:10px;padding:8px 10px;min-width:160px;}' +
       '.mr-tel-toggle{height:30px;padding:0 12px;border-radius:20px;border:1px solid #143200;background:#c8f135;color:#143200;font-weight:700;font-size:11px;cursor:pointer;}' +
       '.mr-tel-toggle.off{background:#f0f1f3;color:#6b778c;}' +
@@ -619,32 +634,58 @@ async function loadFieldDefs() {
       '</body></html>';
   }
 
-  function reportRuntimeScript() {
+function reportRuntimeScript() {
     return '(function(){' +
       'var raw = JSON.parse(decodeURIComponent(escape(atob(document.getElementById("mr-data").textContent))));' +
-      'var state = { filters: {}, telOn: true, kmCutoff: raw.kmCutoff || 0 };' +
+      'var state = { filters: {}, telOn: true, kmCutoff: raw.kmCutoff || 0, openCol: null };' +
       'document.getElementById("mr-daterange").textContent = "Date Range Applied: " + raw.dateRangeLabel;' +
       'function distinctValues(col){var s={};raw.assets.forEach(function(a){var v=a.fields[col];if(v)s[v]=true;});return Object.keys(s).sort();}' +
       'function renderControls(){' +
         'var html = "";' +
         'raw.filterColumns.forEach(function(fc){' +
-          'html += "<div class=\\"mr-filter\\"><label>" + fc.label + "</label><select data-col=\\"" + fc.col + "\\"><option value=\\"\\">All</option>";' +
-          'distinctValues(fc.col).forEach(function(v){ html += "<option value=\\"" + v + "\\">" + v + "</option>"; });' +
-          'html += "</select></div>";' +
+          'var selected = state.filters[fc.col] || [];' +
+          'var summary = selected.length === 0 ? "All" : (selected.length === 1 ? selected[0] : selected.length + " selected");' +
+          'var isOpen = state.openCol === fc.col;' +
+          'html += "<div class=\\"mr-filter\\"><label>" + fc.label + "</label>";' +
+          'html += "<button type=\\"button\\" class=\\"mr-filter-btn\\" data-col=\\"" + fc.col + "\\">" + summary + " ▾</button>";' +
+          'html += "<div class=\\"mr-filter-pop" + (isOpen ? " open" : "") + "\\" data-col=\\"" + fc.col + "\\">";' +
+          'html += "<label class=\\"mr-filter-opt\\"><input type=\\"checkbox\\" class=\\"mr-check-all\\" data-col=\\"" + fc.col + "\\"" + (selected.length === 0 ? " checked" : "") + " /> All</label>";' +
+          'distinctValues(fc.col).forEach(function(v){' +
+            'var checked = selected.indexOf(v) !== -1;' +
+            'html += "<label class=\\"mr-filter-opt\\"><input type=\\"checkbox\\" class=\\"mr-check\\" data-col=\\"" + fc.col + "\\" value=\\"" + v + "\\"" + (checked ? " checked" : "") + " /> " + v + "</label>";' +
+          '});' +
+          'html += "</div></div>";' +
         '});' +
         'html += "<div class=\\"mr-cutoff\\"><label style=\\"font-size:10px;text-transform:uppercase;color:#6b778c;font-weight:700;\\">KM Cutoff: <span id=\\"mr-km-val\\">" + state.kmCutoff + "</span> km</label><input id=\\"mr-km-slider\\" type=\\"range\\" min=\\"0\\" max=\\"600\\" step=\\"5\\" value=\\"" + state.kmCutoff + "\\" style=\\"width:100%;\\"></div>";' +
-        'html += "<button class=\\"mr-tel-toggle\\" id=\\"mr-tel-btn\\">Telematics: On</button>";' +
+        'html += "<button class=\\"mr-tel-toggle" + (state.telOn ? "" : " off") + "\\" id=\\"mr-tel-btn\\">Telematics: " + (state.telOn ? "On" : "Off") + "</button>";' +
         'document.getElementById("mr-controls").innerHTML = html;' +
-        'raw.filterColumns.forEach(function(fc){' +
-          'document.querySelector("[data-col=\\"" + fc.col + "\\"]").onchange = function(e){ state.filters[fc.col] = e.target.value; renderTable(); };' +
+        'document.querySelectorAll(".mr-filter-btn").forEach(function(btn){' +
+          'btn.onclick = function(){ state.openCol = (state.openCol === btn.dataset.col) ? null : btn.dataset.col; renderControls(); };' +
+        '});' +
+        'document.querySelectorAll(".mr-check-all").forEach(function(cb){' +
+          'cb.onchange = function(){ delete state.filters[cb.dataset.col]; renderControls(); renderTable(); };' +
+        '});' +
+        'document.querySelectorAll(".mr-check").forEach(function(cb){' +
+          'cb.onchange = function(){' +
+            'var col = cb.dataset.col; var val = cb.value;' +
+            'if (!state.filters[col]) state.filters[col] = [];' +
+            'var idx = state.filters[col].indexOf(val);' +
+            'if (cb.checked && idx === -1) state.filters[col].push(val);' +
+            'if (!cb.checked && idx !== -1) state.filters[col].splice(idx, 1);' +
+            'if (!state.filters[col].length) delete state.filters[col];' +
+            'renderControls(); renderTable();' +
+          '};' +
         '});' +
         'document.getElementById("mr-km-slider").onchange = function(e){ state.kmCutoff = parseInt(e.target.value,10)||0; renderTable(); };' +
         'document.getElementById("mr-km-slider").oninput = function(e){ document.getElementById("mr-km-val").textContent = e.target.value; };' +
-        'document.getElementById("mr-tel-btn").onclick = function(){ state.telOn = !state.telOn; this.textContent = "Telematics: " + (state.telOn ? "On" : "Off"); this.classList.toggle("off", !state.telOn); renderTable(); };' +
+        'document.getElementById("mr-tel-btn").onclick = function(){ state.telOn = !state.telOn; renderControls(); renderTable(); };' +
       '}' +
+      'document.addEventListener("click", function(e){' +
+        'if (state.openCol && !e.target.closest(".mr-filter")) { state.openCol = null; renderControls(); }' +
+      '});' +
       'function visibleAssets(){' +
         'return raw.assets.filter(function(a){' +
-          'for (var col in state.filters){ if (state.filters[col] && (a.fields[col]||"") !== state.filters[col]) return false; }' +
+          'for (var col in state.filters){ var sel = state.filters[col]; if (sel && sel.length && sel.indexOf(a.fields[col]||"") === -1) return false; }' +
           'if (state.telOn && !a.hasTelematics) return false;' +
           'return true;' +
         '});' +
