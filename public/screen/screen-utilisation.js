@@ -611,8 +611,6 @@ async function loadFieldDefs() {
       '.mr-filter-pop.open{display:block;}' +
       '.mr-filter-opt{display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 2px;font-weight:400;text-transform:none;color:#1a2b1e;}' +
       '.mr-cutoff{background:#fff;border:1px solid #dce8e0;border-radius:10px;padding:8px 10px;min-width:160px;}' +
-      '.mr-tel-toggle{height:30px;padding:0 12px;border-radius:20px;border:1px solid #143200;background:#c8f135;color:#143200;font-weight:700;font-size:11px;cursor:pointer;}' +
-      '.mr-tel-toggle.off{background:#f0f1f3;color:#6b778c;}' +
       'table{border-collapse:collapse;width:100%;background:#fff;}' +
       'th,td{border:1px solid #e6e8ec;padding:5px 8px;font-size:11px;text-align:center;white-space:nowrap;}' +
       'th{background:#143200;color:#c8f135;position:sticky;top:0;}' +
@@ -621,13 +619,43 @@ async function loadFieldDefs() {
       '.mr-tablewrap{max-height:70vh;overflow:auto;border:1px solid #e6e8ec;border-radius:8px;}' +
       '.mr-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;}' +
       '.mr-on{background:#1f9d55;} .mr-off{background:#d43a3a;}' +
+      '.mr-tabs{display:flex;gap:8px;margin-bottom:14px;}' +
+      '.mr-tab-btn{height:32px;padding:0 16px;border-radius:8px;border:1px solid #dce8e0;background:#fff;color:#52514e;font-size:12px;font-weight:700;cursor:pointer;}' +
+      '.mr-tab-btn.active{background:#143200;color:#c8f135;border-color:#143200;}' +
+      '.mr-chart-col-headers{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:10px;}' +
+      '.mr-chart-col-headers div{font-size:11px;font-weight:700;text-transform:uppercase;color:#6b778c;}' +
+      '.mr-chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 20px;}' +
+      '.mr-chart-grid>div{background:#fff;border:1px solid #dce8e0;border-radius:10px;padding:10px;}' +
+      '.mr-chart-label{font-size:11px;color:#6b778c;margin:0 0 4px;}' +
       '</style></head><body>' +
       '<div class="mr-header"><h1>Fleet Utilisation — Management Report</h1>' +
       '<p>TGE Asset Snapshot — offline snapshot, generated for sharing. No live connection.</p>' +
       '<div class="mr-daterange" id="mr-daterange"></div></div>' +
       '<div class="mr-body">' +
       '<div class="mr-controls" id="mr-controls"></div>' +
-      '<div class="mr-tablewrap"><table><thead id="mr-thead"></thead><tbody id="mr-tbody"></tbody></table></div>' +
+      '<div class="mr-tabs">' +
+        '<button type="button" class="mr-tab-btn active" data-tab="table">Table</button>' +
+        '<button type="button" class="mr-tab-btn" data-tab="charts">Utilisation Charts</button>' +
+      '</div>' +
+      '<div class="mr-tab-content" id="mr-tab-table">' +
+        '<div class="mr-tablewrap"><table><thead id="mr-thead"></thead><tbody id="mr-tbody"></tbody></table></div>' +
+      '</div>' +
+      '<div class="mr-tab-content" id="mr-tab-charts" style="display:none;">' +
+        '<div class="mr-chart-col-headers">' +
+          '<div>Left — fixed: zero km vs any km (filters only)</div>' +
+          '<div>Right — slider-driven: zero vs cutoff (filters + slider)</div>' +
+        '</div>' +
+        '<div class="mr-chart-grid">' +
+          '<div><p class="mr-chart-label">Headline split</p><div id="mr-chart-donut-l"></div></div>' +
+          '<div><p class="mr-chart-label">Headline split (cutoff)</p><div id="mr-chart-donut-r"></div></div>' +
+          '<div><p class="mr-chart-label">Zero-km share by day</p><div id="mr-chart-trend-l"></div></div>' +
+          '<div><p class="mr-chart-label">Below-cutoff share by day</p><div id="mr-chart-trend-r"></div></div>' +
+          '<div><p class="mr-chart-label">Zero-km share by group</p><div id="mr-chart-bu-l"></div></div>' +
+          '<div><p class="mr-chart-label">Below-cutoff share by group</p><div id="mr-chart-bu-r"></div></div>' +
+          '<div><p class="mr-chart-label">Km distribution</p><div id="mr-chart-dist-l"></div></div>' +
+          '<div><p class="mr-chart-label">Km distribution (cutoff)</p><div id="mr-chart-dist-r"></div></div>' +
+        '</div>' +
+      '</div>' +
       '</div>' +
       '<script id="mr-data" type="application/octet-stream">' + embeddedB64 + '</script>' +
       '<script>' + reportRuntimeScript() + '</script>' +
@@ -662,7 +690,7 @@ function reportRuntimeScript() {
           'btn.onclick = function(){ state.openCol = (state.openCol === btn.dataset.col) ? null : btn.dataset.col; renderControls(); };' +
         '});' +
         'document.querySelectorAll(".mr-check-all").forEach(function(cb){' +
-          'cb.onchange = function(){ delete state.filters[cb.dataset.col]; renderControls(); renderTable(); };' +
+          'cb.onchange = function(){ delete state.filters[cb.dataset.col]; renderControls(); renderTable(); renderCharts(); };' +
         '});' +
         'document.querySelectorAll(".mr-check").forEach(function(cb){' +
           'cb.onchange = function(){' +
@@ -672,12 +700,11 @@ function reportRuntimeScript() {
             'if (cb.checked && idx === -1) state.filters[col].push(val);' +
             'if (!cb.checked && idx !== -1) state.filters[col].splice(idx, 1);' +
             'if (!state.filters[col].length) delete state.filters[col];' +
-            'renderControls(); renderTable();' +
+            'renderControls(); renderTable(); renderCharts();' +
           '};' +
         '});' +
-        'document.getElementById("mr-km-slider").onchange = function(e){ state.kmCutoff = parseInt(e.target.value,10)||0; renderTable(); };' +
+        'document.getElementById("mr-km-slider").onchange = function(e){ state.kmCutoff = parseInt(e.target.value,10)||0; renderTable(); renderCharts(); };' +
 'document.getElementById("mr-km-slider").oninput = function(e){ document.getElementById("mr-km-val").textContent = e.target.value; };' +
-      '}' +
       '}' +
       'document.addEventListener("click", function(e){' +
         'if (state.openCol && !e.target.closest(".mr-filter")) { state.openCol = null; renderControls(); }' +
@@ -708,7 +735,16 @@ function reportRuntimeScript() {
         '}).join("");' +
         'document.getElementById("mr-tbody").innerHTML = body || "<tr><td colspan=\\"" + (raw.dates.length+2) + "\\">No assets match the selected filters.</td></tr>";' +
       '}' +
-      'renderControls(); renderTable();' +
+      'document.querySelectorAll(".mr-tab-btn").forEach(function(btn){' +
+        'btn.onclick = function(){' +
+          'document.querySelectorAll(".mr-tab-btn").forEach(function(b){ b.classList.remove("active"); });' +
+          'btn.classList.add("active");' +
+          'document.getElementById("mr-tab-table").style.display = (btn.dataset.tab === "table") ? "block" : "none";' +
+          'document.getElementById("mr-tab-charts").style.display = (btn.dataset.tab === "charts") ? "block" : "none";' +
+        '};' +
+      '});' +
+      ' var COL_ZERO = "#d43a3a"; var COL_ANY = "#1f9d55"; var COL_BASE = "#c9ccd1"; function svgDonut(pct) { var r = 54, c = 2 * Math.PI * r, dash = (pct / 100) * c; var pctTxt = Math.round(pct); return "<svg viewBox=\'0 0 130 130\' width=\'100%\' height=\'170\'>" + "<circle cx=\'65\' cy=\'65\' r=\'" + r + "\' fill=\'none\' stroke=\'" + COL_ANY + "\' stroke-width=\'20\'/>" + "<circle cx=\'65\' cy=\'65\' r=\'" + r + "\' fill=\'none\' stroke=\'" + COL_ZERO + "\' stroke-width=\'20\' " + "stroke-dasharray=\'" + dash + " " + (c - dash) + "\' transform=\'rotate(-90 65 65)\'/>" + "<text x=\'65\' y=\'72\' text-anchor=\'middle\' font-size=\'22\' font-weight=\'700\' fill=\'#1a2b1e\'>" + pctTxt + "%</text>" + "</svg>"; } function svgVBar(labels, values, maxVal, colors) { var w = 320, h = 170, padL = 24, padB = 22, padT = 14; var plotW = w - padL - 8, plotH = h - padB - padT; var n = labels.length; var gap = 6; var barW = (plotW - gap * (n - 1)) / n; var safeMax = maxVal > 0 ? maxVal : 1; var bars = ""; for (var i = 0; i < n; i++) { var bh = (values[i] / safeMax) * plotH; var x = padL + i * (barW + gap); var y = padT + (plotH - bh); var col = colors ? colors[i] : COL_ANY; bars += "<rect x=\'" + x + "\' y=\'" + y + "\' width=\'" + barW + "\' height=\'" + bh + "\' rx=\'3\' fill=\'" + col + "\'/>"; bars += "<text x=\'" + (x + barW / 2) + "\' y=\'" + (y - 4) + "\' text-anchor=\'middle\' font-size=\'9\' fill=\'#52514e\'>" + Math.round(values[i]) + "</text>"; bars += "<text x=\'" + (x + barW / 2) + "\' y=\'" + (h - 6) + "\' text-anchor=\'middle\' font-size=\'9\' fill=\'#898781\'>" + labels[i] + "</text>"; } return "<svg viewBox=\'0 0 " + w + " " + h + "\' width=\'100%\' height=\'170\'>" + "<line x1=\'" + padL + "\' y1=\'" + (padT + plotH) + "\' x2=\'" + (w - 4) + "\' y2=\'" + (padT + plotH) + "\' stroke=\'#e1e0d9\'/>" + bars + "</svg>"; } function svgHBar(labels, values, maxVal, color) { var w = 320, rowH = 30, padL = 108, padR = 40, padTop = 6; var n = labels.length; var h = n * rowH + padTop * 2; var plotW = w - padL - padR; var safeMax = maxVal > 0 ? maxVal : 1; var bars = ""; for (var i = 0; i < n; i++) { var bw = (values[i] / safeMax) * plotW; var y = padTop + i * rowH; var label = labels[i].length > 16 ? labels[i].slice(0, 15) + "…" : labels[i]; bars += "<text x=\'" + (padL - 6) + "\' y=\'" + (y + rowH / 2 + 4) + "\' text-anchor=\'end\' font-size=\'10\' fill=\'#52514e\'>" + label + "</text>"; bars += "<rect x=\'" + padL + "\' y=\'" + (y + 5) + "\' width=\'" + bw + "\' height=\'" + (rowH - 12) + "\' rx=\'3\' fill=\'" + color + "\'/>"; bars += "<text x=\'" + (padL + bw + 6) + "\' y=\'" + (y + rowH / 2 + 4) + "\' font-size=\'10\' fill=\'#52514e\'>" + Math.round(values[i]) + "%</text>"; } return "<svg viewBox=\'0 0 " + w + " " + h + "\' width=\'100%\' height=\'" + h + "\'>" + bars + "</svg>"; } function totalKmFor(a) { var total = 0, any = false; raw.dates.forEach(function (d) { var v = a.km[d]; if (v != null) { total += v; any = true; } }); return { total: total, any: any }; } function computeSplit(assets, threshold) { var below = 0; assets.forEach(function (a) { var t = totalKmFor(a); var val = t.any ? t.total : 0; if (val <= threshold) below++; }); var n = assets.length || 1; return (below / n) * 100; } function computeDailyTrend(assets, threshold) { return raw.dates.map(function (d) { var n = assets.length || 1; var below = 0; assets.forEach(function (a) { var v = a.km[d]; var val = v == null ? 0 : v; if (val <= threshold) below++; }); return (below / n) * 100; }); } function shortDay(iso) { var d = new Date(iso + "T00:00:00"); return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()]; } function computeGroupBreakdown(assets, threshold, groupCol) { var groups = {}; assets.forEach(function (a) { var g = a.fields[groupCol] || "Unassigned"; if (!groups[g]) groups[g] = { total: 0, below: 0 }; groups[g].total++; var t = totalKmFor(a); var val = t.any ? t.total : 0; if (val <= threshold) groups[g].below++; }); var labels = Object.keys(groups).sort(); var values = labels.map(function (g) { return (groups[g].below / groups[g].total) * 100; }); return { labels: labels, values: values }; } function computeDistribution(assets) { var bands = [ { label: "0", test: function (v) { return v === 0; } }, { label: "1-10", test: function (v) { return v > 0 && v <= 10; } }, { label: "11-25", test: function (v) { return v > 10 && v <= 25; } }, { label: "26-50", test: function (v) { return v > 25 && v <= 50; } }, { label: "51-100", test: function (v) { return v > 50 && v <= 100; } }, { label: "100+", test: function (v) { return v > 100; } }, ]; var counts = bands.map(function () { return 0; }); assets.forEach(function (a) { var t = totalKmFor(a); var val = t.any ? t.total : 0; for (var i = 0; i < bands.length; i++) { if (bands[i].test(val)) { counts[i]++; break; } } }); return { labels: bands.map(function (b) { return b.label; }), values: counts }; } function renderCharts() { var assets = visibleAssets(); var cutoff = state.kmCutoff; var fixedPct = computeSplit(assets, 0); var cutoffPct = computeSplit(assets, cutoff); document.getElementById("mr-chart-donut-l").innerHTML = svgDonut(fixedPct); document.getElementById("mr-chart-donut-r").innerHTML = svgDonut(cutoffPct); var trendFixed = computeDailyTrend(assets, 0); var trendCutoff = computeDailyTrend(assets, cutoff); var dayLabels = raw.dates.map(shortDay); document.getElementById("mr-chart-trend-l").innerHTML = svgVBar(dayLabels, trendFixed, 100, null); document.getElementById("mr-chart-trend-r").innerHTML = svgVBar(dayLabels, trendCutoff, 100, null); var groupCol = raw.filterColumns.length ? raw.filterColumns[0].col : null; if (groupCol) { var bFixed = computeGroupBreakdown(assets, 0, groupCol); var bCutoff = computeGroupBreakdown(assets, cutoff, groupCol); document.getElementById("mr-chart-bu-l").innerHTML = svgHBar(bFixed.labels, bFixed.values, 100, COL_ZERO); document.getElementById("mr-chart-bu-r").innerHTML = svgHBar(bCutoff.labels, bCutoff.values, 100, COL_ZERO); } var distFixed = computeDistribution(assets); var maxDist = Math.max.apply(null, distFixed.values.concat([1])); var distColorsFixed = distFixed.labels.map(function () { return COL_BASE; }); distColorsFixed[0] = COL_ZERO; document.getElementById("mr-chart-dist-l").innerHTML = svgVBar(distFixed.labels, distFixed.values, maxDist, distColorsFixed); var distCutoffColors = distFixed.labels.map(function (lbl, i) { var bandLow = i === 0 ? 0 : (i === 1 ? 1 : (i === 2 ? 11 : (i === 3 ? 26 : (i === 4 ? 51 : 101)))); return bandLow <= cutoff ? COL_ZERO : COL_BASE; }); document.getElementById("mr-chart-dist-r").innerHTML = svgVBar(distFixed.labels, distFixed.values, maxDist, distCutoffColors); } ' +
+      'renderControls(); renderTable(); renderCharts();' +
     '})();';
   }
 
