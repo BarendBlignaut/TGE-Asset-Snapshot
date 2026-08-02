@@ -469,6 +469,34 @@ async function handleGetStaticFleetRaw(request, env, auth) {
   return jsonResponse({ ok: true, fleet });
 }
 
+// Returns vendor metrics for a date range, keyed as fleet_number|date|metric
+// for O(1) lookup while building the dashboard table, rather than the
+// frontend scanning a flat array per cell.
+async function handleGetVendorMetrics(request, env, auth) {
+  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
+
+  const url = new URL(request.url);
+  const start = url.searchParams.get("start");
+  const end = url.searchParams.get("end");
+  if (!start || !end) {
+    return jsonResponse({ error: "start and end date parameters are required." }, 400);
+  }
+
+  const rows = await env.DB.prepare(
+    `SELECT fleet_number, metric_date, metric, value
+     FROM utilisation_vendor_daily_metrics
+     WHERE metric_date >= ? AND metric_date <= ?`
+  ).bind(start, end).all();
+
+  const keyed = {};
+  for (const r of (rows.results || [])) {
+    keyed[`${r.fleet_number}|${r.metric_date}|${r.metric}`] = r.value;
+  }
+
+  return jsonResponse({ ok: true, metrics: keyed });
+}
+
 async function handleGetStaticFleet(request, env, auth) {
   const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "view");
   if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
@@ -517,4 +545,5 @@ export {
   handleGetStaticFleet,
   handleGetStaticFleetRaw,
   handleGetStaticColumnValues,
+  handleGetVendorMetrics,
 };
