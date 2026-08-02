@@ -332,8 +332,6 @@ async function handleSaveFileSpecVendorConfig(request, env, vendorId) {
 }
 
 async function handleGetVendors(request, env) {
-
-async function handleGetVendors(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
   const perm = await hasPermission(env, auth.session.role_id, "vendor", "view");
