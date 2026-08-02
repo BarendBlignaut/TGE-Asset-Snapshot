@@ -434,6 +434,42 @@ async function handleGetStaticColumnValues(request, env, auth) {
 
   return jsonResponse({ ok: true, column, values: list });
 }
+// Same as handleGetStaticFleet but WITHOUT the exclusion filter — File Spec
+// needs to see every row, including ones matching published rules, since
+// it's the screen that creates and manages those rules and can't be blind
+// to their effect. Only File Spec calls this; the live dashboard keeps
+// using the filtered handleGetStaticFleet below, unaffected.
+async function handleGetStaticFleetRaw(request, env, auth) {
+  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
+
+  const url = new URL(request.url);
+  const includeInactive = url.searchParams.get("history") === "1";
+
+  const sql = includeInactive
+    ? "SELECT legacy_number, status, field_values, first_seen_at, last_seen_at, created_at, updated_at FROM utilisation_static_fleet ORDER BY legacy_number ASC"
+    : "SELECT legacy_number, status, field_values, first_seen_at, last_seen_at, created_at, updated_at FROM utilisation_static_fleet WHERE status = 'active' ORDER BY legacy_number ASC";
+
+  const rows = await env.DB.prepare(sql).all();
+
+  const fleet = (rows.results || []).map(row => {
+    let values;
+    try { values = JSON.parse(row.field_values); } catch { values = {}; }
+    return {
+      legacyNumber: row.legacy_number,
+      status: row.status,
+      fields: values,
+      firstSeenAt: row.first_seen_at,
+      lastSeenAt: row.last_seen_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  });
+
+  return jsonResponse({ ok: true, fleet });
+}
+
+async function handleGetStaticFleet(request, env, auth) {
 
 // ── Read ─────────────────────────────────────────────────────────────────────
 async function handleGetStaticFleet(request, env, auth) {
@@ -480,7 +516,7 @@ export {
   handleSaveStaticExclusionsDraft,
   handlePreviewStaticExclusions,
   handlePublishStaticExclusions,
-  handleGetStaticColumnValues,
   handleImportStaticFleet,
   handleGetStaticFleet,
+  handleGetStaticFleetRaw,
 };
