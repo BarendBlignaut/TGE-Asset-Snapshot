@@ -125,9 +125,60 @@ state.filterFlags = {};
       });
     }
 
-    renderStats();
+renderStats();
     renderExportPill();
     renderTable();
+    wireSaveButton();
+  }
+
+  function wireSaveButton() {
+    var btn = TGE.el('fs-save-btn');
+    if (!btn) return;
+    btn.onclick = async function () {
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      var fieldUpdates = state.columns.map(function (c) {
+        return {
+          id: c.id,
+          sourceColumn: c.source_column,
+          displayLabel: c.display_label,
+          saveToDb: !!c.save_to_db,
+          isIdentity: !!c.is_identity,
+          useAsFilter: !!state.filterFlags[c.source_column],
+          filterLabel: c.filter_label,
+          filterType: c.filter_type,
+          displayOrder: c.display_order,
+          enabled: c.enabled !== 0,
+          isTelematicsSource: state.telematicsSource === c.source_column
+        };
+      });
+
+      var rules = [];
+      Object.keys(state.exclusions).forEach(function (col) {
+        var ex = state.exclusions[col];
+        Object.keys(ex.values).forEach(function (val) {
+          if (ex.values[val]) rules.push({ sourceColumn: col, matchType: 'exact', matchValue: val });
+        });
+        ex.phrases.forEach(function (p) {
+          rules.push({ sourceColumn: col, matchType: 'contains', matchValue: p });
+        });
+      });
+
+      var fieldsSave = await TGE.api('PUT', '/api/utilisation/static-fields', { fields: fieldUpdates });
+      var draftSave  = await TGE.api('PUT', '/api/utilisation/static-exclusions/draft', { rules: rules });
+      var publish    = await TGE.api('POST', '/api/utilisation/static-exclusions/publish', {});
+
+      btn.disabled = false;
+      btn.textContent = 'Save';
+
+      if (fieldsSave.ok && draftSave.ok && publish.ok) {
+        alert('Saved. Changes are now live on the dashboard.');
+      } else {
+        var err = (fieldsSave.data && fieldsSave.data.error) || (draftSave.data && draftSave.data.error) || (publish.data && publish.data.error) || 'Unknown error.';
+        alert('Save failed: ' + err);
+      }
+    };
   }
 
   function renderError() {
