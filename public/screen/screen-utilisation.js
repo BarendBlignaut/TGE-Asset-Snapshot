@@ -52,16 +52,11 @@ fieldDefs: [],
           '</div>',
         '</div>',
         '<div class="ud-control-strip">',
-          '<div class="ud-card ud-cutoff">',
+         '<div class="ud-card ud-cutoff">',
             '<div class="ud-card-label">KM Cutoff</div>',
             '<div class="ud-card-value"><span id="ud-km-value">0</span> km</div>',
             '<input id="ud-km-slider" type="range" min="0" max="600" step="5" value="0" />',
             '<div class="ud-slider-row"><span>0</span><span>600</span></div>',
-            '<select id="ud-cutoff-mode" class="ud-select">',
-              '<option value="all">Show All</option>',
-              '<option value="below">Below Cutoff Only</option>',
-              '<option value="above">Above Cutoff Only</option>',
-            '</select>',
           '</div>',
           '<div class="ud-card ud-date">',
             '<div class="ud-card-label">Date Range</div>',
@@ -263,12 +258,10 @@ function getVisibleFleet() {
 function wireEvents() {
     wireFilterDelegation();
     wirePinnedColumnScroll();
-    TGE.on('ud-km-slider', 'input', function (e) {
+   TGE.on('ud-km-slider', 'input', function (e) {
       state.kmCutoff = parseInt(e.target.value, 10) || 0;
       TGE.setText('ud-km-value', state.kmCutoff);
-    });
-    TGE.on('ud-cutoff-mode', 'change', function (e) {
-      state.cutoffMode = e.target.value;
+      renderTable();
     });
 TGE.on('ud-history-btn', 'click', function () {
       state.history = !state.history;
@@ -390,7 +383,8 @@ var row = '<tr' + (asset.status === 'inactive' ? ' class="ud-row-inactive"' : ''
           totalKm += Number(kmVal);
           hasAnyKm = true;
         }
-        row += '<td class="ud-dcol">' + (kmVal != null ? Number(kmVal).toFixed(1) : '-') + '</td>';
+        var kmLow = (kmVal != null && state.kmCutoff > 0 && Number(kmVal) < state.kmCutoff);
+        row += '<td class="ud-dcol' + (kmLow ? ' ud-km-low' : '') + '">' + (kmVal != null ? Number(kmVal).toFixed(1) : '-') + '</td>';
         row += '<td class="ud-dcol">-</td>';
         row += '<td class="ud-dcol">-</td>';
       });
@@ -626,6 +620,7 @@ async function loadFieldDefs() {
       '.ud-date-hdr{min-width:108px;}',
       '.ud-sub-hdr{font-size:9px!important;color:#dbe8c3!important;text-transform:uppercase;}',
       '.ud-dcol{min-width:36px;width:36px;padding:2px!important;}',
+      '.ud-km-low{background:#fde3e3!important;color:#a11d1d!important;font-weight:700;}',
       '.ud-date-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:600;pointer-events:none;}',
       '.ud-date-modal.open{display:flex;pointer-events:auto;}',
       '.ud-date-panel{width:440px;background:#fff;border:1px solid #dce8e0;border-radius:12px;box-shadow:0 18px 44px rgba(0,0,0,.28);overflow:hidden;pointer-events:auto;}',
