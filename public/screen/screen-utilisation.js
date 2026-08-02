@@ -115,6 +115,16 @@ fieldDefs: [],
     initData();
   }
 
+function positionOpenFilterPop() {
+    if (!state.openFilterCol) return;
+    var btn = document.querySelector('.ud-filter-btn[data-col="' + state.openFilterCol.replace(/"/g, '\\"') + '"]');
+    var pop = document.querySelector('.ud-filter-pop.open');
+    if (!btn || !pop) return;
+    var rect = btn.getBoundingClientRect();
+    pop.style.top = (rect.bottom + 4) + 'px';
+    pop.style.left = rect.left + 'px';
+  }
+
   function renderFilterCards() {
     var wrap = TGE.el('ud-filter-cards');
     if (!wrap) return;
@@ -148,9 +158,11 @@ fieldDefs: [],
             '<div class="ud-filter-pop-list">' + listHtml + '</div>',
             (selected.size ? '<button type="button" class="ud-filter-clear" data-col="' + esc(col) + '">Clear</button>' : ''),
           '</div>',
-        '</div>'
+       '</div>'
       ].join('');
     }).join('');
+
+    positionOpenFilterPop();
   }
 
   // Returns distinct values (+ counts) for `col`, computed against the fleet
@@ -570,7 +582,7 @@ async function loadFieldDefs() {
       '.ud-filter-btn{display:flex;align-items:center;justify-content:space-between;width:100%;cursor:pointer;text-align:left;}',
       '.ud-filter-btn span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px;}',
       '.ud-filter-empty{font-size:10px;color:#8a9e92;}',
-      '.ud-filter-pop{display:none;position:absolute;top:100%;left:0;margin-top:4px;width:220px;background:#fff;border:1px solid #dce8e0;border-radius:10px;box-shadow:0 12px 28px rgba(0,0,0,.18);z-index:80;overflow:hidden;}',
+      '.ud-filter-pop{display:none;position:fixed;width:220px;background:#fff;border:1px solid #dce8e0;border-radius:10px;box-shadow:0 12px 28px rgba(0,0,0,.18);z-index:200;overflow:hidden;}',
       '.ud-filter-pop.open{display:block;}',
       '.ud-filter-pop-list{max-height:260px;overflow-y:auto;padding:6px;}',
       '.ud-filter-opt{display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:6px;font-size:12px;color:#172b4d;cursor:pointer;}',
