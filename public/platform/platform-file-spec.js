@@ -189,17 +189,25 @@ function rowIsExcluded(row, ignoreColumn) {
     return state.rows.filter(function (row) { return !rowIsExcluded(row, ignoreColumn); });
   }
 
-  function distinctValuesFor(sourceColumn) {
-    var counts = {};
+function distinctValuesFor(sourceColumn) {
     var pool = currentVisibleRows(sourceColumn);
+    var poolCounts = {};
     for (var i = 0; i < pool.length; i++) {
-      var raw = (pool[i].fields || {})[sourceColumn];
-      if (raw == null || raw === '') continue;
-      var val = String(raw);
-      counts[val] = (counts[val] || 0) + 1;
+      var pv = (pool[i].fields || {})[sourceColumn];
+      if (pv == null || pv === '') continue;
+      var pval = String(pv);
+      poolCounts[pval] = (poolCounts[pval] || 0) + 1;
     }
-    return Object.keys(counts)
-      .map(function (v) { return { value: v, count: counts[v] }; })
+
+    var allValues = {};
+    for (var j = 0; j < state.rows.length; j++) {
+      var raw = (state.rows[j].fields || {})[sourceColumn];
+      if (raw == null || raw === '') continue;
+      allValues[String(raw)] = true;
+    }
+
+    return Object.keys(allValues)
+      .map(function (v) { return { value: v, count: poolCounts[v] || 0 }; })
       .sort(function (a, b) { return b.count - a.count; });
   }
 
