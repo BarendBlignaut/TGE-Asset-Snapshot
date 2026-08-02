@@ -326,10 +326,7 @@ function positionPinnedColumns() {
         window.requestAnimationFrame(positionPinnedColumns);
       }
     }, true);
-  }
-
-  function renderTable() {
-  
+  }  
   function renderTable() {
     var dates = getDateRange();
     var head = TGE.el('ud-table-head');
