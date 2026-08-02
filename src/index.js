@@ -2473,10 +2473,12 @@ if (method === "GET"  && path === "/api/utilisation/static-fleet") {
         if (!auth.ok) return auth.response;
         return handleGetStaticFleet(request, env, { session: auth.session, ...utilisationAuthHelpers });
       }
-      if (method === "GET"  && path === "/api/utilisation/static-fleet-raw") {
+     if (method === "GET"  && path === "/api/utilisation/static-fleet-raw") {
         const auth = await requireSession(request, env);
         if (!auth.ok) return auth.response;
-       if (method === "GET" && path === "/api/utilisation/vendor-metrics") {
+        return handleGetStaticFleetRaw(request, env, { session: auth.session, ...utilisationAuthHelpers });
+      }
+      if (method === "GET" && path === "/api/utilisation/vendor-metrics") {
         const auth = await requireSession(request, env);
         if (!auth.ok) return auth.response;
         return handleGetVendorMetrics(request, env, { session: auth.session, ...utilisationAuthHelpers });
