@@ -64,6 +64,7 @@ exclusions: {},   // { sourceColumn: { values: {}, phrases: [] } }
           '</div>',
           '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">',
             '<div id="fs-stats" style="font-size:12px;color:var(--muted);"></div>',
+            '<button type="button" id="fs-save-btn" class="btn" style="height:34px;padding:0 16px;font-size:12px;font-weight:700;border-radius:999px;background:var(--green-600);color:#fff;border:none;cursor:pointer;">Save</button>',
             '<div id="fs-export-wrap"></div>',
           '</div>',
         '</div>',
