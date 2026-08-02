@@ -328,14 +328,84 @@ function positionPinnedColumns() {
     });
   }
 
-  function wirePinnedColumnScroll() {
+ function wirePinnedColumnScroll() {
     if (window.__udPinScrollWired) return;
     window.__udPinScrollWired = true;
     document.addEventListener('scroll', function (e) {
       if (e.target && e.target.classList && e.target.classList.contains('ud-table-wrap')) {
-        window.requestAnimationFrame(positionPinnedColumns);
+        window.requestAnimationFrame(function () {
+          positionPinnedColumns();
+          renderVisibleRows();
+        });
       }
     }, true);
+  }
+
+  var ROW_HEIGHT = 32;
+  var BUFFER_ROWS = 10;
+  var CURRENT_VISIBLE = [];
+  var CURRENT_DATES = [];
+
+  // Builds only the rows currently scrolled into view (plus a small buffer),
+  // sitting between two spacer rows that hold the correct total height, so
+  // the browser only ever handles ~30-50 real rows at a time regardless of
+  // how many assets are in the filtered fleet — same technique as File Spec.
+  function renderVisibleRows() {
+    var wrap = document.querySelector('.ud-table-wrap');
+    var body = TGE.el('ud-table-body');
+    if (!wrap || !body) return;
+
+    var visible = CURRENT_VISIBLE;
+    var dates = CURRENT_DATES;
+    var total = visible.length;
+    var colspan = 1 + (dates.length * 3) + 1;
+
+    var viewportH = wrap.clientHeight || 500;
+    var scrollTop = wrap.scrollTop;
+
+    var visibleCount = Math.ceil(viewportH / ROW_HEIGHT) + BUFFER_ROWS * 2;
+    var startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER_ROWS);
+    var endIndex = Math.min(total, startIndex + visibleCount);
+
+    var topHeight = startIndex * ROW_HEIGHT;
+    var bottomHeight = (total - endIndex) * ROW_HEIGHT;
+
+    var html = '';
+    if (topHeight > 0) {
+      html += '<tr aria-hidden="true"><td colspan="' + colspan + '" style="padding:0;border:none;height:' + topHeight + 'px;"></td></tr>';
+    }
+
+    for (var i = startIndex; i < endIndex; i++) {
+      var asset = visible[i];
+      var row = '<tr' + (asset.status === 'inactive' ? ' class="ud-row-inactive"' : '') + '>';
+      var gpsRaw = state.telematicsSourceColumn && asset.fields ? asset.fields[state.telematicsSourceColumn] : null;
+      var gpsOn = gpsRaw != null && String(gpsRaw).trim() !== '';
+      row += '<td class="ud-pin-left"><div class="ud-pin-left-inner"><span class="ud-pin-legacy-part">' + esc(asset.legacyNumber) + '</span><span class="ud-pin-gps-part"><span class="ud-gps-dot ' + (gpsOn ? 'ud-gps-on' : 'ud-gps-off') + '"></span></span></div></td>';
+      var totalKm = 0;
+      var hasAnyKm = false;
+      dates.forEach(function (d) {
+        var key = asset.legacyNumber + '|' + isoDate(d) + '|km';
+        var kmVal = state.vendorMetrics[key];
+        if (kmVal != null) {
+          totalKm += Number(kmVal);
+          hasAnyKm = true;
+        }
+        var kmLow = (kmVal != null && state.kmCutoff > 0 && Number(kmVal) < state.kmCutoff);
+        row += '<td class="ud-dcol' + (kmLow ? ' ud-km-low' : '') + '">' + (kmVal != null ? Number(kmVal).toFixed(1) : '-') + '</td>';
+        row += '<td class="ud-dcol">-</td>';
+        row += '<td class="ud-dcol">-</td>';
+      });
+      row += '<td class="ud-pin-avg"><div class="ud-pin-right-inner"><span class="ud-pin-total-part">' + (hasAnyKm ? totalKm.toFixed(1) : '-') + '</span><span class="ud-pin-avgday-part">-</span></div></td>';
+      row += '</tr>';
+      html += row;
+    }
+
+    if (bottomHeight > 0) {
+      html += '<tr aria-hidden="true"><td colspan="' + colspan + '" style="padding:0;border:none;height:' + bottomHeight + 'px;"></td></tr>';
+    }
+
+    body.innerHTML = html;
+    positionPinnedColumns();
   }  
   function renderTable() {
     var dates = getDateRange();
@@ -358,7 +428,7 @@ var top = '<tr>';
     sub += '</tr>';
     head.innerHTML = top + sub;
 
-    updateFilterStatusText();
+  updateFilterStatusText();
     var visible = getVisibleFleet();
     var colspan = 1 + (dates.length * 3) + 1;
 
@@ -371,31 +441,9 @@ var top = '<tr>';
       return;
     }
 
-  body.innerHTML = visible.map(function (asset) {
-var row = '<tr' + (asset.status === 'inactive' ? ' class="ud-row-inactive"' : '') + '>';
-      var gpsRaw = state.telematicsSourceColumn && asset.fields ? asset.fields[state.telematicsSourceColumn] : null;
-      var gpsOn = gpsRaw != null && String(gpsRaw).trim() !== '';
-      row += '<td class="ud-pin-left"><div class="ud-pin-left-inner"><span class="ud-pin-legacy-part">' + esc(asset.legacyNumber) + '</span><span class="ud-pin-gps-part"><span class="ud-gps-dot ' + (gpsOn ? 'ud-gps-on' : 'ud-gps-off') + '"></span></span></div></td>';
-      var totalKm = 0;
-      var hasAnyKm = false;
-      dates.forEach(function (d) {
-        var key = asset.legacyNumber + '|' + isoDate(d) + '|km';
-        var kmVal = state.vendorMetrics[key];
-        if (kmVal != null) {
-          totalKm += Number(kmVal);
-          hasAnyKm = true;
-        }
-        var kmLow = (kmVal != null && state.kmCutoff > 0 && Number(kmVal) < state.kmCutoff);
-        row += '<td class="ud-dcol' + (kmLow ? ' ud-km-low' : '') + '">' + (kmVal != null ? Number(kmVal).toFixed(1) : '-') + '</td>';
-        row += '<td class="ud-dcol">-</td>';
-        row += '<td class="ud-dcol">-</td>';
-      });
-      row += '<td class="ud-pin-avg"><div class="ud-pin-right-inner"><span class="ud-pin-total-part">' + (hasAnyKm ? totalKm.toFixed(1) : '-') + '</span><span class="ud-pin-avgday-part">-</span></div></td>';
-      row += '</tr>';
-return row;
-    }).join('');
-
-    positionPinnedColumns();
+    CURRENT_VISIBLE = visible;
+    CURRENT_DATES = dates;
+    renderVisibleRows();
   }
 
 function alignPinnedGpsColumn() {
