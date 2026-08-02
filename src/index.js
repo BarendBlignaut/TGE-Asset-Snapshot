@@ -21,6 +21,10 @@ import {
   runStaticFleetPipeline,
 } from "./filespec-static-fleet.js";
 
+import {
+  handleLocateTeletracKm,
+} from "./filespec-teletrac.js";
+
 const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12 hours
 const SESSION_COOKIE      = "tge_session";
 
@@ -2450,6 +2454,8 @@ if (method === "POST" && path.match(/^\/api\/vendors\/\d+\/hardware-types$/)) {
 
   return ingestResponse;
 }
+if (method === "POST" && path === "/api/filespec/locate-teletrac-km") return handleLocateTeletracKm(request, env);
+      
       if (method === "POST" && path === "/api/filespec/process-static-fleet") {
   return handleProcessStaticFleet(request, env);
 }
