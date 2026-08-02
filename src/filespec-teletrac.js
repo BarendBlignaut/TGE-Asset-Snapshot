@@ -106,11 +106,6 @@ function readSectionRows(rows, headerRowIndex, headerRow) {
 // Test-only endpoint for this first slice: proves the engine can find the
 // Daily Kms section and its date header in a real, already-ingested file.
 export async function handleLocateTeletracKm(request, env) {
-
-// GET/POST /api/filespec/locate-teletrac-km?id=<importId>
-// Test-only endpoint for this first slice: proves the engine can find the
-// Daily Kms section and its date header in a real, already-ingested file.
-export async function handleLocateTeletracKm(request, env) {
   const keyCheck = await requireImportKey(request, env);
   if (!keyCheck.ok) return keyCheck.response;
 
