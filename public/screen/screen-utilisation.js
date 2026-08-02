@@ -74,10 +74,10 @@ fieldDefs: [],
             '</div>',
           '</div>',
           '<div class="ud-card ud-metric">',
-            '<div><span>Active</span><strong>0</strong></div>',
-            '<div><span>Workshop</span><strong>0</strong></div>',
-            '<div><span>EXM</span><strong>0</strong></div>',
-            '<div><span>No Telematics</span><strong>0</strong></div>',
+            '<div><span>Active</span><strong id="ud-stat-active">0</strong></div>',
+            '<div><span>Workshop</span><strong id="ud-stat-workshop">0</strong></div>',
+            '<div><span>EXM</span><strong id="ud-stat-exm">0</strong></div>',
+            '<div><span>No Telematics</span><strong id="ud-stat-no-telematics">0</strong></div>',
           '</div>',
           '<div class="ud-filter-cards-wrap" id="ud-filter-cards"></div>',
         '</div>',
@@ -457,10 +457,21 @@ async function loadFieldDefs() {
     loadVendorMetrics();
   }
 
-  function updateTotalPill() {
+ function updateTotalPill() {
     var visible = getVisibleFleet();
     var visibleActive = visible.filter(function (a) { return a.status === 'active'; }).length;
     TGE.setText('ud-total', 'Assets: ' + visibleActive + ' / ' + state.fleet.length);
+
+    var telematicsCount = visible.filter(function (a) {
+      var raw = state.telematicsSourceColumn && a.fields ? a.fields[state.telematicsSourceColumn] : null;
+      return raw != null && String(raw).trim() !== '';
+    }).length;
+    var noTelematicsCount = visible.length - telematicsCount;
+
+    TGE.setText('ud-stat-active', telematicsCount);
+    TGE.setText('ud-stat-no-telematics', noTelematicsCount);
+    // Workshop and EXM stay at 0 honestly — no workshop or non-functioning
+    // feed exists yet, so there's nothing real to count for those two.
   }
 
   function ensureSidebarLegend() {
