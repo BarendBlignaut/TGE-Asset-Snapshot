@@ -348,18 +348,14 @@ return row;
     alignPinnedGpsColumn();
   }
 
-  function alignPinnedGpsColumn() {
-    // Legacy Number's real rendered width can differ from any CSS guess —
-    // measure it after render and position GPS to sit exactly at its edge,
-    // so the two always move together with no gap and nothing overlapping.
-    var wrap = TGE.el('ud-table-head') && TGE.el('ud-table-head').closest('table');
-    if (!wrap) return;
-    var legacyCell = wrap.querySelector('.ud-pin-left');
+function alignPinnedGpsColumn() {
+    var head = TGE.el('ud-table-head');
+    var table = head && head.closest('table');
+    if (!table) return;
+    var legacyCell = table.querySelector('.ud-pin-left');
     if (!legacyCell) return;
     var width = legacyCell.getBoundingClientRect().width;
-    wrap.querySelectorAll('.ud-pin-gps').forEach(function (el) {
-      el.style.left = width + 'px';
-    });
+    table.style.setProperty('--gps-left', width + 'px');
   }
 
 async function loadFieldDefs() {
@@ -533,7 +529,7 @@ async function loadFieldDefs() {
       '.ud-table th,.ud-table td{padding:3px 8px;text-align:center;border-bottom:1px solid #e6e8ec;border-right:1px solid #e6e8ec;white-space:nowrap;height:32px;font-size:11px;}',
       '.ud-table th{position:sticky;top:0;background:#143200;color:#c8f135;font-weight:700;z-index:10;font-size:10px;}',
       '.ud-table tr:nth-child(2) th{top:32px;}',
-      '.ud-pin-gps{position:sticky!important;background:#143200!important;color:#c8f135!important;z-index:39!important;text-align:center!important;min-width:44px;border-right:2px solid #e6e8ec!important;}',
+      '.ud-pin-gps{position:sticky!important;left:var(--gps-left,135px)!important;background:#143200!important;color:#c8f135!important;z-index:39!important;text-align:center!important;min-width:44px;border-right:2px solid #e6e8ec!important;}',
       '.ud-gps-dot{display:inline-block;width:10px;height:10px;border-radius:50%;}',
       '.ud-gps-on{background:#1f9d55;}',
       '.ud-gps-off{background:#d43a3a;}',
