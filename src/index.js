@@ -295,6 +295,43 @@ async function handleCreateRole(request, env) {
   await logActivity(env, auth.session.user_id, "admin", "create-role", `Created role: ${name}`, null);
   return jsonResponse({ ok: true, roleId: result.meta.last_row_id });
 }
+// ── File Spec vendor config: which fork a vendor answers to ─────────────────
+async function handleGetFileSpecVendorConfig(request, env, vendorId) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const row = await env.DB.prepare(
+    "SELECT * FROM filespec_vendor_config WHERE vendor_id = ?"
+  ).bind(vendorId).first();
+
+  return jsonResponse({ ok: true, config: row || null });
+}
+
+async function handleSaveFileSpecVendorConfig(request, env, vendorId) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+
+  const body = await safeJson(request);
+  const specType = body.specType === "data_feed" ? "data_feed" : "master_list";
+  const orientation = specType === "data_feed" && (body.orientation === "horizontal" || body.orientation === "vertical")
+    ? body.orientation : null;
+  const tableCount = specType === "data_feed" && (body.tableCount === "single" || body.tableCount === "multiple")
+    ? body.tableCount : null;
+
+  await env.DB.prepare(
+    `INSERT INTO filespec_vendor_config (vendor_id, spec_type, orientation, table_count, updated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(vendor_id) DO UPDATE SET
+       spec_type = excluded.spec_type,
+       orientation = excluded.orientation,
+       table_count = excluded.table_count,
+       updated_at = excluded.updated_at`
+  ).bind(vendorId, specType, orientation, tableCount, nowIso()).run();
+
+  return jsonResponse({ ok: true });
+}
+
+async function handleGetVendors(request, env) {
 
 async function handleGetVendors(request, env) {
   const auth = await requireSession(request, env);
@@ -2286,6 +2323,12 @@ export default {
       if (method === "GET"  && path === "/api/admin/control-tables")  return handleGetControlTables(request, env);
       if (method === "POST" && path === "/api/admin/control-tables")  return handleSaveControlTable(request, env);
       if (method === "GET"  && path === "/api/admin/vendors")         return handleGetVendors(request, env);
+      if (method === "GET" && path.match(/^\/api\/vendors\/\d+\/filespec-config$/)) {
+        return handleGetFileSpecVendorConfig(request, env, parseInt(path.split("/")[3], 10));
+      }
+      if (method === "POST" && path.match(/^\/api\/vendors\/\d+\/filespec-config$/)) {
+        return handleSaveFileSpecVendorConfig(request, env, parseInt(path.split("/")[3], 10));
+      }
       if (method === "POST" && path === "/api/admin/vendors")         return handleSaveVendor(request, env);
       if (method === "PUT"  && path.match(/^\/api\/admin\/control-tables\/\d+$/)) {
         const id   = parseInt(path.split("/").pop(), 10);
