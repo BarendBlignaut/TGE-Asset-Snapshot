@@ -247,8 +247,9 @@ function getVisibleFleet() {
     });
   }
 
-  function wireEvents() {
+function wireEvents() {
     wireFilterDelegation();
+    wirePinnedColumnScroll();
     TGE.on('ud-km-slider', 'input', function (e) {
       state.kmCutoff = parseInt(e.target.value, 10) || 0;
       TGE.setText('ud-km-value', state.kmCutoff);
@@ -308,7 +309,27 @@ TGE.on('ud-history-btn', 'click', function () {
       'Date Range: ' + fmtFullDate(state.startDate) + ' - ' + fmtFullDate(state.endDate) + ' (' + state.days + ' Days)'
     );
   }
+function positionPinnedColumns() {
+    var wrap = document.querySelector('.ud-table-wrap');
+    if (!wrap) return;
+    var t = 'translateX(' + wrap.scrollLeft + 'px)';
+    wrap.querySelectorAll('.ud-pin-left, .ud-pin-avg').forEach(function (el) {
+      el.style.transform = t;
+    });
+  }
 
+  function wirePinnedColumnScroll() {
+    if (window.__udPinScrollWired) return;
+    window.__udPinScrollWired = true;
+    document.addEventListener('scroll', function (e) {
+      if (e.target && e.target.classList && e.target.classList.contains('ud-table-wrap')) {
+        window.requestAnimationFrame(positionPinnedColumns);
+      }
+    }, true);
+  }
+
+  function renderTable() {
+  
   function renderTable() {
     var dates = getDateRange();
     var head = TGE.el('ud-table-head');
@@ -357,6 +378,8 @@ var row = '<tr' + (asset.status === 'inactive' ? ' class="ud-row-inactive"' : ''
       row += '</tr>';
 return row;
     }).join('');
+
+    positionPinnedColumns();
   }
 
 function alignPinnedGpsColumn() {
@@ -546,7 +569,7 @@ async function loadFieldDefs() {
       '.ud-table th,.ud-table td{padding:3px 8px;text-align:center;border-bottom:1px solid #e6e8ec;border-right:1px solid #e6e8ec;white-space:nowrap;height:32px;font-size:11px;}',
       '.ud-table th{position:sticky;top:0;background:#143200;color:#c8f135;font-weight:700;z-index:10;font-size:10px;transform:translateZ(0);}',
 '.ud-table tr:nth-child(2) th{top:32px;}',
-      '.ud-pin-left{position:sticky!important;left:0;background:#143200!important;color:#c8f135!important;z-index:40!important;text-align:center!important;min-width:135px;border-right:2px solid #e6e8ec!important;transform:translateZ(0);}',
+   '.ud-pin-left{background:#143200!important;color:#c8f135!important;z-index:40!important;text-align:center!important;min-width:135px;border-right:2px solid #e6e8ec!important;}',
       '.ud-pin-left-inner,.ud-pin-right-inner{display:flex;align-items:center;justify-content:center;gap:8px;}',
       '.ud-pin-legacy-part{min-width:100px;}',
       '.ud-pin-gps-part{min-width:36px;}',
@@ -554,7 +577,7 @@ async function loadFieldDefs() {
       '.ud-gps-dot{display:inline-block;width:10px;height:10px;border-radius:50%;}',
       '.ud-gps-on{background:#1f9d55;}',
       '.ud-gps-off{background:#d43a3a;}',
-      '.ud-pin-avg{position:sticky!important;right:0;background:#f0f1f3!important;color:#172b4d!important;z-index:40!important;min-width:150px;transform:translateZ(0);will-change:transform;}',
+      '.ud-pin-avg{background:#f0f1f3!important;color:#172b4d!important;z-index:40!important;min-width:150px;}',
       '.ud-date-hdr{min-width:108px;}',
       '.ud-sub-hdr{font-size:9px!important;color:#dbe8c3!important;text-transform:uppercase;}',
       '.ud-dcol{min-width:36px;width:36px;padding:2px!important;}',
