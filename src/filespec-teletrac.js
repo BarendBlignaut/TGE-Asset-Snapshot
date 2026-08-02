@@ -2,10 +2,6 @@
 // Data Feed vendor: horizontal orientation, multiple stacked tables on the
 // Summary sheet, each found by its own section label (anchor), not by a
 // fixed row number, since the exact row can shift week to week.
-//
-// This first slice only LOCATES the Daily Kms section and its date header —
-// it writes nothing to the database yet. Proving the engine can reliably
-// find the right spot in a real file comes before any write logic.
 
 import * as XLSX from "xlsx";
 
@@ -51,6 +47,7 @@ function locateSection(rows, anchorLabel) {
   }
   return null;
 }
+
 // Formats a header date cell to YYYY-MM-DD. XLSX may hand back a real Date
 // object (cellDates:true) or, for some source files, a plain "DD/MM/YYYY"
 // string — both are handled so the reader isn't fragile to that variance.
@@ -102,9 +99,109 @@ function readSectionRows(rows, headerRowIndex, headerRow) {
   return { dateColumns, assets };
 }
 
+const VENDOR_ID = 3; // Teletrac Navman, confirmed against vendors table
+const BATCH_SIZE = 100;
+
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
+// GET/POST /api/filespec/process-teletrac-km?id=<importId>
+// Reads the Daily Kms section and writes every real reading into the shared
+// vendor data table. A newer file's overlapping days correctly overwrite
+// older ones, since (fleet_number, metric_date, metric) is unique — this is
+// a plain upsert, not a staged promotion like Static Fleet, because there's
+// no "live fleet" concept to reconcile here, just facts that self-correct.
+export async function handleProcessTeletracKm(request, env) {
+  const keyCheck = await requireImportKey(request, env);
+  if (!keyCheck.ok) return keyCheck.response;
+
+  const url = new URL(request.url);
+  const importId = Number.parseInt(url.searchParams.get("id") || "", 10);
+  if (!Number.isInteger(importId) || importId < 1) {
+    return jsonResponse({ error: "A valid import id is required." }, 400);
+  }
+
+  const importRecord = await env.DB.prepare(
+    "SELECT * FROM filespec_imports WHERE id = ?"
+  ).bind(importId).first();
+
+  if (!importRecord) {
+    return jsonResponse({ error: `Import ${importId} was not found.` }, 404);
+  }
+  if (importRecord.source !== SOURCE_NAME) {
+    return jsonResponse({ error: `Import ${importId} is not a ${SOURCE_NAME} import.` }, 400);
+  }
+
+  await env.DB.prepare(
+    "UPDATE filespec_imports SET status = 'parsing', error = NULL WHERE id = ?"
+  ).bind(importId).run();
+
+  try {
+    const r2Object = await env.FILESPEC_BUCKET.get(importRecord.r2_key);
+    if (!r2Object) throw new Error(`R2 object was not found: ${importRecord.r2_key}`);
+
+    const workbookBytes = await r2Object.arrayBuffer();
+    if (!workbookBytes || workbookBytes.byteLength === 0) throw new Error("The R2 workbook is empty.");
+
+    const workbook = XLSX.read(new Uint8Array(workbookBytes), { type: "array", cellDates: true, raw: true });
+    const sheetName = workbook.SheetNames.includes(SHEET_NAME) ? SHEET_NAME : workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true, defval: null });
+
+    const located = locateSection(rows, KM_ANCHOR);
+    if (!located) throw new Error(`Could not find a row labelled '${KM_ANCHOR}'.`);
+
+    const { assets } = readSectionRows(rows, located.headerRowIndex, located.headerRow);
+
+    const now = nowIso();
+    const statements = [];
+    for (const asset of assets) {
+      for (const reading of asset.readings) {
+        if (reading.value == null || Number.isNaN(reading.value)) continue; // skip genuinely blank cells
+        statements.push(
+          env.DB.prepare(
+            `INSERT INTO utilisation_vendor_daily_metrics
+              (fleet_number, metric_date, metric, value, vendor_id, import_id, created_at, updated_at)
+             VALUES (?, ?, 'km', ?, ?, ?, ?, ?)
+             ON CONFLICT(fleet_number, metric_date, metric) DO UPDATE SET
+               value = excluded.value,
+               vendor_id = excluded.vendor_id,
+               import_id = excluded.import_id,
+               updated_at = excluded.updated_at`
+          ).bind(asset.fleetNumber, reading.date, reading.value, VENDOR_ID, importId, now, now)
+        );
+      }
+    }
+
+    for (const chunk of chunkArray(statements, BATCH_SIZE)) {
+      await env.DB.batch(chunk);
+    }
+
+    await env.DB.prepare(
+      "UPDATE filespec_imports SET status = 'parsed', processed_at = ?, row_count = ? WHERE id = ?"
+    ).bind(now, statements.length, importId).run();
+
+    return jsonResponse({
+      ok: true,
+      importId,
+      assetCount: assets.length,
+      rowsWritten: statements.length,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await env.DB.prepare(
+      "UPDATE filespec_imports SET status = 'failed', error = ? WHERE id = ?"
+    ).bind(message, importId).run();
+    return jsonResponse({ ok: false, error: message }, 500);
+  }
+}
+
 // GET/POST /api/filespec/locate-teletrac-km?id=<importId>
-// Test-only endpoint for this first slice: proves the engine can find the
-// Daily Kms section and its date header in a real, already-ingested file.
+// Test-only endpoint: proves the engine can find the Daily Kms section and
+// its date header in a real, already-ingested file. No database writes.
 export async function handleLocateTeletracKm(request, env) {
   const keyCheck = await requireImportKey(request, env);
   if (!keyCheck.ok) return keyCheck.response;
@@ -154,8 +251,6 @@ export async function handleLocateTeletracKm(request, env) {
 
     const worksheet = workbook.Sheets[sheetName];
 
-    // header:1 gives array-of-arrays by row position, not object-keyed by
-    // column header — required here since the real header row isn't row 1.
     const rows = XLSX.utils.sheet_to_json(worksheet, {
       header: 1,
       raw: true,
@@ -180,8 +275,7 @@ export async function handleLocateTeletracKm(request, env) {
       headerRowIndex: located.headerRowIndex,
       headerRow: located.headerRow,
     });
-
-} catch (error) {
+  } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return jsonResponse({ ok: false, error: message }, 500);
   }
