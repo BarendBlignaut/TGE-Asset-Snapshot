@@ -14,7 +14,8 @@
     endDate: null,
     fleet: [],
     loaded: false,
-    fieldDefs: [],
+fieldDefs: [],
+    telematicsSourceColumn: null,
     filters: {},
     openFilterCol: null,
   };
@@ -296,8 +297,9 @@
     var head = TGE.el('ud-table-head');
     var body = TGE.el('ud-table-body');
     if (!head || !body) return;
-    var top = '<tr>';
+var top = '<tr>';
     top += '<th rowspan="2" class="ud-pin-left">Legacy<br>Number</th>';
+    top += '<th rowspan="2" class="ud-pin-gps" title="Telematics status">GPS</th>';
     dates.forEach(function (d) {
       top += '<th colspan="3" class="ud-date-hdr">' + fmtDateHeader(d) + '</th>';
     });
@@ -315,7 +317,7 @@
 
     updateFilterStatusText();
     var visible = getVisibleFleet();
-    var colspan = 1 + (dates.length * 3) + 2;
+    var colspan = 2 + (dates.length * 3) + 2;
 
     if (!state.loaded) {
       body.innerHTML = '<tr><td colspan="' + colspan + '" class="ud-empty-row">Loading fleet data…</td></tr>';
@@ -327,8 +329,11 @@
     }
 
     body.innerHTML = visible.map(function (asset) {
-      var row = '<tr' + (asset.status === 'inactive' ? ' class="ud-row-inactive"' : '') + '>';
+var row = '<tr' + (asset.status === 'inactive' ? ' class="ud-row-inactive"' : '') + '>';
       row += '<td class="ud-pin-left">' + esc(asset.legacyNumber) + '</td>';
+      var gpsRaw = state.telematicsSourceColumn && asset.fields ? asset.fields[state.telematicsSourceColumn] : null;
+      var gpsOn = gpsRaw != null && String(gpsRaw).trim() !== '';
+      row += '<td class="ud-pin-gps"><span class="ud-gps-dot ' + (gpsOn ? 'ud-gps-on' : 'ud-gps-off') + '"></span></td>';
       dates.forEach(function () {
         row += '<td class="ud-dcol">-</td>';
         row += '<td class="ud-dcol">-</td>';
@@ -341,9 +346,10 @@
     }).join('');
   }
 
-  async function loadFieldDefs() {
+async function loadFieldDefs() {
     var result = await TGE.api('GET', '/api/utilisation/static-fields');
     var all = (result.ok && result.data && Array.isArray(result.data.fields)) ? result.data.fields : [];
+    state.telematicsSourceColumn = (all.find(function (f) { return f.is_telematics_source === 1; }) || {}).source_column || null;
     state.fieldDefs = all
       .filter(function (f) { return f.use_as_filter === 1 && f.enabled !== 0; })
       .sort(function (a, b) { return (a.display_order || 0) - (b.display_order || 0); });
@@ -511,7 +517,10 @@
       '.ud-table th,.ud-table td{padding:3px 8px;text-align:center;border-bottom:1px solid #e6e8ec;border-right:1px solid #e6e8ec;white-space:nowrap;height:32px;font-size:11px;}',
       '.ud-table th{position:sticky;top:0;background:#143200;color:#c8f135;font-weight:700;z-index:10;font-size:10px;}',
       '.ud-table tr:nth-child(2) th{top:32px;}',
-      '.ud-pin-left{position:sticky!important;left:0;background:#143200!important;color:#c8f135!important;z-index:40!important;text-align:center!important;min-width:135px;border-right:2px solid #e6e8ec!important;}',
+      '.ud-pin-gps{position:sticky!important;left:135px;background:#143200!important;color:#c8f135!important;z-index:39!important;text-align:center!important;min-width:44px;border-right:2px solid #e6e8ec!important;}',
+      '.ud-gps-dot{display:inline-block;width:10px;height:10px;border-radius:50%;}',
+      '.ud-gps-on{background:#1f9d55;}',
+      '.ud-gps-off{background:#d43a3a;}',
       '.ud-pin-total{position:sticky!important;right:72px;background:#f0f1f3!important;color:#172b4d!important;z-index:40!important;min-width:72px;border-left:2px solid #e6e8ec!important;}',
       '.ud-pin-avg{position:sticky!important;right:0;background:#f0f1f3!important;color:#172b4d!important;z-index:40!important;min-width:72px;}',
       '.ud-date-hdr{min-width:108px;}',
