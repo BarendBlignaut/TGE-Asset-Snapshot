@@ -2417,7 +2417,12 @@ if (method === "POST" && path.match(/^\/api\/vendors\/\d+\/hardware-types$/)) {
   return handlePromoteStaticFleet(request, env);
 }
       if (method === "POST" && path === "/api/utilisation/static-fleet/import") return handleImportStaticFleet(request, env);
-if (method === "GET"  && path === "/api/utilisation/static-fleet-raw") {
+if (method === "GET"  && path === "/api/utilisation/static-fleet") {
+        const auth = await requireSession(request, env);
+        if (!auth.ok) return auth.response;
+        return handleGetStaticFleet(request, env, { session: auth.session, ...utilisationAuthHelpers });
+      }
+      if (method === "GET"  && path === "/api/utilisation/static-fleet-raw") {
         const auth = await requireSession(request, env);
         if (!auth.ok) return auth.response;
         return handleGetStaticFleetRaw(request, env, { session: auth.session, ...utilisationAuthHelpers });
