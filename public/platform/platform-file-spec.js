@@ -104,10 +104,12 @@ state.columns = (fieldsRes.data.fields || []).slice().sort(function (a, b) {
     });
     state.rows = fleetRes.data.fleet || [];
 
-// Deliberately not seeded from the old hardcoded use_as_filter values —
-    // everything starts off/unpicked until chosen fresh in this session.
-    state.filterFlags = {};
+state.filterFlags = {};
     state.telematicsSource = null;
+    state.columns.forEach(function (c) {
+      state.filterFlags[c.source_column] = !!c.use_as_filter;
+      if (c.is_telematics_source) state.telematicsSource = c.source_column;
+    });
 
     renderStats();
     renderExportPill();
