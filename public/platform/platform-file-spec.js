@@ -83,8 +83,9 @@ exclusions: {},   // { sourceColumn: { values: {}, phrases: [] } }
     state.loading = true;
     state.error = '';
 
-    var fieldsRes = await TGE.api('GET', '/api/utilisation/static-fields');
+var fieldsRes = await TGE.api('GET', '/api/utilisation/static-fields');
     var fleetRes  = await TGE.api('GET', '/api/utilisation/static-fleet');
+    var exclRes   = await TGE.api('GET', '/api/utilisation/static-exclusions?status=published');
 
     state.loading = false;
 
