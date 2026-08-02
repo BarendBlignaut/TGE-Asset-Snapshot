@@ -258,9 +258,11 @@ function getVisibleFleet() {
 function wireEvents() {
     wireFilterDelegation();
     wirePinnedColumnScroll();
-   TGE.on('ud-km-slider', 'input', function (e) {
+  TGE.on('ud-km-slider', 'input', function (e) {
       state.kmCutoff = parseInt(e.target.value, 10) || 0;
       TGE.setText('ud-km-value', state.kmCutoff);
+    });
+    TGE.on('ud-km-slider', 'change', function () {
       renderTable();
     });
 TGE.on('ud-history-btn', 'click', function () {
