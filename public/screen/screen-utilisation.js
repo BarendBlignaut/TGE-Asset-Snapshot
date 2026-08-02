@@ -17,6 +17,7 @@
     loaded: false,
 fieldDefs: [],
     telematicsSourceColumn: null,
+    vendorMetrics: {},
     filters: {},
     openFilterCol: null,
   };
@@ -282,11 +283,12 @@ TGE.on('ud-history-btn', 'click', function () {
       btn.addEventListener('click', function () {
         document.querySelectorAll('[data-days]').forEach(function (b) { b.classList.remove('active'); });
         btn.classList.add('active');
-        state.days = parseInt(btn.dataset.days, 10);
+       state.days = parseInt(btn.dataset.days, 10);
         state.endDate = startOfDay(new Date());
         state.startDate = addDays(state.endDate, -(state.days - 1));
         updateDateSummary();
         renderTable();
+        loadVendorMetrics();
       });
     });
     TGE.on('ud-date-apply', 'click', function () {
@@ -295,11 +297,12 @@ TGE.on('ud-history-btn', 'click', function () {
       if (!s || !e) return;
       state.startDate = new Date(s + 'T00:00:00');
       state.endDate = new Date(e + 'T00:00:00');
-      state.days = daysBetween(state.startDate, state.endDate) + 1;
+     state.days = daysBetween(state.startDate, state.endDate) + 1;
       document.querySelectorAll('[data-days]').forEach(function (b) { b.classList.remove('active'); });
       TGE.el('ud-date-modal').classList.remove('open');
       updateDateSummary();
       renderTable();
+      loadVendorMetrics();
     });
   }
 
@@ -361,17 +364,25 @@ var top = '<tr>';
       return;
     }
 
-    body.innerHTML = visible.map(function (asset) {
+  body.innerHTML = visible.map(function (asset) {
 var row = '<tr' + (asset.status === 'inactive' ? ' class="ud-row-inactive"' : '') + '>';
       var gpsRaw = state.telematicsSourceColumn && asset.fields ? asset.fields[state.telematicsSourceColumn] : null;
       var gpsOn = gpsRaw != null && String(gpsRaw).trim() !== '';
       row += '<td class="ud-pin-left"><div class="ud-pin-left-inner"><span class="ud-pin-legacy-part">' + esc(asset.legacyNumber) + '</span><span class="ud-pin-gps-part"><span class="ud-gps-dot ' + (gpsOn ? 'ud-gps-on' : 'ud-gps-off') + '"></span></span></div></td>';
-      dates.forEach(function () {
-        row += '<td class="ud-dcol">-</td>';
+      var totalKm = 0;
+      var hasAnyKm = false;
+      dates.forEach(function (d) {
+        var key = asset.legacyNumber + '|' + isoDate(d) + '|km';
+        var kmVal = state.vendorMetrics[key];
+        if (kmVal != null) {
+          totalKm += Number(kmVal);
+          hasAnyKm = true;
+        }
+        row += '<td class="ud-dcol">' + (kmVal != null ? Number(kmVal).toFixed(1) : '-') + '</td>';
         row += '<td class="ud-dcol">-</td>';
         row += '<td class="ud-dcol">-</td>';
       });
-      row += '<td class="ud-pin-avg"><div class="ud-pin-right-inner"><span class="ud-pin-total-part">-</span><span class="ud-pin-avgday-part">-</span></div></td>';
+      row += '<td class="ud-pin-avg"><div class="ud-pin-right-inner"><span class="ud-pin-total-part">' + (hasAnyKm ? totalKm.toFixed(1) : '-') + '</span><span class="ud-pin-avgday-part">-</span></div></td>';
       row += '</tr>';
 return row;
     }).join('');
@@ -410,6 +421,19 @@ async function loadFieldDefs() {
     await loadFleet();
   }
 
+  function isoDate(d) {
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+
+  async function loadVendorMetrics() {
+    if (!state.startDate || !state.endDate) return;
+    var start = isoDate(state.startDate);
+    var end = isoDate(state.endDate);
+    var result = await TGE.api('GET', '/api/utilisation/vendor-metrics?start=' + start + '&end=' + end);
+    state.vendorMetrics = (result.ok && result.data && result.data.metrics) ? result.data.metrics : {};
+    renderTable();
+  }
+   
   async function loadFleet() {
     var path = '/api/utilisation/static-fleet' + (state.history ? '?history=1' : '');
     var result = await TGE.api('GET', path);
@@ -418,6 +442,7 @@ async function loadFieldDefs() {
     updateTotalPill();
     renderTable();
     renderFilterCards();
+    loadVendorMetrics();
   }
 
   function updateTotalPill() {
