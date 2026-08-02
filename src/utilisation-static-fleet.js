@@ -469,7 +469,6 @@ async function handleGetStaticFleetRaw(request, env, auth) {
   return jsonResponse({ ok: true, fleet });
 }
 
-async function handleGetStaticFleet(request, env, auth) {
 
 // ── Read ─────────────────────────────────────────────────────────────────────
 async function handleGetStaticFleet(request, env, auth) {
