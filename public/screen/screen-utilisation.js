@@ -637,7 +637,7 @@ async function loadFieldDefs() {
 function reportRuntimeScript() {
     return '(function(){' +
       'var raw = JSON.parse(decodeURIComponent(escape(atob(document.getElementById("mr-data").textContent))));' +
-      'var state = { filters: {}, telOn: true, kmCutoff: raw.kmCutoff || 0, openCol: null };' +
+     'var state = { filters: {}, kmCutoff: raw.kmCutoff || 0, openCol: null };' +
       'document.getElementById("mr-daterange").textContent = "Date Range Applied: " + raw.dateRangeLabel;' +
       'function distinctValues(col){var s={};raw.assets.forEach(function(a){var v=a.fields[col];if(v)s[v]=true;});return Object.keys(s).sort();}' +
       'function renderControls(){' +
@@ -657,7 +657,6 @@ function reportRuntimeScript() {
           'html += "</div></div>";' +
         '});' +
         'html += "<div class=\\"mr-cutoff\\"><label style=\\"font-size:10px;text-transform:uppercase;color:#6b778c;font-weight:700;\\">KM Cutoff: <span id=\\"mr-km-val\\">" + state.kmCutoff + "</span> km</label><input id=\\"mr-km-slider\\" type=\\"range\\" min=\\"0\\" max=\\"600\\" step=\\"5\\" value=\\"" + state.kmCutoff + "\\" style=\\"width:100%;\\"></div>";' +
-        'html += "<button class=\\"mr-tel-toggle" + (state.telOn ? "" : " off") + "\\" id=\\"mr-tel-btn\\">Telematics: " + (state.telOn ? "On" : "Off") + "</button>";' +
         'document.getElementById("mr-controls").innerHTML = html;' +
         'document.querySelectorAll(".mr-filter-btn").forEach(function(btn){' +
           'btn.onclick = function(){ state.openCol = (state.openCol === btn.dataset.col) ? null : btn.dataset.col; renderControls(); };' +
@@ -677,16 +676,15 @@ function reportRuntimeScript() {
           '};' +
         '});' +
         'document.getElementById("mr-km-slider").onchange = function(e){ state.kmCutoff = parseInt(e.target.value,10)||0; renderTable(); };' +
-        'document.getElementById("mr-km-slider").oninput = function(e){ document.getElementById("mr-km-val").textContent = e.target.value; };' +
-        'document.getElementById("mr-tel-btn").onclick = function(){ state.telOn = !state.telOn; renderControls(); renderTable(); };' +
+'document.getElementById("mr-km-slider").oninput = function(e){ document.getElementById("mr-km-val").textContent = e.target.value; };' +
+      '}' +
       '}' +
       'document.addEventListener("click", function(e){' +
         'if (state.openCol && !e.target.closest(".mr-filter")) { state.openCol = null; renderControls(); }' +
       '});' +
-      'function visibleAssets(){' +
+'function visibleAssets(){' +
         'return raw.assets.filter(function(a){' +
           'for (var col in state.filters){ var sel = state.filters[col]; if (sel && sel.length && sel.indexOf(a.fields[col]||"") === -1) return false; }' +
-          'if (state.telOn && !a.hasTelematics) return false;' +
           'return true;' +
         '});' +
       '}' +
