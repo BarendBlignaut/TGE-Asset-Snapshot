@@ -122,12 +122,18 @@ async function handleUpdateStaticFields(request, env, auth) {
   const body = await auth.safeJson(request);
   const fields = Array.isArray(body.fields) ? body.fields : [];
 
+  const hasTelematicsPick = fields.some(f => f.isTelematicsSource);
+  if (hasTelematicsPick) {
+    await env.DB.prepare("UPDATE utilisation_static_field_defs SET is_telematics_source = 0").run();
+  }
+
   for (const f of fields) {
     if (!f.id) continue;
     await env.DB.prepare(
       `UPDATE utilisation_static_field_defs SET
         display_label = ?, save_to_db = ?, is_identity = ?, use_as_filter = ?,
-        filter_label = ?, filter_type = ?, display_order = ?, enabled = ?, updated_at = ?
+        filter_label = ?, filter_type = ?, display_order = ?, enabled = ?,
+        is_telematics_source = ?, updated_at = ?
        WHERE id = ?`
     ).bind(
       String(f.displayLabel || "").trim() || f.sourceColumn || "",
@@ -138,6 +144,7 @@ async function handleUpdateStaticFields(request, env, auth) {
       f.filterType || "select",
       Number.isInteger(f.displayOrder) ? f.displayOrder : 0,
       f.enabled === false ? 0 : 1,
+      f.isTelematicsSource ? 1 : 0,
       nowIso(),
       f.id
     ).run();
