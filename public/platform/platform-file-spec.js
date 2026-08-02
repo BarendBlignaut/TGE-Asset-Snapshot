@@ -1,16 +1,12 @@
 // TGE Asset Snapshot — Platform File Spec
 // public/platform/platform-file-spec.js
 //
-// Live view of the Static Fleet master list — stats bar, Save, export pill,
-// and a scrollable table of every mapped column against every active asset.
-// Per-column exclusions (values + whole-word phrases), a filter-flag toggle,
-// and a single telematics-source picker, all live-previewed and cascading.
-//
-// PERFORMANCE: the table body is virtualised — only the rows currently
-// scrolled into view (plus a small buffer) actually exist in the DOM, sitting
-// between two spacer rows that stand in for everything above and below. This
-// keeps the browser handling ~30-50 real rows at a time no matter how large
-// the fleet is, which is what keeps scrolling and ticking exclusions smooth.
+// Three-tier reveal: landing shows only stats. "Enter File Spec" reveals the
+// column headers with their exclusion/filter/telematics controls, fully
+// working, but the row grid stays closed. A separate "Show Data Table"
+// toggle opens/closes the actual rows as often as needed while working,
+// virtualised so only the currently-scrolled-into-view rows ever exist in
+// the DOM, regardless of fleet size.
 
 (function () {
   'use strict';
@@ -76,20 +72,66 @@
           '</div>',
           '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">',
             '<div id="fs-stats" style="font-size:12px;color:var(--muted);"></div>',
-            '<button type="button" id="fs-save-btn" class="btn" style="height:34px;padding:0 16px;font-size:12px;font-weight:700;border-radius:999px;background:var(--green-600);color:#fff;border:none;cursor:pointer;">Save</button>',
-            '<div id="fs-export-wrap"></div>',
+            '<button type="button" id="fs-enter-btn" class="btn" style="height:34px;padding:0 18px;font-size:12px;font-weight:700;border-radius:999px;background:var(--green-600);color:#fff;border:none;cursor:pointer;">Enter File Spec</button>',
+            '<button type="button" id="fs-save-btn" style="display:none;height:34px;padding:0 16px;font-size:12px;font-weight:700;border-radius:999px;background:var(--green-600);color:#fff;border:none;cursor:pointer;">Save</button>',
+            '<div id="fs-export-wrap" style="display:none;"></div>',
           '</div>',
         '</div>',
       '</div>',
 
-      '<div class="card" style="padding:0;overflow:hidden;">',
+      '<div class="card" id="fs-editor-card" style="display:none;padding:0;overflow:hidden;">',
+        '<div style="padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;">',
+          '<div style="font-size:13px;color:var(--muted);">Exclusions, filters and the telematics source are set from the column headers below. The data table itself stays closed until you open it.</div>',
+          '<button type="button" id="fs-table-toggle" class="btn" style="height:32px;padding:0 14px;font-size:12px;font-weight:700;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink-2);cursor:pointer;">Show Data Table ▾</button>',
+        '</div>',
         '<div id="fs-table-wrap" style="overflow:auto;max-height:70vh;">',
-          '<div style="padding:30px;text-align:center;color:var(--muted);">Loading fleet data...</div>',
         '</div>',
       '</div>'
     ].join('');
 
     loadData();
+  }
+
+  var TABLE_SHELL_BUILT = false;
+  var TABLE_ROWS_OPEN = false;
+
+  function wireEnterButton() {
+    var enterBtn = TGE.el('fs-enter-btn');
+    var saveBtn = TGE.el('fs-save-btn');
+    var exportWrap = TGE.el('fs-export-wrap');
+    var editorCard = TGE.el('fs-editor-card');
+    if (!enterBtn) return;
+
+    enterBtn.onclick = function () {
+      enterBtn.style.display = 'none';
+      if (saveBtn) saveBtn.style.display = '';
+      if (exportWrap) exportWrap.style.display = '';
+      if (editorCard) editorCard.style.display = 'block';
+
+      if (!TABLE_SHELL_BUILT) {
+        TABLE_SHELL_BUILT = true;
+        buildTableShell();
+      }
+      wireTableToggle();
+    };
+  }
+
+  function wireTableToggle() {
+    var btn = TGE.el('fs-table-toggle');
+    var tbody = TGE.el('fs-tbody');
+    if (!btn || !tbody) return;
+
+    btn.onclick = function () {
+      if (TABLE_ROWS_OPEN) {
+        tbody.innerHTML = '';
+        TABLE_ROWS_OPEN = false;
+        btn.textContent = 'Show Data Table ▾';
+      } else {
+        TABLE_ROWS_OPEN = true;
+        btn.textContent = 'Hide Data Table ▴';
+        window.requestAnimationFrame(renderVisibleRows);
+      }
+    };
   }
 
   async function loadData() {
@@ -139,7 +181,7 @@
 
     renderStats();
     renderExportPill();
-    renderTable();
+    wireEnterButton();
     wireSaveButton();
   }
 
@@ -229,7 +271,7 @@
 
   function afterExclusionChange(sourceColumn) {
     updateExclusionArrowIcon(sourceColumn);
-    renderVisibleRows();
+    if (TABLE_ROWS_OPEN) renderVisibleRows();
     renderStats();
   }
 
@@ -304,12 +346,14 @@
     URL.revokeObjectURL(url);
   }
 
-  // ── Table: header built once. Body is virtualised — see file header note. ──
+  // ── Table shell: header built once when Enter is pressed. The row grid
+  // itself is a separate concern, toggled open/closed via fs-table-toggle,
+  // virtualised whenever it is open. ──────────────────────────────────────
 
   var ROW_HEIGHT = 32;
   var BUFFER_ROWS = 10;
 
-  function renderTable() {
+  function buildTableShell() {
     var wrap = TGE.el('fs-table-wrap');
     if (!wrap) return;
 
@@ -374,13 +418,11 @@
       };
     });
 
-    renderVisibleRows();
-
     wrap.onscroll = function () {
-      window.requestAnimationFrame(renderVisibleRows);
+      if (TABLE_ROWS_OPEN) window.requestAnimationFrame(renderVisibleRows);
     };
     window.addEventListener('resize', function () {
-      window.requestAnimationFrame(renderVisibleRows);
+      if (TABLE_ROWS_OPEN) window.requestAnimationFrame(renderVisibleRows);
     });
   }
 
