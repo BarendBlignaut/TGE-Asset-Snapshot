@@ -6,10 +6,11 @@
 // Per-column exclusions (values + whole-word phrases), a filter-flag toggle,
 // and a single telematics-source picker, all live-previewed and cascading.
 //
-// PERFORMANCE NOTE: the table (11k+ rows) is built ONCE. Ticking a value,
-// adding a phrase, or toggling a filter/telematics icon never rebuilds the
-// whole table again — it patches only the affected row(s) and header icon(s)
-// via classList/style, which is what keeps this from crashing the tab.
+// PERFORMANCE: the table body is virtualised — only the rows currently
+// scrolled into view (plus a small buffer) actually exist in the DOM, sitting
+// between two spacer rows that stand in for everything above and below. This
+// keeps the browser handling ~30-50 real rows at a time no matter how large
+// the fleet is, which is what keeps scrolling and ticking exclusions smooth.
 
 (function () {
   'use strict';
@@ -95,7 +96,7 @@
     state.loading = true;
     state.error = '';
 
-var fieldsRes = await TGE.api('GET', '/api/utilisation/static-fields');
+    var fieldsRes = await TGE.api('GET', '/api/utilisation/static-fields');
     var fleetRes  = await TGE.api('GET', '/api/utilisation/static-fleet-raw');
     var exclRes   = await TGE.api('GET', '/api/utilisation/static-exclusions?status=published');
 
@@ -161,7 +162,7 @@ var fieldsRes = await TGE.api('GET', '/api/utilisation/static-fields');
     return re.test(String(text));
   }
 
-function rowIsExcluded(row, ignoreColumn) {
+  function rowIsExcluded(row, ignoreColumn) {
     var fields = row.fields || {};
     for (var i = 0; i < state.columns.length; i++) {
       var col = state.columns[i].source_column;
@@ -189,7 +190,7 @@ function rowIsExcluded(row, ignoreColumn) {
     return state.rows.filter(function (row) { return !rowIsExcluded(row, ignoreColumn); });
   }
 
-function distinctValuesFor(sourceColumn) {
+  function distinctValuesFor(sourceColumn) {
     var pool = currentVisibleRows(sourceColumn);
     var poolCounts = {};
     for (var i = 0; i < pool.length; i++) {
@@ -213,17 +214,7 @@ function distinctValuesFor(sourceColumn) {
 
   // ── Lightweight updates (no full table rebuild) ───────────────────────────
 
-  function updateRowVisualStates() {
-    var wrap = TGE.el('fs-table-wrap');
-    if (!wrap) return;
-    var trs = wrap.querySelectorAll('tbody tr');
-    for (var i = 0; i < trs.length && i < state.rows.length; i++) {
-      var excluded = rowIsExcluded(state.rows[i]);
-      trs[i].classList.toggle('fs-excluded', excluded);
-    }
-  }
-
-function updateExclusionArrowIcon(sourceColumn) {
+  function updateExclusionArrowIcon(sourceColumn) {
     var wrap = TGE.el('fs-table-wrap');
     if (!wrap) return;
     var btn = wrap.querySelector('[data-fs-arrow="' + cssEscape(sourceColumn) + '"]');
@@ -238,7 +229,7 @@ function updateExclusionArrowIcon(sourceColumn) {
 
   function afterExclusionChange(sourceColumn) {
     updateExclusionArrowIcon(sourceColumn);
-    updateRowVisualStates();
+    renderVisibleRows();
     renderStats();
   }
 
@@ -313,8 +304,10 @@ function updateExclusionArrowIcon(sourceColumn) {
     URL.revokeObjectURL(url);
   }
 
-  // ── Table: built ONCE per load. Never rebuilt on exclusion/filter/telematics
-  // interactions — those patch the DOM directly instead. ──────────────────────
+  // ── Table: header built once. Body is virtualised — see file header note. ──
+
+  var ROW_HEIGHT = 32;
+  var BUFFER_ROWS = 10;
 
   function renderTable() {
     var wrap = TGE.el('fs-table-wrap');
@@ -328,7 +321,7 @@ function updateExclusionArrowIcon(sourceColumn) {
     var headerCells = state.columns.map(function (c) {
       var colKey = c.source_column;
       var ex = state.exclusions[colKey];
-var hasActive = ex && (Object.keys(ex.values).some(function (v) { return ex.values[v]; }) || ex.phrases.length > 0);
+      var hasActive = ex && (Object.keys(ex.values).some(function (v) { return ex.values[v]; }) || ex.phrases.length > 0);
       var exCount = ex ? (Object.keys(ex.values).filter(function (v) { return ex.values[v]; }).length + ex.phrases.length) : 0;
       var isFilter = !!state.filterFlags[colKey];
       var isTelematicsSource = state.telematicsSource === colKey;
@@ -343,21 +336,10 @@ var hasActive = ex && (Object.keys(ex.values).some(function (v) { return ex.valu
       '</th>';
     }).join('');
 
-    var bodyRows = state.rows.map(function (row, i) {
-      var excluded = rowIsExcluded(row);
-      var rowClass = (excluded ? 'fs-excluded ' : '') + (i % 2 === 1 ? 'fs-row-odd' : 'fs-row-even');
-      var cells = state.columns.map(function (c) {
-        var v = row.fields ? row.fields[c.source_column] : '';
-        return '<td style="padding:6px 10px;font-size:12.5px;color:var(--ink-2);white-space:nowrap;border-bottom:1px solid var(--line-2);">' +
-          escapeHtml(v == null ? '' : String(v)) + '</td>';
-      }).join('');
-      return '<tr class="' + rowClass + '">' + cells + '</tr>';
-    }).join('');
-
     wrap.innerHTML =
       '<table style="border-collapse:collapse;width:max-content;min-width:100%;">' +
         '<thead><tr>' + headerCells + '</tr></thead>' +
-        '<tbody>' + bodyRows + '</tbody>' +
+        '<tbody id="fs-tbody"></tbody>' +
       '</table>';
 
     wrap.querySelectorAll('[data-fs-arrow]').forEach(function (btn) {
@@ -391,6 +373,56 @@ var hasActive = ex && (Object.keys(ex.values).some(function (v) { return ex.valu
         });
       };
     });
+
+    renderVisibleRows();
+
+    wrap.onscroll = function () {
+      window.requestAnimationFrame(renderVisibleRows);
+    };
+    window.addEventListener('resize', function () {
+      window.requestAnimationFrame(renderVisibleRows);
+    });
+  }
+
+  function renderVisibleRows() {
+    var wrap = TGE.el('fs-table-wrap');
+    var tbody = TGE.el('fs-tbody');
+    if (!wrap || !tbody) return;
+
+    var total = state.rows.length;
+    var viewportH = wrap.clientHeight || 500;
+    var scrollTop = wrap.scrollTop;
+
+    var visibleCount = Math.ceil(viewportH / ROW_HEIGHT) + BUFFER_ROWS * 2;
+    var startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER_ROWS);
+    var endIndex = Math.min(total, startIndex + visibleCount);
+
+    var topHeight = startIndex * ROW_HEIGHT;
+    var bottomHeight = (total - endIndex) * ROW_HEIGHT;
+    var colCount = state.columns.length;
+
+    var html = '';
+    if (topHeight > 0) {
+      html += '<tr aria-hidden="true"><td colspan="' + colCount + '" style="padding:0;border:none;height:' + topHeight + 'px;"></td></tr>';
+    }
+
+    for (var i = startIndex; i < endIndex; i++) {
+      var row = state.rows[i];
+      var excluded = rowIsExcluded(row);
+      var rowClass = (excluded ? 'fs-excluded ' : '') + (i % 2 === 1 ? 'fs-row-odd' : 'fs-row-even');
+      var cells = state.columns.map(function (c) {
+        var v = row.fields ? row.fields[c.source_column] : '';
+        return '<td style="height:' + ROW_HEIGHT + 'px;box-sizing:border-box;padding:6px 10px;font-size:12.5px;color:var(--ink-2);white-space:nowrap;border-bottom:1px solid var(--line-2);">' +
+          escapeHtml(v == null ? '' : String(v)) + '</td>';
+      }).join('');
+      html += '<tr class="' + rowClass + '" style="height:' + ROW_HEIGHT + 'px;">' + cells + '</tr>';
+    }
+
+    if (bottomHeight > 0) {
+      html += '<tr aria-hidden="true"><td colspan="' + colCount + '" style="padding:0;border:none;height:' + bottomHeight + 'px;"></td></tr>';
+    }
+
+    tbody.innerHTML = html;
   }
 
   function closeDropdown() {
