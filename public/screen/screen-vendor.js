@@ -252,7 +252,12 @@ function renderTab(key) {
     return;
   }
 
-  if (key === 'file-spec') {
+if (key === 'file-spec') {
+    if (v.name !== 'TGE Static Fleet') {
+      el.innerHTML = '<div class="card"><div class="card-kicker">Vendor Platform</div><div class="card-title">File Spec</div><p style="font-size:13px;color:var(--muted);margin-top:4px;">File Spec for ' + escapeHtml(v.name) + ' hasn\'t been built yet. Only TGE Static Fleet is wired up so far.</p></div>';
+      return;
+    }
+
     el.innerHTML = '<div id="vendor-file-spec"></div>';
 
     TGE.Platform.FileSpec.render({
