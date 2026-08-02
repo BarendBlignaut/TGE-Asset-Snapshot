@@ -10,6 +10,7 @@
     cutoffMode: 'all',
     days: 7,
     history: false,
+    telematicsOnly: false,
     startDate: null,
     endDate: null,
     fleet: [],
@@ -42,7 +43,8 @@ fieldDefs: [],
             '</div>',
           '</div>',
           '<div class="ud-header-actions">',
-            '<span class="ud-total" id="ud-total">Assets: 0 / 0</span>',
+'<span class="ud-total" id="ud-total">Assets: 0 / 0</span>',
+            '<button class="ud-btn" id="ud-telematics-btn" type="button">Telematics: Off</button>',
             '<button class="ud-btn" id="ud-history-btn" type="button">History: Off</button>',
             '<button class="ud-btn ud-disabled" type="button" disabled>Export</button>',
             '<span class="ud-refresh">Last Update:</span>',
@@ -179,8 +181,15 @@ fieldDefs: [],
     });
   }
 
-  function getVisibleFleet() {
-    return state.fleet.filter(function (a) { return matchesFilters(a, null); });
+function getVisibleFleet() {
+    return state.fleet.filter(function (a) {
+      if (!matchesFilters(a, null)) return false;
+      if (state.telematicsOnly) {
+        var raw = state.telematicsSourceColumn && a.fields ? a.fields[state.telematicsSourceColumn] : null;
+        if (raw == null || String(raw).trim() === '') return false;
+      }
+      return true;
+    });
   }
 
   function updateFilterStatusText() {
@@ -247,12 +256,20 @@ fieldDefs: [],
     TGE.on('ud-cutoff-mode', 'change', function (e) {
       state.cutoffMode = e.target.value;
     });
-    TGE.on('ud-history-btn', 'click', function () {
+TGE.on('ud-history-btn', 'click', function () {
       state.history = !state.history;
       var btn = TGE.el('ud-history-btn');
       btn.textContent = 'History: ' + (state.history ? 'On' : 'Off');
       btn.classList.toggle('ud-primary', state.history);
       loadFleet();
+    });
+    TGE.on('ud-telematics-btn', 'click', function () {
+      state.telematicsOnly = !state.telematicsOnly;
+      var btn = TGE.el('ud-telematics-btn');
+      btn.textContent = 'Telematics: ' + (state.telematicsOnly ? 'On' : 'Off');
+      btn.classList.toggle('ud-primary', state.telematicsOnly);
+      renderTable();
+      updateTotalPill();
     });
     TGE.on('ud-date-btn', 'click', function () {
       TGE.el('ud-date-modal').classList.add('open');
