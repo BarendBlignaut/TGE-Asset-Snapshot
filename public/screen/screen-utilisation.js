@@ -44,10 +44,11 @@ fieldDefs: [],
             '</div>',
           '</div>',
           '<div class="ud-header-actions">',
-            '<button class="ud-btn ud-disabled" type="button" disabled>Export</button>',
+            '<button class="ud-btn ud-mgmt-report-btn" id="ud-mgmt-report-btn" type="button">Management Report</button>',
 '<span class="ud-total" id="ud-total">Assets: 0 / 0</span>',
             '<button class="ud-btn ud-primary" id="ud-telematics-btn" type="button">Telematics: On</button>',
             '<button class="ud-btn" id="ud-history-btn" type="button">History: Off</button>',
+            '<button class="ud-btn ud-disabled" type="button" disabled>Export</button>',
             '<span class="ud-refresh">Last Update:</span>',
           '</div>',
         '</div>',
@@ -265,6 +266,19 @@ function wireEvents() {
     TGE.on('ud-km-slider', 'change', function () {
       renderTable();
     });
+TGE.on('ud-mgmt-report-btn', 'click', function () {
+      var html = buildManagementReportHtml();
+      var blob = new Blob([html], { type: 'text/html' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'Fleet-Utilisation-Management-Report-' + isoDate(new Date()) + '.html';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+  
 TGE.on('ud-history-btn', 'click', function () {
       state.history = !state.history;
       var btn = TGE.el('ud-history-btn');
@@ -518,6 +532,149 @@ async function loadFieldDefs() {
     // feed exists yet, so there's nothing real to count for those two.
   }
 
+// ── Management Report: standalone, offline HTML export ────────────────────
+  // Embeds exactly what's currently visible (respecting active filters and
+  // the telematics toggle) as base64 data inside a single self-contained
+  // HTML file. No server, no login — real filtering, telematics toggle and
+  // KM cutoff highlighting all re-implemented as plain JS that runs entirely
+  // inside the exported file.
+  function buildManagementReportHtml() {
+    var dates = CURRENT_DATES.length ? CURRENT_DATES : getDateRange();
+    var visible = CURRENT_VISIBLE.length ? CURRENT_VISIBLE : getVisibleFleet();
+
+    var filterColumns = state.fieldDefs.map(function (def) {
+      return { col: def.source_column, label: def.display_label || def.source_column };
+    });
+
+    var assets = visible.map(function (a) {
+      var fieldsOut = {};
+      filterColumns.forEach(function (fc) { fieldsOut[fc.col] = a.fields ? (a.fields[fc.col] || '') : ''; });
+      var telRaw = state.telematicsSourceColumn && a.fields ? a.fields[state.telematicsSourceColumn] : null;
+      var hasTel = telRaw != null && String(telRaw).trim() !== '';
+      var km = {};
+      dates.forEach(function (d) {
+        var key = a.legacyNumber + '|' + isoDate(d) + '|km';
+        var v = state.vendorMetrics[key];
+        if (v != null) km[isoDate(d)] = Number(v);
+      });
+      return {
+        legacyNumber: a.legacyNumber,
+        status: a.status,
+        fields: fieldsOut,
+        hasTelematics: hasTel,
+        km: km,
+      };
+    });
+
+    var payload = {
+      generatedAt: new Date().toISOString(),
+      dateRangeLabel: TGE.el('ud-date-summary') ? TGE.el('ud-date-summary').textContent : '',
+      dates: dates.map(isoDate),
+      filterColumns: filterColumns,
+      kmCutoff: state.kmCutoff,
+      assets: assets,
+    };
+
+    var jsonStr = JSON.stringify(payload);
+    var b64 = btoa(unescape(encodeURIComponent(jsonStr)));
+
+    return buildReportShellHtml(b64);
+  }
+
+  function buildReportShellHtml(embeddedB64) {
+    return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+      '<title>TGE Fleet Utilisation — Management Report</title>' +
+      '<style>' +
+      'body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f4f6f4;color:#1a2b1e;}' +
+      '.mr-header{background:#143200;color:#c8f135;padding:20px 28px;}' +
+      '.mr-header h1{margin:0;font-size:20px;}' +
+      '.mr-header p{margin:4px 0 0;font-size:12px;color:#d6f7a3;}' +
+      '.mr-daterange{display:inline-block;margin-top:10px;background:rgba(255,255,255,.1);border:1px solid rgba(200,241,53,.35);border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;}' +
+      '.mr-body{padding:20px 28px;}' +
+      '.mr-controls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;align-items:flex-start;}' +
+      '.mr-filter{background:#fff;border:1px solid #dce8e0;border-radius:10px;padding:8px 10px;min-width:140px;}' +
+      '.mr-filter label{font-size:10px;text-transform:uppercase;color:#6b778c;font-weight:700;display:block;margin-bottom:4px;}' +
+      '.mr-filter select{width:100%;font-size:12px;}' +
+      '.mr-cutoff{background:#fff;border:1px solid #dce8e0;border-radius:10px;padding:8px 10px;min-width:160px;}' +
+      '.mr-tel-toggle{height:30px;padding:0 12px;border-radius:20px;border:1px solid #143200;background:#c8f135;color:#143200;font-weight:700;font-size:11px;cursor:pointer;}' +
+      '.mr-tel-toggle.off{background:#f0f1f3;color:#6b778c;}' +
+      'table{border-collapse:collapse;width:100%;background:#fff;}' +
+      'th,td{border:1px solid #e6e8ec;padding:5px 8px;font-size:11px;text-align:center;white-space:nowrap;}' +
+      'th{background:#143200;color:#c8f135;position:sticky;top:0;}' +
+      'td:first-child,th:first-child{text-align:left;position:sticky;left:0;background:#143200;color:#c8f135;}' +
+      '.mr-low{background:#fde3e3;color:#a11d1d;font-weight:700;}' +
+      '.mr-tablewrap{max-height:70vh;overflow:auto;border:1px solid #e6e8ec;border-radius:8px;}' +
+      '.mr-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;}' +
+      '.mr-on{background:#1f9d55;} .mr-off{background:#d43a3a;}' +
+      '</style></head><body>' +
+      '<div class="mr-header"><h1>Fleet Utilisation — Management Report</h1>' +
+      '<p>TGE Asset Snapshot — offline snapshot, generated for sharing. No live connection.</p>' +
+      '<div class="mr-daterange" id="mr-daterange"></div></div>' +
+      '<div class="mr-body">' +
+      '<div class="mr-controls" id="mr-controls"></div>' +
+      '<div class="mr-tablewrap"><table><thead id="mr-thead"></thead><tbody id="mr-tbody"></tbody></table></div>' +
+      '</div>' +
+      '<script id="mr-data" type="application/octet-stream">' + embeddedB64 + '</script>' +
+      '<script>' + reportRuntimeScript() + '</script>' +
+      '</body></html>';
+  }
+
+  function reportRuntimeScript() {
+    return '(function(){' +
+      'var raw = JSON.parse(decodeURIComponent(escape(atob(document.getElementById("mr-data").textContent))));' +
+      'var state = { filters: {}, telOn: true, kmCutoff: raw.kmCutoff || 0 };' +
+      'document.getElementById("mr-daterange").textContent = "Date Range Applied: " + raw.dateRangeLabel;' +
+      'function distinctValues(col){var s={};raw.assets.forEach(function(a){var v=a.fields[col];if(v)s[v]=true;});return Object.keys(s).sort();}' +
+      'function renderControls(){' +
+        'var html = "";' +
+        'raw.filterColumns.forEach(function(fc){' +
+          'html += "<div class=\\"mr-filter\\"><label>" + fc.label + "</label><select data-col=\\"" + fc.col + "\\"><option value=\\"\\">All</option>";' +
+          'distinctValues(fc.col).forEach(function(v){ html += "<option value=\\"" + v + "\\">" + v + "</option>"; });' +
+          'html += "</select></div>";' +
+        '});' +
+        'html += "<div class=\\"mr-cutoff\\"><label style=\\"font-size:10px;text-transform:uppercase;color:#6b778c;font-weight:700;\\">KM Cutoff: <span id=\\"mr-km-val\\">" + state.kmCutoff + "</span> km</label><input id=\\"mr-km-slider\\" type=\\"range\\" min=\\"0\\" max=\\"600\\" step=\\"5\\" value=\\"" + state.kmCutoff + "\\" style=\\"width:100%;\\"></div>";' +
+        'html += "<button class=\\"mr-tel-toggle\\" id=\\"mr-tel-btn\\">Telematics: On</button>";' +
+        'document.getElementById("mr-controls").innerHTML = html;' +
+        'raw.filterColumns.forEach(function(fc){' +
+          'document.querySelector("[data-col=\\"" + fc.col + "\\"]").onchange = function(e){ state.filters[fc.col] = e.target.value; renderTable(); };' +
+        '});' +
+        'document.getElementById("mr-km-slider").onchange = function(e){ state.kmCutoff = parseInt(e.target.value,10)||0; renderTable(); };' +
+        'document.getElementById("mr-km-slider").oninput = function(e){ document.getElementById("mr-km-val").textContent = e.target.value; };' +
+        'document.getElementById("mr-tel-btn").onclick = function(){ state.telOn = !state.telOn; this.textContent = "Telematics: " + (state.telOn ? "On" : "Off"); this.classList.toggle("off", !state.telOn); renderTable(); };' +
+      '}' +
+      'function visibleAssets(){' +
+        'return raw.assets.filter(function(a){' +
+          'for (var col in state.filters){ if (state.filters[col] && (a.fields[col]||"") !== state.filters[col]) return false; }' +
+          'if (state.telOn && !a.hasTelematics) return false;' +
+          'return true;' +
+        '});' +
+      '}' +
+      'function renderTable(){' +
+        'var visible = visibleAssets();' +
+        'var thead = "<tr><th>Legacy Number</th>";' +
+        'raw.dates.forEach(function(d){ thead += "<th>" + d + "</th>"; });' +
+        'thead += "<th>Total KM</th></tr>";' +
+        'document.getElementById("mr-thead").innerHTML = thead;' +
+        'var body = visible.map(function(a){' +
+          'var row = "<tr><td><span class=\\"mr-dot " + (a.hasTelematics ? "mr-on" : "mr-off") + "\\"></span>" + a.legacyNumber + "</td>";' +
+          'var total = 0; var any = false;' +
+          'raw.dates.forEach(function(d){' +
+            'var v = a.km[d];' +
+            'if (v != null){ total += v; any = true; }' +
+            'var low = (v != null && state.kmCutoff > 0 && v < state.kmCutoff);' +
+            'row += "<td" + (low ? " class=\\"mr-low\\"" : "") + ">" + (v != null ? v.toFixed(1) : "-") + "</td>";' +
+          '});' +
+          'row += "<td>" + (any ? total.toFixed(1) : "-") + "</td></tr>";' +
+          'return row;' +
+        '}).join("");' +
+        'document.getElementById("mr-tbody").innerHTML = body || "<tr><td colspan=\\"" + (raw.dates.length+2) + "\\">No assets match the selected filters.</td></tr>";' +
+      '}' +
+      'renderControls(); renderTable();' +
+    '})();';
+  }
+
+  function ensureSidebarLegend() {
+  
   function ensureSidebarLegend() {
     if (document.getElementById('ud-sidebar-legend')) return;
     var sidebar = document.querySelector('.sidebar');
@@ -617,6 +774,7 @@ async function loadFieldDefs() {
       '.ud-total{font-size:12px;font-weight:800;color:#143200;background:#c8f135;padding:4px 10px;border-radius:20px;white-space:nowrap;}',
       '.ud-refresh{font-size:11px;color:rgba(235,235,235,.55);white-space:nowrap;}',
       '.ud-btn{height:28px;padding:0 10px;border:1px solid rgba(200,241,53,.35);border-radius:6px;background:rgba(255,255,255,.08);font-size:11px;color:#ebebeb;cursor:pointer;}',
+      '.ud-mgmt-report-btn{background:#c8f135!important;color:#143200!important;font-weight:800!important;border-color:#c8f135!important;}',
       '.ud-primary{background:#c8f135!important;color:#143200!important;border-color:#c8f135!important;font-weight:800;}',
       '.ud-disabled{opacity:.45;cursor:not-allowed;}',
       '.ud-control-strip{display:flex;gap:8px;padding:8px 0;background:#f4f5f7;overflow-x:auto;align-items:stretch;flex-shrink:0;}',
