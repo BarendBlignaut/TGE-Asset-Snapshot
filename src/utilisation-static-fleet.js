@@ -469,8 +469,6 @@ async function handleGetStaticFleetRaw(request, env, auth) {
   return jsonResponse({ ok: true, fleet });
 }
 
-
-// ── Read ─────────────────────────────────────────────────────────────────────
 async function handleGetStaticFleet(request, env, auth) {
   const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "view");
   if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
