@@ -50,8 +50,8 @@
       '.fs-excluded td{color:var(--muted-2) !important;text-decoration:line-through;}',
       '.fs-icon-on{background:var(--green-600) !important;color:#fff !important;}',
       '.fs-icon-off{background:var(--surface-3) !important;color:var(--muted-2) !important;}',
-      '.fs-arrow-on{color:var(--green-600) !important;}',
-      '.fs-arrow-off{color:var(--muted-2) !important;}'
+      '.fs-arrow-on{background:var(--danger) !important;color:#fff !important;}',
+      '.fs-arrow-off{background:var(--surface-3) !important;color:var(--muted-2) !important;}'
     ].join('');
     document.head.appendChild(style);
   }
@@ -223,15 +223,17 @@ function distinctValuesFor(sourceColumn) {
     }
   }
 
-  function updateExclusionArrowIcon(sourceColumn) {
+function updateExclusionArrowIcon(sourceColumn) {
     var wrap = TGE.el('fs-table-wrap');
     if (!wrap) return;
     var btn = wrap.querySelector('[data-fs-arrow="' + cssEscape(sourceColumn) + '"]');
     if (!btn) return;
     var ex = state.exclusions[sourceColumn];
     var hasActive = ex && (Object.keys(ex.values).some(function (v) { return ex.values[v]; }) || ex.phrases.length > 0);
+    var exCount = ex ? (Object.keys(ex.values).filter(function (v) { return ex.values[v]; }).length + ex.phrases.length) : 0;
     btn.classList.toggle('fs-arrow-on', !!hasActive);
     btn.classList.toggle('fs-arrow-off', !hasActive);
+    btn.textContent = '▾' + (hasActive ? ' ' + exCount : '');
   }
 
   function afterExclusionChange(sourceColumn) {
@@ -326,7 +328,8 @@ function distinctValuesFor(sourceColumn) {
     var headerCells = state.columns.map(function (c) {
       var colKey = c.source_column;
       var ex = state.exclusions[colKey];
-      var hasActive = ex && (Object.keys(ex.values).some(function (v) { return ex.values[v]; }) || ex.phrases.length > 0);
+var hasActive = ex && (Object.keys(ex.values).some(function (v) { return ex.values[v]; }) || ex.phrases.length > 0);
+      var exCount = ex ? (Object.keys(ex.values).filter(function (v) { return ex.values[v]; }).length + ex.phrases.length) : 0;
       var isFilter = !!state.filterFlags[colKey];
       var isTelematicsSource = state.telematicsSource === colKey;
       return '<th style="position:sticky;top:0;background:var(--surface-2);border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">' +
@@ -334,7 +337,7 @@ function distinctValuesFor(sourceColumn) {
           '<span>' + escapeHtml(c.display_label || colKey) + '</span>' +
           '<button type="button" data-fs-telematics-toggle="' + escapeAttr(colKey) + '" title="Telematics source column" class="' + (isTelematicsSource ? 'fs-icon-on' : 'fs-icon-off') + '" style="border:none;cursor:pointer;padding:2px 5px;border-radius:5px;font-size:11px;line-height:1;">📡</button>' +
           '<button type="button" data-fs-filter-toggle="' + escapeAttr(colKey) + '" title="Use as end-user filter" class="' + (isFilter ? 'fs-icon-on' : 'fs-icon-off') + '" style="border:none;cursor:pointer;padding:2px 5px;border-radius:5px;font-size:11px;line-height:1;">▼</button>' +
-          '<button type="button" data-fs-arrow="' + escapeAttr(colKey) + '" title="Exclude values" class="' + (hasActive ? 'fs-arrow-on' : 'fs-arrow-off') + '" style="border:none;background:none;cursor:pointer;padding:2px;font-size:10px;line-height:1;">▾</button>' +
+          '<button type="button" data-fs-arrow="' + escapeAttr(colKey) + '" title="Exclude values" class="' + (hasActive ? 'fs-arrow-on' : 'fs-arrow-off') + '" style="border:none;cursor:pointer;padding:2px 5px;border-radius:5px;font-size:11px;line-height:1;font-weight:700;">▾' + (hasActive ? ' ' + exCount : '') + '</button>' +
           '<span class="fs-dd-slot" data-fs-slot="' + escapeAttr(colKey) + '"></span>' +
         '</span>' +
       '</th>';
