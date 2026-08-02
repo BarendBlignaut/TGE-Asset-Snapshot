@@ -673,9 +673,7 @@ async function loadFieldDefs() {
     '})();';
   }
 
-  function ensureSidebarLegend() {
-  
-  function ensureSidebarLegend() {
+   function ensureSidebarLegend() {
     if (document.getElementById('ud-sidebar-legend')) return;
     var sidebar = document.querySelector('.sidebar');
     var footer = document.querySelector('.sidebar-footer');
