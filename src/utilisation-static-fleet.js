@@ -516,4 +516,5 @@ export {
   handleImportStaticFleet,
   handleGetStaticFleet,
   handleGetStaticFleetRaw,
+  handleGetStaticColumnValues,
 };
