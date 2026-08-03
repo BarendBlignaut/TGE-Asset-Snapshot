@@ -31,6 +31,7 @@ handleLocateTeletracKm,
 
 import {
   handleLocatePowerFleet,
+  handleWalkPowerFleet,
 } from "./filespec-powerfleet.js";
 
 const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12 hours
@@ -2481,6 +2482,7 @@ if (
 }
 if (method === "POST" && path === "/api/filespec/locate-teletrac-km") return handleLocateTeletracKm(request, env);
       if (method === "POST" && path === "/api/filespec/locate-powerfleet") return handleLocatePowerFleet(request, env);
+      if (method === "POST" && path === "/api/filespec/walk-powerfleet") return handleWalkPowerFleet(request, env);
       if (method === "POST" && path === "/api/filespec/process-teletrac-km") return handleProcessTeletracKm(request, env);
       
       if (method === "POST" && path === "/api/filespec/process-static-fleet") {
