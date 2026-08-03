@@ -2457,7 +2457,7 @@ if (
       }
 
            if (
-        ingestResult.source === "Teletrac Navman" &&
+        (ingestResult.source === "Teletrac Navman" || ingestResult.source === "Rentco TN") &&
         Number.isInteger(Number(ingestResult.importId))
       ) {
         ctx.waitUntil(
