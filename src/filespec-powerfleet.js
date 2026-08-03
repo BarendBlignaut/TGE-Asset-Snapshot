@@ -55,10 +55,101 @@ async function loadWorkbookRows(env, importRecord) {
   return { sheetName, rows };
 }
 
-// GET/POST /api/filespec/locate-powerfleet?id=<importId>
-// Test-only endpoint for this first slice: confirms the header row genuinely
-// contains "Fleet Number" at the expected column, before anything is read
-// row by row. No database writes.
+// Formats a date cell to YYYY-MM-DD. PowerFleet's date column comes through
+// as a real Date object with cellDates:true, but a string fallback is kept
+// for safety, matching the same defensive pattern used for Teletrac.
+function formatDateCell(cell) {
+  if (cell instanceof Date) {
+    const y = cell.getFullYear();
+    const m = String(cell.getMonth() + 1).padStart(2, "0");
+    const d = String(cell.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  if (typeof cell === "string") {
+    const match = cell.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  }
+  return null;
+}
+
+// Walks every data row from just beneath the header to the end of the
+// sheet. There is no anchor or blank-row boundary here — PowerFleet is one
+// continuous table — so a row is simply skipped if it has no fleet number,
+// rather than treated as an end-of-section marker.
+function walkAllRows(rows, headerRowIndex) {
+  const byAsset = new Map();
+  let skipped = 0;
+
+  for (let i = headerRowIndex + 1; i < rows.length; i++) {
+    const row = rows[i];
+    const fleetRaw = row ? row[COL_FLEET] : null;
+    if (fleetRaw == null || String(fleetRaw).trim() === "") { skipped++; continue; }
+
+    const fleetNumber = String(fleetRaw).trim();
+    const date = formatDateCell(row[COL_DATE]);
+    const km = row[COL_KM] == null ? null : Number(row[COL_KM]);
+    const duration = row[COL_DUR];
+    const fuel = row[COL_FUEL] == null ? null : Number(row[COL_FUEL]);
+
+    if (!byAsset.has(fleetNumber)) byAsset.set(fleetNumber, []);
+    byAsset.get(fleetNumber).push({ date, km, duration, fuel });
+  }
+
+  return { byAsset, skipped };
+}
+
+// GET/POST /api/filespec/walk-powerfleet?id=<importId>
+// Test-only endpoint: reads every real row and returns a small sample plus
+// the true asset and date coverage, still no database writes.
+export async function handleWalkPowerFleet(request, env) {
+  const keyCheck = await requireImportKey(request, env);
+  if (!keyCheck.ok) return keyCheck.response;
+
+  const url = new URL(request.url);
+  const importId = Number.parseInt(url.searchParams.get("id") || "", 10);
+  if (!Number.isInteger(importId) || importId < 1) {
+    return jsonResponse({ error: "A valid import id is required." }, 400);
+  }
+
+  const importRecord = await env.DB.prepare(
+    "SELECT * FROM filespec_imports WHERE id = ?"
+  ).bind(importId).first();
+
+  if (!importRecord) {
+    return jsonResponse({ error: `Import ${importId} was not found.` }, 404);
+  }
+  if (importRecord.source !== SOURCE_NAME) {
+    return jsonResponse({ error: `Import ${importId} is not a ${SOURCE_NAME} import.` }, 400);
+  }
+
+  try {
+    const { rows } = await loadWorkbookRows(env, importRecord);
+    const { byAsset, skipped } = walkAllRows(rows, HEADER_ROW_INDEX);
+
+    const distinctDates = new Set();
+    for (const readings of byAsset.values()) {
+      for (const r of readings) if (r.date) distinctDates.add(r.date);
+    }
+
+    const sampleFleetNumber = byAsset.keys().next().value;
+    const sample = sampleFleetNumber
+      ? { fleetNumber: sampleFleetNumber, readings: byAsset.get(sampleFleetNumber) }
+      : null;
+
+    return jsonResponse({
+      ok: true,
+      importId,
+      assetCount: byAsset.size,
+      rowsSkipped: skipped,
+      distinctDates: Array.from(distinctDates).sort(),
+      sample,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return jsonResponse({ ok: false, error: message }, 500);
+  }
+}
+
 export async function handleLocatePowerFleet(request, env) {
   const keyCheck = await requireImportKey(request, env);
   if (!keyCheck.ok) return keyCheck.response;
