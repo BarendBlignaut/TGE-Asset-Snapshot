@@ -160,21 +160,35 @@ export async function runTeletracKmPipeline(env, importId) {
                value = excluded.value,
                vendor_id = excluded.vendor_id,
                import_id = excluded.import_id,
-               updated_at = excluded.updated_at`
+               updated_at = excluded.updated_at
+             WHERE vendor_id = excluded.vendor_id`
           ).bind(asset.fleetNumber, reading.date, reading.value, vendorId, importId, now, now)
         );
       }
     }
 
+    // The WHERE clause above is the real safety net: a row already owned by
+    // a different vendor is left completely untouched, at the database
+    // level, regardless of anything our own code does. This count confirms
+    // how many rows the database actually accepted versus how many were
+    // attempted — the difference is how many were correctly blocked.
+    let actualWrites = 0;
     for (const chunk of chunkArray(statements, BATCH_SIZE)) {
-      await env.DB.batch(chunk);
+      const results = await env.DB.batch(chunk);
+      for (const r of results) {
+        actualWrites += (r && r.meta && typeof r.meta.changes === "number") ? r.meta.changes : 0;
+      }
+    }
+    const rowsBlockedCrossVendor = statements.length - actualWrites;
+    if (rowsBlockedCrossVendor > 0) {
+      console.warn(`Import ${importId} (${importRecord.source}): ${rowsBlockedCrossVendor} row(s) blocked — already owned by a different vendor for that asset/date/metric.`);
     }
 
     await env.DB.prepare(
       "UPDATE filespec_imports SET status = 'parsed', processed_at = ?, row_count = ? WHERE id = ?"
-    ).bind(now, statements.length, importId).run();
+    ).bind(now, actualWrites, importId).run();
 
-    return { assetCount: assets.length, rowsWritten: statements.length };
+    return { assetCount: assets.length, rowsWritten: actualWrites, rowsBlockedCrossVendor };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await env.DB.prepare(
