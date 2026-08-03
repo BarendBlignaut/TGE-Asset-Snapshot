@@ -619,6 +619,8 @@ async function loadFieldDefs() {
       '.mr-tablewrap{max-height:70vh;overflow:auto;border:1px solid #e6e8ec;border-radius:8px;}' +
       '.mr-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;}' +
       '.mr-on{background:#1f9d55;} .mr-off{background:#d43a3a;}' +
+      '.mr-sortable{cursor:pointer;user-select:none;}' +
+      '.mr-sortable:hover{background:#1a4d00;}' +
       '.mr-tabs{display:flex;gap:8px;margin-bottom:14px;}' +
       '.mr-tab-btn{height:32px;padding:0 16px;border-radius:8px;border:1px solid #dce8e0;background:#fff;color:#52514e;font-size:12px;font-weight:700;cursor:pointer;}' +
       '.mr-tab-btn.active{background:#143200;color:#c8f135;border-color:#143200;}' +
@@ -665,7 +667,7 @@ async function loadFieldDefs() {
 function reportRuntimeScript() {
     return '(function(){' +
       'var raw = JSON.parse(decodeURIComponent(escape(atob(document.getElementById("mr-data").textContent))));' +
-     'var state = { filters: {}, kmCutoff: raw.kmCutoff || 0, openCol: null };' +
+     'var state = { filters: {}, kmCutoff: raw.kmCutoff || 0, openCol: null, sortCol: null, sortDir: \'desc\' };' +
       'document.getElementById("mr-daterange").textContent = "Date Range Applied: " + raw.dateRangeLabel;' +
       'function distinctValues(col){var s={};raw.assets.forEach(function(a){var v=a.fields[col];if(v)s[v]=true;});return Object.keys(s).sort();}' +
       'function renderControls(){' +
@@ -715,26 +717,7 @@ function reportRuntimeScript() {
           'return true;' +
         '});' +
       '}' +
-      'function renderTable(){' +
-        'var visible = visibleAssets();' +
-        'var thead = "<tr><th>Legacy Number</th>";' +
-        'raw.dates.forEach(function(d){ thead += "<th>" + d + "</th>"; });' +
-        'thead += "<th>Total KM</th></tr>";' +
-        'document.getElementById("mr-thead").innerHTML = thead;' +
-        'var body = visible.map(function(a){' +
-          'var row = "<tr><td><span class=\\"mr-dot " + (a.hasTelematics ? "mr-on" : "mr-off") + "\\"></span>" + a.legacyNumber + "</td>";' +
-          'var total = 0; var any = false;' +
-          'raw.dates.forEach(function(d){' +
-            'var v = a.km[d];' +
-            'if (v != null){ total += v; any = true; }' +
-            'var low = (v != null && state.kmCutoff > 0 && v < state.kmCutoff);' +
-            'row += "<td" + (low ? " class=\\"mr-low\\"" : "") + ">" + (v != null ? v.toFixed(1) : "-") + "</td>";' +
-          '});' +
-          'row += "<td>" + (any ? total.toFixed(1) : "-") + "</td></tr>";' +
-          'return row;' +
-        '}).join("");' +
-        'document.getElementById("mr-tbody").innerHTML = body || "<tr><td colspan=\\"" + (raw.dates.length+2) + "\\">No assets match the selected filters.</td></tr>";' +
-      '}' +
+      'function rowMetrics(a) { var total = 0, any = 0; raw.dates.forEach(function (d) { var v = a.km[d]; if (v != null) { total += v; any++; } }); var avg = any > 0 ? total / any : null; return { total: any > 0 ? total : null, avg: avg }; } function sortAssets(list) { if (!state.sortCol) return list; var col = state.sortCol, dir = state.sortDir === "asc" ? 1 : -1; var withMetrics = list.map(function (a) { var m = rowMetrics(a); var val; if (col === "total") val = m.total; else if (col === "avg") val = m.avg; else val = a.km[col]; return { asset: a, val: val == null ? -1 : val }; }); withMetrics.sort(function (x, y) { return (x.val - y.val) * dir; }); return withMetrics.map(function (w) { return w.asset; }); } function sortArrow(col) { if (state.sortCol !== col) return ""; return state.sortDir === "asc" ? " \u25b2" : " \u25bc"; } function renderTable() { var visible = sortAssets(visibleAssets()); var thead = "<tr><th>Legacy Number</th>"; raw.dates.forEach(function (d) { thead += "<th class=\'mr-sortable\' data-sort=\'" + d + "\'>" + d + sortArrow(d) + "</th>"; }); thead += "<th class=\'mr-sortable\' data-sort=\'total\'>Total KM" + sortArrow("total") + "</th>"; thead += "<th class=\'mr-sortable\' data-sort=\'avg\'>Avg/Day" + sortArrow("avg") + "</th></tr>"; document.getElementById("mr-thead").innerHTML = thead; document.querySelectorAll(".mr-sortable").forEach(function (th) { th.onclick = function () { var col = th.dataset.sort; if (state.sortCol === col) { state.sortDir = state.sortDir === "desc" ? "asc" : "desc"; } else { state.sortCol = col; state.sortDir = "desc"; } renderTable(); }; }); var body = visible.map(function (a) { var row = "<tr><td><span class=\'mr-dot " + (a.hasTelematics ? "mr-on" : "mr-off") + "\'></span>" + a.legacyNumber + "</td>"; var m = rowMetrics(a); raw.dates.forEach(function (d) { var v = a.km[d]; var low = (v != null && state.kmCutoff > 0 && v < state.kmCutoff); row += "<td" + (low ? " class=\'mr-low\'" : "") + ">" + (v != null ? v.toFixed(1) : "-") + "</td>"; }); row += "<td>" + (m.total != null ? m.total.toFixed(1) : "-") + "</td>"; row += "<td>" + (m.avg != null ? m.avg.toFixed(1) : "-") + "</td></tr>"; return row; }).join(""); document.getElementById("mr-tbody").innerHTML = body || "<tr><td colspan=\'" + (raw.dates.length + 3) + "\'>No assets match the selected filters.</td></tr>"; } ' +
       'document.querySelectorAll(".mr-tab-btn").forEach(function(btn){' +
         'btn.onclick = function(){' +
           'document.querySelectorAll(".mr-tab-btn").forEach(function(b){ b.classList.remove("active"); });' +
