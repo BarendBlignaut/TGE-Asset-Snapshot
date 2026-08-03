@@ -2457,6 +2457,7 @@ if (
       }
 
       if (
+       if (
         ingestResult.source === "Teletrac Navman" &&
         Number.isInteger(Number(ingestResult.importId))
       ) {
@@ -2467,6 +2468,23 @@ if (
           ).catch((error) => {
             console.error(
               "Teletrac Navman auto-pipeline failed (import record already updated):",
+              error instanceof Error ? error.message : String(error)
+            );
+          })
+        );
+      }
+
+      if (
+        ingestResult.source === "Power Fleet" &&
+        Number.isInteger(Number(ingestResult.importId))
+      ) {
+        ctx.waitUntil(
+          runPowerFleetKmPipeline(
+            env,
+            Number(ingestResult.importId)
+          ).catch((error) => {
+            console.error(
+              "Power Fleet auto-pipeline failed (import record already updated):",
               error instanceof Error ? error.message : String(error)
             );
           })
