@@ -2,14 +2,21 @@
 // Data Feed vendor: horizontal orientation, multiple stacked tables on the
 // Summary sheet, each found by its own section label (anchor), not by a
 // fixed row number, since the exact row can shift week to week.
+//
+// This file now also serves Rentco TN — genuinely the same Teletrac file
+// format under a different vendor label, so rather than duplicate this
+// whole engine, it recognises both real source names and picks the right
+// vendor_id at write time based on whichever one actually sent the file.
 
 import * as XLSX from "xlsx";
 
-const SOURCE_NAME = "Teletrac Navman";
+const VENDOR_IDS_BY_SOURCE = {
+  "Teletrac Navman": 3,
+  "Rentco TN": 5, // genuinely the same Teletrac file format, just relabeled
+};
+
 const SHEET_NAME = "Summary";
 const KM_ANCHOR = "Daily Kms";
-const VENDOR_ID = 3; // Teletrac Navman, confirmed against vendors table
-const BATCH_SIZE = 100;
 
 function nowIso() {
   return new Date().toISOString();
@@ -31,12 +38,6 @@ async function requireImportKey(request, env) {
     return { ok: false, response: jsonResponse({ error: "Unauthorised." }, 401) };
   }
   return { ok: true };
-}
-
-function chunkArray(items, size) {
-  const chunks = [];
-  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
-  return chunks;
 }
 
 function locateSection(rows, anchorLabel) {
@@ -99,11 +100,18 @@ function readSectionRows(rows, headerRowIndex, headerRow) {
   return { dateColumns, assets };
 }
 
+const BATCH_SIZE = 100;
+
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
 // ── Reusable pipeline core — takes just env and an import id, exactly like
 // runStaticFleetPipeline, so it can be called either directly by the manual
 // test endpoint below, or automatically from the ingest chain in index.js
-// the moment a real Teletrac file lands. Throws on failure after recording
-// the failure on the import record itself, so nothing fails silently.
+// the moment a real Teletrac-format file lands, from either vendor.
 export async function runTeletracKmPipeline(env, importId) {
   const importRecord = await env.DB.prepare(
     "SELECT * FROM filespec_imports WHERE id = ?"
@@ -112,8 +120,8 @@ export async function runTeletracKmPipeline(env, importId) {
   if (!importRecord) {
     throw new Error(`Import ${importId} was not found.`);
   }
-  if (importRecord.source !== SOURCE_NAME) {
-    throw new Error(`Import ${importId} is not a ${SOURCE_NAME} import.`);
+  if (!(importRecord.source in VENDOR_IDS_BY_SOURCE)) {
+    throw new Error(`Import ${importId}'s source '${importRecord.source}' is not a recognised Teletrac-format vendor.`);
   }
 
   await env.DB.prepare(
@@ -138,6 +146,7 @@ export async function runTeletracKmPipeline(env, importId) {
     const { assets } = readSectionRows(rows, located.headerRowIndex, located.headerRow);
 
     const now = nowIso();
+    const vendorId = VENDOR_IDS_BY_SOURCE[importRecord.source];
     const statements = [];
     for (const asset of assets) {
       for (const reading of asset.readings) {
@@ -152,7 +161,7 @@ export async function runTeletracKmPipeline(env, importId) {
                vendor_id = excluded.vendor_id,
                import_id = excluded.import_id,
                updated_at = excluded.updated_at`
-          ).bind(asset.fleetNumber, reading.date, reading.value, VENDOR_ID, importId, now, now)
+          ).bind(asset.fleetNumber, reading.date, reading.value, vendorId, importId, now, now)
         );
       }
     }
@@ -176,9 +185,8 @@ export async function runTeletracKmPipeline(env, importId) {
 }
 
 // GET/POST /api/filespec/process-teletrac-km?id=<importId>
-// Thin HTTP wrapper around the pipeline core, for manual testing exactly as
-// used throughout this build. Automated runs go through runTeletracKmPipeline
-// directly from the ingest chain in index.js instead of this endpoint.
+// Thin HTTP wrapper around the pipeline core, for manual testing. Automated
+// runs go through runTeletracKmPipeline directly from the ingest chain.
 export async function handleProcessTeletracKm(request, env) {
   const keyCheck = await requireImportKey(request, env);
   if (!keyCheck.ok) return keyCheck.response;
@@ -219,8 +227,8 @@ export async function handleLocateTeletracKm(request, env) {
     return jsonResponse({ error: `Import ${importId} was not found.` }, 404);
   }
 
-  if (importRecord.source !== SOURCE_NAME) {
-    return jsonResponse({ error: `Import ${importId} is not a ${SOURCE_NAME} import.` }, 400);
+  if (!(importRecord.source in VENDOR_IDS_BY_SOURCE)) {
+    return jsonResponse({ error: `Import ${importId}'s source '${importRecord.source}' is not a recognised Teletrac-format vendor.` }, 400);
   }
 
   try {
@@ -300,8 +308,8 @@ export async function handleWalkTeletracKm(request, env) {
   if (!importRecord) {
     return jsonResponse({ error: `Import ${importId} was not found.` }, 404);
   }
-  if (importRecord.source !== SOURCE_NAME) {
-    return jsonResponse({ error: `Import ${importId} is not a ${SOURCE_NAME} import.` }, 400);
+  if (!(importRecord.source in VENDOR_IDS_BY_SOURCE)) {
+    return jsonResponse({ error: `Import ${importId}'s source '${importRecord.source}' is not a recognised Teletrac-format vendor.` }, 400);
   }
 
   try {
