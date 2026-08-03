@@ -669,7 +669,7 @@ function reportRuntimeScript() {
       'var raw = JSON.parse(decodeURIComponent(escape(atob(document.getElementById("mr-data").textContent))));' +
      'var state = { filters: {}, kmCutoff: raw.kmCutoff || 0, openCol: null, sortCol: null, sortDir: \'desc\' };' +
       'document.getElementById("mr-daterange").textContent = "Date Range Applied: " + raw.dateRangeLabel;' +
-      'function distinctValues(col){var s={};raw.assets.forEach(function(a){var v=a.fields[col];if(v)s[v]=true;});return Object.keys(s).sort();}' +
+      'function distinctValues(col){var s={};visibleAssets(col).forEach(function(a){var v=a.fields[col];if(v)s[v]=true;});return Object.keys(s).sort();}' +
       'function renderControls(){' +
         'var html = "";' +
         'raw.filterColumns.forEach(function(fc){' +
@@ -711,9 +711,9 @@ function reportRuntimeScript() {
       'document.addEventListener("click", function(e){' +
         'if (state.openCol && !e.target.closest(".mr-filter")) { state.openCol = null; renderControls(); }' +
       '});' +
-'function visibleAssets(){' +
+'function visibleAssets(ignoreCol){' +
         'return raw.assets.filter(function(a){' +
-          'for (var col in state.filters){ var sel = state.filters[col]; if (sel && sel.length && sel.indexOf(a.fields[col]||"") === -1) return false; }' +
+          'for (var col in state.filters){ if (col === ignoreCol) continue; var sel = state.filters[col]; if (sel && sel.length && sel.indexOf(a.fields[col]||"") === -1) return false; }' +
           'return true;' +
         '});' +
       '}' +
