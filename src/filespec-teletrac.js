@@ -8,6 +8,8 @@ import * as XLSX from "xlsx";
 const SOURCE_NAME = "Teletrac Navman";
 const SHEET_NAME = "Summary";
 const KM_ANCHOR = "Daily Kms";
+const VENDOR_ID = 3; // Teletrac Navman, confirmed against vendors table
+const BATCH_SIZE = 100;
 
 function nowIso() {
   return new Date().toISOString();
@@ -31,9 +33,12 @@ async function requireImportKey(request, env) {
   return { ok: true };
 }
 
-// Searches column A of every row for an exact match on `anchorLabel`.
-// Returns the row index it was found on and the row directly beneath it
-// (the header row, carrying the date columns), or null if not found.
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
 function locateSection(rows, anchorLabel) {
   for (let i = 0; i < rows.length; i++) {
     const cellA = rows[i] && rows[i][0];
@@ -48,9 +53,6 @@ function locateSection(rows, anchorLabel) {
   return null;
 }
 
-// Formats a header date cell to YYYY-MM-DD. XLSX may hand back a real Date
-// object (cellDates:true) or, for some source files, a plain "DD/MM/YYYY"
-// string — both are handled so the reader isn't fragile to that variance.
 function formatDateCell(cell) {
   if (cell instanceof Date) {
     const y = cell.getFullYear();
@@ -68,8 +70,6 @@ function formatDateCell(cell) {
   return null;
 }
 
-// Walks from the row beneath the header down to the blank row that ends the
-// section, reading every asset's identity plus one value per date column.
 function readSectionRows(rows, headerRowIndex, headerRow) {
   const dateColumns = [];
   for (let col = 3; col < headerRow.length; col++) {
@@ -81,7 +81,7 @@ function readSectionRows(rows, headerRowIndex, headerRow) {
   for (let i = headerRowIndex + 1; i < rows.length; i++) {
     const row = rows[i];
     const identity = row && row[0];
-    if (identity == null || String(identity).trim() === "") break; // blank row ends the section
+    if (identity == null || String(identity).trim() === "") break;
 
     const readings = dateColumns.map(dc => ({
       date: dc.date,
@@ -99,40 +99,21 @@ function readSectionRows(rows, headerRowIndex, headerRow) {
   return { dateColumns, assets };
 }
 
-const VENDOR_ID = 3; // Teletrac Navman, confirmed against vendors table
-const BATCH_SIZE = 100;
-
-function chunkArray(items, size) {
-  const chunks = [];
-  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
-  return chunks;
-}
-
-// GET/POST /api/filespec/process-teletrac-km?id=<importId>
-// Reads the Daily Kms section and writes every real reading into the shared
-// vendor data table. A newer file's overlapping days correctly overwrite
-// older ones, since (fleet_number, metric_date, metric) is unique — this is
-// a plain upsert, not a staged promotion like Static Fleet, because there's
-// no "live fleet" concept to reconcile here, just facts that self-correct.
-export async function handleProcessTeletracKm(request, env) {
-  const keyCheck = await requireImportKey(request, env);
-  if (!keyCheck.ok) return keyCheck.response;
-
-  const url = new URL(request.url);
-  const importId = Number.parseInt(url.searchParams.get("id") || "", 10);
-  if (!Number.isInteger(importId) || importId < 1) {
-    return jsonResponse({ error: "A valid import id is required." }, 400);
-  }
-
+// ── Reusable pipeline core — takes just env and an import id, exactly like
+// runStaticFleetPipeline, so it can be called either directly by the manual
+// test endpoint below, or automatically from the ingest chain in index.js
+// the moment a real Teletrac file lands. Throws on failure after recording
+// the failure on the import record itself, so nothing fails silently.
+export async function runTeletracKmPipeline(env, importId) {
   const importRecord = await env.DB.prepare(
     "SELECT * FROM filespec_imports WHERE id = ?"
   ).bind(importId).first();
 
   if (!importRecord) {
-    return jsonResponse({ error: `Import ${importId} was not found.` }, 404);
+    throw new Error(`Import ${importId} was not found.`);
   }
   if (importRecord.source !== SOURCE_NAME) {
-    return jsonResponse({ error: `Import ${importId} is not a ${SOURCE_NAME} import.` }, 400);
+    throw new Error(`Import ${importId} is not a ${SOURCE_NAME} import.`);
   }
 
   await env.DB.prepare(
@@ -160,7 +141,7 @@ export async function handleProcessTeletracKm(request, env) {
     const statements = [];
     for (const asset of assets) {
       for (const reading of asset.readings) {
-        if (reading.value == null || Number.isNaN(reading.value)) continue; // skip genuinely blank cells
+        if (reading.value == null || Number.isNaN(reading.value)) continue;
         statements.push(
           env.DB.prepare(
             `INSERT INTO utilisation_vendor_daily_metrics
@@ -184,17 +165,35 @@ export async function handleProcessTeletracKm(request, env) {
       "UPDATE filespec_imports SET status = 'parsed', processed_at = ?, row_count = ? WHERE id = ?"
     ).bind(now, statements.length, importId).run();
 
-    return jsonResponse({
-      ok: true,
-      importId,
-      assetCount: assets.length,
-      rowsWritten: statements.length,
-    });
+    return { assetCount: assets.length, rowsWritten: statements.length };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await env.DB.prepare(
       "UPDATE filespec_imports SET status = 'failed', error = ? WHERE id = ?"
     ).bind(message, importId).run();
+    throw error;
+  }
+}
+
+// GET/POST /api/filespec/process-teletrac-km?id=<importId>
+// Thin HTTP wrapper around the pipeline core, for manual testing exactly as
+// used throughout this build. Automated runs go through runTeletracKmPipeline
+// directly from the ingest chain in index.js instead of this endpoint.
+export async function handleProcessTeletracKm(request, env) {
+  const keyCheck = await requireImportKey(request, env);
+  if (!keyCheck.ok) return keyCheck.response;
+
+  const url = new URL(request.url);
+  const importId = Number.parseInt(url.searchParams.get("id") || "", 10);
+  if (!Number.isInteger(importId) || importId < 1) {
+    return jsonResponse({ error: "A valid import id is required." }, 400);
+  }
+
+  try {
+    const result = await runTeletracKmPipeline(env, importId);
+    return jsonResponse({ ok: true, importId, ...result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     return jsonResponse({ ok: false, error: message }, 500);
   }
 }
