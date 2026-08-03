@@ -2456,8 +2456,7 @@ if (
         );
       }
 
-      if (
-       if (
+           if (
         ingestResult.source === "Teletrac Navman" &&
         Number.isInteger(Number(ingestResult.importId))
       ) {
