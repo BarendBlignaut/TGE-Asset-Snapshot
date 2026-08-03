@@ -150,6 +150,100 @@ export async function handleWalkPowerFleet(request, env) {
   }
 }
 
+const VENDOR_ID = 4; // Power Fleet, confirmed against vendors table
+const BATCH_SIZE = 100;
+
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
+// ── Reusable pipeline core — takes just env and an import id, exactly like
+// runStaticFleetPipeline and runTeletracKmPipeline, so it can be called
+// either directly by the manual test endpoint below, or automatically from
+// the ingest chain in index.js the moment a real Power Fleet file lands.
+export async function runPowerFleetKmPipeline(env, importId) {
+  const importRecord = await env.DB.prepare(
+    "SELECT * FROM filespec_imports WHERE id = ?"
+  ).bind(importId).first();
+
+  if (!importRecord) {
+    throw new Error(`Import ${importId} was not found.`);
+  }
+  if (importRecord.source !== SOURCE_NAME) {
+    throw new Error(`Import ${importId} is not a ${SOURCE_NAME} import.`);
+  }
+
+  await env.DB.prepare(
+    "UPDATE filespec_imports SET status = 'parsing', error = NULL WHERE id = ?"
+  ).bind(importId).run();
+
+  try {
+    const { rows } = await loadWorkbookRows(env, importRecord);
+    const { byAsset } = walkAllRows(rows, HEADER_ROW_INDEX);
+
+    const now = nowIso();
+    const statements = [];
+    for (const [fleetNumber, readings] of byAsset.entries()) {
+      for (const reading of readings) {
+        if (!reading.date) continue; // skip rows with an unreadable date
+        if (reading.km == null || Number.isNaN(reading.km)) continue; // skip genuinely blank cells
+        statements.push(
+          env.DB.prepare(
+            `INSERT INTO utilisation_vendor_daily_metrics
+              (fleet_number, metric_date, metric, value, vendor_id, import_id, created_at, updated_at)
+             VALUES (?, ?, 'km', ?, ?, ?, ?, ?)
+             ON CONFLICT(fleet_number, metric_date, metric) DO UPDATE SET
+               value = excluded.value,
+               vendor_id = excluded.vendor_id,
+               import_id = excluded.import_id,
+               updated_at = excluded.updated_at`
+          ).bind(fleetNumber, reading.date, reading.km, VENDOR_ID, importId, now, now)
+        );
+      }
+    }
+
+    for (const chunk of chunkArray(statements, BATCH_SIZE)) {
+      await env.DB.batch(chunk);
+    }
+
+    await env.DB.prepare(
+      "UPDATE filespec_imports SET status = 'parsed', processed_at = ?, row_count = ? WHERE id = ?"
+    ).bind(now, statements.length, importId).run();
+
+    return { assetCount: byAsset.size, rowsWritten: statements.length };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await env.DB.prepare(
+      "UPDATE filespec_imports SET status = 'failed', error = ? WHERE id = ?"
+    ).bind(message, importId).run();
+    throw error;
+  }
+}
+
+// GET/POST /api/filespec/process-powerfleet?id=<importId>
+// Thin HTTP wrapper around the pipeline core, for manual testing. Automated
+// runs go through runPowerFleetKmPipeline directly from the ingest chain.
+export async function handleProcessPowerFleet(request, env) {
+  const keyCheck = await requireImportKey(request, env);
+  if (!keyCheck.ok) return keyCheck.response;
+
+  const url = new URL(request.url);
+  const importId = Number.parseInt(url.searchParams.get("id") || "", 10);
+  if (!Number.isInteger(importId) || importId < 1) {
+    return jsonResponse({ error: "A valid import id is required." }, 400);
+  }
+
+  try {
+    const result = await runPowerFleetKmPipeline(env, importId);
+    return jsonResponse({ ok: true, importId, ...result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return jsonResponse({ ok: false, error: message }, 500);
+  }
+}
+
 export async function handleLocatePowerFleet(request, env) {
   const keyCheck = await requireImportKey(request, env);
   if (!keyCheck.ok) return keyCheck.response;
