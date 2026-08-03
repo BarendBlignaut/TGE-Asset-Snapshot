@@ -29,6 +29,10 @@ handleLocateTeletracKm,
   runTeletracKmPipeline,
 } from "./filespec-teletrac.js";
 
+import {
+  handleLocatePowerFleet,
+} from "./filespec-powerfleet.js";
+
 const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12 hours
 const SESSION_COOKIE      = "tge_session";
 
@@ -2476,6 +2480,7 @@ if (
   return ingestResponse;
 }
 if (method === "POST" && path === "/api/filespec/locate-teletrac-km") return handleLocateTeletracKm(request, env);
+      if (method === "POST" && path === "/api/filespec/locate-powerfleet") return handleLocatePowerFleet(request, env);
       if (method === "POST" && path === "/api/filespec/process-teletrac-km") return handleProcessTeletracKm(request, env);
       
       if (method === "POST" && path === "/api/filespec/process-static-fleet") {
