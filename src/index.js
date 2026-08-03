@@ -23,9 +23,10 @@ import {
 } from "./filespec-static-fleet.js";
 
 import {
-  handleLocateTeletracKm,
+handleLocateTeletracKm,
   handleWalkTeletracKm,
   handleProcessTeletracKm,
+  runTeletracKmPipeline,
 } from "./filespec-teletrac.js";
 
 const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12 hours
@@ -2423,7 +2424,7 @@ if (method === "POST" && path.match(/^\/api\/vendors\/\d+\/hardware-types$/)) {
     try {
       const ingestResult = await ingestResponse.clone().json();
 
-      if (
+if (
         ingestResult.source === "Static Fleet" &&
         Number.isInteger(Number(ingestResult.importId))
       ) {
@@ -2444,6 +2445,23 @@ if (method === "POST" && path.match(/^\/api\/vendors\/\d+\/hardware-types$/)) {
                 Number(ingestResult.importId)
               )
               .run();
+          })
+        );
+      }
+
+      if (
+        ingestResult.source === "Teletrac Navman" &&
+        Number.isInteger(Number(ingestResult.importId))
+      ) {
+        ctx.waitUntil(
+          runTeletracKmPipeline(
+            env,
+            Number(ingestResult.importId)
+          ).catch((error) => {
+            console.error(
+              "Teletrac Navman auto-pipeline failed (import record already updated):",
+              error instanceof Error ? error.message : String(error)
+            );
           })
         );
       }
