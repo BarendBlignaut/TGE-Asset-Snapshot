@@ -406,7 +406,7 @@ function positionPinnedColumns() {
       var row = '<tr' + (asset.status === 'inactive' ? ' class="ud-row-inactive"' : '') + '>';
       var gpsRaw = state.telematicsSourceColumn && asset.fields ? asset.fields[state.telematicsSourceColumn] : null;
       var gpsOn = gpsRaw != null && String(gpsRaw).trim() !== '';
-      row += '<td class="ud-pin-left"><div class="ud-pin-left-inner"><span class="ud-pin-legacy-part">' + esc(asset.legacyNumber) + '</span><span class="ud-pin-gps-part"><span class="ud-gps-dot ' + (gpsOn ? 'ud-gps-on' : 'ud-gps-off') + '"></span></span></div></td>';
+      row += '<td class="ud-pin-left"><div class="ud-pin-left-inner"><span class="ud-pin-legacy-part">' + esc(asset.legacyNumber) + '</span><span class="ud-pin-gps-part"><span class="' + (gpsOn ? 'ud-gps-on' : 'ud-gps-off') + '"><svg viewBox="0 0 24 24" width="12" height="12"><circle cx="12" cy="12" r="3" fill="currentColor"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/></svg></span></span></div></td>';
       var totalKm = 0;
       var hasAnyKm = false;
       dates.forEach(function (d) {
@@ -745,7 +745,7 @@ function reportRuntimeScript() {
       '<div class="ud-side-row"><strong>EXM</strong><span>Exempt from utilisation</span></div>',
       '<div class="ud-side-swatch"><span>🔧</span><em>Workshop booking</em></div>',
       '<div class="ud-side-swatch"><span>⚠</span><em>Non-functioning device</em></div>',
-      '<div class="ud-side-swatch"><span>📡</span><em>No telematics</em></div>',
+      '<div class="ud-side-swatch"><span class="ud-gps-on" style="margin-right:3px;"><svg viewBox="0 0 24 24" width="12" height="12"><circle cx="12" cy="12" r="3" fill="currentColor"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/></svg></span><span class="ud-gps-off"><svg viewBox="0 0 24 24" width="12" height="12"><circle cx="12" cy="12" r="3" fill="currentColor"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/></svg></span><em>Telematics</em></div>',
       '<div class="ud-side-swatch"><i class="ud-red"></i><em>Below KM cutoff</em></div>',
       '<div class="ud-side-swatch"><i class="ud-hist"></i><em>Historical / inactive</em></div>',
     ].join('');
@@ -877,9 +877,8 @@ function reportRuntimeScript() {
       '.ud-pin-legacy-part{min-width:100px;}',
       '.ud-pin-gps-part{min-width:36px;}',
       '.ud-pin-total-part,.ud-pin-avgday-part{min-width:60px;}',
-      '.ud-gps-dot{display:inline-block;width:10px;height:10px;border-radius:50%;}',
-      '.ud-gps-on{background:#1f9d55;}',
-      '.ud-gps-off{background:#d43a3a;}',
+      '.ud-gps-on{color:#1f9d55;display:inline-flex;}',
+      '.ud-gps-off{color:#d43a3a;display:inline-flex;}',
       '.ud-pin-avg{background:#f0f1f3!important;color:#172b4d!important;z-index:40!important;min-width:150px;}',
       '.ud-date-hdr{min-width:108px;}',
       '.ud-sub-hdr{font-size:9px!important;color:#dbe8c3!important;text-transform:uppercase;}',
