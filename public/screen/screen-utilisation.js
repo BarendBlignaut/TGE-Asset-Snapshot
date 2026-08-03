@@ -580,7 +580,7 @@ async function loadFieldDefs() {
 
     var payload = {
       generatedAt: new Date().toISOString(),
-      dateRangeLabel: TGE.el('ud-date-summary') ? TGE.el('ud-date-summary').textContent : '',
+     dateRangeLabel: TGE.el('ud-range-summary') ? TGE.el('ud-range-summary').textContent : '',
       dates: dates.map(isoDate),
       filterColumns: filterColumns,
       kmCutoff: state.kmCutoff,
