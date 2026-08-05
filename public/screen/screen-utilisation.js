@@ -354,14 +354,19 @@ function positionPinnedColumns() {
     });
   }
 
- function wirePinnedColumnScroll() {
+function wirePinnedColumnScroll() {
     if (window.__udPinScrollWired) return;
     window.__udPinScrollWired = true;
+    var lastScrollTop = null;
     document.addEventListener('scroll', function (e) {
       if (e.target && e.target.classList && e.target.classList.contains('ud-table-wrap')) {
+        var wrap = e.target;
         window.requestAnimationFrame(function () {
           positionPinnedColumns();
-          renderVisibleRows();
+          if (wrap.scrollTop !== lastScrollTop) {
+            lastScrollTop = wrap.scrollTop;
+            renderVisibleRows();
+          }
         });
       }
     }, true);
