@@ -416,8 +416,10 @@ function positionPinnedColumns() {
           totalKm += Number(kmVal);
           hasAnyKm = true;
         }
-        var kmLow = (kmVal != null && state.kmCutoff > 0 && Number(kmVal) < state.kmCutoff);
-        row += '<td class="ud-dcol' + (kmLow ? ' ud-km-low' : '') + '">' + (kmVal != null ? Number(kmVal).toFixed(1) : '-') + '</td>';
+       var kmLow = (kmVal != null && state.kmCutoff > 0 && Number(kmVal) < state.kmCutoff);
+        var contradiction = (!gpsOn && kmVal != null);
+        var kmText = kmVal != null ? Number(kmVal).toFixed(1) : (gpsOn ? '0' : '-');
+        row += '<td class="ud-dcol' + (kmLow ? ' ud-km-low' : '') + (contradiction ? ' ud-km-contradiction' : '') + '">' + kmText + '</td>';
         row += '<td class="ud-dcol">-</td>';
         row += '<td class="ud-dcol">-</td>';
       });
@@ -940,6 +942,7 @@ function reportRuntimeScript() {
       '.ud-sub-hdr{font-size:9px!important;color:#dbe8c3!important;text-transform:uppercase;}',
       '.ud-dcol{min-width:36px;width:36px;padding:2px!important;}',
       '.ud-km-low{background:#fde3e3!important;color:#a11d1d!important;font-weight:700;}',
+      '.ud-km-contradiction{color:#ff0000!important;font-weight:900!important;}',
       '.ud-date-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:600;pointer-events:none;}',
       '.ud-date-modal.open{display:flex;pointer-events:auto;}',
       '.ud-date-panel{width:440px;background:#fff;border:1px solid #dce8e0;border-radius:12px;box-shadow:0 18px 44px rgba(0,0,0,.28);overflow:hidden;pointer-events:auto;}',
