@@ -560,6 +560,8 @@ function normalizeCallSpec(body) {
 async function handleRegistryCreateApi(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "vendor", "manage");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
   const body = await safeJson(request);
   if (body.sampleResponse && String(body.sampleResponse).length > 100000) {
     return jsonResponse({ error: "Sample response too large (max 100KB). Trim to 1–2 example records — a sample shows shape, not volume." }, 400);
