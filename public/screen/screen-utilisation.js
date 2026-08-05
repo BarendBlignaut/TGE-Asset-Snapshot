@@ -349,7 +349,7 @@ function positionPinnedColumns() {
     var wrap = document.querySelector('.ud-table-wrap');
     if (!wrap) return;
     var t = 'translateX(' + wrap.scrollLeft + 'px)';
-    wrap.querySelectorAll('.ud-pin-left, .ud-pin-avg').forEach(function (el) {
+    wrap.querySelectorAll('th.ud-pin-left, th.ud-pin-avg').forEach(function (el) {
       el.style.transform = t;
     });
   }
@@ -937,6 +937,7 @@ function reportRuntimeScript() {
       '.ud-table th{position:sticky;top:0;background:#143200;color:#c8f135;font-weight:700;z-index:10;font-size:10px;transform:translateZ(0);}',
 '.ud-table tr:nth-child(2) th{top:32px;}',
    '.ud-pin-left{background:#143200!important;color:#c8f135!important;z-index:40!important;text-align:center!important;min-width:135px;border-right:2px solid #e6e8ec!important;}',
+      'td.ud-pin-left{position:sticky!important;left:0!important;}',
       '.ud-pin-left-inner,.ud-pin-right-inner{display:flex;align-items:center;justify-content:center;gap:8px;}',
       '.ud-pin-legacy-part{min-width:100px;}',
       '.ud-pin-gps-part{min-width:36px;}',
@@ -944,6 +945,7 @@ function reportRuntimeScript() {
       '.ud-gps-on{color:#1f9d55;display:inline-flex;}',
       '.ud-gps-off{color:#d43a3a;display:inline-flex;}',
       '.ud-pin-avg{background:#f0f1f3!important;color:#172b4d!important;z-index:40!important;min-width:150px;}',
+      'td.ud-pin-avg{position:sticky!important;right:0!important;}',
       '.ud-date-hdr{min-width:108px;}',
       '.ud-sub-hdr{font-size:9px!important;color:#dbe8c3!important;text-transform:uppercase;}',
       '.ud-dcol{min-width:36px;width:36px;padding:2px!important;}',
