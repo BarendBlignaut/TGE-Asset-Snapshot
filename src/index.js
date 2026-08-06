@@ -976,41 +976,19 @@ async function handleImageProxy(request, env) {
   return new Response(buffer, { status: 200, headers: { "Content-Type": contentType, "Cache-Control": "private, max-age=300" } });
 }
 
-async function signImageUrl(env, imageUrl, expiresAt) {
-  const secret  = env.SESSION_SECRET || "fallback-secret";
-  const payload = `${imageUrl}|${expiresAt}`;
-  const key     = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const sigBuf  = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
-  return Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2,"0")).join("");
-}
-
-async function handlePublicImageProxy(request, env) {
-  const reqUrl    = new URL(request.url);
-  const imageUrl  = decodeURIComponent(reqUrl.searchParams.get("url") || "").trim();
-  const expiresAt = reqUrl.searchParams.get("exp") || "";
-  const sig       = reqUrl.searchParams.get("sig") || "";
-  if (!imageUrl || !expiresAt || !sig) return new Response("Missing parameters", { status: 400 });
-  if (Date.now() > parseInt(expiresAt, 10)) return new Response("Link expired", { status: 410 });
-  const expectedSig = await signImageUrl(env, imageUrl, expiresAt);
-  if (expectedSig !== sig) return new Response("Invalid signature", { status: 403 });
-  let parsed;
-  try { parsed = new URL(imageUrl); } catch { return new Response("Invalid URL", { status: 400 }); }
-  const allowedSuffixes = [".amazonaws.com", ".cloudfront.net", "telematics.com"];
-  const allowed = allowedSuffixes.some(s => parsed.hostname.endsWith(s));
-  if (!allowed) return new Response("Host not permitted", { status: 403 });
-  const res = await fetch(imageUrl);
-  if (!res.ok) return new Response(`Upstream error: HTTP ${res.status}`, { status: 502 });
-  const contentType = res.headers.get("content-type") || "image/jpeg";
-  const buffer      = await res.arrayBuffer();
-  return new Response(buffer, { status: 200, headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=86400" } });
-}
-
 // ── Mailer signatures ─────────────────────────────────────────────────────────
 async function handleListSignatures(request, env) {
   const auth  = await requireSession(request, env);
   if (!auth.ok) return auth.response;
   const url   = new URL(request.url);
   const all   = url.searchParams.get("all") === "1";
+  if (all) {
+    const perm = await hasPermission(env, auth.session.role_id, "admin", "run");
+    if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+  } else {
+    const perm = await hasPermission(env, auth.session.role_id, "utilisation", "export-email-pdf");
+    if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+  }
   const query = all ? "SELECT id, label, html, active, created_at, updated_at FROM mailer_signatures ORDER BY id ASC" : "SELECT id, label, html, active, created_at, updated_at FROM mailer_signatures WHERE active = 1 ORDER BY id ASC";
   const result = await env.DB.prepare(query).all();
   return jsonResponse({ ok: true, signatures: result.results || [] });
@@ -1045,18 +1023,6 @@ async function handleUpdateSignature(request, env, id) {
   return jsonResponse({ ok: true });
 }
 
-async function handleSignImageUrl(request, env) {
-  const auth     = await requireSession(request, env);
-  if (!auth.ok) return auth.response;
-  const body     = await safeJson(request);
-  const imageUrl = String(body.url || "").trim();
-  if (!imageUrl) return jsonResponse({ error: "url is required." }, 400);
-  const expiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000);
-  const sig        = await signImageUrl(env, imageUrl, expiresAt);
-  const reqUrlObj  = new URL(request.url);
-  const publicUrl  = `${reqUrlObj.origin}/api/public-image?url=${encodeURIComponent(imageUrl)}&exp=${expiresAt}&sig=${sig}`;
-  return jsonResponse({ ok: true, publicUrl });
-}
 
 // ── PDF constants ─────────────────────────────────────────────────────────────
 const PDF_PAGE_W = 841.89;
@@ -1434,6 +1400,8 @@ async function handleSnapshotPdf(request, env) {
 async function handleMergeMailPdf(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "merge-mail", "export-email-pdf");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
   const body    = await safeJson(request);
   const row     = body.row || {};
   const columns = Array.isArray(body.columns) ? body.columns : Object.keys(row);
@@ -2443,8 +2411,6 @@ if (method === "POST" && path.match(/^\/api\/vendors\/\d+\/hardware-types$/)) {
       // Image proxy & helpers
       if (path === "/api/image-proxy")                                      return handleImageProxy(request, env);
       if (path === "/api/image-size")                                       return handleImageSize(request, env);
-      if (path === "/api/public-image")                                     return handlePublicImageProxy(request, env);
-      if (method === "POST" && path === "/api/sign-image-url")              return handleSignImageUrl(request, env);
 
       // Mailer
       if (path === "/api/mailer/signatures" && method === "GET")            return handleListSignatures(request, env);
