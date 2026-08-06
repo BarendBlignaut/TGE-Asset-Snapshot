@@ -327,16 +327,26 @@ TGE.api = async function (method, path, body) {
     TGE.hide('login-overlay');
     TGE.show('app-shell', 'grid');
 
-    // Apply permissions — small delay ensures DOM is fully ready
-    setTimeout(function() {
-      applyNavPermissions();
-      initNav();
-    }, 50);
+    // Apply permissions, then land on the first view this account can
+    // actually see — never a hardcoded default that ignores permissions.
+    var firstAllowed = applyNavPermissions();
+    initNav();
 
-    // Show default view
-    TGE.showView('snapshot');
-    TGE.setText('topbar-group', 'Operations');
-    TGE.setText('topbar-title', 'Asset Snapshot');
+    if (firstAllowed) {
+      var navItem = document.querySelector('.nav-item[data-view="' + firstAllowed.view + '"]');
+      document.querySelectorAll('.nav-item').forEach(function (n) { n.classList.remove('active'); });
+      document.querySelectorAll('.nav-group-btn').forEach(function (b) { b.classList.remove('has-active'); });
+      if (navItem) navItem.classList.add('active');
+      var grpBtn = TGE.el('grp-' + firstAllowed.group);
+      if (grpBtn) grpBtn.classList.add('has-active');
+      TGE.setText('topbar-group', firstAllowed.group.charAt(0).toUpperCase() + firstAllowed.group.slice(1));
+      TGE.setText('topbar-title', firstAllowed.title);
+      TGE.showView(firstAllowed.view);
+    } else {
+      TGE.setText('topbar-group', '');
+      TGE.setText('topbar-title', 'No access');
+      document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
+    }
 
     // Init diagnostics panel (if permitted)
        // Init diagnostics platform (if permitted)
@@ -349,24 +359,47 @@ TGE.api = async function (method, path, body) {
   }
 
   // ── Apply permissions to nav ───────────────────────────────────────────────────
+  // Returns the first nav item the user genuinely has permission for, so the
+  // app can land there on login instead of a hardcoded default that might
+  // not even be visible to this account.
   function applyNavPermissions() {
     var navItems = document.querySelectorAll('.nav-item[data-view]');
+    var firstAllowed = null;
+    var preferredAllowed = null;
+
     navItems.forEach(function (item) {
       var view = item.dataset.view;
       // Roles page uses admin permission
       var permKey = (view === 'roles' || view === 'api') ? 'admin' : view;
       if (!TGE.can(permKey, 'view')) {
         item.style.display = 'none';
+      } else {
+        var entry = { view: view, title: item.dataset.title || view, group: item.dataset.group || '' };
+        if (!firstAllowed) firstAllowed = entry;
+        if (view === 'snapshot') preferredAllowed = entry;
       }
     });
 
-    // Hide management group entirely if no admin access
-    if (!TGE.can('admin', 'view')) {
-      var mgmtBtn = TGE.el('grp-management');
-      var mgmtCh  = TGE.el('children-management');
-      if (mgmtBtn) mgmtBtn.style.display = 'none';
-      if (mgmtCh)  mgmtCh.style.display  = 'none';
-    }
+    // Hide any group entirely once every item inside it has been hidden,
+    // not just Management — a group with nothing visible inside it
+    // shouldn't show an empty heading in the sidebar.
+    var groups = {};
+    navItems.forEach(function (item) {
+      var g = item.dataset.group;
+      if (!g) return;
+      if (!groups[g]) groups[g] = { anyVisible: false };
+      if (item.style.display !== 'none') groups[g].anyVisible = true;
+    });
+    Object.keys(groups).forEach(function (g) {
+      if (!groups[g].anyVisible) {
+        var btn = TGE.el('grp-' + g);
+        var ch  = TGE.el('children-' + g);
+        if (btn) btn.style.display = 'none';
+        if (ch)  ch.style.display  = 'none';
+      }
+    });
+
+    return preferredAllowed || firstAllowed;
   }
 
   // ── Sign out ──────────────────────────────────────────────────────────────────
