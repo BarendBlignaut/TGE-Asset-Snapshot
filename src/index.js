@@ -1718,6 +1718,8 @@ async function handleCameraFaultPdf(request, env) {
 async function handleSendEmail(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "utilisation", "export-email-pdf");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
   if (!env.POWER_AUTOMATE_WEBHOOK_URL) return jsonResponse({ error: "Email webhook not configured." }, 503);
   const body     = await safeJson(request);
   const to       = String(body.to      || "").trim();
