@@ -244,6 +244,8 @@ async function handleDeleteUser(request, env, userId) {
 async function handleGetRoles(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "admin", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
   const roles = await env.DB.prepare("SELECT * FROM roles ORDER BY id").all();
   return jsonResponse({ roles: roles.results || [] });
 }
@@ -314,6 +316,8 @@ async function handleCreateRole(request, env) {
 async function handleGetFileSpecVendorConfig(request, env, vendorId) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "vendor", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
 
   const row = await env.DB.prepare(
     "SELECT * FROM filespec_vendor_config WHERE vendor_id = ?"
@@ -325,6 +329,8 @@ async function handleGetFileSpecVendorConfig(request, env, vendorId) {
 async function handleSaveFileSpecVendorConfig(request, env, vendorId) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "vendor", "manage");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
 
   const body = await safeJson(request);
   const specType = body.specType === "data_feed" ? "data_feed" : "master_list";
@@ -409,10 +415,8 @@ async function handleSaveControlTable(request, env) {
 const hardware    = Array.isArray(body.hardware) ? body.hardware : [];
   const rules       = Array.isArray(body.rules)    ? body.rules    : [];
   const vendorId    = body.vendorId ? parseInt(body.vendorId, 10) : null;
-  if (vendorId != null) {
-    const perm = await hasPermission(env, auth.session.role_id, "vendor", "manage");
-    if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
-  }
+  const perm = await hasPermission(env, auth.session.role_id, "vendor", "manage");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
   if (!name || !feature || !outputField || !valueSource) return jsonResponse({ error: "name, feature, outputField and valueSource are required." }, 400);
   if (!hardware.length) return jsonResponse({ error: "At least one hardware assignment is required." }, 400);
   if (!rules.length)    return jsonResponse({ error: "At least one rule is required." }, 400);
@@ -469,6 +473,8 @@ async function handleTelematicsProxy(request, env, path) {
 async function handleAttachmentContent(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "camera-snapshots", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
   const url = new URL(request.url);
   const parts = url.pathname.split('/');
   const attachmentId = parts[parts.indexOf('attachments') + 1];
@@ -491,6 +497,8 @@ async function handleAttachmentContent(request, env) {
 async function handleRegistryGetApis(request, env, vendorId = null) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "vendor", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
 
   const url = new URL(request.url);
   const all = url.searchParams.get("all") === "1";
@@ -577,6 +585,8 @@ const authProfileId = await resolveAuthProfile(env, body.vendorId ? parseInt(bod
 async function handleRegistryUpdateApi(request, env, apiId) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "vendor", "manage");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
   const body   = await safeJson(request);
   if (body.sampleResponse && String(body.sampleResponse).length > 100000) {
     return jsonResponse({ error: "Sample response too large (max 100KB). Trim to 1–2 example records — a sample shows shape, not volume." }, 400);
@@ -772,6 +782,8 @@ const reqBody = await safeJson(request);
 async function handleRegistryDeleteApi(request, env, apiId) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "vendor", "manage");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
   await env.DB.prepare("DELETE FROM registry_apis WHERE api_id = ?").bind(apiId).run();
   return jsonResponse({ ok: true });
 }
@@ -1006,6 +1018,8 @@ async function handleListSignatures(request, env) {
 async function handleCreateSignature(request, env) {
   const auth  = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "admin", "run");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
   const body  = await safeJson(request);
   const label = String(body.label || "").trim();
   const html  = String(body.html  || "").trim();
@@ -1016,6 +1030,8 @@ async function handleCreateSignature(request, env) {
 async function handleUpdateSignature(request, env, id) {
   const auth    = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "admin", "run");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
   const body    = await safeJson(request);
   const updates = [];
   const values  = [];
@@ -1396,6 +1412,8 @@ async function buildSnapshotPdf(asset) {
 async function handleSnapshotPdf(request, env) {
   const auth  = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "snapshot", "export-pdf");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
   const body  = await safeJson(request);
   const asset = body && body.asset;
   if (!asset || typeof asset !== "object") return jsonResponse({ error: "asset object is required." }, 400);
@@ -1491,6 +1509,8 @@ async function handleMergeMailPdf(request, env) {
 async function handleSdHealthPdf(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "sd-health", "export-pdf");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
   const body    = await safeJson(request);
   const rows    = Array.isArray(body.rows) ? body.rows : [];
   const summary = body.summary || {};
@@ -1662,6 +1682,8 @@ async function handleSdHealthPdf(request, env) {
 async function handleAssetTrackPdf(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "asset-track", "export-pdf");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
   const body    = await safeJson(request);
   const rows    = Array.isArray(body.rows) ? body.rows : [];
   const summary = body.summary || {};
@@ -1700,6 +1722,8 @@ async function handleAssetTrackPdf(request, env) {
 async function handleCameraFaultPdf(request, env) {
   const auth   = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "camera-snapshots", "export-pdf");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
   const body   = await safeJson(request);
   const assets = Array.isArray(body.assets) ? body.assets : [];
   if (!assets.length) return jsonResponse({ error: "assets array is required." }, 400);
@@ -2038,6 +2062,8 @@ async function handleCameraHistoryBackfill(request, env) {
 async function handleCameraHistorySync(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, 'admin', 'run');
+  if (!perm.allowed) return jsonResponse({ error: 'Access denied.' }, 403);
   if (!env.TN360_API_KEY) return jsonResponse({ error: 'TN360_API_KEY not configured.' }, 503);
 
   const body              = await safeJson(request);
@@ -2090,6 +2116,8 @@ async function handleCameraHistoryClear(request, env) {
 async function handleGetVehicleCameraHistory(request, env, vehicleId) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "camera-snapshots", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
   const url    = new URL(request.url);
   const limit  = Math.min(parseInt(url.searchParams.get('limit') || '100'), 500);
   const before = url.searchParams.get('before') || null;
@@ -2128,6 +2156,8 @@ async function runDailySync(env) {
 async function handleHistoricalSnapshots(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "camera-snapshots", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
   if (!env.TN360_SNAPSHOT_KEY) {
     return jsonResponse({ error: 'Snapshot history API key not configured.', detail: 'Add TN360_SNAPSHOT_KEY as a Worker secret.' }, 503);
   }
@@ -2211,6 +2241,8 @@ async function handleHistoricalSnapshots(request, env) {
 async function handleHistoricalSnapshotsAttachments(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "camera-snapshots", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
   if (!env.TN360_SNAPSHOT_KEY) return jsonResponse({ error: 'TN360_SNAPSHOT_KEY not configured.' }, 503);
   const body        = await safeJson(request);
   const attachments = Array.isArray(body.attachments) ? body.attachments : [];
