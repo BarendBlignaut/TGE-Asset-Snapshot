@@ -108,7 +108,7 @@ async function runBatched(env, statements) {
 }
 
 async function handleGetStaticFields(request, env, auth) {
-  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "manage-field-mappings");
+  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "view");
   if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
 
   const defs = await getFieldDefs(env);
