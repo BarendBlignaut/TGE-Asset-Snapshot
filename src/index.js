@@ -39,6 +39,7 @@ import {
 import {
   handleWalkWorkshop,
   handleProcessWorkshop,
+  runWorkshopPipeline,
 } from "./filespec-workshop.js";
 
 const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12 hours
@@ -2481,6 +2482,7 @@ if (
       }
 
       if (
+        if (
         ingestResult.source === "Power Fleet" &&
         Number.isInteger(Number(ingestResult.importId))
       ) {
@@ -2491,6 +2493,23 @@ if (
           ).catch((error) => {
             console.error(
               "Power Fleet auto-pipeline failed (import record already updated):",
+              error instanceof Error ? error.message : String(error)
+            );
+          })
+        );
+      }
+
+      if (
+        ingestResult.source === "Workshop" &&
+        Number.isInteger(Number(ingestResult.importId))
+      ) {
+        ctx.waitUntil(
+          runWorkshopPipeline(
+            env,
+            Number(ingestResult.importId)
+          ).catch((error) => {
+            console.error(
+              "Workshop auto-pipeline failed (import record already updated):",
               error instanceof Error ? error.message : String(error)
             );
           })
