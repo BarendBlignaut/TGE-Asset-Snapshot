@@ -41,6 +41,7 @@ import {
   handleProcessWorkshop,
   runWorkshopPipeline,
   handleGetWorkshopStatuses,
+  handleGetWorkshopBookings,
   handleUpdateWorkshopStatuses,
 } from "./filespec-workshop.js";
 
@@ -2536,6 +2537,11 @@ if (method === "POST" && path === "/api/filespec/locate-teletrac-km") return han
         const auth = await requireSession(request, env);
         if (!auth.ok) return auth.response;
         return handleGetWorkshopStatuses(request, env, { session: auth.session, ...utilisationAuthHelpers });
+      }
+      if (method === "GET" && path === "/api/workshop/bookings") {
+        const auth = await requireSession(request, env);
+        if (!auth.ok) return auth.response;
+        return handleGetWorkshopBookings(request, env, { session: auth.session, ...utilisationAuthHelpers });
       }
       if (method === "PUT" && path === "/api/workshop/statuses") {
         const auth = await requireSession(request, env);
