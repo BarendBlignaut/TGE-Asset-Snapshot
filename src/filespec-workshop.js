@@ -302,3 +302,50 @@ export async function handleProcessWorkshop(request, env) {
     return jsonResponse({ ok: false, importId, error: message }, 500);
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATUS CONTROL (user-facing config)
+// Session-authed, permission-gated read/write of workshop_status_config — the
+// self-seeded status vocabulary. Modelled on handleGetStaticFields /
+// handleUpdateStaticFields: same (request, env, auth) shape, same helper use
+// (auth.hasPermission / auth.safeJson), gated on the 'workshop' feature.
+// These sit beside the X-Import-Key loader above exactly as static keeps its
+// field-def config handlers beside its own import handlers.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function getStatusConfig(env) {
+  const rows = await env.DB.prepare(
+    "SELECT id, status, display FROM workshop_status_config ORDER BY status ASC"
+  ).all();
+  return rows.results || [];
+}
+
+// GET /api/workshop/statuses
+export async function handleGetWorkshopStatuses(request, env, auth) {
+  const perm = await auth.hasPermission(env, auth.session.role_id, "workshop", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
+  const statuses = await getStatusConfig(env);
+  return jsonResponse({ ok: true, statuses });
+}
+
+// PUT /api/workshop/statuses
+// Body: { statuses: [{ id, display }, ...] } — updates the display flag only.
+// Status text itself is never edited here; it is owned by the loader's
+// self-seed. Only display (0/1) is user-controllable.
+export async function handleUpdateWorkshopStatuses(request, env, auth) {
+  const perm = await auth.hasPermission(env, auth.session.role_id, "workshop", "manage-status");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
+
+  const body = await auth.safeJson(request);
+  const statuses = Array.isArray(body.statuses) ? body.statuses : [];
+
+  const now = nowIso();
+  for (const s of statuses) {
+    if (!s.id) continue;
+    await env.DB.prepare(
+      "UPDATE workshop_status_config SET display = ?, updated_at = ? WHERE id = ?"
+    ).bind(s.display ? 1 : 0, now, s.id).run();
+  }
+
+  return jsonResponse({ ok: true });
+}
