@@ -241,6 +241,11 @@ function renderTab(key) {
     return;
   }
 async function renderFileSpecFork(el, v) {
+    if (v.name === 'TGE Workshop') {
+      renderWorkshopFileSpec(el, v);
+      return;
+    }
+
     el.innerHTML = '<div class="card"><p style="font-size:13px;color:var(--muted);">Loading…</p></div>';
 
     var result = await TGE.api('GET', '/api/vendors/' + v.id + '/filespec-config');
@@ -269,6 +274,208 @@ async function renderFileSpecFork(el, v) {
           'The Data Feed reading engine hasn\'t been built yet.' +
         '</p>' +
       '</div>';
+  }
+
+  // ── Workshop File Spec ──────────────────────────────────────────────────────
+  // Not a master list, not a data feed — a real, live booking table for one
+  // day at a time, with the Status column carrying the same dropdown-and-
+  // checkbox control already used across every other File Spec screen for
+  // excluding values. Toggling a status here dims its rows live, as a
+  // preview, exactly like exclusions do — nothing is written until Save.
+
+  var wk = { date: null, availableDates: [], bookings: [], statuses: [], dirty: false, openDropdown: false };
+
+  function renderWorkshopFileSpec(el, v) {
+    el.innerHTML =
+      '<div class="card">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">' +
+          '<div>' +
+            '<div class="card-kicker">Vendor Platform</div>' +
+            '<div class="card-title">File Spec — Workshop</div>' +
+            '<p style="font-size:13px;color:var(--muted);margin-top:4px;max-width:640px;">Deciding which workshop statuses earn a spanner on the Fleet Utilisation dashboard. Untick a status in the dropdown to stop it counting — Save applies it everywhere, immediately, no re-import needed.</p>' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:10px;">' +
+            '<select id="wk-date-select" style="height:32px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font-size:12px;"></select>' +
+            '<span id="wk-save-msg" style="font-size:12px;color:var(--muted);"></span>' +
+            '<button class="btn btn-primary" id="wk-save-btn" type="button">Save</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="wk-table-wrap" style="margin-top:14px;max-height:60vh;overflow:auto;border:1px solid var(--line);border-radius:8px;">' +
+          '<div style="padding:30px;text-align:center;color:var(--muted);">Loading…</div>' +
+        '</div>' +
+      '</div>';
+
+    document.addEventListener('click', function () { if (wk.openDropdown) closeWorkshopDropdown(); });
+
+    loadWorkshopData();
+  }
+
+  async function loadWorkshopData() {
+    var statusRes = await TGE.api('GET', '/api/workshop/statuses');
+    wk.statuses = (statusRes.ok && statusRes.data && statusRes.data.statuses) || [];
+
+    var bookingRes = await TGE.api('GET', '/api/workshop/bookings');
+    if (!bookingRes.ok) {
+      renderWorkshopMessage((bookingRes.data && bookingRes.data.error) || 'Failed to load bookings.');
+      return;
+    }
+
+    wk.date = bookingRes.data.date;
+    wk.availableDates = bookingRes.data.availableDates || [];
+    wk.bookings = bookingRes.data.bookings || [];
+
+    renderWorkshopDateSelect();
+    buildWorkshopTable();
+    wireWorkshopSave();
+  }
+
+  function renderWorkshopMessage(text) {
+    var wrap = TGE.el('wk-table-wrap');
+    if (wrap) wrap.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);">' + escapeHtml(text) + '</div>';
+  }
+
+  function renderWorkshopDateSelect() {
+    var sel = TGE.el('wk-date-select');
+    if (!sel) return;
+
+    if (!wk.availableDates.length) {
+      sel.innerHTML = '<option>No bookings yet</option>';
+      sel.disabled = true;
+      return;
+    }
+
+    sel.innerHTML = wk.availableDates.map(function (d) {
+      return '<option value="' + escapeAttr(d) + '"' + (d === wk.date ? ' selected' : '') + '>' + escapeHtml(d) + '</option>';
+    }).join('');
+
+    sel.onchange = async function () {
+      var res = await TGE.api('GET', '/api/workshop/bookings?date=' + encodeURIComponent(sel.value));
+      if (!res.ok) return;
+      wk.date = res.data.date;
+      wk.bookings = res.data.bookings || [];
+      buildWorkshopTable();
+    };
+  }
+
+  function statusDisplayMap() {
+    var m = {};
+    wk.statuses.forEach(function (s) { m[s.status] = !!s.display; });
+    return m;
+  }
+
+  function buildWorkshopTable() {
+    var wrap = TGE.el('wk-table-wrap');
+    if (!wrap) return;
+
+    if (!wk.bookings.length) {
+      wrap.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);">No bookings for this day.</div>';
+      return;
+    }
+
+    var displayMap = statusDisplayMap();
+    var hasActiveToggleOff = wk.statuses.some(function (s) { return !s.display; });
+
+    var rows = wk.bookings.map(function (b) {
+      var shown = displayMap[b.status] !== false;
+      var rowStyle = shown ? '' : ' style="opacity:0.4;text-decoration:line-through;"';
+      return '<tr' + rowStyle + '>' +
+        '<td style="padding:7px 10px;border-bottom:1px solid var(--line-2);font-size:12px;">' + escapeHtml(b.legacy_number) + '</td>' +
+        '<td style="padding:7px 10px;border-bottom:1px solid var(--line-2);font-size:12px;">' + escapeHtml(b.task) + '</td>' +
+        '<td style="padding:7px 10px;border-bottom:1px solid var(--line-2);font-size:12px;">' + escapeHtml(b.status) + '</td>' +
+      '</tr>';
+    }).join('');
+
+    wrap.innerHTML =
+      '<table style="border-collapse:collapse;width:100%;">' +
+        '<thead><tr>' +
+          '<th style="position:sticky;top:0;background:var(--surface-2);border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Legacy Number</th>' +
+          '<th style="position:sticky;top:0;background:var(--surface-2);border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Task</th>' +
+          '<th style="position:sticky;top:0;background:var(--surface-2);border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">' +
+            '<span class="fs-th-wrap">' +
+              '<span>Status</span>' +
+              '<button type="button" id="wk-status-arrow" class="' + (hasActiveToggleOff ? 'fs-arrow-on' : 'fs-arrow-off') + '" style="border:none;cursor:pointer;padding:2px 5px;border-radius:5px;font-size:11px;line-height:1;font-weight:700;">▾</button>' +
+              '<span class="fs-dd-slot" id="wk-dd-slot"></span>' +
+            '</span>' +
+          '</th>' +
+        '</tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>';
+
+    var arrow = TGE.el('wk-status-arrow');
+    if (arrow) {
+      arrow.onclick = function (e) {
+        e.stopPropagation();
+        if (wk.openDropdown) { closeWorkshopDropdown(); return; }
+        openWorkshopDropdown();
+      };
+    }
+  }
+
+  function openWorkshopDropdown() {
+    wk.openDropdown = true;
+    renderWorkshopDropdown();
+  }
+
+  function closeWorkshopDropdown() {
+    wk.openDropdown = false;
+    var slot = TGE.el('wk-dd-slot');
+    if (slot) slot.innerHTML = '';
+  }
+
+  function renderWorkshopDropdown() {
+    var slot = TGE.el('wk-dd-slot');
+    if (!slot) return;
+
+    var sorted = wk.statuses.slice().sort(function (a, b) { return String(a.status).localeCompare(String(b.status)); });
+
+    var rows = sorted.map(function (s) {
+      return '<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:12px;color:var(--ink-2);cursor:pointer;">' +
+        '<input type="checkbox" data-wk-status-id="' + s.id + '"' + (s.display ? ' checked' : '') + ' />' +
+        '<span style="flex:1;">' + escapeHtml(s.status) + '</span>' +
+      '</label>';
+    }).join('');
+
+    slot.innerHTML =
+      '<div style="width:260px;max-height:380px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 18px 42px rgba(10,45,20,0.22);padding:8px;text-transform:none;">' +
+        '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;padding:4px 8px;">Untick to stop counting</div>' +
+        '<div>' + rows + '</div>' +
+      '</div>';
+
+    slot.onclick = function (e) { e.stopPropagation(); };
+
+    slot.querySelectorAll('[data-wk-status-id]').forEach(function (input) {
+      input.onchange = function () {
+        var id = input.dataset.wkStatusId;
+        var entry = wk.statuses.find(function (s) { return String(s.id) === String(id); });
+        if (entry) entry.display = input.checked ? 1 : 0;
+        wk.dirty = true;
+        var msg = TGE.el('wk-save-msg');
+        if (msg) { msg.textContent = 'Unsaved changes'; msg.style.color = 'var(--muted)'; }
+        buildWorkshopTable();
+        openWorkshopDropdown();
+      };
+    });
+  }
+
+  function wireWorkshopSave() {
+    var btn = TGE.el('wk-save-btn');
+    if (!btn) return;
+    btn.onclick = async function () {
+      var msg = TGE.el('wk-save-msg');
+      btn.disabled = true; btn.textContent = 'Saving…';
+
+      var payload = wk.statuses.map(function (s) { return { id: s.id, display: s.display ? 1 : 0 }; });
+      var res = await TGE.api('PUT', '/api/workshop/statuses', { statuses: payload });
+
+      btn.disabled = false; btn.textContent = 'Save';
+
+      if (!res.ok) {
+        if (msg) { msg.textContent = (res.data && res.data.error) || 'Save failed.'; msg.style.color = 'var(--danger)'; }
+        return;
+      }
+      wk.dirty = false;
+      if (msg) { msg.textContent = 'Saved'; msg.style.color = 'var(--muted)'; }
+    };
   }
 
   function renderFileSpecChoiceScreen(el, v) {
