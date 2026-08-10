@@ -546,4 +546,5 @@ export {
   handleGetStaticFleetRaw,
   handleGetStaticColumnValues,
   handleGetVendorMetrics,
+  handleGetWorkshopBookingsForDashboard,
 };
