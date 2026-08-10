@@ -175,3 +175,130 @@ export async function handleWalkWorkshop(request, env) {
     return jsonResponse({ ok: false, importId, error: message, wroteToDatabase: false }, 500);
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WRITE CORE
+// Consumption loader: reads the clean DatabaseData sheet and writes bookings
+// immutably. Modelled on runPowerFleetKmPipeline (env + importId, auto-runnable
+// from the ingest chain or callable by the manual wrapper below), differing
+// where workshop differs: INSERT OR IGNORE (immutable snapshot, no upsert) and
+// self-seeding the status vocabulary the file brings.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const BATCH_SIZE = 100;
+
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
+export async function runWorkshopPipeline(env, importId) {
+  const importRecord = await env.DB.prepare(
+    "SELECT * FROM filespec_imports WHERE id = ?"
+  ).bind(importId).first();
+
+  if (!importRecord) throw new Error(`Import ${importId} was not found.`);
+  if (importRecord.source !== SOURCE_NAME) {
+    throw new Error(`Import ${importId} is not a ${SOURCE_NAME} import.`);
+  }
+
+  await env.DB.prepare(
+    "UPDATE filespec_imports SET status = 'parsing', error = NULL WHERE id = ?"
+  ).bind(importId).run();
+
+  try {
+    const { rows } = await loadDatabaseDataRows(env, importRecord);
+    const { rows: walked } = walkWorkshopRows(rows);
+
+    const now = nowIso();
+
+    // Distinct statuses this file brings — self-seed any not already known,
+    // display = 1 (on) for a new status; INSERT OR IGNORE leaves any status
+    // already configured untouched, so prior display edits are preserved.
+    const distinctStatuses = [];
+    const seen = {};
+    for (const r of walked) {
+      const s = r.status || "";
+      if (s && !seen[s]) { seen[s] = true; distinctStatuses.push(s); }
+    }
+
+    const statusStatements = distinctStatuses.map((s) =>
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO workshop_status_config (status, display, created_at, updated_at)
+         VALUES (?, 1, ?, ?)`
+      ).bind(s, now, now)
+    );
+
+    let statusesSeeded = 0;
+    for (const chunk of chunkArray(statusStatements, BATCH_SIZE)) {
+      const results = await env.DB.batch(chunk);
+      for (const r of results) {
+        statusesSeeded += (r && r.meta && typeof r.meta.changes === "number") ? r.meta.changes : 0;
+      }
+    }
+
+    // Immutable booking rows. INSERT OR IGNORE against
+    // UNIQUE(booking_date, legacy_number, task) makes a re-import a clean no-op
+    // and silently absorbs any duplicate (date, legacy, task) line in-file.
+    const bookingStatements = walked.map((r) =>
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO workshop_bookings
+           (booking_date, legacy_number, task, status, created_at)
+         VALUES (?, ?, ?, ?, ?)`
+      ).bind(r.bookingDate, r.legacyNumber, r.task, r.status, now)
+    );
+
+    let bookingsInserted = 0;
+    for (const chunk of chunkArray(bookingStatements, BATCH_SIZE)) {
+      const results = await env.DB.batch(chunk);
+      for (const r of results) {
+        bookingsInserted += (r && r.meta && typeof r.meta.changes === "number") ? r.meta.changes : 0;
+      }
+    }
+
+    // Data date = the booking date every row now carries (single-day file).
+    const dataDate = walked.length ? walked[0].bookingDate : null;
+
+    await env.DB.prepare(
+      "UPDATE filespec_imports SET status = 'parsed', processed_at = ?, row_count = ? WHERE id = ?"
+    ).bind(now, walked.length, importId).run();
+
+    return {
+      dataDate,
+      rowCount: walked.length,
+      bookingsInserted,
+      duplicatesIgnored: walked.length - bookingsInserted,
+      statusCount: distinctStatuses.length,
+      statusesSeeded,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await env.DB.prepare(
+      "UPDATE filespec_imports SET status = 'failed', error = ? WHERE id = ?"
+    ).bind(message, importId).run();
+    throw error;
+  }
+}
+
+// POST /api/filespec/process-workshop?id=<importId>
+// Thin manual wrapper around the pipeline core, for controlled first runs and
+// re-runs. Automated runs go through runWorkshopPipeline from the ingest chain.
+export async function handleProcessWorkshop(request, env) {
+  const keyCheck = await requireImportKey(request, env);
+  if (!keyCheck.ok) return keyCheck.response;
+
+  const url = new URL(request.url);
+  const importId = Number.parseInt(url.searchParams.get("id") || "", 10);
+  if (!Number.isInteger(importId) || importId < 1) {
+    return jsonResponse({ error: "A valid import id is required." }, 400);
+  }
+
+  try {
+    const result = await runWorkshopPipeline(env, importId);
+    return jsonResponse({ ok: true, importId, ...result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return jsonResponse({ ok: false, importId, error: message }, 500);
+  }
+}
