@@ -14,6 +14,7 @@ handleGetStaticFleet,
   handleGetStaticColumnValues,
   handleGetStaticFleetRaw,
   handleGetVendorMetrics,
+  handleGetWorkshopBookingsForDashboard,
 } from "./utilisation-static-fleet.js";
 
 import {
@@ -2573,6 +2574,12 @@ if (method === "GET"  && path === "/api/utilisation/static-fleet") {
         const auth = await requireSession(request, env);
         if (!auth.ok) return auth.response;
         return handleGetVendorMetrics(request, env, { session: auth.session, ...utilisationAuthHelpers });
+      }
+
+      if (method === "GET" && path === "/api/utilisation/workshop-bookings") {
+        const auth = await requireSession(request, env);
+        if (!auth.ok) return auth.response;
+        return handleGetWorkshopBookingsForDashboard(request, env, { session: auth.session, ...utilisationAuthHelpers });
       }
 
       if (method === "GET" && path === "/api/utilisation/static-column-values") {
