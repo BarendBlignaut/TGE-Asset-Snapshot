@@ -388,9 +388,9 @@ async function renderFileSpecFork(el, v) {
     wrap.innerHTML =
       '<table style="border-collapse:collapse;width:100%;">' +
         '<thead><tr>' +
-          '<th style="position:sticky;top:0;background:var(--surface-2);border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Legacy Number</th>' +
-          '<th style="position:sticky;top:0;background:var(--surface-2);border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Task</th>' +
-          '<th style="position:sticky;top:0;background:var(--surface-2);border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;overflow:visible;">' +
+          '<th style="position:sticky;top:0;z-index:20;background:var(--surface-2);border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Legacy Number</th>' +
+          '<th style="position:sticky;top:0;z-index:20;background:var(--surface-2);border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Task</th>' +
+          '<th style="position:sticky;top:0;z-index:20;background:var(--surface-2);border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;overflow:visible;">' +
             '<span class="fs-th-wrap" style="position:relative;display:inline-flex;align-items:center;gap:4px;">' +
               '<span>Status</span>' +
               '<button type="button" id="wk-status-arrow" class="' + (hasActiveToggleOff ? 'fs-arrow-on' : 'fs-arrow-off') + '" style="border:none;cursor:pointer;padding:2px 5px;border-radius:5px;font-size:11px;line-height:1;font-weight:700;">▾</button>' +
