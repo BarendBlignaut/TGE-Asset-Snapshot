@@ -539,6 +539,7 @@ async function loadFieldDefs() {
     var result = await TGE.api('GET', '/api/utilisation/workshop-bookings?start=' + start + '&end=' + end);
     state.workshopBookings = (result.ok && result.data && result.data.bookings) ? result.data.bookings : {};
     renderTable();
+    updateTotalPill();
   }
    
   async function loadFleet() {
@@ -566,8 +567,18 @@ async function loadFieldDefs() {
 
     TGE.setText('ud-stat-active', telematicsCount);
     TGE.setText('ud-stat-no-telematics', noTelematicsCount);
-    // Workshop and EXM stay at 0 honestly — no workshop or non-functioning
-    // feed exists yet, so there's nothing real to count for those two.
+
+    var dates = getDateRange();
+    var workshopCount = visible.filter(function (a) {
+      return dates.some(function (d) {
+        var key = a.legacyNumber + '|' + isoDate(d);
+        var bookings = state.workshopBookings[key];
+        return bookings && bookings.length;
+      });
+    }).length;
+    TGE.setText('ud-stat-workshop', workshopCount);
+    // EXM stays at 0 honestly — no Non-Functioning feed exists yet, so
+    // there's nothing real to count there.
   }
 
 // ── Management Report: standalone, offline HTML export ────────────────────
