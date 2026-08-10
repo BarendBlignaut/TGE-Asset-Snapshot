@@ -320,6 +320,45 @@ async function getStatusConfig(env) {
   return rows.results || [];
 }
 
+// GET /api/workshop/bookings?date=YYYY-MM-DD
+// Returns real booking rows for one day — every row is immutable data as
+// imported, this endpoint never filters by the display flag itself, so the
+// File Spec screen can show the true, complete picture and preview the
+// effect of a toggle live, before it's saved.
+export async function handleGetWorkshopBookings(request, env, auth) {
+  const perm = await auth.hasPermission(env, auth.session.role_id, "workshop", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
+
+  const url = new URL(request.url);
+  let date = (url.searchParams.get("date") || "").trim();
+
+  if (!date) {
+    const latest = await env.DB.prepare(
+      "SELECT booking_date FROM workshop_bookings ORDER BY booking_date DESC LIMIT 1"
+    ).first();
+    date = latest ? latest.booking_date : null;
+  }
+
+  if (!date) {
+    return jsonResponse({ ok: true, date: null, bookings: [] });
+  }
+
+  const rows = await env.DB.prepare(
+    "SELECT legacy_number, task, status, booking_date FROM workshop_bookings WHERE booking_date = ? ORDER BY legacy_number ASC, task ASC"
+  ).bind(date).all();
+
+  const availableDates = await env.DB.prepare(
+    "SELECT DISTINCT booking_date FROM workshop_bookings ORDER BY booking_date DESC LIMIT 30"
+  ).all();
+
+  return jsonResponse({
+    ok: true,
+    date,
+    bookings: rows.results || [],
+    availableDates: (availableDates.results || []).map(r => r.booking_date),
+  });
+}
+
 // GET /api/workshop/statuses
 export async function handleGetWorkshopStatuses(request, env, auth) {
   const perm = await auth.hasPermission(env, auth.session.role_id, "workshop", "view");
