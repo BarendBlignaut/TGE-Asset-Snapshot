@@ -40,6 +40,8 @@ import {
   handleWalkWorkshop,
   handleProcessWorkshop,
   runWorkshopPipeline,
+  handleGetWorkshopStatuses,
+  handleUpdateWorkshopStatuses,
 } from "./filespec-workshop.js";
 
 const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12 hours
@@ -2530,6 +2532,16 @@ if (method === "POST" && path === "/api/filespec/locate-teletrac-km") return han
      if (method === "POST" && path === "/api/filespec/walk-powerfleet") return handleWalkPowerFleet(request, env);
       if (method === "POST" && path === "/api/filespec/walk-workshop") return handleWalkWorkshop(request, env);
       if (method === "POST" && path === "/api/filespec/process-workshop") return handleProcessWorkshop(request, env);
+      if (method === "GET" && path === "/api/workshop/statuses") {
+        const auth = await requireSession(request, env);
+        if (!auth.ok) return auth.response;
+        return handleGetWorkshopStatuses(request, env, { session: auth.session, ...utilisationAuthHelpers });
+      }
+      if (method === "PUT" && path === "/api/workshop/statuses") {
+        const auth = await requireSession(request, env);
+        if (!auth.ok) return auth.response;
+        return handleUpdateWorkshopStatuses(request, env, { session: auth.session, ...utilisationAuthHelpers });
+      }
       if (method === "POST" && path === "/api/filespec/process-powerfleet") return handleProcessPowerFleet(request, env);
       if (method === "POST" && path === "/api/filespec/process-teletrac-km") return handleProcessTeletracKm(request, env);
       
