@@ -2493,6 +2493,7 @@ if (
           ).catch((error) => {
             console.error(
               "Power Fleet auto-pipeline failed (import record already updated):",
+              // __WORKSHOP_ANCHOR__
               error instanceof Error ? error.message : String(error)
             );
           })
