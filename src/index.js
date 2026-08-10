@@ -2481,7 +2481,6 @@ if (
         );
       }
 
-      if (
         if (
         ingestResult.source === "Power Fleet" &&
         Number.isInteger(Number(ingestResult.importId))
