@@ -388,3 +388,38 @@ export async function handleUpdateWorkshopStatuses(request, env, auth) {
 
   return jsonResponse({ ok: true });
 }
+
+// GET /api/utilisation/workshop-bookings?start=&end=
+// The Fleet Utilisation dashboard's own read of real bookings, but only
+// ones whose status is currently switched on — an excluded status never
+// reaches the dashboard at all. Lives here, not in utilisation-static-fleet,
+// since this is genuinely Workshop's own data being served, not Static
+// Fleet's.
+export async function handleGetWorkshopBookingsForDashboard(request, env, auth) {
+  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
+
+  const url = new URL(request.url);
+  const start = url.searchParams.get("start");
+  const end = url.searchParams.get("end");
+  if (!start || !end) {
+    return jsonResponse({ error: "start and end date parameters are required." }, 400);
+  }
+
+  const rows = await env.DB.prepare(
+    `SELECT wb.legacy_number, wb.booking_date, wb.task, wb.status
+     FROM workshop_bookings wb
+     JOIN workshop_status_config wsc ON wsc.status = wb.status
+     WHERE wb.booking_date >= ? AND wb.booking_date <= ? AND wsc.display = 1
+     ORDER BY wb.legacy_number ASC, wb.task ASC`
+  ).bind(start, end).all();
+
+  const grouped = {};
+  for (const r of (rows.results || [])) {
+    const key = `${r.legacy_number}|${r.booking_date}`;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push({ task: r.task, status: r.status });
+  }
+
+  return jsonResponse({ ok: true, bookings: grouped });
+}
