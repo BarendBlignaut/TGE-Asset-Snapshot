@@ -228,3 +228,35 @@ export async function handleWalkNonFunctioning(request, env) {
     return jsonResponse({ ok: false, error: message }, 500);
   }
 }
+
+// GET /api/utilisation/non-functioning?start=&end=
+// The Fleet Utilisation dashboard's own read of real non-functioning
+// assets whose range genuinely overlaps the requested window — not
+// expanded per day, since each asset only ever has one row, a real start
+// and end. The dashboard itself works out which specific days fall inside
+// that range. Lives here, not in utilisation-static-fleet, since this is
+// genuinely Non-Functioning's own data being served.
+export async function handleGetNonFunctioningForDashboard(request, env, auth) {
+  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
+
+  const url = new URL(request.url);
+  const start = url.searchParams.get("start");
+  const end = url.searchParams.get("end");
+  if (!start || !end) {
+    return jsonResponse({ error: "start and end date parameters are required." }, 400);
+  }
+
+  const rows = await env.DB.prepare(
+    `SELECT legacy_number, date_start, date_end
+     FROM non_functioning_assets
+     WHERE date_end >= ? AND date_start <= ?`
+  ).bind(start, end).all();
+
+  const keyed = {};
+  for (const r of (rows.results || [])) {
+    keyed[r.legacy_number] = { dateStart: r.date_start, dateEnd: r.date_end };
+  }
+
+  return jsonResponse({ ok: true, nonFunctioning: keyed });
+}
