@@ -701,6 +701,12 @@ async function loadFieldDefs() {
       '.mr-sub{background:#eef1ec;color:#6b7a6f;font-size:10px;font-weight:700;text-transform:uppercase;padding:4px 8px;border-bottom:1px solid #d8e0da;}' +
       '.mr-ws-icon{color:#e8850c;display:inline-flex;vertical-align:middle;}' +
       '.mr-exm-icon{color:#d62d2d;display:inline-flex;vertical-align:middle;}' +
+      '.mr-legend{background:rgba(255,255,255,.06);border:1px solid rgba(200,241,53,.25);border-radius:10px;padding:10px 14px;min-width:190px;}' +
+      '.mr-legend-title{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#c8f135;font-weight:700;margin-bottom:6px;}' +
+      '.mr-legend-row{display:flex;align-items:center;gap:6px;font-size:11px;color:#d6f7a3;margin-bottom:4px;}' +
+      '.mr-legend-row strong{color:#c8f135;min-width:16px;}' +
+      '.mr-legend-swatch{width:10px;height:10px;border-radius:2px;display:inline-block;}' +
+      '.mr-low-swatch{background:#fde3e3;border:1px solid #a11d1d;}' +
       '.mr-tablewrap{max-height:70vh;overflow:auto;border:1px solid #e6e8ec;border-radius:8px;}' +
       '.mr-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;}' +
       '.mr-on{background:#1f9d55;} .mr-off{background:#d43a3a;}' +
@@ -715,7 +721,8 @@ async function loadFieldDefs() {
       '.mr-chart-grid>div{background:#fff;border:1px solid #dce8e0;border-radius:10px;padding:10px;}' +
       '.mr-chart-label{font-size:11px;color:#6b778c;margin:0 0 4px;}' +
       '</style></head><body>' +
-      '<div class="mr-header"><h1>Fleet Utilisation — Management Report</h1>' +
+      '<div class="mr-header"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;">' +
+      '<div style="flex:1;min-width:260px;"><h1>Fleet Utilisation — Management Report</h1>' +
       '<p>TGE Asset Snapshot — offline snapshot, generated for sharing. No live connection.</p>' +
       '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px;">' +
         '<div class="mr-daterange" id="mr-daterange"></div>' +
@@ -723,6 +730,15 @@ async function loadFieldDefs() {
         '<button type="button" class="mr-clear-btn" id="mr-clear-btn">Clear all filters</button>' +
       '</div>' +
       '<div class="mr-filter-summary" id="mr-filter-summary"></div></div>' +
+      '<div class="mr-legend">' +
+        '<div class="mr-legend-title">Legend</div>' +
+        '<div class="mr-legend-row"><strong>KM</strong> Daily kilometres</div>' +
+        '<div class="mr-legend-row"><span class="mr-ws-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M21.7 15.3a5 5 0 01-6.6 6.6l-7.8-7.8a5 5 0 01-6.2-6.2 1 1 0 011.7-.5l2.8 2.8 2-2-2.8-2.8a1 1 0 01.5-1.7 5 5 0 016.2 6.2l7.8 7.8a1 1 0 001.4-1.4z"/></svg></span> Workshop booking</div>' +
+        '<div class="mr-legend-row"><span class="mr-exm-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2L1 21h22L12 2zm0 5.5a1.5 1.5 0 011.5 1.5v5a1.5 1.5 0 01-3 0v-5A1.5 1.5 0 0112 7.5zm0 10.75a1.25 1.25 0 110-2.5 1.25 1.25 0 010 2.5z"/></svg></span> Non-functioning device</div>' +
+        '<div class="mr-legend-row"><span class="mr-dot mr-on" style="margin-right:2px;"></span><span class="mr-dot mr-off"></span> Telematics</div>' +
+        '<div class="mr-legend-row"><i class="mr-legend-swatch mr-low-swatch"></i> Below KM cutoff</div>' +
+      '</div>' +
+      '</div></div>' +
       '<div class="mr-body">' +
       '<div class="mr-controls" id="mr-controls"></div>' +
       '<div class="mr-tabs">' +
