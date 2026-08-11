@@ -14,8 +14,6 @@ handleGetStaticFleet,
   handleGetStaticColumnValues,
   handleGetStaticFleetRaw,
   handleGetVendorMetrics,
-  handleGetWorkshopBookingsForDashboard,
-  handleGetNonFunctioningForDashboard,
 } from "./utilisation-static-fleet.js";
 
 import {
@@ -45,12 +43,14 @@ import {
   handleGetWorkshopStatuses,
   handleGetWorkshopBookings,
   handleUpdateWorkshopStatuses,
+  handleGetWorkshopBookingsForDashboard,
 } from "./filespec-workshop.js";
 
 import {
   handleWalkNonFunctioning,
   handleProcessNonFunctioning,
   runNonFunctioningPipeline,
+  handleGetNonFunctioningForDashboard,
 } from "./filespec-non-functioning.js";
 
 const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12 hours
