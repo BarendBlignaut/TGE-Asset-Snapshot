@@ -17,6 +17,7 @@
         { key: 'vpm',               label: 'VPM Analysis',      actions: ['view','user-mode','fleet-mode','run','cancel','refresh'].concat(EXPORT_ACTIONS), hasLimit: true },
        { key: 'utilisation',       label: 'Fleet Utilisation', actions: ['view','run','cancel','refresh','manage-field-mappings','manage-static-sanitising'].concat(EXPORT_ACTIONS) },
        { key: 'workshop',          label: 'Workshop',          actions: ['view','manage-status'] },
+        { key: 'non-functioning',   label: 'Non-Functioning',   actions: ['view'] },
         { key: 'merge-mail',        label: 'Merge Mail',        actions: ['view','run','cancel','refresh'].concat(EXPORT_ACTIONS) },
       ]
     },
