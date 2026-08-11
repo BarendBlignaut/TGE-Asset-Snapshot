@@ -19,6 +19,7 @@ fieldDefs: [],
     telematicsSourceColumn: null,
     vendorMetrics: {},
     workshopBookings: {},
+    nonFunctioning: {},
     filters: {},
     openFilterCol: null,
   };
@@ -324,6 +325,7 @@ TGE.on('ud-history-btn', 'click', function () {
         renderTable();
         loadVendorMetrics();
         loadWorkshopBookings();
+        loadNonFunctioning();
       });
     });
     TGE.on('ud-date-apply', 'click', function () {
@@ -339,6 +341,7 @@ TGE.on('ud-history-btn', 'click', function () {
       renderTable();
       loadVendorMetrics();
       loadWorkshopBookings();
+      loadNonFunctioning();
     });
   }
 
@@ -435,7 +438,14 @@ function wirePinnedColumnScroll() {
         } else {
           row += '<td class="ud-dcol">-</td>';
         }
-        row += '<td class="ud-dcol">-</td>';
+        var nf = state.nonFunctioning[asset.legacyNumber];
+        var dStr = isoDate(d);
+        var isNonFunctioning = nf && dStr >= nf.dateStart && dStr <= nf.dateEnd;
+        if (isNonFunctioning) {
+          row += '<td class="ud-dcol" title="Non-functioning ' + esc(nf.dateStart) + ' to ' + esc(nf.dateEnd) + '"><span class="ud-exm-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2L1 21h22L12 2zm0 5.5a1.5 1.5 0 011.5 1.5v5a1.5 1.5 0 01-3 0v-5A1.5 1.5 0 0112 7.5zm0 10.75a1.25 1.25 0 110-2.5 1.25 1.25 0 010 2.5z"/></svg></span></td>';
+        } else {
+          row += '<td class="ud-dcol">-</td>';
+        }
       });
       row += '<td class="ud-pin-avg"><div class="ud-pin-right-inner"><span class="ud-pin-total-part">' + (hasAnyKm ? totalKm.toFixed(1) : '-') + '</span><span class="ud-pin-avgday-part">-</span></div></td>';
       row += '</tr>';
@@ -541,6 +551,16 @@ async function loadFieldDefs() {
     renderTable();
     updateTotalPill();
   }
+
+  async function loadNonFunctioning() {
+    if (!state.startDate || !state.endDate) return;
+    var start = isoDate(state.startDate);
+    var end = isoDate(state.endDate);
+    var result = await TGE.api('GET', '/api/utilisation/non-functioning?start=' + start + '&end=' + end);
+    state.nonFunctioning = (result.ok && result.data && result.data.nonFunctioning) ? result.data.nonFunctioning : {};
+    renderTable();
+    updateTotalPill();
+  }
    
   async function loadFleet() {
     var path = '/api/utilisation/static-fleet' + (state.history ? '?history=1' : '');
@@ -552,6 +572,7 @@ async function loadFieldDefs() {
     renderFilterCards();
     loadVendorMetrics();
     loadWorkshopBookings();
+    loadNonFunctioning();
   }
 
  function updateTotalPill() {
@@ -577,8 +598,15 @@ async function loadFieldDefs() {
       });
     }).length;
     TGE.setText('ud-stat-workshop', workshopCount);
-    // EXM stays at 0 honestly — no Non-Functioning feed exists yet, so
-    // there's nothing real to count there.
+    var exmCount = visible.filter(function (a) {
+      var nf = state.nonFunctioning[a.legacyNumber];
+      if (!nf) return false;
+      return dates.some(function (d) {
+        var dStr = isoDate(d);
+        return dStr >= nf.dateStart && dStr <= nf.dateEnd;
+      });
+    }).length;
+    TGE.setText('ud-stat-exm', exmCount);
   }
 
 // ── Management Report: standalone, offline HTML export ────────────────────
@@ -845,7 +873,7 @@ function reportRuntimeScript() {
       '<div class="ud-side-row"><strong>WS</strong><span>Workshop booking</span></div>',
       '<div class="ud-side-row"><strong>EXM</strong><span>Exempt from utilisation</span></div>',
       '<div class="ud-side-swatch"><span class="ud-ws-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M21.7 15.3a5 5 0 01-6.6 6.6l-7.8-7.8a5 5 0 01-6.2-6.2 1 1 0 011.7-.5l2.8 2.8 2-2-2.8-2.8a1 1 0 01.5-1.7 5 5 0 016.2 6.2l7.8 7.8a1 1 0 001.4-1.4z"/></svg></span><em>Workshop booking</em></div>',
-      '<div class="ud-side-swatch"><span>⚠</span><em>Non-functioning device</em></div>',
+      '<div class="ud-side-swatch"><span class="ud-exm-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2L1 21h22L12 2zm0 5.5a1.5 1.5 0 011.5 1.5v5a1.5 1.5 0 01-3 0v-5A1.5 1.5 0 0112 7.5zm0 10.75a1.25 1.25 0 110-2.5 1.25 1.25 0 010 2.5z"/></svg></span><em>Non-functioning device</em></div>',
       '<div class="ud-side-swatch"><span class="ud-gps-on" style="margin-right:3px;"><svg viewBox="0 0 24 24" width="12" height="12"><circle cx="12" cy="12" r="3" fill="currentColor"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/></svg></span><span class="ud-gps-off"><svg viewBox="0 0 24 24" width="12" height="12"><circle cx="12" cy="12" r="3" fill="currentColor"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/></svg></span><em>Telematics</em></div>',
       '<div class="ud-side-swatch"><i class="ud-red"></i><em>Below KM cutoff</em></div>',
       '<div class="ud-side-swatch"><i class="ud-hist"></i><em>Historical / inactive</em></div>',
@@ -981,6 +1009,7 @@ function reportRuntimeScript() {
       '.ud-pin-total-part,.ud-pin-avgday-part{min-width:60px;}',
       '.ud-gps-on{color:#1f9d55;display:inline-flex;}',
       '.ud-ws-icon{color:#e8850c;display:inline-flex;vertical-align:middle;}',
+      '.ud-exm-icon{color:#d62d2d;display:inline-flex;vertical-align:middle;}',
       '.ud-gps-off{color:#d43a3a;display:inline-flex;}',
       '.ud-pin-avg{background:#f0f1f3!important;color:#172b4d!important;z-index:40!important;min-width:150px;}',
       'td.ud-pin-avg{position:sticky!important;right:0!important;}',
