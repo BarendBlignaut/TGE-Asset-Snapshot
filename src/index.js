@@ -46,6 +46,12 @@ import {
   handleUpdateWorkshopStatuses,
 } from "./filespec-workshop.js";
 
+import {
+  handleWalkNonFunctioning,
+  handleProcessNonFunctioning,
+  runNonFunctioningPipeline,
+} from "./filespec-non-functioning.js";
+
 const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12 hours
 const SESSION_COOKIE      = "tge_session";
 
@@ -2519,6 +2525,23 @@ if (
           })
         );
       }
+
+      if (
+        ingestResult.source === "Non-Functioning" &&
+        Number.isInteger(Number(ingestResult.importId))
+      ) {
+        ctx.waitUntil(
+          runNonFunctioningPipeline(
+            env,
+            Number(ingestResult.importId)
+          ).catch((error) => {
+            console.error(
+              "Non-Functioning auto-pipeline failed (import record already updated):",
+              error instanceof Error ? error.message : String(error)
+            );
+          })
+        );
+      }
     } catch (error) {
       console.error(
         "Unable to start Static Fleet pipeline:",
@@ -2534,6 +2557,8 @@ if (method === "POST" && path === "/api/filespec/locate-teletrac-km") return han
      if (method === "POST" && path === "/api/filespec/walk-powerfleet") return handleWalkPowerFleet(request, env);
       if (method === "POST" && path === "/api/filespec/walk-workshop") return handleWalkWorkshop(request, env);
       if (method === "POST" && path === "/api/filespec/process-workshop") return handleProcessWorkshop(request, env);
+      if (method === "POST" && path === "/api/filespec/walk-non-functioning") return handleWalkNonFunctioning(request, env);
+      if (method === "POST" && path === "/api/filespec/process-non-functioning") return handleProcessNonFunctioning(request, env);
       if (method === "GET" && path === "/api/workshop/statuses") {
         const auth = await requireSession(request, env);
         if (!auth.ok) return auth.response;
