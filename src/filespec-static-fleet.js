@@ -1,24 +1,14 @@
-// TGE Asset Snapshot — Fleet Utilisation: Static Fleet List
-// src/utilisation-static-fleet.js
-//
-// CHANGES IN THIS VERSION (see fleet-utilisation-spec.md for full reasoning):
-// 1. Removed import_run_id from utilisation_static_fleet writes — that column
-//    doesn't exist in live D1. This was the bug causing every import to fail.
-// 2. Added status / first_seen_at / last_seen_at handling — soft-delete any
-//    active asset missing from the current import, auto-reactivate any
-//    inactive asset that reappears. Required for the History toggle later.
-// 3. Exclusion rules are no longer applied at import time — only at query
-//    time in handleGetStaticFleet. Import now saves every row unconditionally.
-//    (Import-time filtering was destructive: a bad rule could drop data that
-//    would then be missing for up to a week, until the next import.)
-// 4. Batched all D1 writes via env.DB.batch() instead of one row = one
-//    round-trip. The real file is 11,588 rows — sequential awaits would be
-//    ~23,000+ round trips and risks timing out the Worker.
-// 5. import_runs is now written once, at the end, with real counts
-//    (inserted/updated/failed) and status success/partial/failed — not a
-//    hardcoded 'success' at the start that's never corrected.
-// 6. Rows with no identity value are logged to utilisation_import_errors
-//    instead of just being silently counted.
+// TGE Asset Snapshot — Static Fleet filespec processor
+// Reads an uploaded XLSX file from R2 and loads validated rows into staging.
+// Live fleet promotion is deliberately handled separately.
+
+import * as XLSX from "xlsx";
+
+const SOURCE_NAME = "Static Fleet";
+const WORKSHEET_NAME = "Static_Fleet_List";
+const IDENTITY_COLUMN = "Legacy Number";
+const BUSINESS_UNIT_COLUMN = "BU";
+const BATCH_SIZE = 100;
 
 function nowIso() {
   return new Date().toISOString();
@@ -27,590 +17,871 @@ function nowIso() {
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+    },
   });
 }
 
-function safeEqual(a, b) {
-  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < a.length; i++) {
-    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+function cleanText(value) {
+  if (value === null || value === undefined) return "";
+  return String(value).trim();
+}
+
+function normaliseCellValue(value) {
+  if (value === null || value === undefined) return "";
+
+  if (value instanceof Date) {
+    return value.toISOString();
   }
-  return mismatch === 0;
+
+  return value;
 }
 
-async function requireImportKey(request, env) {
-  const key = request.headers.get("X-Import-Key") || "";
-  if (!env.UTILISATION_IMPORT_KEY) {
-    return { ok: false, response: jsonResponse({ error: "Import key not configured on server." }, 503) };
-  }
-  if (!safeEqual(key, env.UTILISATION_IMPORT_KEY)) {
-    return { ok: false, response: jsonResponse({ error: "Unauthorised." }, 401) };
-  }
-  return { ok: true };
-}
-
-async function getFieldDefs(env) {
-  const rows = await env.DB.prepare(
-    "SELECT * FROM utilisation_static_field_defs ORDER BY display_order ASC, id ASC"
-  ).all();
-  return rows.results || [];
-}
-
-async function ensureFieldDef(env, sourceColumn) {
-  const existing = await env.DB.prepare(
-    "SELECT id FROM utilisation_static_field_defs WHERE source_column = ?"
-  ).bind(sourceColumn).first();
-  if (existing) return false;
-
-  await env.DB.prepare(
-    `INSERT INTO utilisation_static_field_defs
-      (source_column, display_label, save_to_db, is_identity, use_as_filter, filter_type, display_order, enabled, created_at, updated_at)
-     VALUES (?, ?, 0, 0, 0, 'select', 999, 1, ?, ?)`
-  ).bind(sourceColumn, sourceColumn, nowIso(), nowIso()).run();
-  return true;
-}
-
-function rowMatchesAnyRule(fieldValues, rules) {
-  for (const rule of rules) {
-    const value = fieldValues[rule.sourceColumn ?? rule.source_column];
-    if (value == null) continue;
-    const strVal = String(value);
-    const matchType = rule.matchType || rule.match_type;
-    const matchValue = rule.matchValue || rule.match_value;
-if (matchType === "exact" && strVal === matchValue) return true;
-    if (matchType === "contains") {
-      const escaped = String(matchValue).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const wholeWordPattern = new RegExp(`(^|[^A-Za-z0-9])${escaped}([^A-Za-z0-9]|$)`, "i");
-      if (wholeWordPattern.test(strVal)) return true;
-    }
-  }
-  return false;
-}
-
-// Splits an array into chunks of `size` — used to keep each D1 batch() call
-// to a sane number of statements rather than sending 11,000+ in one shot.
-function chunkArray(arr, size) {
+function chunkArray(items, size) {
   const chunks = [];
-  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+
   return chunks;
 }
 
-const BATCH_CHUNK_SIZE = 100;
+async function requireImportKey(request, env) {
+  const suppliedKey = request.headers.get("X-Import-Key") || "";
 
-async function runBatched(env, statements) {
-  if (!statements.length) return;
-  const chunks = chunkArray(statements, BATCH_CHUNK_SIZE);
-  for (const chunk of chunks) {
+  if (!env.UTILISATION_IMPORT_KEY) {
+    return {
+      ok: false,
+      response: jsonResponse(
+        { error: "Import key not configured on server." },
+        503
+      ),
+    };
+  }
+
+  if (suppliedKey !== env.UTILISATION_IMPORT_KEY) {
+    return {
+      ok: false,
+      response: jsonResponse({ error: "Unauthorised." }, 401),
+    };
+  }
+
+  return { ok: true };
+}
+
+async function updateImportFailure(env, importId, message) {
+  await env.DB.prepare(
+    `UPDATE filespec_imports
+     SET status = 'failed',
+         error = ?,
+         processed_at = ?
+     WHERE id = ?`
+  )
+    .bind(message, nowIso(), importId)
+    .run();
+}
+
+function parseWorkbook(arrayBuffer) {
+  const workbook = XLSX.read(new Uint8Array(arrayBuffer), {
+    type: "array",
+    cellDates: true,
+    raw: true,
+  });
+
+  const worksheetName = workbook.SheetNames.includes(WORKSHEET_NAME)
+    ? WORKSHEET_NAME
+    : workbook.SheetNames[0];
+
+  if (!worksheetName) {
+    throw new Error("Workbook does not contain any worksheets.");
+  }
+
+  const worksheet = workbook.Sheets[worksheetName];
+
+  const rows = XLSX.utils.sheet_to_json(worksheet, {
+    defval: "",
+    raw: true,
+  });
+
+  return {
+    worksheetName,
+    rows,
+  };
+}
+
+function validateAndPrepareRows(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error("The workbook contains no data rows.");
+  }
+
+  const firstRow = rows[0] || {};
+  const headers = Object.keys(firstRow);
+
+  if (!headers.includes(IDENTITY_COLUMN)) {
+    throw new Error(
+      `Required column '${IDENTITY_COLUMN}' was not found.`
+    );
+  }
+
+  if (!headers.includes(BUSINESS_UNIT_COLUMN)) {
+    throw new Error(
+      `Required column '${BUSINESS_UNIT_COLUMN}' was not found.`
+    );
+  }
+
+  const rowsByLegacyNumber = new Map();
+  let missingIdentityCount = 0;
+  let duplicateCount = 0;
+
+  for (const originalRow of rows) {
+    const legacyNumber = cleanText(originalRow[IDENTITY_COLUMN]);
+
+    if (!legacyNumber) {
+      missingIdentityCount += 1;
+      continue;
+    }
+
+    const normalisedRow = {};
+
+    for (const [columnName, value] of Object.entries(originalRow)) {
+      normalisedRow[columnName] = normaliseCellValue(value);
+    }
+
+    normalisedRow[IDENTITY_COLUMN] = legacyNumber;
+
+    const businessUnit = cleanText(
+      normalisedRow[BUSINESS_UNIT_COLUMN]
+    );
+
+    normalisedRow[BUSINESS_UNIT_COLUMN] = businessUnit;
+
+    if (rowsByLegacyNumber.has(legacyNumber)) {
+      duplicateCount += 1;
+    }
+
+    // Last occurrence wins where the source file contains duplicate assets.
+    rowsByLegacyNumber.set(legacyNumber, {
+      legacyNumber,
+      businessUnit: businessUnit || null,
+      fieldValues: normalisedRow,
+    });
+  }
+
+  const preparedRows = Array.from(rowsByLegacyNumber.values());
+
+  if (preparedRows.length === 0) {
+    throw new Error(
+      "No rows containing a valid Legacy Number were found."
+    );
+  }
+
+  return {
+    headers,
+    preparedRows,
+    sourceRowCount: rows.length,
+    validRowCount: preparedRows.length,
+    missingIdentityCount,
+    duplicateCount,
+  };
+}
+
+async function loadRowsIntoStaging(env, importId, preparedRows) {
+  await env.DB.prepare(
+    "DELETE FROM utilisation_static_fleet_staging WHERE import_id = ?"
+  )
+    .bind(importId)
+    .run();
+
+  const statements = preparedRows.map((row) =>
+    env.DB.prepare(
+      `INSERT INTO utilisation_static_fleet_staging
+        (
+          import_id,
+          legacy_number,
+          business_unit,
+          field_values,
+          staged_at
+        )
+       VALUES (?, ?, ?, ?, ?)`
+    ).bind(
+      importId,
+      row.legacyNumber,
+      row.businessUnit,
+      JSON.stringify(row.fieldValues),
+      nowIso()
+    )
+  );
+
+  for (const chunk of chunkArray(statements, BATCH_SIZE)) {
     await env.DB.batch(chunk);
   }
 }
 
-async function handleGetStaticFields(request, env, auth) {
-  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "view");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  const defs = await getFieldDefs(env);
-  return jsonResponse({ ok: true, fields: defs });
-}
-
-async function handleUpdateStaticFields(request, env, auth) {
-  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "manage-field-mappings");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  const body = await auth.safeJson(request);
-  const fields = Array.isArray(body.fields) ? body.fields : [];
-
-  const hasTelematicsPick = fields.some(f => f.isTelematicsSource);
-  if (hasTelematicsPick) {
-    await env.DB.prepare("UPDATE utilisation_static_field_defs SET is_telematics_source = 0").run();
-  }
-
-  for (const f of fields) {
-    if (!f.id) continue;
-    await env.DB.prepare(
-      `UPDATE utilisation_static_field_defs SET
-        display_label = ?, save_to_db = ?, is_identity = ?, use_as_filter = ?,
-        filter_label = ?, filter_type = ?, display_order = ?, enabled = ?,
-        is_telematics_source = ?, updated_at = ?
+async function getImportRecord(env, importId) {
+  if (importId) {
+    return env.DB.prepare(
+      `SELECT *
+       FROM filespec_imports
        WHERE id = ?`
-    ).bind(
-      String(f.displayLabel || "").trim() || f.sourceColumn || "",
-      f.saveToDb ? 1 : 0,
-      f.isIdentity ? 1 : 0,
-      f.useAsFilter ? 1 : 0,
-      f.filterLabel ? String(f.filterLabel).trim() : null,
-      f.filterType || "select",
-      Number.isInteger(f.displayOrder) ? f.displayOrder : 0,
-      f.enabled === false ? 0 : 1,
-      f.isTelematicsSource ? 1 : 0,
-      nowIso(),
-      f.id
-    ).run();
+    )
+      .bind(importId)
+      .first();
   }
 
-  return jsonResponse({ ok: true });
+  return env.DB.prepare(
+    `SELECT *
+     FROM filespec_imports
+     WHERE source = ?
+       AND status = 'received'
+     ORDER BY id ASC
+     LIMIT 1`
+  )
+    .bind(SOURCE_NAME)
+    .first();
 }
 
-async function handleGetStaticExclusions(request, env, auth) {
-  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "manage-static-sanitising");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
+export async function handleProcessStaticFleet(request, env) {
+  const keyCheck = await requireImportKey(request, env);
+
+  if (!keyCheck.ok) {
+    return keyCheck.response;
+  }
 
   const url = new URL(request.url);
-  const status = url.searchParams.get("status") === "published" ? "published" : "draft";
+  const requestedId = Number.parseInt(
+    url.searchParams.get("id") || "",
+    10
+  );
 
-  const rows = await env.DB.prepare(
-    "SELECT * FROM utilisation_static_exclusion_rules WHERE status = ? ORDER BY source_column, id"
-  ).bind(status).all();
+  const importId = Number.isInteger(requestedId)
+    ? requestedId
+    : null;
 
-  return jsonResponse({ ok: true, rules: rows.results || [] });
-}
+  const importRecord = await getImportRecord(env, importId);
 
-async function handleSaveStaticExclusionsDraft(request, env, auth) {
-  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "manage-static-sanitising");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  const body = await auth.safeJson(request);
-  const rules = Array.isArray(body.rules) ? body.rules : [];
-
-  await env.DB.prepare("DELETE FROM utilisation_static_exclusion_rules WHERE status = 'draft'").run();
-
-  for (const r of rules) {
-    if (!r.sourceColumn || !r.matchValue) continue;
-const matchType = r.matchType === "exact" ? "exact" : "contains";
-    const groupName = matchType === "exact" && r.groupName ? String(r.groupName).trim() || null : null;
-    await env.DB.prepare(
-      `INSERT INTO utilisation_static_exclusion_rules
-        (status, source_column, match_type, match_value, reason, group_name, created_by, created_at)
-       VALUES ('draft', ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(r.sourceColumn, matchType, r.matchValue, r.reason || null, groupName, auth.session.user_id, nowIso()).run();
+  if (!importRecord) {
+    return jsonResponse(
+      { error: "No matching Static Fleet import was found." },
+      404
+    );
   }
 
-  return jsonResponse({ ok: true });
-}
-
-async function handlePreviewStaticExclusions(request, env, auth) {
-  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "manage-static-sanitising");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  const body = await auth.safeJson(request);
-  const rules = Array.isArray(body.rules) ? body.rules : [];
-
-  const allRows = await env.DB.prepare("SELECT field_values FROM utilisation_static_fleet WHERE status = 'active'").all();
-  const total = (allRows.results || []).length;
-  let excluded = 0;
-
-  for (const row of (allRows.results || [])) {
-    let values;
-    try { values = JSON.parse(row.field_values); } catch { values = {}; }
-    if (rowMatchesAnyRule(values, rules)) excluded++;
+  if (importRecord.source !== SOURCE_NAME) {
+    return jsonResponse(
+      {
+        error: `Import ${importRecord.id} is not a Static Fleet import.`,
+      },
+      400
+    );
   }
 
-  return jsonResponse({ ok: true, total, excluded, wouldShow: total - excluded });
+if (importRecord.processed_at) {
+  return jsonResponse(
+    {
+      error: `Import ${importRecord.id} has already been promoted.`,
+      processedAt: importRecord.processed_at,
+    },
+    409
+  );
 }
-
-async function handlePublishStaticExclusions(request, env, auth) {
-  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "manage-static-sanitising");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-const draftRows = await env.DB.prepare(
-    "SELECT source_column, match_type, match_value, reason, group_name, created_by FROM utilisation_static_exclusion_rules WHERE status = 'draft'"
-  ).all();
-
-  await env.DB.prepare("DELETE FROM utilisation_static_exclusion_rules WHERE status = 'published'").run();
-
-  for (const r of (draftRows.results || [])) {
-    await env.DB.prepare(
-      `INSERT INTO utilisation_static_exclusion_rules
-        (status, source_column, match_type, match_value, reason, group_name, created_by, created_at, published_at)
-       VALUES ('published', ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(r.source_column, r.match_type, r.match_value, r.reason, r.group_name, r.created_by, nowIso(), nowIso()).run();
-  }
-
-  return jsonResponse({ ok: true, publishedCount: (draftRows.results || []).length });
-}
-
-// ── Import ───────────────────────────────────────────────────────────────────
-async function handleImportStaticFleet(request, env) {
-  const keyCheck = await requireImportKey(request, env);
-  if (!keyCheck.ok) return keyCheck.response;
-
-  let body;
-  try { body = await request.json(); } catch { return jsonResponse({ error: "Invalid JSON body." }, 400); }
-
-  const sourceFile = String(body.sourceFile || "").trim() || null;
-  const rows = Array.isArray(body.rows) ? body.rows : [];
-  if (!rows.length) return jsonResponse({ error: "rows array is required and must not be empty." }, 400);
 
   const startedAt = nowIso();
 
-  // Multi-chunk support: when a large file is split into several requests,
-  // every chunk shares the same batchStartedAt (set by the client, once,
-  // before sending the first chunk) and only the last chunk sets
-  // isFinalChunk = true. Soft-delete only runs on the final chunk, and is
-  // based on last_seen_at vs. batchStartedAt — so it correctly accounts for
-  // assets touched by *any* chunk in the batch, not just this one request.
-  // Single-shot (non-chunked) imports don't need to pass either field —
-  // they default to "this is the only, and therefore final, chunk".
-  const batchStartedAt = String(body.batchStartedAt || "").trim() || startedAt;
-  const isFinalChunk = body.isFinalChunk !== false;
+  await env.DB.prepare(
+    `UPDATE filespec_imports
+     SET status = 'parsing',
+         processing_started_at = ?,
+         processed_at = NULL,
+         parsed_at = NULL,
+         row_count = 0,
+         inserted_count = 0,
+         updated_count = 0,
+         bu_change_count = 0,
+         error = NULL
+     WHERE id = ?`
+  )
+    .bind(startedAt, importRecord.id)
+    .run();
 
   try {
-    // ── Field defs: self-seed any newly-seen source columns ──────────────────
-    const defs = await getFieldDefs(env);
-    const defByColumn = {};
-    defs.forEach((d) => { defByColumn[d.source_column] = d; });
+    const r2Object = await env.FILESPEC_BUCKET.get(
+      importRecord.r2_key
+    );
 
-    const identityColumn = (defs.find((d) => d.is_identity === 1) || {}).source_column || "Legacy Number";
-    const newColumnsDetected = [];
-
-    // ── Phase A: parse rows into a de-duplicated map, keyed by legacy number ──
-    // (last occurrence in the file wins if a legacy number appears twice)
-    const parsedByLegacy = new Map();
-    const errorStatements = [];
-    let skippedNoIdentity = 0;
-    let duplicateCount = 0;
-
-    for (const row of rows) {
-      for (const sourceColumn of Object.keys(row)) {
-        if (!defByColumn[sourceColumn]) {
-          const wasNew = await ensureFieldDef(env, sourceColumn);
-          if (wasNew) newColumnsDetected.push(sourceColumn);
-          defByColumn[sourceColumn] = { source_column: sourceColumn, save_to_db: 0, is_identity: 0 };
-        }
-      }
-
-      const legacyNumber = row[identityColumn] != null ? String(row[identityColumn]).trim() : "";
-      if (!legacyNumber) {
-        skippedNoIdentity++;
-        errorStatements.push(
-          env.DB.prepare(
-            `INSERT INTO utilisation_import_errors (import_run_id, feed, legacy_number, reason, raw_row, created_at)
-             VALUES (?, 'static_fleet', NULL, ?, ?, ?)`
-          ).bind(null, `Missing identity value (column: ${identityColumn})`, JSON.stringify(row), nowIso())
-        );
-        continue;
-      }
-
-      if (parsedByLegacy.has(legacyNumber)) duplicateCount++;
-
-      const fieldValues = {};
-      for (const sourceColumn of Object.keys(row)) {
-        const def = defByColumn[sourceColumn];
-        if (def && def.save_to_db === 1) fieldValues[sourceColumn] = row[sourceColumn];
-      }
-
-      parsedByLegacy.set(legacyNumber, fieldValues);
+    if (!r2Object) {
+      throw new Error(
+        `R2 object was not found: ${importRecord.r2_key}`
+      );
     }
 
-    // ── Fetch current fleet state once, not per row ───────────────────────────
-    const existingRows = await env.DB.prepare(
-      "SELECT legacy_number, status FROM utilisation_static_fleet"
-    ).all();
-    const existingByLegacy = new Map();
-    (existingRows.results || []).forEach((r) => existingByLegacy.set(r.legacy_number, r.status));
+    const workbookBytes = await r2Object.arrayBuffer();
 
-    // ── Phase B: build insert/update statements ────────────────────────────────
-    const writeStatements = [];
-    let insertedCount = 0;
-    let updatedCount = 0;
-    let reactivatedCount = 0;
-    const seenLegacyNumbers = new Set();
-
-    for (const [legacyNumber, fieldValues] of parsedByLegacy.entries()) {
-      seenLegacyNumbers.add(legacyNumber);
-      const existingStatus = existingByLegacy.get(legacyNumber);
-
-      if (existingStatus !== undefined) {
-        if (existingStatus === "inactive") reactivatedCount++;
-        writeStatements.push(
-          env.DB.prepare(
-            `UPDATE utilisation_static_fleet
-             SET field_values = ?, status = 'active', source_file = ?, last_seen_at = ?, updated_at = ?
-             WHERE legacy_number = ?`
-          ).bind(JSON.stringify(fieldValues), sourceFile, nowIso(), nowIso(), legacyNumber)
-        );
-        updatedCount++;
-      } else {
-        writeStatements.push(
-          env.DB.prepare(
-            `INSERT INTO utilisation_static_fleet
-              (legacy_number, status, field_values, source_file, first_seen_at, last_seen_at, created_at, updated_at)
-             VALUES (?, 'active', ?, ?, ?, ?, ?, ?)`
-          ).bind(legacyNumber, JSON.stringify(fieldValues), sourceFile, nowIso(), nowIso(), nowIso(), nowIso())
-        );
-        insertedCount++;
-      }
+    if (!workbookBytes || workbookBytes.byteLength === 0) {
+      throw new Error("The R2 workbook is empty.");
     }
 
-    // ── Execute this chunk's writes before evaluating soft-delete ──────────────
-    await runBatched(env, writeStatements);
-    await runBatched(env, errorStatements);
+    const parsed = parseWorkbook(workbookBytes);
 
-    // ── Phase C: soft-delete — final chunk only ─────────────────────────────────
-    // Anything currently active whose last_seen_at is still older than this
-    // batch's start time was not touched by any chunk in this batch, so it's
-    // genuinely missing from the current fleet file.
-    let deactivatedCount = 0;
-    if (isFinalChunk) {
-      const deactivateResult = await env.DB.prepare(
-        `UPDATE utilisation_static_fleet SET status = 'inactive', updated_at = ?
-         WHERE status = 'active' AND last_seen_at < ?`
-      ).bind(nowIso(), batchStartedAt).run();
-      deactivatedCount = (deactivateResult.meta && deactivateResult.meta.changes) || 0;
+    const validation = validateAndPrepareRows(parsed.rows);
+
+    await loadRowsIntoStaging(
+      env,
+      importRecord.id,
+      validation.preparedRows
+    );
+
+    const stagedCountRow = await env.DB.prepare(
+      `SELECT COUNT(*) AS count
+       FROM utilisation_static_fleet_staging
+       WHERE import_id = ?`
+    )
+      .bind(importRecord.id)
+      .first();
+
+    const stagedCount = Number(stagedCountRow?.count || 0);
+
+    if (stagedCount !== validation.validRowCount) {
+      throw new Error(
+        `Staging validation failed. Expected ${validation.validRowCount} rows but found ${stagedCount}.`
+      );
     }
 
-    // ── Log the run ─────────────────────────────────────────────────────────────
-    const finishedAt = nowIso();
-    const status = skippedNoIdentity > 0 ? "partial" : "success";
-    const errorSummary = skippedNoIdentity > 0
-      ? `${skippedNoIdentity} row(s) skipped — missing identity value in column "${identityColumn}".`
-      : null;
+    const parsedAt = nowIso();
 
-    const runInsert = await env.DB.prepare(
-      `INSERT INTO utilisation_import_runs
-        (feed, source_file, status, row_count, inserted_count, updated_count, failed_count, error_summary, started_at, finished_at)
-       VALUES ('static_fleet', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(sourceFile, status, rows.length, insertedCount, updatedCount, skippedNoIdentity, errorSummary, startedAt, finishedAt).run();
-    const importRunId = runInsert.meta.last_row_id;
-
-    // Backfill import_run_id on the error rows we just logged (they were
-    // inserted with NULL since the run didn't have an id yet at that point).
-    if (errorStatements.length) {
-      await env.DB.prepare(
-        `UPDATE utilisation_import_errors SET import_run_id = ? WHERE feed = 'static_fleet' AND import_run_id IS NULL AND created_at = ?`
-      ).bind(importRunId, startedAt).run().catch(() => {});
-    }
+    await env.DB.prepare(
+      `UPDATE filespec_imports
+       SET status = 'parsed',
+           parsed_at = ?,
+           row_count = ?,
+           error = NULL
+       WHERE id = ?`
+    )
+      .bind(
+        parsedAt,
+        validation.validRowCount,
+        importRecord.id
+      )
+      .run();
 
     return jsonResponse({
       ok: true,
-      importRunId,
-      isFinalChunk,
-      batchStartedAt,
-      inserted: insertedCount,
-      updated: updatedCount,
-      reactivated: reactivatedCount,
-      deactivated: deactivatedCount,
-      skippedNoIdentity,
-      duplicatesInFile: duplicateCount,
-      newColumnsDetected,
+      importId: importRecord.id,
+      source: importRecord.source,
+      filename: importRecord.filename,
+      worksheet: parsed.worksheetName,
+      sourceRowCount: validation.sourceRowCount,
+      stagedRowCount: stagedCount,
+      missingIdentityCount: validation.missingIdentityCount,
+      duplicateCount: validation.duplicateCount,
+      headerCount: validation.headers.length,
+      status: "parsed",
+      liveFleetChanged: false,
+      buHistoryChanged: false,
+      assetsDefleeted: false,
     });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : String(error);
 
-  } catch (e) {
+    await updateImportFailure(
+      env,
+      importRecord.id,
+      message
+    );
+
+    return jsonResponse(
+      {
+        ok: false,
+        importId: importRecord.id,
+        status: "failed",
+        error: message,
+        liveFleetChanged: false,
+        buHistoryChanged: false,
+        assetsDefleeted: false,
+      },
+      500
+    );
+  }
+}
+// Promotes a fully parsed Static Fleet import from staging into the live fleet.
+// This is separate from parsing so the staged data can be checked first.
+export async function handlePromoteStaticFleet(request, env) {
+  const keyCheck = await requireImportKey(request, env);
+
+  if (!keyCheck.ok) {
+    return keyCheck.response;
+  }
+
+  const url = new URL(request.url);
+  const importId = Number.parseInt(
+    url.searchParams.get("id") || "",
+    10
+  );
+
+  if (!Number.isInteger(importId) || importId < 1) {
+    return jsonResponse(
+      { error: "A valid import id is required." },
+      400
+    );
+  }
+
+  const importRecord = await env.DB.prepare(
+    `SELECT *
+     FROM filespec_imports
+     WHERE id = ?`
+  )
+    .bind(importId)
+    .first();
+
+  if (!importRecord) {
+    return jsonResponse(
+      { error: `Import ${importId} was not found.` },
+      404
+    );
+  }
+
+  if (importRecord.source !== SOURCE_NAME) {
+    return jsonResponse(
+      { error: `Import ${importId} is not a Static Fleet import.` },
+      400
+    );
+  }
+
+  if (importRecord.status !== "parsed") {
+    return jsonResponse(
+      {
+        error:
+          `Import ${importId} must have status 'parsed' before promotion. ` +
+          `Current status: ${importRecord.status}`,
+      },
+      409
+    );
+  }
+
+  if (importRecord.processed_at) {
+    return jsonResponse(
+      {
+        error: `Import ${importId} has already been promoted.`,
+        processedAt: importRecord.processed_at,
+      },
+      409
+    );
+  }
+
+  const stagedCountRow = await env.DB.prepare(
+    `SELECT COUNT(*) AS count
+     FROM utilisation_static_fleet_staging
+     WHERE import_id = ?`
+  )
+    .bind(importId)
+    .first();
+
+  const stagedCount = Number(stagedCountRow?.count || 0);
+
+  if (stagedCount < 1) {
+    return jsonResponse(
+      {
+        error:
+          `Import ${importId} has no staged rows. ` +
+          "The live fleet has not been changed.",
+      },
+      400
+    );
+  }
+
+  if (
+    Number(importRecord.row_count || 0) !== stagedCount
+  ) {
+    return jsonResponse(
+      {
+        error:
+          `Staged row validation failed. Import record contains ` +
+          `${importRecord.row_count} rows but staging contains ` +
+          `${stagedCount} rows.`,
+        liveFleetChanged: false,
+        buHistoryChanged: false,
+        assetsDefleeted: false,
+      },
+      409
+    );
+  }
+
+  // Count the expected effects before making any live changes.
+  const effectCounts = await env.DB.prepare(
+    `SELECT
+       (
+         SELECT COUNT(*)
+         FROM utilisation_static_fleet_staging s
+         WHERE s.import_id = ?
+           AND NOT EXISTS (
+             SELECT 1
+             FROM utilisation_static_fleet f
+             WHERE f.legacy_number = s.legacy_number
+           )
+       ) AS inserted_count,
+
+       (
+         SELECT COUNT(*)
+         FROM utilisation_static_fleet_staging s
+         WHERE s.import_id = ?
+           AND EXISTS (
+             SELECT 1
+             FROM utilisation_static_fleet f
+             WHERE f.legacy_number = s.legacy_number
+           )
+       ) AS updated_count,
+
+       (
+         SELECT COUNT(*)
+         FROM utilisation_static_fleet_staging s
+         JOIN utilisation_asset_bu_history h
+           ON h.legacy_number = s.legacy_number
+          AND h.effective_to IS NULL
+         WHERE s.import_id = ?
+           AND COALESCE(h.business_unit, '') <>
+               COALESCE(s.business_unit, '')
+       ) AS bu_change_count,
+
+       (
+         SELECT COUNT(*)
+         FROM utilisation_static_fleet_staging s
+         JOIN utilisation_static_fleet f
+           ON f.legacy_number = s.legacy_number
+         WHERE s.import_id = ?
+           AND f.status = 'inactive'
+       ) AS reactivated_count,
+
+       (
+         SELECT COUNT(*)
+         FROM utilisation_static_fleet f
+         WHERE f.status = 'active'
+           AND NOT EXISTS (
+             SELECT 1
+             FROM utilisation_static_fleet_staging s
+             WHERE s.import_id = ?
+               AND s.legacy_number = f.legacy_number
+           )
+       ) AS deactivated_count`
+  )
+    .bind(
+      importId,
+      importId,
+      importId,
+      importId,
+      importId
+    )
+    .first();
+
+  const insertedCount = Number(
+    effectCounts?.inserted_count || 0
+  );
+
+  const updatedCount = Number(
+    effectCounts?.updated_count || 0
+  );
+
+  const buChangeCount = Number(
+    effectCounts?.bu_change_count || 0
+  );
+
+  const reactivatedCount = Number(
+    effectCounts?.reactivated_count || 0
+  );
+
+  const deactivatedCount = Number(
+    effectCounts?.deactivated_count || 0
+  );
+
+  const promotedAt = nowIso();
+  const sourceFile = importRecord.filename || null;
+
+  try {
+    await env.DB.batch([
+      // Close the current BU period when:
+      // 1. the asset has moved to another BU; or
+      // 2. the asset is absent from this successful complete import.
+      env.DB.prepare(
+        `UPDATE utilisation_asset_bu_history
+         SET effective_to = ?
+         WHERE effective_to IS NULL
+           AND (
+             EXISTS (
+               SELECT 1
+               FROM utilisation_static_fleet_staging s
+               WHERE s.import_id = ?
+                 AND s.legacy_number =
+                     utilisation_asset_bu_history.legacy_number
+                 AND COALESCE(s.business_unit, '') <>
+                     COALESCE(
+                       utilisation_asset_bu_history.business_unit,
+                       ''
+                     )
+             )
+             OR NOT EXISTS (
+               SELECT 1
+               FROM utilisation_static_fleet_staging s
+               WHERE s.import_id = ?
+                 AND s.legacy_number =
+                     utilisation_asset_bu_history.legacy_number
+             )
+           )`
+      ).bind(
+        promotedAt,
+        importId,
+        importId
+      ),
+
+      // Create an open BU-history record for:
+      // - new assets;
+      // - assets that changed BU;
+      // - previously inactive assets that returned.
+      env.DB.prepare(
+        `INSERT INTO utilisation_asset_bu_history
+          (
+            legacy_number,
+            business_unit,
+            effective_from,
+            effective_to,
+            source_import_id,
+            source_file,
+            created_at
+          )
+         SELECT
+           s.legacy_number,
+           s.business_unit,
+           ?,
+           NULL,
+           ?,
+           ?,
+           ?
+         FROM utilisation_static_fleet_staging s
+         WHERE s.import_id = ?
+           AND NOT EXISTS (
+             SELECT 1
+             FROM utilisation_asset_bu_history h
+             WHERE h.legacy_number = s.legacy_number
+               AND h.effective_to IS NULL
+           )`
+      ).bind(
+        promotedAt,
+        importId,
+        sourceFile,
+        promotedAt,
+        importId
+      ),
+
+      // Update assets that already exist and reactivate them where required.
+      env.DB.prepare(
+        `UPDATE utilisation_static_fleet
+         SET
+           field_values = (
+             SELECT s.field_values
+             FROM utilisation_static_fleet_staging s
+             WHERE s.import_id = ?
+               AND s.legacy_number =
+                   utilisation_static_fleet.legacy_number
+           ),
+           status = 'active',
+           source_file = ?,
+           last_seen_at = ?,
+           updated_at = ?
+         WHERE EXISTS (
+           SELECT 1
+           FROM utilisation_static_fleet_staging s
+           WHERE s.import_id = ?
+             AND s.legacy_number =
+                 utilisation_static_fleet.legacy_number
+         )`
+      ).bind(
+        importId,
+        sourceFile,
+        promotedAt,
+        promotedAt,
+        importId
+      ),
+
+      // Insert assets that have never previously appeared.
+      env.DB.prepare(
+        `INSERT INTO utilisation_static_fleet
+          (
+            legacy_number,
+            status,
+            field_values,
+            source_file,
+            first_seen_at,
+            last_seen_at,
+            created_at,
+            updated_at
+          )
+         SELECT
+           s.legacy_number,
+           'active',
+           s.field_values,
+           ?,
+           ?,
+           ?,
+           ?,
+           ?
+         FROM utilisation_static_fleet_staging s
+         WHERE s.import_id = ?
+           AND NOT EXISTS (
+             SELECT 1
+             FROM utilisation_static_fleet f
+             WHERE f.legacy_number = s.legacy_number
+           )`
+      ).bind(
+        sourceFile,
+        promotedAt,
+        promotedAt,
+        promotedAt,
+        promotedAt,
+        importId
+      ),
+
+      // Defleet only after a complete parsed import has reached promotion.
+      // Records are retained and changed to inactive, never deleted.
+      env.DB.prepare(
+        `UPDATE utilisation_static_fleet
+         SET
+           status = 'inactive',
+           updated_at = ?
+         WHERE status = 'active'
+           AND NOT EXISTS (
+             SELECT 1
+             FROM utilisation_static_fleet_staging s
+             WHERE s.import_id = ?
+               AND s.legacy_number =
+                   utilisation_static_fleet.legacy_number
+           )`
+      ).bind(
+        promotedAt,
+        importId
+      ),
+
+      // Record successful promotion.
+      // The existing status constraint uses 'parsed' as the completed status;
+      // processed_at distinguishes parsed-only from fully promoted.
+      env.DB.prepare(
+        `UPDATE filespec_imports
+         SET
+           status = 'parsed',
+           processed_at = ?,
+           inserted_count = ?,
+           updated_count = ?,
+           bu_change_count = ?,
+           error = NULL
+         WHERE id = ?`
+      ).bind(
+        promotedAt,
+        insertedCount,
+        updatedCount,
+        buChangeCount,
+        importId
+      ),
+    ]);
+
+    return jsonResponse({
+      ok: true,
+      importId,
+      status: "completed",
+      databaseStatus: "parsed",
+      processedAt: promotedAt,
+      stagedRowCount: stagedCount,
+      insertedCount,
+      updatedCount,
+      buChangeCount,
+      reactivatedCount,
+      deactivatedCount,
+      liveFleetChanged: true,
+      buHistoryChanged: true,
+      assetsDefleeted: deactivatedCount > 0,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : String(error);
+
     await env.DB.prepare(
-      `INSERT INTO utilisation_import_runs
-        (feed, source_file, status, row_count, inserted_count, updated_count, failed_count, error_summary, started_at, finished_at)
-       VALUES ('static_fleet', ?, 'failed', ?, 0, 0, 0, ?, ?, ?)`
-    ).bind(sourceFile, rows.length, e.message, startedAt, nowIso()).run().catch(() => {});
-    return jsonResponse({ error: "Import failed: " + e.message }, 500);
+      `UPDATE filespec_imports
+       SET error = ?
+       WHERE id = ?`
+    )
+      .bind(message, importId)
+      .run();
+
+    return jsonResponse(
+      {
+        ok: false,
+        importId,
+        status: "promotion_failed",
+        error: message,
+        liveFleetChanged: false,
+        buHistoryChanged: false,
+        assetsDefleeted: false,
+      },
+      500
+    );
   }
 }
 
-// ── Column values (for the File Spec column browser) ─────────────────────────
-async function handleGetStaticColumnValues(request, env, auth) {
-  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "manage-static-sanitising");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  const url = new URL(request.url);
-  const column = url.searchParams.get("column");
-  if (!column) return jsonResponse({ error: "column is required." }, 400);
-
-  const rows = await env.DB.prepare("SELECT field_values FROM utilisation_static_fleet WHERE status = 'active'").all();
-  const counts = new Map();
-
-  for (const row of (rows.results || [])) {
-    let values;
-    try { values = JSON.parse(row.field_values); } catch { continue; }
-    const raw = values[column];
-    if (raw == null || raw === "") continue;
-    const val = String(raw);
-    counts.set(val, (counts.get(val) || 0) + 1);
-  }
-
-  const list = Array.from(counts.entries())
-    .map(([value, count]) => ({ value, count }))
-    .sort((a, b) => b.count - a.count);
-
-  return jsonResponse({ ok: true, column, values: list });
-}
-// Same as handleGetStaticFleet but WITHOUT the exclusion filter — File Spec
-// needs to see every row, including ones matching published rules, since
-// it's the screen that creates and manages those rules and can't be blind
-// to their effect. Only File Spec calls this; the live dashboard keeps
-// using the filtered handleGetStaticFleet below, unaffected.
-async function handleGetStaticFleetRaw(request, env, auth) {
-  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "view");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  const url = new URL(request.url);
-  const includeInactive = url.searchParams.get("history") === "1";
-
-  const sql = includeInactive
-    ? "SELECT legacy_number, status, field_values, first_seen_at, last_seen_at, created_at, updated_at FROM utilisation_static_fleet ORDER BY legacy_number ASC"
-    : "SELECT legacy_number, status, field_values, first_seen_at, last_seen_at, created_at, updated_at FROM utilisation_static_fleet WHERE status = 'active' ORDER BY legacy_number ASC";
-
-  const rows = await env.DB.prepare(sql).all();
-
-  const fleet = (rows.results || []).map(row => {
-    let values;
-    try { values = JSON.parse(row.field_values); } catch { values = {}; }
-    return {
-      legacyNumber: row.legacy_number,
-      status: row.status,
-      fields: values,
-      firstSeenAt: row.first_seen_at,
-      lastSeenAt: row.last_seen_at,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    };
+// Runs the complete Static Fleet workflow for a newly received import.
+// Intended for background execution after the original file is stored in R2.
+export async function runStaticFleetPipeline(env, importId) {
+  const internalHeaders = new Headers({
+    "X-Import-Key": env.UTILISATION_IMPORT_KEY,
   });
 
-  return jsonResponse({ ok: true, fleet });
+  const processRequest = new Request(
+    `https://internal/api/filespec/process-static-fleet?id=${importId}`,
+    {
+      method: "POST",
+      headers: internalHeaders,
+    }
+  );
+
+  const processResponse = await handleProcessStaticFleet(
+    processRequest,
+    env
+  );
+
+  const processResult = await processResponse.json();
+
+  if (!processResponse.ok || processResult.status !== "parsed") {
+    throw new Error(
+      processResult.error ||
+      `Static Fleet parsing failed for import ${importId}.`
+    );
+  }
+
+  const promoteRequest = new Request(
+    `https://internal/api/filespec/promote-static-fleet?id=${importId}`,
+    {
+      method: "POST",
+      headers: internalHeaders,
+    }
+  );
+
+  const promoteResponse = await handlePromoteStaticFleet(
+    promoteRequest,
+    env
+  );
+
+  const promoteResult = await promoteResponse.json();
+
+  if (!promoteResponse.ok || promoteResult.status !== "completed") {
+    throw new Error(
+      promoteResult.error ||
+      `Static Fleet promotion failed for import ${importId}.`
+    );
+  }
+
+  return {
+    process: processResult,
+    promotion: promoteResult,
+  };
 }
-
-// Returns vendor metrics for a date range, keyed as fleet_number|date|metric
-// for O(1) lookup while building the dashboard table, rather than the
-// frontend scanning a flat array per cell.
-async function handleGetVendorMetrics(request, env, auth) {
-  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "view");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  const url = new URL(request.url);
-  const start = url.searchParams.get("start");
-  const end = url.searchParams.get("end");
-  if (!start || !end) {
-    return jsonResponse({ error: "start and end date parameters are required." }, 400);
-  }
-
-  const rows = await env.DB.prepare(
-    `SELECT fleet_number, metric_date, metric, value
-     FROM utilisation_vendor_daily_metrics
-     WHERE metric_date >= ? AND metric_date <= ?`
-  ).bind(start, end).all();
-
-  const keyed = {};
-  for (const r of (rows.results || [])) {
-    keyed[`${r.fleet_number}|${r.metric_date}|${r.metric}`] = r.value;
-  }
-
-  return jsonResponse({ ok: true, metrics: keyed });
-}
-
-// GET /api/utilisation/workshop-bookings?start=&end=
-// Returns real bookings for the given date range, but only ones whose
-// status is currently switched on in workshop_status_config — an excluded
-// status never reaches the dashboard at all, so there's nothing extra to
-// filter out on the frontend. Grouped by asset and day, since one asset can
-// genuinely have several real tasks booked on the same day.
-async function handleGetWorkshopBookingsForDashboard(request, env, auth) {
-  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "view");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  const url = new URL(request.url);
-  const start = url.searchParams.get("start");
-  const end = url.searchParams.get("end");
-  if (!start || !end) {
-    return jsonResponse({ error: "start and end date parameters are required." }, 400);
-  }
-
-  const rows = await env.DB.prepare(
-    `SELECT wb.legacy_number, wb.booking_date, wb.task, wb.status
-     FROM workshop_bookings wb
-     JOIN workshop_status_config wsc ON wsc.status = wb.status
-     WHERE wb.booking_date >= ? AND wb.booking_date <= ? AND wsc.display = 1
-     ORDER BY wb.legacy_number ASC, wb.task ASC`
-  ).bind(start, end).all();
-
-  const grouped = {};
-  for (const r of (rows.results || [])) {
-    const key = `${r.legacy_number}|${r.booking_date}`;
-    if (!grouped[key]) grouped[key] = [];
-    grouped[key].push({ task: r.task, status: r.status });
-  }
-
-  return jsonResponse({ ok: true, bookings: grouped });
-}
-
-// GET /api/utilisation/non-functioning?start=&end=
-// Returns every real asset whose non-functioning range genuinely overlaps
-// the requested window — not expanded per day, since each asset only ever
-// has one row, a real start and end. The dashboard itself works out which
-// specific days fall inside that range.
-async function handleGetNonFunctioningForDashboard(request, env, auth) {
-  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "view");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  const url = new URL(request.url);
-  const start = url.searchParams.get("start");
-  const end = url.searchParams.get("end");
-  if (!start || !end) {
-    return jsonResponse({ error: "start and end date parameters are required." }, 400);
-  }
-
-  const rows = await env.DB.prepare(
-    `SELECT legacy_number, date_start, date_end
-     FROM non_functioning_assets
-     WHERE date_end >= ? AND date_start <= ?`
-  ).bind(start, end).all();
-
-  const keyed = {};
-  for (const r of (rows.results || [])) {
-    keyed[r.legacy_number] = { dateStart: r.date_start, dateEnd: r.date_end };
-  }
-
-  return jsonResponse({ ok: true, nonFunctioning: keyed });
-}
-
-async function handleGetStaticFleet(request, env, auth) {
-  const perm = await auth.hasPermission(env, auth.session.role_id, "utilisation", "view");
-  if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
-
-  const url = new URL(request.url);
-  const includeInactive = url.searchParams.get("history") === "1";
-
-  const sql = includeInactive
-    ? "SELECT legacy_number, status, field_values, first_seen_at, last_seen_at, created_at, updated_at FROM utilisation_static_fleet ORDER BY legacy_number ASC"
-    : "SELECT legacy_number, status, field_values, first_seen_at, last_seen_at, created_at, updated_at FROM utilisation_static_fleet WHERE status = 'active' ORDER BY legacy_number ASC";
-
-  const rows = await env.DB.prepare(sql).all();
-
-  const exclusionRows = await env.DB.prepare(
-    "SELECT source_column, match_type, match_value FROM utilisation_static_exclusion_rules WHERE status = 'published'"
-  ).all();
-  const exclusionRules = (exclusionRows.results || []).map(r => ({
-    sourceColumn: r.source_column, matchType: r.match_type, matchValue: r.match_value,
-  }));
-
-  const fleet = (rows.results || []).map(row => {
-    let values;
-    try { values = JSON.parse(row.field_values); } catch { values = {}; }
-    return {
-      legacyNumber: row.legacy_number,
-      status: row.status,
-      fields: values,
-      firstSeenAt: row.first_seen_at,
-      lastSeenAt: row.last_seen_at,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    };
-  }).filter(row => !rowMatchesAnyRule(row.fields, exclusionRules));
-
-  return jsonResponse({ ok: true, fleet });
-}
-
-export {
-  handleGetStaticFields,
-  handleUpdateStaticFields,
-  handleGetStaticExclusions,
-  handleSaveStaticExclusionsDraft,
-  handlePreviewStaticExclusions,
-  handlePublishStaticExclusions,
-  handleImportStaticFleet,
-  handleGetStaticFleet,
-  handleGetStaticFleetRaw,
-  handleGetStaticColumnValues,
-  handleGetVendorMetrics,
-  handleGetWorkshopBookingsForDashboard,
-  handleGetNonFunctioningForDashboard,
-};
