@@ -2270,6 +2270,277 @@ async function handleHistoricalSnapshotsAttachments(request, env) {
   );
   return jsonResponse({ attachments: results });
 }
+/* ============================================================================
+ * CAMCHK — Camera History (James reproduction), ISOLATED vertical slice
+ * ----------------------------------------------------------------------------
+ * Throwaway duplicate of James Robinson's TN360 "Camera Snapshot & History
+ * Checker". Runs entirely on TN360_SNAPSHOT_KEY. Touches nothing shared:
+ * NOT the /api/tn360 proxy, NOT handleHistoricalSnapshots, NOT any existing
+ * screen. Delete this whole block + its 4 router lines to remove cleanly.
+ *
+ * PLACEMENT (src/index.js):
+ *   1) Paste the four handler functions below anywhere among the other
+ *      top-level async handler functions — e.g. immediately AFTER
+ *      handleHistoricalSnapshotsAttachments (ends ~line 2260), before the
+ *      "// ── Main fetch handler ──" banner.
+ *   2) Add the four ROUTER LINES (see bottom of this file) into the request
+ *      router, next to the existing "// Historical snapshots" lines
+ *      (~line 2416).
+ *
+ * Reuses only app-wide primitives already defined in index.js:
+ *   requireSession, hasPermission, jsonResponse, safeJson
+ * ========================================================================== */
+
+// ── camchk: TN360 vehicles (snapshot key, query-key transport like James) ────
+async function handleCamchkVehicles(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "camera-snapshots", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+  if (!env.TN360_SNAPSHOT_KEY) {
+    return jsonResponse({ error: "Snapshot history API key not configured.", detail: "Add TN360_SNAPSHOT_KEY as a Worker secret." }, 503);
+  }
+  const companyId = env.TN360_COMPANY_ID || "432639";
+  const upstream  = `https://api-au.telematics.com/v1/vehicles?key=${env.TN360_SNAPSHOT_KEY}&pruning=B2B&company_id=${companyId}`;
+  try {
+    const res = await fetch(upstream, { method: "GET", headers: { "Content-Type": "application/json" } });
+    if (!res.ok) {
+      const t = await res.text();
+      return jsonResponse({ error: "TN360 vehicles fetch failed.", status: res.status, detail: t.slice(0, 200) }, 502);
+    }
+    const text = await res.text();
+    try { return jsonResponse(JSON.parse(text)); } catch (e) { return jsonResponse({ raw: text }); }
+  } catch (e) {
+    return jsonResponse({ error: "Network error fetching vehicles: " + e.message }, 502);
+  }
+}
+
+// ── camchk: TN360 camera events (snapshot key, passthrough params) ───────────
+async function handleCamchkEvents(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "camera-snapshots", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+  if (!env.TN360_SNAPSHOT_KEY) {
+    return jsonResponse({ error: "Snapshot history API key not configured." }, 503);
+  }
+  const companyId = env.TN360_COMPANY_ID || "432639";
+  const reqUrl    = new URL(request.url);
+
+  // Forward only the client-supplied query params James uses; inject the rest.
+  const out = new URLSearchParams();
+  out.set("key", env.TN360_SNAPSHOT_KEY);
+  out.set("pruning", "B2B");
+  out.set("company_id", companyId);
+  ["types", "from", "to", "vehicle_ids"].forEach(function (k) {
+    const v = reqUrl.searchParams.get(k);
+    if (v != null && v !== "") out.set(k, v);
+  });
+  if (!out.get("types")) out.set("types", "camera");
+
+  const upstream = `https://api-au.telematics.com/v1/events?${out.toString()}`;
+  try {
+    const res = await fetch(upstream, { method: "GET", headers: { "Content-Type": "application/json" } });
+    if (!res.ok) {
+      const t = await res.text();
+      return jsonResponse({ error: "TN360 events fetch failed.", status: res.status, detail: t.slice(0, 200) }, 502);
+    }
+    const text = await res.text();
+    try { return jsonResponse(JSON.parse(text)); } catch (e) { return jsonResponse({ raw: text }); }
+  } catch (e) {
+    return jsonResponse({ error: "Network error fetching events: " + e.message }, 502);
+  }
+}
+
+// ── camchk: historical snapshots (snapshot key) ──────────────────────────────
+// Returns James's EXACT contract:
+//   { events: [ { id, timeAt, attachments: [ { position, positionName, timeAt, url } ] } ], totalCount }
+// Fresh presigned URL per attachment (correct att.attachmentId — the bug in the
+// shared handleHistoricalSnapshots is NOT reproduced here). 6-day chunking like
+// James's PHP (TN360 caps each request at a 7-day window).
+async function handleCamchkSnapshots(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "camera-snapshots", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+  if (!env.TN360_SNAPSHOT_KEY) {
+    return jsonResponse({ error: "Snapshot history API key not configured." }, 503);
+  }
+
+  const body      = await safeJson(request);
+  const vehicleId = String(body.vehicleId || "").trim();
+  const deviceId  = String(body.deviceId  || "").trim();
+  const from      = String(body.from      || "").trim();
+  const to        = String(body.to        || "").trim();
+  if (!vehicleId || !deviceId || !from || !to) {
+    return jsonResponse({ error: "vehicleId, deviceId, from and to are required." }, 400);
+  }
+
+  const authHeader = `Token token="${env.TN360_SNAPSHOT_KEY}"`;
+
+  // Split from..to into <=6-day windows (safe margin under TN360's 7-day cap).
+  const SIX_DAYS = 6 * 24 * 60 * 60 * 1000;
+  const startMs  = new Date(from).getTime();
+  const endMs    = new Date(to).getTime();
+  const chunks   = [];
+  if (isNaN(startMs) || isNaN(endMs) || endMs <= startMs) {
+    chunks.push({ from: from, to: to });
+  } else {
+    let t = startMs;
+    while (t < endMs) {
+      const cEnd = Math.min(t + SIX_DAYS, endMs);
+      chunks.push({ from: new Date(t).toISOString(), to: new Date(cEnd).toISOString() });
+      t = cEnd;
+    }
+  }
+
+  // Step 1 — gather snapshot events across all chunks.
+  let rawEvents = [];
+  for (let ci = 0; ci < chunks.length; ci++) {
+    const c = chunks[ci];
+    try {
+      const evRes = await fetch(
+        `https://api-au.telematics.com/v1/devices/events/camera/snapshots?from=${encodeURIComponent(c.from)}&to=${encodeURIComponent(c.to)}`,
+        {
+          method: "POST",
+          headers: { "Authorization": authHeader, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            vehicles: [vehicleId], devices: [deviceId],
+            orderField: "EventTime", orderDirection: "desc",
+            latestOnly: false, rowCountLimit: 100, rowOffset: 0,
+          }),
+        }
+      );
+      if (!evRes.ok) {
+        const errText = await evRes.text();
+        // One bad chunk shouldn't kill the whole search — log-shape and continue.
+        if (chunks.length === 1) {
+          return jsonResponse({ error: "Failed to fetch snapshot events from TN360.", detail: errText.slice(0, 200), status: evRes.status }, 502);
+        }
+        continue;
+      }
+      const evData = await evRes.json();
+      if (Array.isArray(evData.events)) rawEvents = rawEvents.concat(evData.events);
+    } catch (e) {
+      if (chunks.length === 1) {
+        return jsonResponse({ error: "Network error fetching snapshot events: " + e.message }, 502);
+      }
+    }
+  }
+
+  if (!rawEvents.length) return jsonResponse({ events: [], totalCount: 0 });
+
+  // Step 2 — resolve a fresh presigned URL per AVAILABLE attachment.
+  const outEvents = [];
+  for (let i = 0; i < rawEvents.length; i++) {
+    const ev = rawEvents[i];
+    if (!Array.isArray(ev.attachments) || !ev.attachments.length) continue;
+    const availableAtts = ev.attachments.filter(function (att) { return att.attachmentStatus === "AVAILABLE"; });
+    if (!availableAtts.length) continue;
+
+    const attachments = await Promise.all(
+      availableAtts.map(async function (att) {
+        const attachmentId = att.attachmentId;               // ← correct field (the shared-handler bug)
+        const position     = att.cameraPosition || "";
+        const positionName = att.cameraPositionName || att.positionName || "";
+        const attTimeAt    = att.timeAt || ev.timeAt || "";
+        const timeAtStr    = String(attTimeAt);
+        // TN360 stores images by AEST local month; read from the ISO string
+        // directly to avoid a UTC month-boundary flip.
+        const year  = parseInt(timeAtStr.slice(0, 4), 10) || new Date(attTimeAt).getFullYear();
+        const month = parseInt(timeAtStr.slice(5, 7), 10) || (new Date(attTimeAt).getMonth() + 1);
+        if (!attachmentId || !year || !month) return { position: position, positionName: positionName, timeAt: attTimeAt, url: "" };
+        try {
+          const imgRes = await fetch(
+            `https://api-au.telematics.com/v1/attachments/${attachmentId}/content?pruning=WEB&thumbnail=false&year=${year}&month=${month}&presigned=true`,
+            {
+              headers: {
+                "Authorization": authHeader,
+                "Origin":  "https://tn360-au.telematics.com",
+                "Referer": "https://tn360-au.telematics.com/",
+                "User-Agent": "Mozilla/5.0",
+              },
+              redirect: "follow",
+            }
+          );
+          if (!imgRes.ok) return { position: position, positionName: positionName, timeAt: attTimeAt, url: "" };
+          const contentType = imgRes.headers.get("content-type") || "";
+          if (contentType.includes("image/")) return { position: position, positionName: positionName, timeAt: attTimeAt, url: imgRes.url };
+          try {
+            const json = await imgRes.json();
+            const url  = json.attachmentLink || json.url || json.mediaFile || json.contentUrl || imgRes.url || "";
+            return { position: position, positionName: positionName, timeAt: attTimeAt, url: url };
+          } catch (e) {
+            return { position: position, positionName: positionName, timeAt: attTimeAt, url: imgRes.url };
+          }
+        } catch (e) {
+          return { position: position, positionName: positionName, timeAt: attTimeAt, url: "" };
+        }
+      })
+    );
+
+    outEvents.push({ id: ev.id, timeAt: ev.timeAt || (availableAtts[0] && availableAtts[0].timeAt) || "", attachments: attachments });
+  }
+
+  return jsonResponse({ events: outEvents, totalCount: rawEvents.length });
+}
+
+// ── camchk: image size check (no key — hits presigned S3 directly) ───────────
+// Returns James's contract: { filename, bytes, tooSmall } at the 102,400-byte
+// (100 KiB) threshold. bytes = null when unreachable; unreachable ≠ tooSmall.
+async function handleCamchkImageSize(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "camera-snapshots", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+
+  const reqUrl   = new URL(request.url);
+  const imageUrl = decodeURIComponent(reqUrl.searchParams.get("url") || "").trim();
+  const filename = (reqUrl.searchParams.get("filename") || "").trim();
+  if (!imageUrl) return jsonResponse({ error: "url is required." }, 400);
+
+  let parsed;
+  try { parsed = new URL(imageUrl); } catch { return jsonResponse({ error: "Invalid URL." }, 400); }
+  if (parsed.protocol !== "https:") return jsonResponse({ error: "URL must be HTTPS." }, 403);
+  const allowedSuffixes = [".amazonaws.com", ".cloudfront.net", "telematics.com"];
+  if (!allowedSuffixes.some(function (s) { return parsed.hostname.endsWith(s); })) {
+    return jsonResponse({ error: "URL host not permitted." }, 403);
+  }
+
+  const THRESHOLD = 102400; // 100 KiB
+  try {
+    let bytes = null;
+    const head = await fetch(imageUrl, { method: "HEAD" });
+    const cl   = head.headers.get("content-length");
+    if (cl) bytes = parseInt(cl, 10);
+    // Some presigned responses omit content-length on HEAD; fall back to a
+    // ranged GET that reads just past the threshold.
+    if (bytes == null || isNaN(bytes)) {
+      const getRes = await fetch(imageUrl, { headers: { "Range": "bytes=0-" + THRESHOLD } });
+      const gcl = getRes.headers.get("content-range") || getRes.headers.get("content-length");
+      if (gcl) {
+        const m = /\/(\d+)\s*$/.exec(gcl); // content-range "bytes 0-102400/153600"
+        if (m) bytes = parseInt(m[1], 10);
+        else if (/^\d+$/.test(gcl)) bytes = parseInt(gcl, 10);
+      }
+    }
+    const tooSmall = (bytes != null && !isNaN(bytes)) ? (bytes <= THRESHOLD) : false;
+    return jsonResponse({ filename: filename, bytes: (bytes != null && !isNaN(bytes)) ? bytes : null, tooSmall: tooSmall });
+  } catch (e) {
+    return jsonResponse({ filename: filename, bytes: null, tooSmall: false, error: e.message });
+  }
+}
+
+/* ============================================================================
+ * ROUTER LINES — add these next to the existing "// Historical snapshots"
+ * lines (~line 2416 in src/index.js):
+ *
+ *     // camchk — Camera History (isolated James reproduction, snapshot key)
+ *     if (method === "GET"  && path === "/api/camchk/vehicles")   return handleCamchkVehicles(request, env);
+ *     if (method === "GET"  && path === "/api/camchk/events")     return handleCamchkEvents(request, env);
+ *     if (method === "POST" && path === "/api/camchk/snapshots")  return handleCamchkSnapshots(request, env);
+ *     if (method === "GET"  && path === "/api/camchk/image-size") return handleCamchkImageSize(request, env);
+ * ========================================================================== */
 
 // ── Utilisation static fleet ──────────────────────────────────────────────────
 // (handlers imported from utilisation-static-fleet.js)
