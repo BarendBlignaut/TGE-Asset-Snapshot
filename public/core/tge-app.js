@@ -370,7 +370,7 @@ TGE.api = async function (method, path, body) {
     navItems.forEach(function (item) {
       var view = item.dataset.view;
       // Roles page uses admin permission
-      var permKey = (view === 'roles' || view === 'api') ? 'admin' : view;
+      var permKey = (view === 'roles' || view === 'api') ? 'admin' : (view === 'camera-history' ? 'camera-snapshots' : view);
       if (!TGE.can(permKey, 'view')) {
         item.style.display = 'none';
       } else {
