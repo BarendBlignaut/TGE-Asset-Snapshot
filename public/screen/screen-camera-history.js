@@ -1,0 +1,1405 @@
+// TGE Asset Snapshot — Camera History Page
+// public/screen/screen-camera-history.js
+//
+// ISOLATED reproduction of James Robinson's TN360 "Camera Snapshot & History
+// Checker". Renders into #view-camera-history. All TN360 traffic goes through
+// the isolated /api/camchk/ routes, which run on TN360_SNAPSHOT_KEY only.
+//
+// Structure:
+//   1) Scoped <style> (James's Tailwind converted to prefixed CSS — cannot leak).
+//   2) render() writes James's page markup into the view container.
+//   3) Auth shim — maps James's five Auth.apiCall actions to /api/camchk/ routes,
+//      throwing on non-2xx and returning res.data (mirrors James's Auth.apiCall).
+//   4) James's logic, pasted verbatim.
+//   5) TGE.onShow['camera-history'] renders on first show.
+//
+// Delete this file + its <script> tag + its nav item + its view div to remove.
+
+(function () {
+  'use strict';
+
+  // ── 1) Scoped styles (prefix .cam-hist so nothing leaks into the app) ────────
+  var STYLE_ID = 'cam-hist-styles';
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var css = [
+      '.cam-hist { --tn-green:#99ca49; --tn-dark:#88b93a; font-family:Inter,system-ui,sans-serif; color:#1f2937; }',
+      '.cam-hist * { box-sizing:border-box; }',
+      '.cam-hist .ch-head { margin-bottom:1.25rem; }',
+      '.cam-hist .ch-title { font-size:1.25rem; font-weight:700; color:#1f2937; }',
+      '.cam-hist .ch-sub { font-size:0.875rem; color:#6b7280; margin-top:0.125rem; }',
+      '.cam-hist .ch-card { background:#fff; border-radius:1rem; border:1px solid #f3f4f6; box-shadow:0 1px 3px rgba(0,0,0,0.06); padding:1.25rem; }',
+      '.cam-hist .ch-toolbar { display:flex; flex-wrap:wrap; gap:0.75rem; align-items:center; margin-bottom:1.25rem; }',
+      '.cam-hist .ch-btn { display:inline-flex; align-items:center; gap:0.5rem; padding:0 1.25rem; height:2.75rem; font-size:0.875rem; font-weight:600; border-radius:0.75rem; cursor:pointer; transition:background 0.15s,border-color 0.15s; border:none; }',
+      '.cam-hist .ch-btn-primary { background:var(--tn-green); color:#fff; }',
+      '.cam-hist .ch-btn-primary:hover { background:var(--tn-dark); }',
+      '.cam-hist .ch-btn-outline { background:#fff; border:2px solid #e5e7eb; color:#374151; font-weight:500; }',
+      '.cam-hist .ch-btn-outline:hover:not(:disabled) { background:#f9fafb; }',
+      '.cam-hist .ch-btn:disabled { opacity:0.4; cursor:not-allowed; }',
+      '.cam-hist .ch-right { display:flex; align-items:center; gap:0.5rem; margin-left:auto; }',
+      '.cam-hist .ch-label { font-size:0.75rem; font-weight:500; color:#6b7280; white-space:nowrap; }',
+      '.cam-hist .ch-select { height:2.25rem; padding:0 0.625rem; border:2px solid #e5e7eb; border-radius:0.75rem; font-size:0.875rem; color:#374151; background:#fff; }',
+      '.cam-hist .ch-select:focus { outline:none; border-color:var(--tn-green); }',
+      '.cam-hist .ch-field-label { display:block; font-size:0.875rem; font-weight:500; color:#374151; margin-bottom:0.25rem; }',
+      '.cam-hist .ch-field-hint { color:#9ca3af; font-weight:400; }',
+      '.cam-hist textarea.ch-input { width:100%; padding:0.625rem 0.75rem; border:2px solid #e5e7eb; border-radius:0.75rem; font-size:0.875rem; font-family:monospace; resize:vertical; }',
+      '.cam-hist textarea.ch-input:focus { outline:none; border-color:var(--tn-green); }',
+      '.cam-hist .ch-tip { font-size:0.75rem; color:#9ca3af; margin-top:0.25rem; }',
+      '.cam-hist .ch-status { display:flex; align-items:center; gap:0.5rem; padding:0.75rem 1rem; background:#eff6ff; border:1px solid #dbeafe; border-radius:0.75rem; font-size:0.875rem; color:#1d4ed8; margin-bottom:1rem; }',
+      '.cam-hist .ch-error { padding:0.75rem 1rem; background:#fef2f2; border:1px solid #fecaca; border-radius:0.75rem; font-size:0.875rem; color:#b91c1c; margin-bottom:1rem; }',
+      '.cam-hist .ch-hidden { display:none !important; }',
+
+      // Spinner
+      '.cam-hist .bulk-ico--spin { display:inline-block; width:1em; height:1em; border:2px solid rgba(255,255,255,0.35); border-top-color:#fff; border-radius:50%; animation:ch-spin 0.7s linear infinite; vertical-align:-0.15em; }',
+      '@keyframes ch-spin { to { transform:rotate(360deg); } }',
+
+      // Progress overlay
+      '.cam-hist-overlay { display:none; position:fixed; inset:0; z-index:5000; background:rgba(249,250,251,0.72); align-items:center; justify-content:center; backdrop-filter:blur(2px); }',
+      '.cam-hist-overlay.is-visible { display:flex; }',
+      '.cam-hist-overlay .pc-panel { background:#fff; padding:1.35rem 1.75rem; border-radius:0.75rem; box-shadow:0 10px 40px rgba(0,0,0,0.12); border:1px solid #e5e7eb; text-align:center; min-width:260px; max-width:92vw; }',
+      '.cam-hist-overlay .pc-visual { position:relative; width:112px; height:112px; margin:0 auto 0.75rem; }',
+      '.cam-hist-overlay .pc-svg { width:112px; height:112px; display:block; }',
+      '.cam-hist-overlay .pc-ring-bg { fill:none; stroke:#e5e7eb; stroke-width:8; }',
+      '.cam-hist-overlay .pc-ring-fg { fill:none; stroke:#99ca49; stroke-width:8; stroke-linecap:round; transition:stroke-dashoffset 0.25s ease-out; }',
+      '.cam-hist-overlay .pc-pct { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:1.05rem; font-weight:700; color:#1f2937; }',
+      '.cam-hist-overlay .pc-track { height:8px; background:#e5e7eb; border-radius:999px; overflow:hidden; margin:0 auto 0.85rem; max-width:260px; }',
+      '.cam-hist-overlay .pc-fill { height:100%; width:0%; background:linear-gradient(to right,#99ca49,#88b93a); border-radius:999px; transition:width 0.25s ease-out; }',
+      '.cam-hist-overlay .pc-text { margin:0; font-size:0.875rem; color:#374151; font-weight:600; }',
+      '.cam-hist-overlay .pc-sub { margin:0.35rem 0 0; font-size:0.75rem; color:#6b7280; }',
+
+      // Snapshot table
+      '.cam-hist .snap-table { width:100%; border-collapse:collapse; background:#fff; border-radius:0.5rem; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.08); font-size:0.75rem; table-layout:fixed; }',
+      '.cam-hist .snap-table thead { background:linear-gradient(to right,#99ca49,#88b93a); color:#fff; }',
+      '.cam-hist .snap-table th { padding:0.5rem 0.3rem; text-align:center; font-weight:600; vertical-align:middle; line-height:1.2; }',
+      '.cam-hist .snap-table th:first-child { text-align:left; width:8rem; }',
+      '.cam-hist .snap-th-main { display:block; font-weight:600; }',
+      '.cam-hist .snap-th-sub { display:block; font-size:0.62rem; font-weight:500; opacity:0.92; margin-top:0.15rem; }',
+      '.cam-hist .snap-table td { padding:0.4rem; border-bottom:1px solid #e5e7eb; vertical-align:middle; text-align:center; }',
+      '.cam-hist .snap-table td:first-child { text-align:left; font-weight:600; color:#1f2937; word-break:break-word; }',
+      '.cam-hist .snap-table tbody tr:hover { background:#f9fafb; }',
+      '.cam-hist .snap-table tbody tr:last-child td { border-bottom:none; }',
+      '.cam-hist .snap-col-stack { display:flex; flex-direction:column; align-items:center; gap:0.35rem; max-width:100%; padding:0.15rem 0; }',
+      '.cam-hist .snap-thumb-block { width:100%; display:flex; flex-direction:column; align-items:center; }',
+      '.cam-hist .thumb-wrap img { max-width:100%; max-height:100px; width:auto; height:auto; object-fit:contain; border-radius:0.25rem; cursor:zoom-in; border:1px solid #e5e7eb; background:#f3f4f6; }',
+      '.cam-hist .thumb-wrap img:hover { border-color:#99ca49; box-shadow:0 2px 8px rgba(153,202,73,0.3); }',
+      '.cam-hist .snap-time { display:block; font-size:0.65rem; font-weight:500; color:#6b7280; margin-top:0.2rem; text-align:center; line-height:1.2; word-break:break-word; }',
+      '.cam-hist .snap-failed { display:block; font-size:0.62rem; font-weight:700; color:#dc2626; margin-top:0.2rem; text-align:center; }',
+      '.cam-hist .snap-not-found { display:block; font-size:0.72rem; font-weight:700; color:#dc2626; text-align:center; padding:0.35rem 0.2rem; }',
+      '.cam-hist .snap-not-found-detail { display:block; font-weight:500; font-size:0.68rem; color:#991b1b; margin-top:0.25rem; line-height:1.25; }',
+      '.cam-hist .thumb-missing { color:#9ca3af; font-size:0.75rem; padding:0.35rem; }',
+      '.cam-hist .unsure-hint { font-size:0.6rem; color:#6b7280; max-width:100%; word-break:break-word; text-align:center; margin-top:0.1rem; }',
+
+      // Historical fallback cells
+      '.cam-hist .snap-hist-badge { display:block; font-size:0.6rem; font-weight:800; color:#92400e; background:#fef3c7; border:1px solid #fcd34d; border-radius:9999px; padding:0.05rem 0.45rem; margin-top:0.2rem; text-align:center; letter-spacing:0.04em; }',
+      '.cam-hist .snap-hist-time { display:block; font-size:0.62rem; font-weight:600; color:#b45309; margin-top:0.1rem; text-align:center; }',
+      '.cam-hist .snap-hist-wrap { border:2px solid #f59e0b !important; border-radius:0.3rem; }',
+      '@keyframes ch-hist-pulse { 0%,100%{border-color:#f59e0b;} 50%{border-color:#fcd34d;} }',
+      '.cam-hist .snap-hist-searching { border:2px solid #f59e0b !important; border-radius:0.3rem; animation:ch-hist-pulse 1s ease-in-out infinite; }',
+      '.cam-hist .snap-searching-badge { display:block; font-size:0.6rem; font-weight:800; color:#92400e; background:#fef3c7; border:1px solid #fcd34d; border-radius:9999px; padding:0.05rem 0.45rem; margin-top:0.2rem; text-align:center; letter-spacing:0.04em; }',
+
+      // Historical search bar
+      '.cam-hist-search-bar { display:none; position:fixed; bottom:0; left:0; right:0; z-index:4900; align-items:center; gap:0.75rem; padding:0.75rem 1.25rem; background:#fffbeb; border-top:2px solid #fde68a; font-size:0.875rem; color:#78350f; box-shadow:0 -4px 12px rgba(0,0,0,0.06); }',
+      '.cam-hist-search-bar.is-visible { display:flex; }',
+
+      // Fullscreen viewer
+      '.cam-hist-fs { display:none; position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.92); align-items:center; justify-content:center; padding:1rem; cursor:zoom-out; }',
+      '.cam-hist-fs.is-open { display:flex; }',
+      '.cam-hist-fs img { max-width:100vw; max-height:100vh; width:auto; height:auto; object-fit:contain; cursor:default; border-radius:0.25rem; }',
+      '.cam-hist-fs.is-historical img { border:4px solid #f59e0b; border-radius:0.35rem; box-shadow:0 0 0 4px rgba(245,158,11,0.25),0 0 32px rgba(245,158,11,0.2); }',
+      '.cam-hist-fs .fs-caption.is-historical { background:rgba(245,158,11,0.22); border:1px solid rgba(245,158,11,0.5); border-radius:0.4rem; padding:0.25rem 0.85rem; color:#fef3c7; }',
+      '.cam-hist-fs .fs-nav { position:fixed; top:50%; transform:translateY(-50%); z-index:10002; width:3rem; height:3rem; border-radius:50%; border:none; background:rgba(255,255,255,0.92); color:#111827; font-size:1.75rem; line-height:1; cursor:pointer; box-shadow:0 2px 14px rgba(0,0,0,0.35); display:flex; align-items:center; justify-content:center; padding:0; }',
+      '.cam-hist-fs .fs-nav:hover:not(:disabled) { background:#fff; }',
+      '.cam-hist-fs .fs-nav:disabled { opacity:0.22; cursor:default; }',
+      '.cam-hist-fs .fs-nav-prev { left:0.75rem; }',
+      '.cam-hist-fs .fs-nav-next { right:0.75rem; }',
+      '.cam-hist-fs .fs-close { position:fixed; top:1rem; right:1rem; z-index:10001; background:#fff; color:#111; border:none; width:2.5rem; height:2.5rem; border-radius:9999px; font-size:1.5rem; line-height:1; cursor:pointer; font-weight:700; box-shadow:0 2px 12px rgba(0,0,0,0.3); padding:0; }',
+      '.cam-hist-fs .fs-close:hover { background:#f3f4f6; }',
+      '.cam-hist-fs .fs-caption { position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); color:#e5e7eb; font-size:0.875rem; text-align:center; max-width:90vw; pointer-events:none; }'
+    ].join('\n');
+    var style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
+  // ── 2) render() — James's markup into the view container ─────────────────────
+  function render() {
+    var view = TGE.el('view-camera-history');
+    if (!view) return;
+    injectStyles();
+
+    view.innerHTML = [
+      '<div class="cam-hist">',
+        '<div class="ch-head">',
+          '<div class="ch-title">Camera Snapshot &amp; History Checker</div>',
+          '<div class="ch-sub">Verify camera snapshots are valid and automatically search history to find when a camera last worked.</div>',
+        '</div>',
+
+        '<div class="ch-card">',
+          '<div class="ch-toolbar">',
+            '<button type="button" id="ch-btnLoad" class="ch-btn ch-btn-primary">Check snapshots</button>',
+            '<button type="button" id="ch-btnExportCsv" class="ch-btn ch-btn-outline" disabled>Export CSV</button>',
+            '<div class="ch-right">',
+              '<label for="ch-histWeeksSel" class="ch-label">History search period</label>',
+              '<select id="ch-histWeeksSel" class="ch-select">',
+                '<option value="13">13 weeks</option>',
+                '<option value="26">26 weeks</option>',
+                '<option value="52" selected>1 year</option>',
+                '<option value="78">1.5 years</option>',
+                '<option value="104">2 years</option>',
+                '<option value="9999">All time</option>',
+              '</select>',
+            '</div>',
+          '</div>',
+
+          '<div style="margin-bottom:1.25rem;">',
+            '<label class="ch-field-label">Vehicles to check <span class="ch-field-hint">(one per line)</span></label>',
+            '<textarea id="ch-fleetFilter" rows="5" class="ch-input" placeholder="Fleet number, vehicle name, registration, or numeric vehicle ID — one per line" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>',
+            '<p class="ch-tip">Tip: Ctrl+Enter to start the check</p>',
+          '</div>',
+
+          '<div id="ch-statusMsg" class="ch-status ch-hidden">',
+            '<span class="bulk-ico--spin" style="border-color:rgba(29,78,216,0.25);border-top-color:#1d4ed8;" aria-hidden="true"></span>',
+            '<span id="ch-statusText">Loading…</span>',
+          '</div>',
+
+          '<div id="ch-errorMsg" class="ch-error ch-hidden"></div>',
+
+          '<div style="overflow-x:auto;">',
+            '<table class="snap-table" id="ch-snapTable" aria-label="Camera snapshots by vehicle">',
+              '<thead>',
+                '<tr>',
+                  '<th>Vehicle</th>',
+                  '<th>ROAD</th>',
+                  '<th>DRIVER</th>',
+                  '<th><span class="snap-th-main">TVI1</span><span class="snap-th-sub">Left</span></th>',
+                  '<th><span class="snap-th-main">TVI2</span><span class="snap-th-sub">Right</span></th>',
+                  '<th><span class="snap-th-main">UVC</span><span class="snap-th-sub">Additional</span></th>',
+                  '<th>Unsure</th>',
+                '</tr>',
+              '</thead>',
+              '<tbody id="ch-snapTableBody"></tbody>',
+            '</table>',
+          '</div>',
+        '</div>',
+      '</div>',
+
+      // Progress overlay
+      '<div id="ch-persistCheckOverlay" class="cam-hist-overlay" role="status" aria-live="polite">',
+        '<div class="pc-panel">',
+          '<div class="pc-visual">',
+            '<svg class="pc-svg" viewBox="0 0 100 100" aria-hidden="true">',
+              '<circle class="pc-ring-bg" cx="50" cy="50" r="40"/>',
+              '<circle id="ch-persistRingFg" class="pc-ring-fg" cx="50" cy="50" r="40" transform="rotate(-90 50 50)"/>',
+            '</svg>',
+            '<span id="ch-persistProgressPct" class="pc-pct">0%</span>',
+          '</div>',
+          '<div class="pc-track"><div id="ch-persistProgressBarFill" class="pc-fill"></div></div>',
+          '<p class="pc-text">Checking image sizes</p>',
+          '<p id="ch-persistProgressCount" class="pc-sub">Preparing…</p>',
+        '</div>',
+      '</div>',
+
+      // Historical search bar
+      '<div id="ch-histSearchBar" class="cam-hist-search-bar" aria-live="polite" role="status">',
+        '<span style="display:inline-block;width:0.85em;height:0.85em;border:2px solid rgba(180,83,9,0.25);border-top-color:#92400e;border-radius:50%;animation:ch-spin 0.7s linear infinite;vertical-align:-0.1em;flex-shrink:0;" aria-hidden="true"></span>',
+        '<span id="ch-histSearchText" style="flex:1;">Searching history for unknown cameras…</span>',
+        '<button type="button" id="ch-btnStopHist" style="flex-shrink:0;padding:0.25rem 0.85rem;background:#92400e;color:#fff;font-size:0.75rem;font-weight:700;border:none;border-radius:9999px;cursor:pointer;">Stop</button>',
+      '</div>',
+
+      // Fullscreen viewer
+      '<div id="ch-fsOverlay" class="cam-hist-fs" role="dialog" aria-modal="true" aria-label="Fullscreen image">',
+        '<button type="button" class="fs-close" id="ch-fsClose" aria-label="Close">&times;</button>',
+        '<button type="button" class="fs-nav fs-nav-prev" id="ch-fsPrev" aria-label="Previous image" disabled>&#8249;</button>',
+        '<button type="button" class="fs-nav fs-nav-next" id="ch-fsNext" aria-label="Next image" disabled>&#8250;</button>',
+        '<img id="ch-fsImage" src="" alt="Snapshot fullscreen">',
+        '<div id="ch-fsCaption" class="fs-caption"></div>',
+      '</div>'
+    ].join('');
+
+    wireEvents();
+    renderTable();
+  }
+
+  // ── 3) Auth shim — James's five actions → /api/camchk/ routes ────────────────
+  // Mirrors James's Auth.apiCall: returns the response body on 2xx, throws on
+  // non-2xx. TGE.api returns { ok, status, data }; we unwrap it here so all of
+  // James's logic below runs unchanged.
+  var Auth = {
+    getSelectedCompany: function () {
+      return { id: '432639', shortName: 'TGE', fullName: 'Team Global Express' };
+    },
+    apiCall: async function (action, payload) {
+      payload = payload || {};
+
+      if (action === 'teletrac_proxy_get') {
+        var path = String(payload.path || '');
+        if (path === '/v1/vehicles') {
+          var vr = await TGE.api('GET', '/api/camchk/vehicles');
+          if (!vr.ok) throw new Error((vr.data && vr.data.error) || 'Vehicle lookup failed');
+          return vr.data;
+        }
+        if (path === '/v1/events') {
+          var q = new URLSearchParams();
+          var p = payload.params || {};
+          Object.keys(p).forEach(function (k) { if (p[k] != null && p[k] !== '') q.set(k, p[k]); });
+          var er = await TGE.api('GET', '/api/camchk/events' + (q.toString() ? '?' + q.toString() : ''));
+          if (!er.ok) throw new Error((er.data && er.data.error) || 'Events lookup failed');
+          return er.data;
+        }
+        throw new Error('Unsupported proxy path: ' + path);
+      }
+
+      if (action === 'fetch_hist_snapshots') {
+        var sr = await TGE.api('POST', '/api/camchk/snapshots', {
+          vehicleId: payload.vehicleId,
+          deviceId:  payload.deviceId,
+          from:      payload.from,
+          to:        payload.to
+        });
+        if (!sr.ok) throw new Error((sr.data && sr.data.error) || 'Snapshot history fetch failed');
+        return sr.data; // { events, totalCount }
+      }
+
+      if (action === 'snapshot_check_sizes') {
+        var snap = payload.snapshot || {};
+        var u = new URLSearchParams();
+        u.set('url', snap.url || '');
+        if (snap.filename) u.set('filename', snap.filename);
+        var ir = await TGE.api('GET', '/api/camchk/image-size?' + u.toString());
+        if (!ir.ok) throw new Error((ir.data && ir.data.error) || 'Image size check failed');
+        return ir.data; // { filename, bytes, tooSmall }
+      }
+
+      if (action === 'log_activity') {
+        return Promise.resolve({ ok: true }); // fire-and-forget, no-op
+      }
+
+      throw new Error('Unknown Auth action: ' + action);
+    }
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 4) James's logic — pasted verbatim, with element IDs prefixed "ch-" to match
+  //    the render() markup above. Logic is otherwise unchanged.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  var selectedCompanyId = '';
+  var allRows           = [];
+  var lastSnapshotSaveMessage    = '';
+  var lastSnapshotSmallFileByKey = {};
+  var lastLoadStats = { totalEvents:0, fleetCameraEventsRaw:0, eventsWithContext:0, snapshotEventsWithMedia:0 };
+
+  var fsGallery = [], fsIndex = 0;
+  var SOURCES = ['ROAD', 'DRIVER', 'TVI1', 'TVI2', 'UVC'];
+  var histStopRequested = false;
+
+  var HIST_POSITION_MAP = {
+    'FRONT':'ROAD', 'ROAD':'ROAD', 'ROAD_FACING':'ROAD',
+    'DRIVER':'DRIVER', 'DRIVER_FACING':'DRIVER',
+    'LEFT_PASSENGER':'TVI1', 'LEFT':'TVI1', 'TVI1':'TVI1',
+    'RIGHT_DRIVER':'TVI2', 'RIGHT':'TVI2', 'TVI2':'TVI2',
+    'UVC':'UVC'
+  };
+
+  function parseFreshEvent(ev) {
+    if (!ev || !Array.isArray(ev.attachments)) return null;
+    var urls = { ROAD:'', DRIVER:'', TVI1:'', TVI2:'', UVC:'' };
+    var hasMedia = false;
+    for (var i = 0; i < ev.attachments.length; i++) {
+      var att = ev.attachments[i];
+      var url = att.url || '';
+      if (!url || !/^https?:\/\//i.test(url)) continue;
+      hasMedia = true;
+      var pos = String(att.position || '').toUpperCase();
+      var col = HIST_POSITION_MAP[pos] || null;
+      if (col && !urls[col]) urls[col] = url;
+    }
+    if (!hasMedia) return null;
+    return { timeAt: ev.timeAt || '', urls: urls };
+  }
+
+  function showHistSearchBar(show, msg) {
+    var bar = document.getElementById('ch-histSearchBar');
+    if (!bar) return;
+    if (show) {
+      bar.classList.add('is-visible');
+      if (msg != null) document.getElementById('ch-histSearchText').textContent = msg;
+    } else {
+      bar.classList.remove('is-visible');
+    }
+  }
+
+  async function historicalFallback(deviceIdByVehicleId) {
+    deviceIdByVehicleId = deviceIdByVehicleId || {};
+    var toSearch = [];
+    for (var ri = 0; ri < allRows.length; ri++) {
+      var row = allRows[ri];
+      if (row.notFound) continue;
+      var unknownSrcs = SOURCES.filter(function(src) {
+        var cell = row.cols[src];
+        if (!cell || !cell.url) return true;
+        if (colSnapshotFileTooSmall(row.vehicleId, src, cell.timeAt)) return true;
+        return false;
+      });
+      if (unknownSrcs.length) {
+        row.histCells = {};
+        row.histSearching = {};
+        toSearch.push({ row: row, srcs: unknownSrcs });
+      }
+    }
+    if (!toSearch.length) return;
+
+    var weekMs   = 7 * 24 * 60 * 60 * 1000;
+    var maxWeeks = parseInt(document.getElementById('ch-histWeeksSel').value, 10) || 52;
+    var now      = Date.now();
+    var total    = toSearch.length;
+    var doneCount = 0;
+    var weekByVehicle = {};
+
+    function updateHistBar() {
+      var parts = [];
+      for (var vid in weekByVehicle) {
+        if (!Object.prototype.hasOwnProperty.call(weekByVehicle, vid)) continue;
+        var s = weekByVehicle[vid];
+        var label = s.name + ': ' + (s.done ? 'done' : 'wk ' + s.week + '/' + maxWeeks);
+        parts.push(label);
+      }
+      showHistSearchBar(true, 'Searching history… ' + parts.join(' · '));
+    }
+
+    histStopRequested = false;
+    showHistSearchBar(true, 'Searching history for ' + total + ' vehicle' + (total === 1 ? '' : 's') + ' with unknown cameras…');
+
+    async function searchVehicle(item) {
+      var row2         = item.row;
+      var stillUnknown = item.srcs.slice();
+      var vid          = row2.vehicleId;
+      var vname        = (row2.vehicleName || vid).slice(0, 20);
+
+      weekByVehicle[vid] = { name: vname, week: 0, done: false };
+      stillUnknown.forEach(function(src) { row2.histSearching[src] = true; });
+      renderTable();
+
+      for (var week = 0; week < maxWeeks && stillUnknown.length > 0; week++) {
+        if (histStopRequested) break;
+        weekByVehicle[vid].week = week + 1;
+        if (!histStopRequested) updateHistBar();
+
+        var weekEndMs   = now - (week * weekMs);
+        var weekStartMs = weekEndMs - weekMs;
+        var fromStr = new Date(weekStartMs).toISOString();
+        var toStr   = new Date(weekEndMs).toISOString();
+
+        var weekDeviceId = deviceIdByVehicleId[row2.vehicleId] || null;
+        if (!weekDeviceId) {
+          try {
+            var weekEvData    = await telematicsApiGet('/events', { types: 'camera', from: fromStr, to: toStr });
+            var weekScopedEvs = filterCameraEventsToScopedVehicles(normalizeEventsResponse(weekEvData), [row2.vehicleId]);
+            for (var di = 0; di < weekScopedEvs.length; di++) {
+              var ev  = weekScopedEvs[di];
+              var did = ev.deviceId || (ev.device && ev.device.id) || (ev.attributes && ev.attributes.deviceId);
+              if (did) { weekDeviceId = String(did); deviceIdByVehicleId[row2.vehicleId] = weekDeviceId; break; }
+            }
+          } catch(e) {}
+        }
+
+        if (weekDeviceId) {
+            var weekSnapResult, weekFreshEvs;
+            try {
+              weekSnapResult = await Auth.apiCall('fetch_hist_snapshots', {
+                companyId: selectedCompanyId,
+                vehicleId: row2.vehicleId,
+                deviceId:  weekDeviceId,
+                from:      fromStr,
+                to:        toStr
+              });
+              weekFreshEvs = Array.isArray(weekSnapResult && weekSnapResult.events)
+                ? weekSnapResult.events.map(parseFreshEvent).filter(Boolean)
+                : [];
+            } catch(e) { weekFreshEvs = []; }
+
+            weekFreshEvs.sort(function(a, b) { return new Date(b.timeAt) - new Date(a.timeAt); });
+
+            var remaining = [], foundAny = false;
+            for (var si2 = 0; si2 < stillUnknown.length; si2++) {
+              var src = stillUnknown[si2], accepted = false;
+              for (var ei = 0; ei < weekFreshEvs.length; ei++) {
+                var candUrl = weekFreshEvs[ei].urls[src];
+                if (!candUrl) continue;
+                try {
+                  var sizeRes = await Auth.apiCall('snapshot_check_sizes', {
+                    snapshot: { filename: 'hist-' + row2.vehicleId + '-' + src + '.jpg', url: candUrl }
+                  });
+                  if (!sizeRes.tooSmall) {
+                    row2.histCells[src] = { url: candUrl, timeAt: weekFreshEvs[ei].timeAt };
+                    delete row2.histSearching[src];
+                    foundAny = true;
+                    accepted = true;
+                    break;
+                  }
+                } catch(e) { /* size check failed, skip this candidate */ }
+              }
+              if (!accepted) remaining.push(src);
+            }
+            stillUnknown = remaining;
+            if (foundAny) renderTable();
+          }
+      }
+
+      row2.histSearching = {};
+      weekByVehicle[vid].done = true;
+      doneCount++;
+      if (!histStopRequested) updateHistBar();
+    }
+
+    await Promise.all(toSearch.map(function(item) { return searchVehicle(item); }));
+
+    showHistSearchBar(false);
+    renderTable();
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = String(s == null ? '' : s);
+    return d.innerHTML;
+  }
+
+  function setStatus(msg) {
+    document.getElementById('ch-statusText').textContent = msg;
+    document.getElementById('ch-statusMsg').classList.remove('ch-hidden');
+  }
+  function clearStatus() { document.getElementById('ch-statusMsg').classList.add('ch-hidden'); }
+  function showError(msg) { var el = document.getElementById('ch-errorMsg'); el.textContent = msg; el.classList.remove('ch-hidden'); }
+  function clearError()   { document.getElementById('ch-errorMsg').classList.add('ch-hidden'); }
+
+  function sourceCaptionTitle(src) {
+    if (src === 'TVI1') return 'TVI1 (Left)';
+    if (src === 'TVI2') return 'TVI2 (Right)';
+    if (src === 'UVC')  return 'UVC (Additional Camera)';
+    return src;
+  }
+
+  function setPersistCheckBusy(show) {
+    var el = document.getElementById('ch-persistCheckOverlay');
+    if (!el) return;
+    if (show) { el.classList.add('is-visible'); el.setAttribute('aria-hidden', 'false'); }
+    else       { el.classList.remove('is-visible'); el.setAttribute('aria-hidden', 'true'); updatePersistDownloadProgress(0, 0); }
+  }
+
+  function updatePersistDownloadProgress(done, total, statusOverride) {
+    var ring    = document.getElementById('ch-persistRingFg');
+    var pctEl   = document.getElementById('ch-persistProgressPct');
+    var countEl = document.getElementById('ch-persistProgressCount');
+    var barFill = document.getElementById('ch-persistProgressBarFill');
+    var R = 40, C = 2 * Math.PI * R;
+    var p = total > 0 ? Math.min(1, Math.max(0, done / total)) : 0;
+    if (ring)   { ring.style.strokeDasharray = String(C); ring.style.strokeDashoffset = String(C * (1 - p)); }
+    if (pctEl)  { pctEl.textContent = total > 0 ? String(Math.round(p * 100)) + '%' : '—'; }
+    if (countEl) {
+      if (statusOverride != null && statusOverride !== '') countEl.textContent = statusOverride;
+      else if (total <= 0) countEl.textContent = '';
+      else countEl.textContent = 'Checked ' + done + ' of ' + total + ' image' + (total === 1 ? '' : 's');
+    }
+    if (barFill) { barFill.style.width = total > 0 ? String(Math.round(p * 100)) + '%' : '0%'; }
+  }
+
+  async function telematicsApiGet(endpoint, params) {
+    if (!selectedCompanyId) throw new Error('No company selected.');
+    var payload = { companyId: selectedCompanyId, path: '/v1' + endpoint };
+    if (params && Object.keys(params).length > 0) payload.params = params;
+    return await Auth.apiCall('teletrac_proxy_get', payload);
+  }
+
+  function normalizeVehiclesResponse(data) {
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.vehicles)) return data.vehicles;
+    if (data && Array.isArray(data.data))     return data.data;
+    return [];
+  }
+
+  function normalizeEventsResponse(data) {
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.events)) return data.events;
+    if (data && Array.isArray(data.data))   return data.data;
+    if (data && Array.isArray(data.items))  return data.items;
+    return [];
+  }
+
+  function getVehicleIdFromEvent(ev) {
+    if (!ev || typeof ev !== 'object') return '';
+    if (ev._tnRequestVehicleId != null && String(ev._tnRequestVehicleId).trim() !== '') return String(ev._tnRequestVehicleId).trim();
+    if (ev.vehicleId != null && String(ev.vehicleId).trim() !== '') return String(ev.vehicleId).trim();
+    if (ev.vehicleID != null && String(ev.vehicleID).trim() !== '') return String(ev.vehicleID).trim();
+    if (ev.vehicle && ev.vehicle.id != null) return String(ev.vehicle.id);
+    var a = ev.attributes;
+    if (a && typeof a === 'object') {
+      if (a.vehicleId != null && String(a.vehicleId).trim() !== '') return String(a.vehicleId).trim();
+      if (a.vehicle && a.vehicle.id != null) return String(a.vehicle.id);
+    }
+    return '';
+  }
+
+  function getDeclaredVehicleIdFromEvent(ev) {
+    if (!ev || typeof ev !== 'object') return '';
+    if (ev.vehicleId != null && String(ev.vehicleId).trim() !== '') return String(ev.vehicleId).trim();
+    if (ev.vehicleID != null && String(ev.vehicleID).trim() !== '') return String(ev.vehicleID).trim();
+    if (ev.vehicle && ev.vehicle.id != null) return String(ev.vehicle.id);
+    var a = ev.attributes;
+    if (a && typeof a === 'object') {
+      if (a.vehicleId != null && String(a.vehicleId).trim() !== '') return String(a.vehicleId).trim();
+      if (a.vehicle && a.vehicle.id != null) return String(a.vehicle.id);
+    }
+    return '';
+  }
+
+  function vehicleIdsMatch(a, b) {
+    if (a == null || b == null) return false;
+    var sa = String(a).trim(), sb = String(b).trim();
+    if (!sa || !sb) return false;
+    if (sa === sb) return true;
+    if (sa.toLowerCase() === sb.toLowerCase()) return true;
+    if (/^\d+$/.test(sa) && /^\d+$/.test(sb)) {
+      var i = 0;
+      while (i < sa.length - 1 && sa.charAt(i) === '0') i++;
+      sa = sa.slice(i); i = 0;
+      while (i < sb.length - 1 && sb.charAt(i) === '0') i++;
+      sb = sb.slice(i);
+      return sa === sb;
+    }
+    return false;
+  }
+
+  function canonicalScopedIdForDeclared(declared, scopedIds) {
+    if (!declared || !scopedIds || !scopedIds.length) return '';
+    var d = String(declared).trim();
+    if (!d) return '';
+    for (var i = 0; i < scopedIds.length; i++) {
+      var sid = String(scopedIds[i]).trim();
+      if (sid && vehicleIdsMatch(sid, d)) return sid;
+    }
+    return '';
+  }
+
+  function filterCameraEventsToScopedVehicles(events, scopedIds) {
+    if (!Array.isArray(events) || !scopedIds || !scopedIds.length) return [];
+    var out = [];
+    for (var i = 0; i < events.length; i++) {
+      var ev = events[i];
+      var canon = canonicalScopedIdForDeclared(getDeclaredVehicleIdFromEvent(ev), scopedIds);
+      if (!canon) continue;
+      ev._tnRequestVehicleId = canon;
+      out.push(ev);
+    }
+    return dedupeEventsById(out);
+  }
+
+  function getContextObject(event) {
+    if (!event || !event.attributes) return null;
+    var c = event.attributes.context;
+    if (c == null || c === '') return null;
+    if (typeof c === 'object') return c;
+    if (typeof c === 'string') { try { return JSON.parse(c); } catch(e) { return null; } }
+    return null;
+  }
+
+  function mediaUrlFromEntry(m) {
+    if (!m) return '';
+    var u = '';
+    if (m.mediaFile) u = String(m.mediaFile).trim();
+    else if (m.url)  u = String(m.url).trim();
+    else if (m.uri)  u = String(m.uri).trim();
+    else return '';
+    if (/^\/\//.test(u)) u = 'https:' + u;
+    return u;
+  }
+
+  function normSource(s) { return String(s == null ? '' : s).trim().toUpperCase(); }
+
+  function mediaEntryHintString(m) {
+    if (!m || typeof m !== 'object') return '';
+    var parts = [], k, v;
+    for (k in m) {
+      if (!Object.prototype.hasOwnProperty.call(m, k)) continue;
+      v = m[k];
+      if (typeof v === 'string') {
+        v = v.trim();
+        if (!v || v.length > 200 || /^https?:\/\//i.test(v)) continue;
+        parts.push(v);
+      } else if (typeof v === 'number' && isFinite(v)) {
+        parts.push(String(v));
+      }
+    }
+    return parts.join(' ');
+  }
+
+  function mapSourceToColumnFromText(full) {
+    if (!String(full || '').trim()) return null;
+    var u = String(full).trim().toUpperCase();
+    var t = u.replace(/[\s_\-\/\.#]/g, '');
+    var s = normSource(u);
+    if (SOURCES.indexOf(s) !== -1) return s;
+    s = normSource(t);
+    if (SOURCES.indexOf(s) !== -1) return s;
+    if (u.indexOf('ROAD_FACING') !== -1 || t.indexOf('ROADFACING') !== -1) return 'ROAD';
+    if (u.indexOf('DRIVER_FACING') !== -1 || t.indexOf('DRIVERFACING') !== -1) return 'DRIVER';
+    if (/\bTVI_?2\b|TVI2|VIDEO_?INPUT_?2|TELEMATICS_?VIDEO_?INPUT_?2|CH2TVI|TVI_B\b|CAM(ERA)?_?2TVI|STREAM_?2TVI|INPUT_?2TVI/i.test(u)) return 'TVI2';
+    if (/\bTVI_?1\b|TVI1|VIDEO_?INPUT_?1|TELEMATICS_?VIDEO_?INPUT_?1|CH1TVI|TVI_A\b|CAM(ERA)?_?1TVI|STREAM_?1TVI|INPUT_?1TVI/i.test(u)) return 'TVI1';
+    if (t.indexOf('TVI2') !== -1) return 'TVI2';
+    if (t.indexOf('TVI1') !== -1) return 'TVI1';
+    if (/UVC|ULTRAVIOLET|UV[_\s]?CAM(?:ERA)?|ULTRA[_\s]?VIOLET|OMNI[_\s]?CAM|CABIN[_\s]?360|INTERIOR[_\s]?360/i.test(u)) return 'UVC';
+    if (t.indexOf('UVC') !== -1) return 'UVC';
+    if (t.indexOf('DRIVER') !== -1 || t.indexOf('DMS') !== -1 || t.indexOf('INCAB') !== -1) return 'DRIVER';
+    if (/\bCAB\b/i.test(u) && !/CABIN/i.test(u)) return 'DRIVER';
+    if (t.indexOf('ROAD') !== -1 || t === 'FRONT' || t.indexOf('FORWARD') !== -1) return 'ROAD';
+    return null;
+  }
+
+  function mapSourceToColumnFromMedia(m) {
+    return mapSourceToColumnFromText([m.source, mediaEntryHintString(m)].join(' '));
+  }
+
+  function getImageDetailsObject(m) {
+    if (!m || m.imageDetails == null) return null;
+    var d = m.imageDetails;
+    if (typeof d === 'string') { try { return JSON.parse(d); } catch(e) { return null; } }
+    if (typeof d === 'object') return d;
+    return null;
+  }
+
+  function resolveTeletracNavmanColumn(m) {
+    if (!m || typeof m !== 'object') return { column: null, unsureHint: '' };
+    var src = normSource(m.source);
+    if (src === 'ROAD_FACING')   return { column: 'ROAD',   unsureHint: '' };
+    if (src === 'DRIVER_FACING') return { column: 'DRIVER', unsureHint: '' };
+    if (src === 'MDVR') {
+      var details = getImageDetailsObject(m);
+      if (details && Array.isArray(details.sources) && details.sources.length > 0) {
+        var raw = details.sources[0];
+        var sub = normSource(raw);
+        if (sub === 'UVC')  return { column: 'UVC',  unsureHint: '' };
+        if (sub === 'TVI1') return { column: 'TVI1', unsureHint: '' };
+        if (sub === 'TVI2') return { column: 'TVI2', unsureHint: '' };
+        return { column: null, unsureHint: String(raw != null ? raw : '').trim() || 'MDVR' };
+      }
+      return { column: null, unsureHint: 'MDVR' };
+    }
+    return { column: null, unsureHint: '' };
+  }
+
+  function hintForUnsure(m) {
+    var parts = [];
+    if (m.source != null && String(m.source).trim()) parts.push(String(m.source).trim());
+    var h = mediaEntryHintString(m);
+    if (h && parts.join(' ').indexOf(h) === -1) parts.push(h);
+    var s = parts.join(' · ').trim();
+    if (s.length > 120) s = s.slice(0, 117) + '…';
+    return s || '(no label)';
+  }
+
+  function mergeUrlsFromContext(context) {
+    var out = { ROAD: '', DRIVER: '', TVI1: '', TVI2: '', UVC: '' };
+    var unsure = [], hasMedia = false;
+    function addList(list) {
+      if (!Array.isArray(list)) return;
+      for (var i = 0; i < list.length; i++) {
+        var m = list[i], url = mediaUrlFromEntry(m);
+        if (!url || !/^https?:\/\//i.test(url)) continue;
+        hasMedia = true;
+        var r = resolveTeletracNavmanColumn(m);
+        if (r.column)          { out[r.column] = url; }
+        else if (r.unsureHint) { unsure.push({ url: url, hint: r.unsureHint }); }
+        else {
+          var col = mapSourceToColumnFromMedia(m);
+          if (col) out[col] = url;
+          else unsure.push({ url: url, hint: hintForUnsure(m) });
+        }
+      }
+    }
+    addList(context.mediaFiles);
+    if (context.response) addList(context.response.mediaFiles);
+    for (var k in context) {
+      if (!Object.prototype.hasOwnProperty.call(context, k)) continue;
+      if (k === 'mediaFiles' || k === 'response') continue;
+      var sub = context[k];
+      if (sub && typeof sub === 'object' && Array.isArray(sub.mediaFiles)) addList(sub.mediaFiles);
+    }
+    return { urls: out, unsure: unsure, hasMedia: hasMedia };
+  }
+
+  function isSnapshotAction(ev) {
+    if (!ev || ev.action == null) return false;
+    return String(ev.action).trim().toUpperCase() === 'SNAPSHOT';
+  }
+
+  function eventTimeMs(iso) { var d = new Date(iso), t = d.getTime(); return isNaN(t) ? 0 : t; }
+
+  function formatSnapTime(iso) {
+    if (!iso) return '';
+    try {
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return String(iso);
+      return d.toLocaleString('en-AU', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    } catch(e) { return String(iso); }
+  }
+
+  function safeSnapshotFilePart(s) {
+    var t = String(s == null ? '' : s).replace(/[/\\:*?"<>|#\s]+/g, '_').replace(/_+/g, '_');
+    if (t.length > 64) t = t.slice(0, 64);
+    return t || 'x';
+  }
+
+  function normalizeSearch(s) { return String(s == null ? '' : s).trim().toLowerCase(); }
+
+  function nameContainsDigitFleetBoundary(name, digits) {
+    if (!name || !digits) return false;
+    var escaped = String(digits).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp('(?:^|[^0-9])' + escaped + '(?:[^0-9]|$)').test(String(name));
+  }
+
+  function resolveLineToVehicle(line, vehicles) {
+    var t = String(line || '').trim();
+    if (!t || !Array.isArray(vehicles)) return { id: null, ambiguousLabels: [] };
+    var search = normalizeSearch(t), i, v, name, reg, nm, hits, labels;
+
+    function exactNameOrReg() {
+      for (i = 0; i < vehicles.length; i++) {
+        v = vehicles[i];
+        if (v.id == null) continue;
+        name = normalizeSearch(v.name); reg = normalizeSearch(v.registration);
+        if (name === search || reg === search) return String(v.id).trim();
+      }
+      return null;
+    }
+
+    if (/^\d+$/.test(t)) {
+      for (i = 0; i < vehicles.length; i++) {
+        v = vehicles[i];
+        if (v.id == null) continue;
+        if (vehicleIdsMatch(t, v.id)) return { id: String(v.id).trim(), ambiguousLabels: [] };
+      }
+      var ex = exactNameOrReg();
+      if (ex) return { id: ex, ambiguousLabels: [] };
+      for (i = 0; i < vehicles.length; i++) {
+        v = vehicles[i]; if (v.id == null) continue;
+        nm = String(v.name != null ? v.name : '').trim();
+        if (nm && /^\d+$/.test(nm) && vehicleIdsMatch(nm, t)) return { id: String(v.id).trim(), ambiguousLabels: [] };
+      }
+      hits = [];
+      for (i = 0; i < vehicles.length; i++) {
+        v = vehicles[i]; if (v.id == null) continue;
+        nm = v.name != null ? String(v.name).trim() : '';
+        if (nm && nameContainsDigitFleetBoundary(nm, t)) hits.push(v);
+      }
+      if (hits.length === 1) return { id: String(hits[0].id).trim(), ambiguousLabels: [] };
+      if (hits.length > 1) {
+        labels = hits.map(function(hv) {
+          var hn = hv.name != null ? String(hv.name).trim() : '';
+          var hr = hv.registration != null ? String(hv.registration).trim() : '';
+          return (hn || ('ID ' + hv.id)) + (hr ? ' (' + hr + ')' : '');
+        });
+        return { id: null, ambiguousLabels: labels };
+      }
+      return { id: null, ambiguousLabels: [] };
+    }
+
+    var ex2 = exactNameOrReg();
+    if (ex2) return { id: ex2, ambiguousLabels: [] };
+    if (search.length >= 2) {
+      for (i = 0; i < vehicles.length; i++) {
+        v = vehicles[i]; if (v.id == null) continue;
+        name = (v.name != null ? String(v.name).trim() : '').toLowerCase();
+        if (name.indexOf(search) !== -1) return { id: String(v.id).trim(), ambiguousLabels: [] };
+      }
+    }
+    return { id: null, ambiguousLabels: [] };
+  }
+
+  function dedupeEventsById(arr) {
+    var seen = {}, out = [];
+    if (!Array.isArray(arr)) return out;
+    for (var i = 0; i < arr.length; i++) {
+      var ev = arr[i], id = ev && ev.id != null ? ev.id : null;
+      if (id != null) { if (seen[id]) continue; seen[id] = true; }
+      out.push(ev);
+    }
+    return out;
+  }
+
+  function buildNameMap(vehicles) {
+    var nameById = {};
+    if (!Array.isArray(vehicles)) return nameById;
+    for (var i = 0; i < vehicles.length; i++) {
+      var v = vehicles[i];
+      if (v.id == null) continue;
+      var vid = String(v.id), nm = v.name != null ? String(v.name).trim() : '';
+      nameById[vid] = nm || ('ID ' + vid);
+    }
+    return nameById;
+  }
+
+  function makeNotFoundRow(inputLine, detailNote, uniqueIdx) {
+    var display = String(inputLine || '').trim() || '(blank line)';
+    return {
+      vehicleId:      '__nf_' + uniqueIdx + '_' + safeSnapshotFilePart(display).slice(0, 40),
+      vehicleName:    display,
+      registration:   '',
+      notFound:       true,
+      notFoundDetail: detailNote != null ? String(detailNote) : '',
+      cols:           { ROAD: null, DRIVER: null, TVI1: null, TVI2: null, UVC: null },
+      unsure:         []
+    };
+  }
+
+  function mergeSnapshotRowsWithNotFound(builtRows, rowEntries) {
+    var byId = {}, out = [], nfSeq = 0;
+    for (var i = 0; i < builtRows.length; i++) {
+      var r = builtRows[i];
+      if (r && r.vehicleId != null) byId[String(r.vehicleId).trim()] = r;
+    }
+    for (i = 0; i < rowEntries.length; i++) {
+      var e = rowEntries[i];
+      if (e.kind === 'matched')  { r = byId[String(e.id).trim()]; if (r) out.push(r); }
+      else if (e.kind === 'notfound') { out.push(makeNotFoundRow(e.line, e.detail, nfSeq++)); }
+    }
+    return out;
+  }
+
+  function extFromSnapshotUrl(url) {
+    try { var path = new URL(url).pathname, m = path.match(/\.(jpe?g|png|gif|webp)$/i); return m ? ('.' + m[1].toLowerCase()) : '.jpg'; }
+    catch(e) { return '.jpg'; }
+  }
+
+  function snapshotDownloadKeyCol(vehicleId, src, timeAt) {
+    return String(vehicleId) + '\t' + String(src) + '\t' + String(timeAt || '');
+  }
+
+  function snapshotDownloadKeyUnsure(vehicleId, hint, timeAt) {
+    return String(vehicleId) + '\tunsure\t' + String(hint || '') + '\t' + String(timeAt || '');
+  }
+
+  function enumerateSnapshotDownloadDescriptors(rows) {
+    var out = [], used = {};
+    function addDesc(url, fname, meta) {
+      if (!url || !/^https?:\/\//i.test(url)) return;
+      var base = fname, n = 0;
+      while (used[base]) {
+        n++;
+        var dot = fname.lastIndexOf('.'), stem = dot > 0 ? fname.slice(0, dot) : fname, ext = dot > 0 ? fname.slice(dot) : '';
+        base = stem + '_' + n + ext;
+      }
+      used[base] = true;
+      var rec = { url: url, filename: base };
+      for (var k in meta) { if (Object.prototype.hasOwnProperty.call(meta, k)) rec[k] = meta[k]; }
+      out.push(rec);
+    }
+    for (var ri = 0; ri < rows.length; ri++) {
+      var row = rows[ri];
+      if (row.notFound) continue;
+      var slug = safeSnapshotFilePart(row.vehicleName) + '_vid' + safeSnapshotFilePart(row.vehicleId);
+      var vid = row.vehicleId;
+      for (var j = 0; j < SOURCES.length; j++) {
+        var src = SOURCES[j], cell = row.cols[src];
+        if (!cell || !cell.url) continue;
+        var tpart = cell.timeAt ? safeSnapshotFilePart(String(cell.timeAt).replace(/[:.]/g, '-')) : String(ri);
+        addDesc(cell.url, slug + '_' + src + '_' + tpart + extFromSnapshotUrl(cell.url), { kind:'col', vehicleId:vid, src:src, timeAt:cell.timeAt, hint:'' });
+      }
+      var uns = row.unsure || [];
+      for (j = 0; j < uns.length; j++) {
+        var item = uns[j];
+        if (!item || !item.url) continue;
+        var hintSlug = safeSnapshotFilePart(item.hint || 'unsure');
+        tpart = item.timeAt ? safeSnapshotFilePart(String(item.timeAt).replace(/[:.]/g, '-')) : String(j);
+        addDesc(item.url, slug + '_unsure_' + hintSlug + '_' + tpart + extFromSnapshotUrl(item.url), { kind:'unsure', vehicleId:vid, src:'', timeAt:item.timeAt, hint: item.hint != null ? String(item.hint) : '' });
+      }
+    }
+    return out;
+  }
+
+  function applySnapshotFileSizeResults(descriptors, results) {
+    lastSnapshotSmallFileByKey = {};
+    if (!descriptors || !descriptors.length) return;
+    var byFile = {};
+    for (var i = 0; i < results.length; i++) {
+      var r = results[i];
+      if (r && r.filename) byFile[r.filename] = !!r.tooSmall;
+    }
+    for (i = 0; i < descriptors.length; i++) {
+      var d = descriptors[i], fn = d.filename;
+      if (!fn || !byFile[fn]) continue;
+      if (d.kind === 'col')   lastSnapshotSmallFileByKey[snapshotDownloadKeyCol(d.vehicleId, d.src, d.timeAt)]         = true;
+      if (d.kind === 'unsure') lastSnapshotSmallFileByKey[snapshotDownloadKeyUnsure(d.vehicleId, d.hint, d.timeAt)] = true;
+    }
+  }
+
+  function colSnapshotFileTooSmall(vehicleId, src, timeAt)    { return !!lastSnapshotSmallFileByKey[snapshotDownloadKeyCol(vehicleId, src, timeAt)]; }
+  function unsureSnapshotFileTooSmall(vehicleId, hint, timeAt) { return !!lastSnapshotSmallFileByKey[snapshotDownloadKeyUnsure(vehicleId, hint, timeAt)]; }
+
+  function colSnapshotStatusLabel(vehicleId, src, cell, row) {
+    if (row && row.notFound) return 'NOT FOUND';
+    if (!cell || !cell.url) {
+      var hist = row && row.histCells && row.histCells[src];
+      if (hist) return 'HISTORICAL (' + formatSnapTime(hist.timeAt) + ')';
+      return 'UNKNOWN';
+    }
+    if (colSnapshotFileTooSmall(vehicleId, src, cell.timeAt)) {
+      var hist2 = row && row.histCells && row.histCells[src];
+      if (hist2) return 'HISTORICAL (' + formatSnapTime(hist2.timeAt) + ')';
+      return 'FAILED';
+    }
+    return 'GOOD';
+  }
+
+  function unsureColumnStatusForCsv(row) {
+    if (row && row.notFound) return 'NOT FOUND';
+    var items = row.unsure || [];
+    if (!items.length) return 'UNKNOWN';
+    var parts = [];
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      if (!it || !it.url) { parts.push('UNKNOWN'); continue; }
+      var st = unsureSnapshotFileTooSmall(row.vehicleId, it.hint != null ? String(it.hint) : '', it.timeAt) ? 'FAILED' : 'GOOD';
+      var label = (it.hint != null ? String(it.hint) : '').replace(/[\r\n|]/g, ' ').replace(/;/g, ',').trim();
+      if (!label) label = 'Unsure_' + (i + 1);
+      parts.push(label + ':' + st);
+    }
+    return parts.join(' | ');
+  }
+
+  function csvEscapeField(value) {
+    var t = String(value == null ? '' : value);
+    return /[",\r\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  }
+
+  function exportSnapshotsToCsv() {
+    if (!allRows.length) { alert('Load snapshots first, then export.'); return; }
+    var headers = ['Vehicle name', 'Registration', 'ROAD', 'DRIVER', 'TVI1', 'TVI2', 'UVC', 'Unsure'];
+    var lines = [headers.map(csvEscapeField).join(',')];
+    for (var ri = 0; ri < allRows.length; ri++) {
+      var row = allRows[ri], vid = row.vehicleId;
+      var cells = [
+        row.vehicleName    != null ? String(row.vehicleName)    : '',
+        row.registration   != null ? String(row.registration)   : ''
+      ];
+      for (var j = 0; j < SOURCES.length; j++) {
+        var src = SOURCES[j], cell = row.cols[src];
+        cells.push(colSnapshotStatusLabel(vid, src, cell, row));
+      }
+      cells.push(unsureColumnStatusForCsv(row));
+      lines.push(cells.map(csvEscapeField).join(','));
+    }
+    var csv  = '\ufeff' + lines.join('\r\n');
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    var url  = URL.createObjectURL(blob);
+    var stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    var a = document.createElement('a');
+    a.href = url; a.download = 'camera-history-' + stamp + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function buildAllSnapshotRows(vehicles, events, scopedIds) {
+    var nameById = buildNameMap(vehicles);
+    var regById  = {};
+    if (Array.isArray(vehicles)) {
+      for (var qi = 0; qi < vehicles.length; qi++) {
+        var vx = vehicles[qi];
+        if (vx.id == null) continue;
+        regById[String(vx.id)] = vx.registration != null ? String(vx.registration).trim() : '';
+      }
+    }
+    var ag = {};
+    for (var si = 0; si < scopedIds.length; si++) {
+      var sid = String(scopedIds[si]).trim();
+      if (!sid) continue;
+      ag[sid] = { vehicleId: sid, vehicleName: nameById[sid] || ('ID ' + sid), registration: regById[sid] || '',
+                  cols: { ROAD:null, DRIVER:null, TVI1:null, TVI2:null, UVC:null }, unsureByHint: {} };
+    }
+
+    var stats = { totalEvents: events.length, eventsWithContext:0, snapshotEventsWithMedia:0 };
+    var evSorted = events.slice().sort(function(a, b) { return eventTimeMs(b.timeAt) - eventTimeMs(a.timeAt); });
+
+    for (var i = 0; i < evSorted.length; i++) {
+      var ev = evSorted[i];
+      if (!isSnapshotAction(ev)) continue;
+      var ctx = getContextObject(ev);
+      if (!ctx) continue;
+      stats.eventsWithContext++;
+      var vId = getVehicleIdFromEvent(ev), key = vId ? String(vId) : '';
+      if (!key || !ag[key]) continue;
+      var parsed = mergeUrlsFromContext(ctx);
+      if (!parsed.hasMedia) continue;
+      stats.snapshotEventsWithMedia++;
+      var tm = eventTimeMs(ev.timeAt);
+      for (var j = 0; j < SOURCES.length; j++) {
+        var src = SOURCES[j], u = parsed.urls[src];
+        if (!u || !/^https?:\/\//i.test(u)) continue;
+        var cur = ag[key].cols[src];
+        if (!cur || tm > eventTimeMs(cur.timeAt)) ag[key].cols[src] = { url:u, timeAt:ev.timeAt };
+      }
+      var un = parsed.unsure;
+      if (un && un.length) {
+        for (j = 0; j < un.length; j++) {
+          u = un[j].url;
+          if (!u || !/^https?:\/\//i.test(u)) continue;
+          var hintKey = un[j].hint != null ? String(un[j].hint) : '';
+          cur = ag[key].unsureByHint[hintKey];
+          if (!cur || tm > eventTimeMs(cur.timeAt)) ag[key].unsureByHint[hintKey] = { url:u, timeAt:ev.timeAt, hint:hintKey };
+        }
+      }
+    }
+
+    var rows = [];
+    for (si = 0; si < scopedIds.length; si++) {
+      sid = String(scopedIds[si]).trim();
+      if (!ag[sid]) continue;
+      var bucket = ag[sid], unsureArr = [];
+      for (var hk in bucket.unsureByHint) {
+        if (!Object.prototype.hasOwnProperty.call(bucket.unsureByHint, hk)) continue;
+        unsureArr.push(bucket.unsureByHint[hk]);
+      }
+      unsureArr.sort(function(x, y) { var hx = (x.hint||'').toLowerCase(), hy = (y.hint||'').toLowerCase(); return hx<hy?-1:hx>hy?1:0; });
+      bucket.unsure = unsureArr;
+      rows.push(bucket);
+    }
+    return { rows: rows, stats: stats };
+  }
+
+  async function persistSnapshotsAfterLoad() {
+    var descriptors = enumerateSnapshotDownloadDescriptors(allRows);
+    var total = descriptors.length;
+
+    if (total === 0) {
+      lastSnapshotSmallFileByKey = {};
+      lastSnapshotSaveMessage = 'No images to check.';
+      renderTable();
+      return;
+    }
+
+    updatePersistDownloadProgress(0, total, null);
+    var results = [];
+
+    for (var idx = 0; idx < total; idx++) {
+      updatePersistDownloadProgress(idx, total, null);
+      var d = descriptors[idx];
+      try {
+        var res = await Auth.apiCall('snapshot_check_sizes', { snapshot: { filename: d.filename, url: d.url } });
+        results.push(res);
+      } catch(e) {
+        results.push({ filename: d.filename, bytes: null, tooSmall: false, error: e.message });
+      }
+    }
+
+    updatePersistDownloadProgress(total, total, null);
+    applySnapshotFileSizeResults(descriptors, results);
+
+    var smallCount = results.filter(function(r){ return r.tooSmall; }).length;
+    var okCount    = results.filter(function(r){ return r.bytes != null && !r.tooSmall; }).length;
+    var errCount   = results.filter(function(r){ return r.bytes == null; }).length;
+    lastSnapshotSaveMessage = okCount + ' OK' + (smallCount ? ', ' + smallCount + ' failed (too small)' : '') + (errCount ? ', ' + errCount + ' unreachable' : '') + '.';
+
+    renderTable();
+  }
+
+  function renderHistCell(hist, row, columnLabel) {
+    var hvn = row.vehicleName, hvid = row.vehicleId;
+    var hcap = esc(hvn + ' · ' + columnLabel + ' · ' + formatSnapTime(hist.timeAt) + ' [HISTORICAL]');
+    return '<div class="snap-col-stack"><div class="snap-thumb-block">' +
+      '<div class="thumb-wrap snap-hist-wrap"><img src="' + esc(hist.url) + '" alt="" data-full="' + esc(hist.url) + '" data-caption="' + hcap + '" data-vehicle-id="' + esc(String(hvid)) + '" data-vehicle-name="' + esc(hvn) + '"></div>' +
+      '<span class="snap-hist-badge">HISTORICAL</span>' +
+      '<span class="snap-hist-time">' + esc(formatSnapTime(hist.timeAt)) + '</span>' +
+      '</div></div>';
+  }
+
+  function renderColCell(cell, row, src, columnLabel) {
+    if (row && row.notFound) return '<span class="snap-not-found">NOT FOUND</span>';
+    if (!cell || !cell.url) {
+      var hist = row.histCells && row.histCells[src];
+      if (hist) return renderHistCell(hist, row, columnLabel);
+      if (row.histSearching && row.histSearching[src]) {
+        return '<div class="snap-col-stack"><div class="snap-thumb-block">' +
+          '<div class="thumb-wrap snap-hist-searching" style="width:100%;min-height:60px;display:flex;align-items:center;justify-content:center;background:#fefce8;">' +
+          '<span style="font-size:0.65rem;font-weight:700;color:#92400e;">SEARCHING…</span></div>' +
+          '<span class="snap-searching-badge">SEARCHING HISTORY…</span>' +
+          '</div></div>';
+      }
+      return '<span class="thumb-missing">UNKNOWN</span>';
+    }
+    var vehicleName = row.vehicleName, vehicleId = row.vehicleId;
+    var fail      = colSnapshotFileTooSmall(vehicleId, src, cell.timeAt);
+    var hist2     = fail && row.histCells && row.histCells[src];
+    if (hist2) return renderHistCell(hist2, row, columnLabel);
+    var searching = fail && row.histSearching && row.histSearching[src];
+    var cap  = esc(vehicleName + ' · ' + columnLabel + ' · ' + formatSnapTime(cell.timeAt));
+    return '<div class="snap-col-stack">' +
+      '<div class="snap-thumb-block">' +
+      '<div class="thumb-wrap ' + (searching ? 'snap-hist-searching' : '') + '"><img src="' + esc(cell.url) + '" alt="" data-full="' + esc(cell.url) + '" data-caption="' + cap + '" data-vehicle-id="' + esc(String(vehicleId)) + '" data-vehicle-name="' + esc(vehicleName) + '"></div>' +
+      '<span class="snap-time">' + esc(formatSnapTime(cell.timeAt)) + '</span>' +
+      (fail ? '<span class="snap-failed">FAILED</span>' : '') +
+      (searching ? '<span class="snap-searching-badge">SEARCHING HISTORY…</span>' : '') +
+      '</div></div>';
+  }
+
+  function renderUnsureStack(items, row) {
+    if (row && row.notFound) return '<span class="snap-not-found">NOT FOUND</span>';
+    if (!items || !items.length) return '<span class="thumb-missing">UNKNOWN</span>';
+    var vehicleName = row.vehicleName, vehicleId = row.vehicleId;
+    var parts = [];
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var cap  = esc(vehicleName + ' · Unsure · ' + (item.hint || '') + ' · ' + formatSnapTime(item.timeAt));
+      var fail = unsureSnapshotFileTooSmall(vehicleId, item.hint != null ? String(item.hint) : '', item.timeAt);
+      parts.push(
+        '<div class="snap-thumb-block">' +
+        '<div class="thumb-wrap"><img src="' + esc(item.url) + '" alt="" data-full="' + esc(item.url) + '" data-caption="' + cap + '" data-vehicle-id="' + esc(String(vehicleId)) + '" data-vehicle-name="' + esc(vehicleName) + '"></div>' +
+        '<span class="snap-time">' + esc(formatSnapTime(item.timeAt)) + '</span>' +
+        (fail ? '<span class="snap-failed">FAILED</span>' : '') +
+        '<span class="unsure-hint">' + esc(item.hint || '') + '</span>' +
+        '</div>'
+      );
+    }
+    return '<div class="snap-col-stack">' + parts.join('') + '</div>';
+  }
+
+  function renderTable() {
+    var tbody = document.getElementById('ch-snapTableBody');
+    if (!tbody) return;
+    if (!allRows.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:2rem;font-size:0.875rem;">No results. Enter fleet numbers or vehicle names (one per line), then check snapshots.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = allRows.map(function(row) {
+      var cells = SOURCES.map(function(src) {
+        return '<td>' + renderColCell(row.cols[src], row, src, sourceCaptionTitle(src)) + '</td>';
+      }).join('');
+      var unsureCell = '<td>' + renderUnsureStack(row.unsure, row) + '</td>';
+      var sub = row.registration ? '<br><span style="font-weight:500;font-size:0.7rem;color:#6b7280;">' + esc(row.registration) + '</span>' : '';
+      if (row.notFound) {
+        sub += '<br><span class="snap-not-found-detail">Not found in fleet for this company.</span>';
+        if (row.notFoundDetail) sub += '<br><span class="snap-not-found-detail">' + esc(row.notFoundDetail) + '</span>';
+      }
+      return '<tr><td>' + esc(row.vehicleName) + sub + '</td>' + cells + unsureCell + '</tr>';
+    }).join('');
+    wireTableImages();
+  }
+
+  function wireTableImages() {
+    document.querySelectorAll('#ch-snapTableBody img[data-full]').forEach(function(img) {
+      img.addEventListener('click', function(e) { e.stopPropagation(); openFsFromImg(img); });
+    });
+  }
+
+  async function checkSnapshots() {
+    var input = document.getElementById('ch-fleetFilter').value.trim();
+    if (!input) { showError('Enter at least one fleet number, vehicle name, registration, or vehicle ID.'); return; }
+
+    var _company = Auth.getSelectedCompany();
+    selectedCompanyId = _company ? _company.id : '';
+    if (!selectedCompanyId) { showError('No company selected.'); return; }
+
+    histStopRequested = true;
+    showHistSearchBar(false);
+    clearError();
+    allRows = [];
+    lastSnapshotSaveMessage   = '';
+    lastSnapshotSmallFileByKey = {};
+    document.getElementById('ch-btnExportCsv').disabled = true;
+    renderTable();
+
+    var fleetLines = input.split(/\r?\n/).map(function(s){ return s.trim(); }).filter(Boolean);
+
+    var btn = document.getElementById('ch-btnLoad');
+    var origBtnHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="bulk-ico--spin" style="margin-right:0.375rem;" aria-hidden="true"></span>Checking…';
+
+    var deviceIdByVehicleId = {};
+
+    try {
+      setStatus('Loading vehicle list…');
+      var vehData  = await telematicsApiGet('/vehicles');
+      var vehicles = normalizeVehiclesResponse(vehData);
+
+      var ids = [], rowEntries = [], ambiguousAlerts = [];
+      for (var i = 0; i < fleetLines.length; i++) {
+        var line = fleetLines[i];
+        var resolved = resolveLineToVehicle(line, vehicles);
+        if (resolved.id) {
+          if (ids.indexOf(resolved.id) === -1) ids.push(resolved.id);
+          rowEntries.push({ kind: 'matched', id: String(resolved.id).trim() });
+        } else if (resolved.ambiguousLabels && resolved.ambiguousLabels.length) {
+          ambiguousAlerts.push(line + ' — multiple vehicles: ' + resolved.ambiguousLabels.join('; '));
+          rowEntries.push({ kind: 'notfound', line: line, detail: 'Multiple matches — use registration or vehicle ID: ' + resolved.ambiguousLabels.join('; ') });
+        } else {
+          rowEntries.push({ kind: 'notfound', line: line });
+        }
+      }
+
+      var rawEvents = [], fleetCameraEventsRaw = 0;
+      if (ids.length > 0) {
+        setStatus('Loading fleet camera events…');
+        var evData = await telematicsApiGet('/events', { types: 'camera' });
+        var fleetEvents = normalizeEventsResponse(evData);
+        fleetCameraEventsRaw = fleetEvents.length;
+        rawEvents = filterCameraEventsToScopedVehicles(fleetEvents, ids);
+      }
+
+      for (var di2 = 0; di2 < rawEvents.length; di2++) {
+        var re = rawEvents[di2];
+        var rvid = getVehicleIdFromEvent(re);
+        if (!rvid || deviceIdByVehicleId[rvid]) continue;
+        var rdid = re.deviceId || (re.device && re.device.id) || (re.attributes && re.attributes.deviceId);
+        if (rdid) deviceIdByVehicleId[rvid] = String(rdid);
+      }
+
+      var built = buildAllSnapshotRows(vehicles, rawEvents, ids);
+      allRows = mergeSnapshotRowsWithNotFound(built.rows, rowEntries);
+      lastLoadStats = {
+        totalEvents:             rawEvents.length,
+        fleetCameraEventsRaw:    fleetCameraEventsRaw,
+        eventsWithContext:       built.stats.eventsWithContext,
+        snapshotEventsWithMedia: built.stats.snapshotEventsWithMedia
+      };
+
+      setStatus('Building results…');
+      renderTable();
+
+      Auth.apiCall('log_activity', { type: 'snapshot_check', page: '/camera-history/', details: 'Camera history check — ' + fleetLines.length + ' vehicle(s)' }).catch(function(){});
+
+      if (rawEvents.length === 0 && fleetCameraEventsRaw > 0) {
+        alert('The API returned ' + fleetCameraEventsRaw + ' camera event(s), but none matched the selected vehicles. Nothing to show.');
+      }
+      if (ambiguousAlerts.length) {
+        alert('Some lines matched multiple vehicles — fix these, then reload:\n\n' + ambiguousAlerts.join('\n'));
+      }
+      if (built.stats.snapshotEventsWithMedia === 0 && built.stats.eventsWithContext > 0) {
+        alert('No snapshot images were found in SNAPSHOT context for these vehicles.\n\nCamera events: ' + lastLoadStats.totalEvents + '\nSNAPSHOT with parseable context: ' + built.stats.eventsWithContext);
+      }
+
+      if (allRows.length > 0) {
+        btn.disabled = true;
+        document.getElementById('ch-btnExportCsv').disabled = true;
+        setPersistCheckBusy(true);
+        try {
+          await persistSnapshotsAfterLoad();
+        } finally {
+          setPersistCheckBusy(false);
+          document.getElementById('ch-btnExportCsv').disabled = false;
+        }
+      } else {
+        document.getElementById('ch-btnExportCsv').disabled = false;
+      }
+
+    } catch(e) {
+      clearStatus();
+      showError('Error: ' + e.message);
+    } finally {
+      clearStatus();
+      btn.disabled = false;
+      btn.innerHTML = origBtnHTML;
+    }
+
+    if (allRows.length > 0) {
+      try { await historicalFallback(deviceIdByVehicleId); } catch(e) { showHistSearchBar(false); }
+    }
+  }
+
+  // ── Fullscreen viewer ─────────────────────────────────────────────────────────
+
+  function buildGalleryForVehicleId(vehicleId) {
+    var row = null;
+    for (var i = 0; i < allRows.length; i++) { if (vehicleIdsMatch(allRows[i].vehicleId, vehicleId)) { row = allRows[i]; break; } }
+    if (!row || row.notFound) return [];
+    var list = [];
+    for (var si = 0; si < SOURCES.length; si++) {
+      var src = SOURCES[si], item = row.cols[src];
+      var isFailed = item && item.url && colSnapshotFileTooSmall(row.vehicleId, src, item.timeAt);
+      var hc = row.histCells && row.histCells[src];
+      if (hc && (!item || !item.url || isFailed)) {
+        list.push({ url: hc.url, caption: row.vehicleName + ' · ' + sourceCaptionTitle(src) + ' · ' + formatSnapTime(hc.timeAt) + ' [HISTORICAL]', timeMs: eventTimeMs(hc.timeAt), historical: true });
+      } else if (item && item.url && !isFailed) {
+        list.push({ url: item.url, caption: row.vehicleName + ' · ' + sourceCaptionTitle(src) + ' · ' + formatSnapTime(item.timeAt), timeMs: eventTimeMs(item.timeAt) });
+      }
+    }
+    var arr = row.unsure || [];
+    for (var j = 0; j < arr.length; j++) {
+      item = arr[j];
+      list.push({ url: item.url, caption: row.vehicleName + ' · Unsure · ' + (item.hint || '') + ' · ' + formatSnapTime(item.timeAt), timeMs: eventTimeMs(item.timeAt) });
+    }
+    return list.map(function(x){ return { url: x.url, caption: x.caption, historical: !!x.historical }; });
+  }
+
+  function updateFsNav() {
+    var prev = document.getElementById('ch-fsPrev'), next = document.getElementById('ch-fsNext');
+    if (!prev || !next) return;
+    var one = fsGallery.length <= 1;
+    prev.disabled = one; next.disabled = one;
+  }
+
+  function showFsAt(i) {
+    if (!fsGallery.length) return;
+    var n = fsGallery.length;
+    fsIndex = ((i % n) + n) % n;
+    var item = fsGallery[fsIndex];
+    document.getElementById('ch-fsImage').src = item.url;
+    var capEl = document.getElementById('ch-fsCaption');
+    capEl.textContent = (item.caption || '') + '  ·  ' + (fsIndex + 1) + ' / ' + n;
+    var overlay = document.getElementById('ch-fsOverlay');
+    if (item.historical) { overlay.classList.add('is-historical'); capEl.classList.add('is-historical'); }
+    else                 { overlay.classList.remove('is-historical'); capEl.classList.remove('is-historical'); }
+    updateFsNav();
+  }
+
+  function openFsFromImg(img) {
+    var url     = img.getAttribute('data-full');
+    var caption = img.getAttribute('data-caption') || '';
+    var vid     = img.getAttribute('data-vehicle-id') || '';
+    fsGallery = buildGalleryForVehicleId(vid);
+    fsIndex   = 0;
+    if (fsGallery.length === 0) { fsGallery = [{ url: url, caption: caption }]; }
+    else { for (var j = 0; j < fsGallery.length; j++) { if (fsGallery[j].url === url) { fsIndex = j; break; } } }
+    document.getElementById('ch-fsOverlay').classList.add('is-open');
+    document.body.style.overflow = 'hidden';
+    showFsAt(fsIndex);
+  }
+
+  function closeFs() {
+    var overlay = document.getElementById('ch-fsOverlay');
+    overlay.classList.remove('is-open');
+    document.getElementById('ch-fsImage').removeAttribute('src');
+    fsGallery = []; fsIndex = 0; updateFsNav();
+    document.body.style.overflow = '';
+  }
+
+  // ── 5) Event wiring + onShow registration ────────────────────────────────────
+
+  function wireEvents() {
+    TGE.on('ch-btnLoad', 'click', checkSnapshots);
+    TGE.on('ch-btnExportCsv', 'click', exportSnapshotsToCsv);
+    TGE.on('ch-fleetFilter', 'keydown', function(e) { if (e.ctrlKey && e.key === 'Enter') checkSnapshots(); });
+    TGE.on('ch-btnStopHist', 'click', function() { histStopRequested = true; showHistSearchBar(false); });
+
+    TGE.on('ch-fsClose', 'click', closeFs);
+    TGE.on('ch-fsPrev', 'click', function(e) { e.stopPropagation(); if (fsGallery.length > 1) showFsAt(fsIndex - 1); });
+    TGE.on('ch-fsNext', 'click', function(e) { e.stopPropagation(); if (fsGallery.length > 1) showFsAt(fsIndex + 1); });
+    TGE.on('ch-fsOverlay', 'click', function(e) { if (e.target.id === 'ch-fsOverlay') closeFs(); });
+
+    document.addEventListener('keydown', function(e) {
+      var overlay = document.getElementById('ch-fsOverlay');
+      if (!overlay || !overlay.classList.contains('is-open')) return;
+      if (e.key === 'Escape') { closeFs(); return; }
+      if (fsGallery.length <= 1) return;
+      if (e.key === 'ArrowLeft')  { e.preventDefault(); showFsAt(fsIndex - 1); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); showFsAt(fsIndex + 1); }
+    });
+  }
+
+  // Render once when the view is first shown, and on each show if not yet built.
+  var built = false;
+  TGE.onShow['camera-history'] = function () {
+    if (!built) { render(); built = true; }
+  };
+
+})();
