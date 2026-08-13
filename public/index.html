@@ -540,9 +540,13 @@
             <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="16" height="16" rx="2"/><path d="M6 10h8M10 6v8"/></svg>
             Camera Count
           </button>
-          <button class="nav-item" id="nav-sd-health" type="button" data-view="sd-health" data-group="camera" data-title="SD Card Health">
+<button class="nav-item" id="nav-sd-health" type="button" data-view="sd-health" data-group="camera" data-title="SD Card Health">
             <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="16" height="16" rx="3"/><path d="M6 2v8M10 2v8M14 2v8"/><circle cx="6" cy="14" r="1" fill="currentColor"/><circle cx="10" cy="14" r="1" fill="currentColor"/></svg>
             SD Card Health
+          </button>
+          <button class="nav-item" id="nav-camera-history" type="button" data-view="camera-history" data-group="camera" data-title="Camera History">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 7a2 2 0 012-2h1l1.5-2h5L13 5h1a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V7z"/><circle cx="10" cy="10.5" r="2.5"/></svg>
+            Camera History
           </button>
         </div>
 
@@ -633,6 +637,10 @@
           <!-- Populated by utilisation.js -->
         </div>
 
+        <div class="view" id="view-camera-history">
+          <!-- Populated by screen-camera-history.js -->
+        </div>
+        
         <div class="view" id="view-camera-snapshots">
           <!-- Populated by camera.js -->
         </div>
@@ -690,6 +698,7 @@
   <script src="./screen/screen-vpm.js?v=3" defer></script>
   <script src="./screen/screen-camera.js?v=3" defer></script>
   <script src="./screen/screen-camera-snapshots.js?v=3" defer></script>
+  <script src="./screen/screen-camera-history.js?v=1" defer></script>
   <script src="./screen/screen-camera-count.js?v=3" defer></script>
   <script src="./screen/screen-admin.js?v=3" defer></script>
   <script src="./screen/screen-utilisation.js?v=16" defer></script>
