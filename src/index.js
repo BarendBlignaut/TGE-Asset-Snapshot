@@ -2686,6 +2686,11 @@ if (method === "POST" && path.match(/^\/api\/vendors\/\d+\/hardware-types$/)) {
       // Historical snapshots
       if (method === "POST" && path === "/api/historical-snapshots")             return handleHistoricalSnapshots(request, env);
       if (method === "POST" && path === "/api/historical-snapshots/attachments") return handleHistoricalSnapshotsAttachments(request, env);
+      // camchk — Camera History (isolated James reproduction, snapshot key)
+      if (method === "GET"  && path === "/api/camchk/vehicles")   return handleCamchkVehicles(request, env);
+      if (method === "GET"  && path === "/api/camchk/events")     return handleCamchkEvents(request, env);
+      if (method === "POST" && path === "/api/camchk/snapshots")  return handleCamchkSnapshots(request, env);
+      if (method === "GET"  && path === "/api/camchk/image-size") return handleCamchkImageSize(request, env);
 
       // Camera history — admin
       if (method === "GET"    && path === "/api/admin/camera-history/status")   return handleCameraHistoryStatus(request, env);
