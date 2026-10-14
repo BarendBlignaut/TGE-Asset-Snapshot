@@ -773,10 +773,7 @@ async function loadFieldDefs() {
       assets: assets,
     };
 
-    var jsonStr = JSON.stringify(payload);
-    var b64 = btoa(unescape(encodeURIComponent(jsonStr)));
-
-    return buildReportShellHtml(b64);
+    return payload;
   }
 
   function buildReportShellHtml(embeddedB64) {
