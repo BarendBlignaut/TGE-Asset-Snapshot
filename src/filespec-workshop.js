@@ -67,6 +67,84 @@ async function loadDatabaseDataRows(env, importRecord) {
   return { sheetName: SHEET_NAME, rows };
 }
 
+// Raw sheet the Office Script used to reduce. Read here by header NAME so
+// added or moved columns can't break it (the Office Script read by position).
+const RAW_SHEET_NAME = "Workshop Booking List";
+
+// "28/09/2026 2:00:00 PM", "28/09/2026", "2026-09-28" or a Date -> "2026-09-28".
+// Returns "" when the value isn't a recognisable date.
+function toIsoDate(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  const text = cleanText(value);
+  let m = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  return "";
+}
+
+function isBlankCell(value) {
+  const text = cleanText(value);
+  return text === "" || text === "(blank)";
+}
+
+// Same reduction the Office Script did: fill LegacyNo down through grouped
+// rows, keep only rows on the file's data date (the most common booking
+// date), and output the date as YYYY-MM-DD.
+// grid = the raw sheet as an array of rows (sheet_to_json header:1).
+function reduceBookingList(grid) {
+  const headerIndex = grid.findIndex((row, i) =>
+    i < 30 && Array.isArray(row) &&
+    row.some((c) => cleanText(c) === COL_LEGACY) &&
+    row.some((c) => cleanText(c) === COL_BOOKING)
+  );
+  if (headerIndex === -1) {
+    throw new Error(`'${RAW_SHEET_NAME}' has no header row with '${COL_LEGACY}' and '${COL_BOOKING}'.`);
+  }
+
+  const header = grid[headerIndex].map((c) => cleanText(c));
+  const col = (name) => header.indexOf(name);
+  const iLegacy = col(COL_LEGACY);
+  const iTask = col(COL_TASK);
+  const iStatus = col(COL_STATUS);
+  const iBooking = col(COL_BOOKING);
+  if (iTask === -1 || iStatus === -1) {
+    throw new Error(`'${RAW_SHEET_NAME}' is missing the '${COL_TASK}' or '${COL_STATUS}' column.`);
+  }
+
+  const filled = [];
+  let lastLegacy = "";
+  for (const row of grid.slice(headerIndex + 1)) {
+    if (!Array.isArray(row) || row.every((c) => isBlankCell(c))) continue;
+    if (!isBlankCell(row[iLegacy])) lastLegacy = cleanText(row[iLegacy]);
+    filled.push({
+      legacy: lastLegacy,
+      task: isBlankCell(row[iTask]) ? "" : cleanText(row[iTask]),
+      status: isBlankCell(row[iStatus]) ? "" : cleanText(row[iStatus]),
+      date: toIsoDate(row[iBooking]),
+    });
+  }
+
+  const counts = {};
+  for (const r of filled) if (r.date) counts[r.date] = (counts[r.date] || 0) + 1;
+  let dataDate = "";
+  for (const d of Object.keys(counts)) {
+    if (!dataDate || counts[d] > counts[dataDate]) dataDate = d;
+  }
+  if (!dataDate) throw new Error(`No readable '${COL_BOOKING}' values were found in '${RAW_SHEET_NAME}'.`);
+
+  return filled
+    .filter((r) => r.date === dataDate && r.legacy && r.task)
+    .map((r) => ({
+      [COL_LEGACY]: r.legacy,
+      [COL_TASK]: r.task,
+      [COL_STATUS]: r.status,
+      [COL_BOOKING]: r.date,
+    }));
+}
+
 // Walks every DatabaseData row and shapes it. A row with no legacy number or
 // no task is skipped (the Office Script already removes these, so the count
 // should be zero — a non-zero skip count is an upstream signal, not normal).
