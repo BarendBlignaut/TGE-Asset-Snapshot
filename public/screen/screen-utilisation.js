@@ -616,7 +616,25 @@ async function loadFieldDefs() {
     TGE.setText('ud-stat-exm', exmCount);
   }
 
-// ── Export pill ───────────────────────────────────────────────────────────
+// Hover text for the WS icon: each workshop, then its activities.
+  //   Workshop: Altona
+  //   • SERVICE GENERIC TRAILER (Completed)
+  function workshopTooltip(bookings) {
+    var lines = [];
+    var current = null;
+    bookings.forEach(function (b) {
+      var ws = b.workshop || 'Not recorded';
+      if (ws !== current) {
+        if (lines.length) lines.push('');
+        lines.push('Workshop: ' + ws);
+        current = ws;
+      }
+      lines.push('• ' + b.task + (b.status ? ' (' + b.status + ')' : ''));
+    });
+    return lines.join('\n');
+  }
+
+// ── Export pill ─────
   // The pill and file writing are shared (public/core/tge-output.js). This
   // screen only decides which formats it offers (each tied to its Fleet
   // Utilisation toggle in Roles) and what goes in the file (udExportTable).
