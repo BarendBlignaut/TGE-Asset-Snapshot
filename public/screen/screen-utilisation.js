@@ -434,7 +434,7 @@ function wirePinnedColumnScroll() {
         row += '<td class="ud-dcol' + (kmLow ? ' ud-km-low' : '') + (contradiction ? ' ud-km-contradiction' : '') + '">' + kmText + '</td>';
         var wsBookings = state.workshopBookings[asset.legacyNumber + '|' + isoDate(d)];
         if (wsBookings && wsBookings.length) {
-          var wsTitle = wsBookings.map(function (b) { return b.task + ' (' + b.status + ')'; }).join('\n');
+                   var wsTitle = workshopTooltip(wsBookings);
           row += '<td class="ud-dcol" title="' + esc(wsTitle) + '"><span class="ud-ws-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M21.7 15.3a5 5 0 01-6.6 6.6l-7.8-7.8a5 5 0 01-6.2-6.2 1 1 0 011.7-.5l2.8 2.8 2-2-2.8-2.8a1 1 0 01.5-1.7 5 5 0 016.2 6.2l7.8 7.8a1 1 0 001.4-1.4z"/></svg></span></td>';
         } else {
           row += '<td class="ud-dcol">-</td>';
