@@ -778,7 +778,10 @@ async function loadFieldDefs() {
 
   function buildReportShellHtml(embeddedB64) {
     return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
-      '<title>TGE Fleet Utilisation — Management Report</title>' +
+       
+'<title>TGE Fleet Utilisation — Management Report</title>' +
+      
+'<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" async></script>' +
       '<style>' +
       'body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f4f6f4;color:#1a2b1e;}' +
       '.mr-header{background:#143200;color:#c8f135;padding:20px 28px;}' +
