@@ -341,15 +341,21 @@ export async function runWorkshopPipeline(env, importId) {
       }
     }
 
-    // Immutable booking rows. INSERT OR IGNORE against
-    // UNIQUE(booking_date, legacy_number, task) makes a re-import a clean no-op
-    // and silently absorbs any duplicate (date, legacy, task) line in-file.
+    // Immutable booking rows. A clash on UNIQUE(booking_date, legacy_number,
+    // task) keeps the existing row (status untouched) and absorbs duplicate
+    // lines in-file. The one exception: a row saved before the workshop was
+    // captured gets its blank workshop filled in, so re-processing an old
+    // import back-fills it.
     const bookingStatements = walked.map((r) =>
       env.DB.prepare(
-        `INSERT OR IGNORE INTO workshop_bookings
-           (booking_date, legacy_number, task, status, created_at)
-         VALUES (?, ?, ?, ?, ?)`
-      ).bind(r.bookingDate, r.legacyNumber, r.task, r.status, now)
+        `INSERT INTO workshop_bookings
+           (booking_date, legacy_number, task, status, workshop, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(booking_date, legacy_number, task) DO UPDATE SET
+           workshop = excluded.workshop
+         WHERE (workshop_bookings.workshop IS NULL OR workshop_bookings.workshop = '')
+           AND excluded.workshop <> ''`
+      ).bind(r.bookingDate, r.legacyNumber, r.task, r.status, r.workshop || null, now)
     );
 
     let bookingsInserted = 0;
