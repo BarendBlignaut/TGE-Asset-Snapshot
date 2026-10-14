@@ -117,7 +117,9 @@ function reduceBookingList(grid) {
   const iLegacy = col(COL_LEGACY);
   const iTask = col(COL_TASK);
   const iStatus = col(COL_STATUS);
-  const iBooking = col(COL_BOOKING);
+   const iBooking = col(COL_BOOKING);
+  // Optional: older files or DatabaseData may not have it; saved blank then.
+  const iWorkshop = col(COL_WORKSHOP);
   if (iTask === -1 || iStatus === -1) {
     throw new Error(`'${RAW_SHEET_NAME}' is missing the '${COL_TASK}' or '${COL_STATUS}' column.`);
   }
