@@ -17,6 +17,7 @@ const COL_LEGACY = "LegacyNo";
 const COL_TASK = "Task";
 const COL_STATUS = "Status";
 const COL_BOOKING = "BookingDate";
+const COL_WORKSHOP = "Workshop";
 
 function nowIso() {
   return new Date().toISOString();
