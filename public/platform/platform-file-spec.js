@@ -470,6 +470,65 @@
     tbody.innerHTML = html;
   }
 
+   // ── Filter preview: the dashboard filter bar as users will see it. ───────
+  // Drag a filter left or right to set its order; Save writes filter_order.
+  var dragFilterIndex = null;
+
+  function renderFilterOrder() {
+    var box = TGE.el('fs-filter-order');
+    if (!box) return;
+
+    var labelFor = {};
+    state.columns.forEach(function (c) {
+      labelFor[c.source_column] = c.filter_label || c.display_label || c.source_column;
+    });
+
+    var heading = '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">Dashboard filter preview · drag to reorder, then Save</div>';
+
+    if (!state.filterOrder.length) {
+      box.innerHTML = heading + '<div style="font-size:12px;color:var(--muted);">No filters yet. Tick ▼ on a column header to add one.</div>';
+      return;
+    }
+
+    var items = state.filterOrder.map(function (col, i) {
+      return '<div draggable="true" data-fs-order-index="' + i + '" title="Drag to reorder" style="cursor:grab;user-select:none;padding:4px 6px;border:1px dashed transparent;border-radius:8px;">' +
+        '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;margin-bottom:4px;">⠿ ' + escapeHtml(labelFor[col] || col) + '</div>' +
+        '<div style="min-width:64px;height:28px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font-size:12px;color:var(--ink-2);">All <span style="font-size:9px;">▾</span></div>' +
+      '</div>';
+    }).join('');
+
+    box.innerHTML = heading + '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + items + '</div>';
+
+    box.querySelectorAll('[data-fs-order-index]').forEach(function (el) {
+      el.ondragstart = function (e) {
+        dragFilterIndex = parseInt(el.dataset.fsOrderIndex, 10);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(dragFilterIndex));
+        el.style.opacity = '0.4';
+      };
+      el.ondragend = function () {
+        el.style.opacity = '';
+        dragFilterIndex = null;
+      };
+      el.ondragover = function (e) {
+        e.preventDefault();
+        el.style.borderColor = 'var(--green-600)';
+      };
+      el.ondragleave = function () {
+        el.style.borderColor = 'transparent';
+      };
+      el.ondrop = function (e) {
+        e.preventDefault();
+        var target = parseInt(el.dataset.fsOrderIndex, 10);
+        if (dragFilterIndex === null || dragFilterIndex === target) { renderFilterOrder(); return; }
+        var item = state.filterOrder.splice(dragFilterIndex, 1)[0];
+        state.filterOrder.splice(target, 0, item);
+        dragFilterIndex = null;
+        renderFilterOrder();
+      };
+    });
+  }
+
   function closeDropdown() {
     state.openDropdownColumn = null;
     document.querySelectorAll('.fs-dd-slot').forEach(function (slot) { slot.innerHTML = ''; });
