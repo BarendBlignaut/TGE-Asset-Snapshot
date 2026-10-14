@@ -516,11 +516,11 @@ export async function handleGetWorkshopBookingsForDashboard(request, env, auth) 
   }
 
   const rows = await env.DB.prepare(
-    `SELECT wb.legacy_number, wb.booking_date, wb.task, wb.status
+    `SELECT wb.legacy_number, wb.booking_date, wb.task, wb.status, wb.workshop
      FROM workshop_bookings wb
      JOIN workshop_status_config wsc ON wsc.status = wb.status
      WHERE wb.booking_date >= ? AND wb.booking_date <= ? AND wsc.display = 1
-     ORDER BY wb.legacy_number ASC, wb.task ASC`
+     ORDER BY wb.legacy_number ASC, wb.workshop ASC, wb.task ASC`
   ).bind(start, end).all();
 
   const grouped = {};
