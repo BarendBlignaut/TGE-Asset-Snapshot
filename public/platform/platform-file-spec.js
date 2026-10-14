@@ -155,7 +155,10 @@
       return;
     }
 
-    state.columns = (fieldsRes.data.fields || []).slice().sort(function (a, b) {
+    // Hidden columns (not in the latest Static Fleet import) are left out.
+    state.columns = (fieldsRes.data.fields || []).filter(function (c) {
+      return c.enabled !== 0;
+    }).sort(function (a, b) {
       return (a.display_order || 0) - (b.display_order || 0);
     });
     state.rows = fleetRes.data.fleet || [];
