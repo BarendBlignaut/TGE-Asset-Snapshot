@@ -55,13 +55,18 @@
     return module + '_' + type + '_' + TGE.outputTimestamp() + qualifier + '.' + ext;
   };
 
-  TGE.buildOutputPill = function (prefix, items) {
+  // opts.theme: 'dark' (pill on a dark header) or 'light'. The styles for
+  // both come from this file. Leave opts out to style it with the screen's
+  // own CSS, as the older screens do.
+  TGE.buildOutputPill = function (prefix, items, opts) {
     items = (items || []).filter(hasPermission);
 
     if (!items.length) return '';
 
+    var theme = opts && opts.theme ? ' tge-pill-' + esc(opts.theme) : '';
+
     return [
-      '<div class="snap-hero-menu" id="' + esc(prefix) + '-output-menu">',
+      '<div class="snap-hero-menu' + theme + '" id="' + esc(prefix) + '-output-menu">',
         '<button class="snap-menu-trigger" id="' + esc(prefix) + '-output-trigger" type="button" aria-haspopup="true" aria-expanded="false">',
           '<span style="width:16px;height:16px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--yellow);color:var(--green-900);font-size:12px;">↓</span>',
           '<span>Export</span>',
