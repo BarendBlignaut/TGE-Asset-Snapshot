@@ -58,8 +58,15 @@ async function loadDatabaseDataRows(env, importRecord) {
 
   const workbook = XLSX.read(new Uint8Array(workbookBytes), { type: "array", raw: false });
 
+  // Prefer the raw booking sheet, reduced here by column name. DatabaseData
+  // (built by the Office Script) is only a fall-back if the raw sheet is absent.
+  if (workbook.SheetNames.includes(RAW_SHEET_NAME)) {
+    const grid = XLSX.utils.sheet_to_json(workbook.Sheets[RAW_SHEET_NAME], { header: 1, defval: "", raw: false });
+    return { sheetName: RAW_SHEET_NAME, rows: reduceBookingList(grid) };
+  }
+
   if (!workbook.SheetNames.includes(SHEET_NAME)) {
-    throw new Error(`Worksheet '${SHEET_NAME}' was not found. The workbook must contain the cleaned '${SHEET_NAME}' sheet.`);
+    throw new Error(`Neither '${RAW_SHEET_NAME}' nor '${SHEET_NAME}' was found in the workbook.`);
   }
 
   const worksheet = workbook.Sheets[SHEET_NAME];
