@@ -133,7 +133,7 @@ async function handleUpdateStaticFields(request, env, auth) {
       `UPDATE utilisation_static_field_defs SET
         display_label = ?, save_to_db = ?, is_identity = ?, use_as_filter = ?,
         filter_label = ?, filter_type = ?, display_order = ?, enabled = ?,
-        is_telematics_source = ?, updated_at = ?
+       is_telematics_source = ?, filter_order = ?, updated_at = ?
        WHERE id = ?`
     ).bind(
       String(f.displayLabel || "").trim() || f.sourceColumn || "",
@@ -144,9 +144,7 @@ async function handleUpdateStaticFields(request, env, auth) {
       f.filterType || "select",
       Number.isInteger(f.displayOrder) ? f.displayOrder : 0,
       f.enabled === false ? 0 : 1,
-      f.isTelematicsSource ? 1 : 0,
-      nowIso(),
-      f.id
+      f.isTelematicsSource ?
     ).run();
   }
 
