@@ -168,8 +168,20 @@
     state.telematicsSource = null;
     state.columns.forEach(function (c) {
       state.filterFlags[c.source_column] = !!c.use_as_filter;
-      if (c.is_telematics_source) state.telematicsSource = c.source_column;
+           if (c.is_telematics_source) state.telematicsSource = c.source_column;
     });
+
+    // Order of the end-user filters on the dashboard. Saved as filter_order.
+    state.filterOrder = state.columns
+      .filter(function (c) { return !!c.use_as_filter; })
+      .sort(function (a, b) {
+        var ao = a.filter_order == null ? Infinity : a.filter_order;
+        var bo = b.filter_order == null ? Infinity : b.filter_order;
+        if (ao !== bo) return ao - bo;
+        return (a.display_order || 0) - (b.display_order || 0);
+      })
+      .map(function (c) { return c.source_column; });
+    renderFilterOrder();
 
     state.exclusions = {};
     if (exclRes.ok) {
