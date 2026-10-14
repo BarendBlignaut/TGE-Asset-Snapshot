@@ -520,7 +520,13 @@ async function loadFieldDefs() {
     state.telematicsSourceColumn = (all.find(function (f) { return f.is_telematics_source === 1; }) || {}).source_column || null;
     state.fieldDefs = all
       .filter(function (f) { return f.use_as_filter === 1 && f.enabled !== 0; })
-      .sort(function (a, b) { return (a.display_order || 0) - (b.display_order || 0); });
+            .sort(function (a, b) {
+        // Admin-set filter order first (File Spec preview); unset ones go last.
+        var ao = a.filter_order == null ? Infinity : a.filter_order;
+        var bo = b.filter_order == null ? Infinity : b.filter_order;
+        if (ao !== bo) return ao - bo;
+        return (a.display_order || 0) - (b.display_order || 0);
+      });
   }
 
   async function initData() {
