@@ -527,7 +527,7 @@ export async function handleGetWorkshopBookingsForDashboard(request, env, auth) 
   for (const r of (rows.results || [])) {
     const key = `${r.legacy_number}|${r.booking_date}`;
     if (!grouped[key]) grouped[key] = [];
-    grouped[key].push({ task: r.task, status: r.status });
+    grouped[key].push({ task: r.task, status: r.status, workshop: r.workshop || "" });
   }
 
   return jsonResponse({ ok: true, bookings: grouped });
