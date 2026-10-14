@@ -844,6 +844,7 @@ async function loadFieldDefs() {
         '<div class="mr-daterange" id="mr-daterange"></div>' +
         '<span class="mr-assets-count" id="mr-assets-count"></span>' +
         '<button type="button" class="mr-clear-btn" id="mr-clear-btn">Clear all filters</button>' +
+        '<span id="mr-export-wrap"></span>' +
       '</div>' +
       '<div class="mr-filter-summary" id="mr-filter-summary"></div></div>' +
       '<div class="mr-legend">' +
