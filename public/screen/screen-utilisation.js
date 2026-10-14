@@ -711,8 +711,24 @@ async function loadFieldDefs() {
   // KM cutoff highlighting all re-implemented as plain JS that runs entirely
   // inside the exported file.
   function buildManagementReportHtml() {
-    var dates = CURRENT_DATES.length ? CURRENT_DATES : getDateRange();
-    var visible = CURRENT_VISIBLE.length ? CURRENT_VISIBLE : getVisibleFleet();
+    var payload = buildReportPayload();
+    // The report has no login, so the export formats this user may use are
+    // decided now and baked into the file.
+    payload.exportFormats = utilisationExportItems()
+      .filter(function (item) { return TGE.can(item.permission[0], item.permission[1]); })
+      .map(function (item) { return { format: item.format, label: item.label }; });
+
+    var jsonStr = JSON.stringify(payload);
+    var b64 = btoa(unescape(encodeURIComponent(jsonStr)));
+
+    return buildReportShellHtml(b64);
+  }
+
+  // What's on screen right now (filters + telematics toggle), as plain data.
+  // Shared by the Management Report and the dashboard export.
+  function buildReportPayload() {
+    var dates = getDateRange();
+    var visible = getVisibleFleet();
 
     var filterColumns = state.fieldDefs.map(function (def) {
       return { col: def.source_column, label: def.display_label || def.source_column };
