@@ -416,8 +416,12 @@
         e.stopPropagation();
         var col = btn.dataset.fsFilterToggle;
         state.filterFlags[col] = !state.filterFlags[col];
-        btn.classList.toggle('fs-icon-on', state.filterFlags[col]);
+                btn.classList.toggle('fs-icon-on', state.filterFlags[col]);
         btn.classList.toggle('fs-icon-off', !state.filterFlags[col]);
+        var at = state.filterOrder.indexOf(col);
+        if (state.filterFlags[col] && at === -1) state.filterOrder.push(col);
+        if (!state.filterFlags[col] && at !== -1) state.filterOrder.splice(at, 1);
+        renderFilterOrder();
       };
     });
 
