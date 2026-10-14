@@ -120,7 +120,7 @@ function positionOpenFilterPop() {
     if (!btn || !pop) return;
     var rect = btn.getBoundingClientRect();
     pop.style.top = (rect.bottom + 4) + 'px';
-    pop.style.left = rect.left + 'px';
+    pop.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - pop.offsetWidth - 8)) + 'px';
   }
 
   function renderFilterCards() {
