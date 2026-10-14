@@ -2846,6 +2846,24 @@ if (method === "POST" && path === "/api/filespec/locate-teletrac-km") return han
         if (!auth.ok) return auth.response;
         return handleGetWorkshopBookings(request, env, { session: auth.session, ...utilisationAuthHelpers });
       }
+      // POST /api/workshop/reprocess?id=<importId> — re-runs one stored
+      // Workshop file (admin only). Bookings already saved are left as they are.
+      if (method === "POST" && path === "/api/workshop/reprocess") {
+        const auth = await requireSession(request, env);
+        if (!auth.ok) return auth.response;
+        const perm = await hasPermission(env, auth.session.role_id, "admin", "run");
+        if (!perm.allowed) return jsonResponse({ error: "Access denied." }, 403);
+        const importId = Number.parseInt(url.searchParams.get("id") || "", 10);
+        if (!Number.isInteger(importId) || importId < 1) {
+          return jsonResponse({ error: "A valid import id is required." }, 400);
+        }
+        try {
+          const result = await runWorkshopPipeline(env, importId);
+          return jsonResponse({ ok: true, importId, ...result });
+        } catch (error) {
+          return jsonResponse({ ok: false, importId, error: error instanceof Error ? error.message : String(error) }, 500);
+        }
+      }
       if (method === "PUT" && path === "/api/workshop/statuses") {
         const auth = await requireSession(request, env);
         if (!auth.ok) return auth.response;
