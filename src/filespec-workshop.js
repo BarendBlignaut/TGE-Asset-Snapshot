@@ -126,11 +126,15 @@ function reduceBookingList(grid) {
 
   const filled = [];
   let lastLegacy = "";
+  let lastWorkshop = "";
   for (const row of grid.slice(headerIndex + 1)) {
     if (!Array.isArray(row) || row.every((c) => isBlankCell(c))) continue;
     if (!isBlankCell(row[iLegacy])) lastLegacy = cleanText(row[iLegacy]);
+    // Workshop is grouped like LegacyNo (only on the first row of its group).
+    if (iWorkshop !== -1 && !isBlankCell(row[iWorkshop])) lastWorkshop = cleanText(row[iWorkshop]);
     filled.push({
       legacy: lastLegacy,
+      workshop: lastWorkshop,
       task: isBlankCell(row[iTask]) ? "" : cleanText(row[iTask]),
       status: isBlankCell(row[iStatus]) ? "" : cleanText(row[iStatus]),
       date: toIsoDate(row[iBooking]),
