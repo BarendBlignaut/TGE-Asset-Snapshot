@@ -294,7 +294,16 @@ export async function runWorkshopPipeline(env, importId) {
 
   try {
     const { rows } = await loadDatabaseDataRows(env, importRecord);
-    const { rows: walked } = walkWorkshopRows(rows);
+      const { rows: walked } = walkWorkshopRows(rows);
+
+    // Never save bookings without a usable date: they can't be shown on the
+    // dashboard and they collapse into each other on the unique key.
+    const badDate = walked.find((r) => !/^\d{4}-\d{2}-\d{2}$/.test(r.bookingDate));
+    if (badDate) {
+      throw new Error(
+        `Booking date '${badDate.bookingDate}' for ${badDate.legacyNumber} is not a YYYY-MM-DD date. Nothing was saved.`
+      );
+    }
 
     const now = nowIso();
 
