@@ -171,11 +171,12 @@ function walkWorkshopRows(rows) {
     const legacyNumber = cleanText(row[COL_LEGACY]);
     const task = cleanText(row[COL_TASK]);
     const status = cleanText(row[COL_STATUS]);
-    const bookingDate = cleanText(row[COL_BOOKING]);
+       const bookingDate = cleanText(row[COL_BOOKING]);
+    const workshop = cleanText(row[COL_WORKSHOP]);
 
     if (!legacyNumber || !task) { skipped++; continue; }
 
-    out.push({ legacyNumber, task, status, bookingDate });
+    out.push({ legacyNumber, task, status, bookingDate, workshop });
   }
 
   return { rows: out, skipped };
