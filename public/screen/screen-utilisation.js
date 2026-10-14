@@ -290,8 +290,9 @@ TGE.on('ud-mgmt-report-btn', 'click', function () {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+       URL.revokeObjectURL(url);
     });
+    renderExportPill();
   
 TGE.on('ud-history-btn', 'click', function () {
       state.history = !state.history;
