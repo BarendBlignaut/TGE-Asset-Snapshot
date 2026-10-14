@@ -762,6 +762,43 @@ export async function handlePromoteStaticFleet(request, env) {
         importId
       ),
 
+      // Sync File Spec headers to this import: the latest Static Fleet file is
+      // the source of truth. New headers are added (visible, not a filter);
+      // headers missing from this file are hidden (enabled = 0) but keep their
+      // settings, so they come back as they were if the header returns.
+      env.DB.prepare(
+        `INSERT INTO utilisation_static_field_defs
+          (source_column, display_label, save_to_db, is_identity, use_as_filter,
+           filter_type, display_order, enabled, created_at, updated_at, is_telematics_source)
+         SELECT
+           j.key, TRIM(j.key), 0, 0, 0, 'select',
+           (SELECT COALESCE(MAX(display_order), 0) FROM utilisation_static_field_defs)
+             + ROW_NUMBER() OVER (ORDER BY j.id),
+           1, ?, ?, 0
+         FROM json_each((
+           SELECT field_values FROM utilisation_static_fleet_staging
+           WHERE import_id = ? ORDER BY id LIMIT 1
+         )) j
+         WHERE j.key NOT IN (SELECT source_column FROM utilisation_static_field_defs)`
+      ).bind(promotedAt, promotedAt, importId),
+
+      env.DB.prepare(
+        `UPDATE utilisation_static_field_defs
+         SET enabled = (source_column IN (
+               SELECT key FROM json_each((
+                 SELECT field_values FROM utilisation_static_fleet_staging
+                 WHERE import_id = ? ORDER BY id LIMIT 1
+               ))
+             )),
+             updated_at = ?
+         WHERE enabled <> (source_column IN (
+               SELECT key FROM json_each((
+                 SELECT field_values FROM utilisation_static_fleet_staging
+                 WHERE import_id = ? ORDER BY id LIMIT 1
+               ))
+             ))`
+      ).bind(importId, promotedAt, importId),
+
       // Record successful promotion.
       // The existing status constraint uses 'parsed' as the completed status;
       // processed_at distinguishes parsed-only from fully promoted.
