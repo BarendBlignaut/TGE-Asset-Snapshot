@@ -84,6 +84,7 @@
           '<div style="font-size:13px;color:var(--muted);">Exclusions, filters and the telematics source are set from the column headers below. The data table itself stays closed until you open it.</div>',
           '<button type="button" id="fs-table-toggle" class="btn" style="height:32px;padding:0 14px;font-size:12px;font-weight:700;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink-2);cursor:pointer;">Show Data Table ▾</button>',
         '</div>',
+        '<div id="fs-filter-order" style="padding:12px 16px;border-bottom:1px solid var(--line);"></div>',
         '<div id="fs-table-wrap" style="overflow:auto;max-height:70vh;">',
         '</div>',
       '</div>'
