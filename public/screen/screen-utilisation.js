@@ -1183,7 +1183,11 @@ function reportRuntimeScript() {
       '.ud-exm-icon{color:#d62d2d;display:inline-flex;vertical-align:middle;}',
       '.ud-gps-off{color:#d43a3a;display:inline-flex;}',
       '.ud-pin-avg{background:#f0f1f3!important;color:#172b4d!important;z-index:40!important;min-width:150px;}',
-      'td.ud-pin-avg{position:sticky!important;right:0!important;}',
+            'td.ud-pin-avg{position:sticky!important;right:0!important;}',
+      // Pinned headers stick both ways: top (all headers) plus left / right.
+      // z-index above the pinned body cells so rows scroll underneath.
+      'th.ud-pin-left{left:0!important;z-index:50!important;}',
+      'th.ud-pin-avg{right:0!important;z-index:50!important;}',
       '.ud-date-hdr{min-width:108px;}',
       '.ud-sub-hdr{font-size:9px!important;color:#dbe8c3!important;text-transform:uppercase;}',
       '.ud-dcol{min-width:36px;width:36px;padding:2px!important;}',
