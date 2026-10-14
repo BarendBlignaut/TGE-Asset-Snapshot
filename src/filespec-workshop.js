@@ -156,6 +156,7 @@ function reduceBookingList(grid) {
       [COL_TASK]: r.task,
       [COL_STATUS]: r.status,
       [COL_BOOKING]: r.date,
+      [COL_WORKSHOP]: r.workshop,
     }));
 }
 
