@@ -380,11 +380,15 @@ function wirePinnedColumnScroll() {
           positionPinnedColumns();
           if (wrap.scrollTop !== lastScrollTop) {
             lastScrollTop = wrap.scrollTop;
-            renderVisibleRows();
+                       renderVisibleRows();
           }
         });
       }
     }, true);
+    // A resize changes how much of the table is off-screen.
+    window.addEventListener('resize', function () {
+      window.requestAnimationFrame(positionPinnedColumns);
+    });
   }
 
   var ROW_HEIGHT = 32;
