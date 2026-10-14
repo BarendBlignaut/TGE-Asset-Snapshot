@@ -144,7 +144,10 @@ async function handleUpdateStaticFields(request, env, auth) {
       f.filterType || "select",
       Number.isInteger(f.displayOrder) ? f.displayOrder : 0,
       f.enabled === false ? 0 : 1,
-      f.isTelematicsSource ?
+            f.isTelematicsSource ? 1 : 0,
+      Number.isInteger(f.filterOrder) ? f.filterOrder : null,
+      nowIso(),
+      f.id
     ).run();
   }
 
