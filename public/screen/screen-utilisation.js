@@ -616,6 +616,94 @@ async function loadFieldDefs() {
     TGE.setText('ud-stat-exm', exmCount);
   }
 
+// ── Export pill ───────────────────────────────────────────────────────────
+  // The pill and file writing are shared (public/core/tge-output.js). This
+  // screen only decides which formats it offers (each tied to its Fleet
+  // Utilisation toggle in Roles) and what goes in the file (udExportTable).
+  function utilisationExportItems() {
+    return [
+      { id: 'ud-export-csv',  format: 'csv',  label: 'CSV',   suffix: '.csv',  icon: '📑', permission: ['utilisation', 'export-csv'],  action: function () { exportDashboard('csv'); } },
+      { id: 'ud-export-xlsx', format: 'xlsx', label: 'Excel', suffix: '.xlsx', icon: '📊', permission: ['utilisation', 'export-xlsx'], action: function () { exportDashboard('xlsx'); } },
+    ];
+  }
+
+  function renderExportPill() {
+    var wrap = TGE.el('ud-export-wrap');
+    if (!wrap || !TGE.buildOutputPill) return;
+    var items = utilisationExportItems();
+    wrap.innerHTML = TGE.buildOutputPill('ud', items, { theme: 'dark' });
+    TGE.wireOutputPill('ud', items);
+  }
+
+  function exportDashboard(format) {
+    var payload = buildReportPayload();
+    if (!payload.assets.length) {
+      alert('No assets match the selected filters.');
+      return;
+    }
+    TGE.exportTable(udExportTable(payload, payload.assets), format, { module: 'Utilisation', type: 'Dashboard' });
+  }
+
+  // The columns and rows of a utilisation export. Also copied into the
+  // Management Report file (see reportRuntimeScript), so both exports always
+  // match. Keep it self-contained: no state, TGE or other helpers.
+  function udExportTable(data, assets) {
+    var header = ['Legacy Number'];
+    data.filterColumns.forEach(function (fc) { header.push(fc.label); });
+    header.push('Telematics');
+    data.dates.forEach(function (d) { header.push(d + ' KM', d + ' WS', d + ' EXM'); });
+    header.push('Total KM', 'Avg/Day');
+    var rows = assets.map(function (a) {
+      var row = [a.legacyNumber];
+      data.filterColumns.forEach(function (fc) { row.push(a.fields[fc.col] || ''); });
+      row.push(a.hasTelematics ? 'Yes' : 'No');
+      var total = 0;
+      var days = 0;
+      data.dates.forEach(function (d) {
+        var v = a.km[d];
+        if (v != null) { total += v; days++; }
+        row.push(v != null ? Math.round(v * 10) / 10 : (a.hasTelematics ? 0 : ''));
+        row.push(a.ws && a.ws[d] ? 'Yes' : '');
+        row.push(a.exm && a.exm[d] ? 'Yes' : '');
+      });
+      row.push(days ? Math.round(total * 10) / 10 : '');
+      row.push(days ? Math.round((total / days) * 10) / 10 : '');
+      return row;
+    });
+    return { header: header, rows: rows, sheetName: 'Utilisation' };
+  }
+
+  // The Management Report's own Export menu (the report is offline, so it
+  // can't use the app's pill). Copied into the report file together with
+  // udExportTable and the shared saveTable; getAssets returns the report's
+  // currently filtered and sorted rows.
+  function udReportExportMenu(raw, getAssets) {
+    var wrap = document.getElementById('mr-export-wrap');
+    var formats = raw.exportFormats || [];
+    if (!wrap || !formats.length) return;
+    var html = '<button type="button" class="mr-clear-btn" id="mr-export-btn">Export ▾</button><div class="mr-export-menu" id="mr-export-menu">';
+    formats.forEach(function (f) { html += '<button type="button" data-fmt="' + f.format + '">' + f.label + '</button>'; });
+    wrap.innerHTML = html + '</div>';
+    var menu = document.getElementById('mr-export-menu');
+    document.getElementById('mr-export-btn').onclick = function (e) {
+      e.stopPropagation();
+      menu.classList.toggle('open');
+    };
+    menu.querySelectorAll('button').forEach(function (btn) {
+      btn.onclick = function (e) {
+        e.stopPropagation();
+        menu.classList.remove('open');
+        var assets = getAssets();
+        if (!assets.length) { alert('No assets match the selected filters.'); return; }
+        var d = new Date();
+        var p = function (n) { return (n < 10 ? '0' : '') + n; };
+        var stamp = d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes());
+        saveTable(udExportTable(raw, assets), btn.dataset.fmt, 'Utilisation_ManagementReport_' + stamp);
+      };
+    });
+    document.addEventListener('click', function () { menu.classList.remove('open'); });
+  }
+
 // ── Management Report: standalone, offline HTML export ────────────────────
   // Embeds exactly what's currently visible (respecting active filters and
   // the telematics toggle) as base64 data inside a single self-contained
