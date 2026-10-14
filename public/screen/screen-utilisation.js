@@ -353,20 +353,10 @@ TGE.on('ud-history-btn', 'click', function () {
     );
   }
 function positionPinnedColumns() {
-    var wrap = document.querySelector('.ud-table-wrap');
-    if (!wrap) return;
-    var left = 'translateX(' + wrap.scrollLeft + 'px)';
-    // The Total KM / Avg/Day header sits at the far end of the table, so it
-    // is pulled back by however much of the table is still off-screen to the
-    // right. That keeps it over its sticky right-hand cells at any range.
-    var offRight = Math.max(0, wrap.scrollWidth - wrap.clientWidth - wrap.scrollLeft);
-    var right = 'translateX(' + (-offRight) + 'px)';
-    wrap.querySelectorAll('th.ud-pin-left').forEach(function (el) {
-      el.style.transform = left;
-    });
-    wrap.querySelectorAll('th.ud-pin-avg').forEach(function (el) {
-      el.style.transform = right;
-    });
+    // Nothing to do: the pinned headers are position:sticky (see the
+    // th.ud-pin-left / th.ud-pin-avg styles), so the browser keeps them in
+    // place while scrolling. Moving them from script lagged a frame behind
+    // the scroll, which made them jitter.
   }
 
 function wirePinnedColumnScroll() {
