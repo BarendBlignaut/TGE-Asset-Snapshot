@@ -1008,7 +1008,7 @@ function reportRuntimeScript() {
       '.ud-filter-btn{display:flex;align-items:center;justify-content:space-between;width:100%;cursor:pointer;text-align:left;}',
       '.ud-filter-btn span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px;}',
       '.ud-filter-empty{font-size:10px;color:#8a9e92;}',
-      '.ud-filter-pop{display:none;position:fixed;width:220px;background:#fff;border:1px solid #dce8e0;border-radius:10px;box-shadow:0 12px 28px rgba(0,0,0,.18);z-index:200;overflow:hidden;}',
+      '.ud-filter-pop{display:none;position:fixed;width:max-content;min-width:220px;max-width:min(480px, calc(100vw - 16px));background:#fff;border:1px solid #dce8e0;border-radius:10px;box-shadow:0 12px 28px rgba(0,0,0,.18);z-index:200;overflow:hidden;}',
       '.ud-filter-pop.open{display:block;}',
       '.ud-filter-pop-list{max-height:260px;overflow-y:auto;padding:6px;}',
       '.ud-filter-opt{display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:6px;font-size:12px;color:#172b4d;cursor:pointer;}',
