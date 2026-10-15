@@ -987,7 +987,7 @@ async function loadFieldDefs() {
 function reportRuntimeScript() {
     return '(function(){' +
       'var raw = JSON.parse(decodeURIComponent(escape(atob(document.getElementById("mr-data").textContent))));' +
-     'var state = { filters: {}, kmCutoff: raw.kmCutoff || 0, openCol: null, sortCol: null, sortDir: \'desc\' };' +
+     'var state = { filters: {}, kmCutoff: raw.kmCutoff || 0, openCol: null, search: "", sortCol: null, sortDir: \'desc\' };' +
       'document.getElementById("mr-daterange").textContent = "Date Range Applied: " + raw.dateRangeLabel;' +
       'function distinctValues(col){var s={};visibleAssets(col).forEach(function(a){var v=a.fields[col];if(v)s[v]=true;});return Object.keys(s).sort();}' +
       'function updateAssetsCount(){' +
