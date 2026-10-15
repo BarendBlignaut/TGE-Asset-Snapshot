@@ -164,9 +164,59 @@ var allHtml = '<label class="ud-filter-opt ud-filter-opt-all">' +
           '</div>',
        '</div>'
       ].join('');
-    }).join('');
+     }).join('');
 
+    addFilterSearchBox();
     positionOpenFilterPop();
+  }
+
+  // Puts a search box and a "Select shown" button at the top of the open
+  // filter. The cards are rebuilt on every tick, so the search text lives in
+  // state.filterSearch and is put back each time.
+  function addFilterSearchBox() {
+    var pop = document.querySelector('.ud-filter-pop.open');
+    if (!pop || !pop.querySelector('.ud-filter-check')) return;
+    var row = document.createElement('div');
+    row.className = 'ud-filter-search-row';
+    var box = document.createElement('input');
+    box.type = 'text';
+    box.className = 'ud-filter-search';
+    box.placeholder = 'Search...';
+    box.autocomplete = 'off';
+    box.value = state.filterSearch || '';
+    var shownBtn = document.createElement('button');
+    shownBtn.type = 'button';
+    shownBtn.className = 'ud-filter-select-shown';
+    shownBtn.dataset.col = pop.dataset.col;
+    shownBtn.textContent = 'Select shown';
+    row.appendChild(box);
+    row.appendChild(shownBtn);
+    pop.insertBefore(row, pop.firstChild);
+    var noMatch = document.createElement('div');
+    noMatch.className = 'ud-filter-pop-empty ud-filter-no-match';
+    noMatch.textContent = 'No matches';
+    pop.querySelector('.ud-filter-pop-list').appendChild(noMatch);
+    applyFilterSearch();
+  }
+
+  // Hides the options in the open filter that don't contain the search text.
+  // Ticked options stay ticked while hidden, so you can search, tick, search
+  // again and tick more.
+  function applyFilterSearch() {
+    var pop = document.querySelector('.ud-filter-pop.open');
+    if (!pop) return;
+    var term = (state.filterSearch || '').trim().toLowerCase();
+    var shown = 0;
+    pop.querySelectorAll('.ud-filter-opt:not(.ud-filter-opt-all)').forEach(function (row) {
+      var text = row.querySelector('span') ? row.querySelector('span').textContent.toLowerCase() : '';
+      var match = !term || text.indexOf(term) !== -1;
+      row.style.display = match ? '' : 'none';
+      if (match) shown++;
+    });
+    var allRow = pop.querySelector('.ud-filter-opt-all');
+    if (allRow) allRow.style.display = term ? 'none' : '';
+    var noMatch = pop.querySelector('.ud-filter-no-match');
+    if (noMatch) noMatch.style.display = shown ? 'none' : '';
   }
 
   // Returns distinct values (+ counts) for `col`, computed against the fleet
