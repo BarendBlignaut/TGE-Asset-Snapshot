@@ -1028,18 +1028,17 @@ function reportRuntimeScript() {
         'html += "<div class=\\"mr-cutoff\\"><label style=\\"font-size:10px;text-transform:uppercase;color:#6b778c;font-weight:700;\\">KM Cutoff: <span id=\\"mr-km-val\\">" + state.kmCutoff + "</span> km</label><input id=\\"mr-km-slider\\" type=\\"range\\" min=\\"0\\" max=\\"600\\" step=\\"5\\" value=\\"" + state.kmCutoff + "\\" style=\\"width:100%;\\"></div>";' +
         'document.getElementById("mr-controls").innerHTML = html;' +
         'document.querySelectorAll(".mr-filter-btn").forEach(function(btn){' +
-          'btn.onclick = function(){ state.openCol = (state.openCol === btn.dataset.col) ? null : btn.dataset.col; renderControls(); };' +
+                    'btn.onclick = function(){' +
+            'state.openCol = (state.openCol === btn.dataset.col) ? null : btn.dataset.col;' +
+            'state.search = "";' +
+            'renderControls();' +
+            'var openBox = document.querySelector(".mr-filter-pop.open .mr-filter-search");' +
+            'if (openBox) openBox.focus();' +
+          '};' +
         '});' +
         'document.querySelectorAll(".mr-filter-search").forEach(function(box){' +
           'box.onclick = function(e){ e.stopPropagation(); };' +
-          'box.oninput = function(){' +
-            'var term = box.value.trim().toLowerCase();' +
-            'var pop = box.closest(".mr-filter-pop");' +
-            'pop.querySelectorAll(".mr-filter-opt:not(.mr-filter-opt-all)").forEach(function(row){' +
-              'var match = !term || (row.dataset.searchText || "").indexOf(term) !== -1;' +
-              'row.style.display = match ? "" : "none";' +
-            '});' +
-          '};' +
+          'box.oninput = function(){ state.search = box.value; mrApplyFilterSearch(); };' +
         '});' +
         'document.querySelectorAll(".mr-select-visible").forEach(function(btn){' +
           'btn.onclick = function(e){' +
