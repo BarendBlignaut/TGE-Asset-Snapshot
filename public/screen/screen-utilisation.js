@@ -846,9 +846,9 @@ async function loadFieldDefs() {
         if (v != null) km[isoDate(d)] = Number(v);
         var wsKey = a.legacyNumber + '|' + isoDate(d);
         var bookings = state.workshopBookings[wsKey];
-        if (bookings && bookings.length) ws[isoDate(d)] = true;
+                if (bookings && bookings.length) ws[isoDate(d)] = workshopTooltip(bookings);
         var dStr = isoDate(d);
-        if (nf && dStr >= nf.dateStart && dStr <= nf.dateEnd) exm[dStr] = true;
+        if (nf && dStr >= nf.dateStart && dStr <= nf.dateEnd) exm[dStr] = 'Non-functioning ' + nf.dateStart + ' to ' + nf.dateEnd;
       });
       return {
         legacyNumber: a.legacyNumber,
