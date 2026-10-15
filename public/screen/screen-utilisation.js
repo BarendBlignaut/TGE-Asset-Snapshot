@@ -282,7 +282,26 @@ function getVisibleFleet() {
       var btn = e.target.closest && e.target.closest('.ud-filter-btn');
       if (btn) {
         var col = btn.dataset.col;
-        state.openFilterCol = (state.openFilterCol === col) ? null : col;
+                state.openFilterCol = (state.openFilterCol === col) ? null : col;
+        state.filterSearch = '';
+        renderFilterCards();
+        var openBox = document.querySelector('.ud-filter-pop.open .ud-filter-search');
+        if (openBox) openBox.focus();
+        return;
+      }
+      var shownBtn = e.target.closest && e.target.closest('.ud-filter-select-shown');
+      if (shownBtn) {
+        var shownCol = shownBtn.dataset.col;
+        var shownPop = shownBtn.closest('.ud-filter-pop');
+        if (!state.filters[shownCol]) state.filters[shownCol] = new Set();
+        shownPop.querySelectorAll('.ud-filter-opt:not(.ud-filter-opt-all)').forEach(function (row) {
+          if (row.style.display === 'none') return;
+          var check = row.querySelector('.ud-filter-check');
+          if (check) state.filters[shownCol].add(check.value);
+        });
+        if (!state.filters[shownCol].size) delete state.filters[shownCol];
+        renderTable();
+        updateTotalPill();
         renderFilterCards();
         return;
       }
@@ -296,8 +315,15 @@ function getVisibleFleet() {
       }
       if (state.openFilterCol && !(e.target.closest && e.target.closest('.ud-filter-card'))) {
         state.openFilterCol = null;
+        state.filterSearch = '';
         renderFilterCards();
       }
+    });
+
+    document.addEventListener('input', function (e) {
+      if (!e.target.classList || !e.target.classList.contains('ud-filter-search')) return;
+      state.filterSearch = e.target.value;
+      applyFilterSearch();
     });
 
 document.addEventListener('change', function (e) {
