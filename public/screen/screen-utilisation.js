@@ -1070,9 +1070,27 @@ function reportRuntimeScript() {
         '});' +
         'document.getElementById("mr-km-slider").onchange = function(e){ state.kmCutoff = parseInt(e.target.value,10)||0; renderTable(); renderCharts(); };' +
 'document.getElementById("mr-km-slider").oninput = function(e){ document.getElementById("mr-km-val").textContent = e.target.value; };' +
+        'var keepBox = document.querySelector(".mr-filter-pop.open .mr-filter-search");' +
+        'if (keepBox) { keepBox.value = state.search; mrApplyFilterSearch(); }' +
+      '}' +
+      'function mrApplyFilterSearch(){' +
+        'var pop = document.querySelector(".mr-filter-pop.open");' +
+        'if (!pop) return;' +
+        'var term = (state.search || "").trim().toLowerCase();' +
+        'var shown = 0;' +
+        'pop.querySelectorAll(".mr-filter-opt:not(.mr-filter-opt-all)").forEach(function(row){' +
+          'var match = !term || (row.dataset.searchText || "").indexOf(term) !== -1;' +
+          'row.style.display = match ? "" : "none";' +
+          'if (match) shown++;' +
+        '});' +
+        'var allRow = pop.querySelector(".mr-filter-opt-all");' +
+        'if (allRow) allRow.style.display = term ? "none" : "";' +
+        'var noMatch = pop.querySelector(".mr-filter-no-match");' +
+        'if (!noMatch) { noMatch = document.createElement("div"); noMatch.className = "mr-filter-no-match"; noMatch.textContent = "No matches"; noMatch.style.cssText = "padding:10px;font-size:11px;color:#8a9e92;text-align:center;"; pop.appendChild(noMatch); }' +
+        'noMatch.style.display = shown ? "none" : "";' +
       '}' +
       'document.addEventListener("click", function(e){' +
-        'if (state.openCol && !e.target.closest(".mr-filter")) { state.openCol = null; renderControls(); }' +
+        'if (state.openCol && !e.target.closest(".mr-filter")) { state.openCol = null; state.search = ""; renderControls(); }' +
       '});' +
 'function visibleAssets(ignoreCol){' +
         'return raw.assets.filter(function(a){' +
