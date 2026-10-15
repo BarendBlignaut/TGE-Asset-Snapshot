@@ -20,8 +20,9 @@ fieldDefs: [],
     vendorMetrics: {},
     workshopBookings: {},
     nonFunctioning: {},
-    filters: {},
+       filters: {},
     openFilterCol: null,
+    filterSearch: '',
   };
 
   function render() {
