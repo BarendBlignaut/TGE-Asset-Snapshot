@@ -466,6 +466,7 @@ if (TGE.wireOutputPill) {
     state.data = { vehicle:null, deviceStats:null, vpm:null, gpio:null, cameras:null };
     state.cameraSlots = [];
     state.cameraCapturedAt = null;
+    state.cameraDeviceId = null;
     state.alignCompleted = false;
     state.alignAfterSlots = null;
     state.alignCompletedAt = null;
