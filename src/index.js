@@ -2660,8 +2660,13 @@ async function handleFileSpecIngest(request, env) {
 
 export default {
   
-  async scheduled(event, env, ctx) {
-    ctx.waitUntil(runDailySync(env));
+   async scheduled(event, env, ctx) {
+    // ON HOLD (2026-10-20), to be defined later: the nightly camera_history sync
+    // is switched off. runDailySync calls fetchCameraEventsChunk and
+    // saveCameraEvents, which don't exist, so it failed every night. Nothing
+    // relies on it now (Asset Snapshot history reads live from TN360). The
+    // manual Sync / Backfill on Admin > Camera History still works.
+    // ctx.waitUntil(runDailySync(env));
   },
   async fetch(request, env, ctx) {
     const url    = new URL(request.url);
