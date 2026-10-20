@@ -205,7 +205,9 @@
       '</div>',
     ].join('');
 
-    wirePanelEvents();
+      wirePanelEvents();
+    if (composerState.allowGrouping) wireGroupingEvents();
+    renderExtraSlot();
   }
 
   // ── Wire events ───────────────────────────────────────────────────────────────
