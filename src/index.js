@@ -2875,7 +2875,9 @@ if (method === "POST" && path === "/api/filespec/locate-teletrac-km") return han
         if (!auth.ok) return auth.response;
         return handleUpdateWorkshopStatuses(request, env, { session: auth.session, ...utilisationAuthHelpers });
       }
-      if (method === "POST" && path === "/api/filespec/process-powerfleet") return handleProcessPowerFleet(request, env);
+            if (method === "POST" && path === "/api/filespec/process-powerfleet") return handleProcessPowerFleet(request, env);
+      if (method === "POST" && path === "/api/filespec/walk-geotab") return handleWalkGeoTab(request, env);
+      if (method === "POST" && path === "/api/filespec/process-geotab") return handleProcessGeoTab(request, env);
       if (method === "POST" && path === "/api/filespec/process-teletrac-km") return handleProcessTeletracKm(request, env);
       
       if (method === "POST" && path === "/api/filespec/process-static-fleet") {
