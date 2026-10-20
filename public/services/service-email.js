@@ -500,9 +500,9 @@ var subjectInput = document.getElementById('ec-subject');
     return r.data.base64;
   }
 
-  async function buildComposerAttachment(rows) {
+    async function buildComposerAttachment(rows, ctx) {
     if (composerState.attachmentBuilder) {
-      var built = await composerState.attachmentBuilder(rows);
+      var built = await composerState.attachmentBuilder(rows, ctx || { mode: composerState.mode });
       if (!built) return null;
       if (typeof built === 'string') return { base64: built, name: 'attachment.pdf' };
       if (built.base64) return { base64: built.base64, name: built.name || 'attachment.pdf' };
