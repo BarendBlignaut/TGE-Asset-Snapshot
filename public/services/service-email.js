@@ -261,6 +261,120 @@ var subjectInput = document.getElementById('ec-subject');
     target.selectionStart = target.selectionEnd = start + text.length;
   }
 
+  // ── Grouping (opt-in, Merge Mail only) ─────────────────────────────────────
+  // "One email per group": rows are grouped by the value in one chosen
+  // column and each group gets a single email. Merge fields in To/CC/BCC
+  // collect every address from the group's rows (cells may hold several
+  // addresses separated by commas), de-duplicated. Subject and body merge
+  // from the group's first row. Pages that don't pass allowGrouping never
+  // reach any of this.
+  function groupModeButtonHtml() {
+    var on = composerState.mode === 'grouped';
+    return '<button class="ec-mode-btn' + (on ? ' active' : '') + '" id="ec-mode-grouped" type="button" style="height:30px;padding:0 12px;border-radius:7px;border:1px solid var(--line);background:' + (on ? 'var(--green-100)' : 'transparent') + ';border-color:' + (on ? 'var(--green-600)' : 'var(--line)') + ';font-size:12px;cursor:pointer;">One email per group</button>';
+  }
+
+  function groupPickerHtml() {
+    var opts = '<option value="">— Select column —</option>' + composerState.fields.map(function(f) {
+      return '<option value="' + f.key + '"' + (composerState.groupField === f.key ? ' selected' : '') + '>' + f.label + '</option>';
+    }).join('');
+    return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
+      '<span style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;">Group by:</span>' +
+      '<select id="ec-group-field" style="height:30px;border:1px solid var(--line);border-radius:6px;font-size:12px;padding:0 6px;background:var(--surface);color:var(--ink);">' + opts + '</select>' +
+      '<span id="ec-group-summary" style="font-size:12px;color:var(--muted);">' + groupSummaryText() + '</span>' +
+    '</div>';
+  }
+
+  function buildGroups() {
+    var key = composerState.groupField;
+    var order = [], byValue = {};
+    composerState.rows.forEach(function(row) {
+      var v = row[key] == null ? '' : String(row[key]).trim();
+      if (!byValue.hasOwnProperty(v)) { byValue[v] = []; order.push(v); }
+      byValue[v].push(row);
+    });
+    return order.map(function(v) { return { value: v, rows: byValue[v] }; });
+  }
+
+  function groupSummaryText() {
+    if (!composerState.groupField) return '';
+    var groups = buildGroups();
+    var sizes = groups.map(function(g) { return g.rows.length; });
+    var min = Math.min.apply(null, sizes), max = Math.max.apply(null, sizes);
+    var text = groups.length + ' group' + (groups.length !== 1 ? 's' : '') + ', ' + (min === max ? min : min + ' to ' + max) + ' row' + (max !== 1 ? 's' : '') + ' each';
+    if (groups.length > 1 && max === 1) text += ' — every row is its own group; "One email per item" may be what you want';
+    return text;
+  }
+
+  function wireGroupingEvents() {
+    var modeGrouped = document.getElementById('ec-mode-grouped');
+    if (modeGrouped) modeGrouped.onclick = function() { composerState.mode = 'grouped'; renderPanel(); };
+    var groupSel = document.getElementById('ec-group-field');
+    if (groupSel) groupSel.onchange = function() {
+      composerState.groupField = groupSel.value;
+      var summary = document.getElementById('ec-group-summary');
+      if (summary) summary.textContent = groupSummaryText();
+      renderExtraSlot();
+    };
+  }
+
+  function renderExtraSlot() {
+    var extra = document.getElementById('ec-extra');
+    if (extra && composerState.renderExtra) {
+      composerState.renderExtra(extra, { mode: composerState.mode, groupField: composerState.groupField });
+    }
+  }
+
+  function collectAddresses(template, rows) {
+    var seen = {}, out = [];
+    rows.forEach(function(row) {
+      mergeText(template, row).split(/[,;]/).forEach(function(a) {
+        var addr = a.trim();
+        if (addr && !seen[addr.toLowerCase()]) { seen[addr.toLowerCase()] = true; out.push(addr); }
+      });
+    });
+    return out.join(', ');
+  }
+
+  async function sendGrouped(to, cc, bcc, subject, body, attachPdf) {
+    if (!composerState.groupField) { setStatus('Choose a column to group by.', true); return; }
+    var groups = buildGroups();
+    if (!window.confirm('Send ' + groups.length + ' email' + (groups.length !== 1 ? 's' : '') + ' to ' + groups.length + ' group' + (groups.length !== 1 ? 's' : '') + '?')) {
+      setStatus('Cancelled — nothing sent.', false);
+      return;
+    }
+    var sent = 0;
+    for (var i = 0; i < groups.length; i++) {
+      var g = groups[i];
+      var first = g.rows[0];
+      var groupTo = collectAddresses(to, g.rows);
+      if (!groupTo) { setStatus('⚠ Group "' + (g.value || '(blank)') + '" has no To address — skipped.', true); continue; }
+
+      var attachment = null;
+      if (attachPdf) {
+        setStatus('Building PDF for group ' + (i + 1) + ' of ' + groups.length + '...', false);
+        attachment = await buildComposerAttachment(g.rows, { mode: 'grouped', groupField: composerState.groupField, groupValue: g.value });
+        if (!attachment) setStatus('⚠ Could not build PDF for group ' + (i + 1) + ' — sending without it.', true);
+      }
+
+      setStatus('Sending ' + (i + 1) + ' of ' + groups.length + '...', false);
+      var payload = {
+        to: groupTo,
+        cc: collectAddresses(cc, g.rows),
+        bcc: collectAddresses(bcc, g.rows),
+        subject: mergeText(subject, first),
+        htmlBody: wrapInTemplate(renderBodyHtml(body, first)),
+      };
+      if (attachment) { payload.attachmentBase64 = attachment.base64; payload.attachmentName = attachment.name; }
+
+      var resp = await TGE.api('POST', '/api/send-email', payload);
+      if (!resp.ok) setStatus('⚠ Failed on group ' + (i + 1) + ': ' + (resp.data && resp.data.error ? resp.data.error : 'unknown error'), true);
+      else sent++;
+
+      if (i < groups.length - 1) await delay(2500);
+    }
+    setStatus('✅ Sent ' + sent + ' of ' + groups.length + ' group emails.', false);
+  }
+
   // ── Merge logic ───────────────────────────────────────────────────────────────
   function mergeText(template, row) {
     if (!template) return '';
