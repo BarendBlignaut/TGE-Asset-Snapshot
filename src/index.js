@@ -2551,6 +2551,44 @@ async function handleCamchkSnapshots(request, env) {
   return jsonResponse({ events: outEvents, totalCount: rawEvents.length });
 }
 
+// ── camfootage: key check (snapshot key, read-only) ──────────────────────────
+// Tests whether TN360 accepts the snapshot key on the /cameras endpoints the
+// TN360 web app uses for video requests. Tries ?key= and the Token header.
+async function handleCamFootageCheck(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "camera-snapshots", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+  if (!env.TN360_SNAPSHOT_KEY) return jsonResponse({ error: "TN360_SNAPSHOT_KEY not configured." }, 503);
+
+  const reqUrl   = new URL(request.url);
+  const imei     = String(reqUrl.searchParams.get("imei")     || "").trim();
+  const deviceId = String(reqUrl.searchParams.get("deviceId") || "").trim();
+  if (!imei || !deviceId) return jsonResponse({ error: "imei and deviceId are required." }, 400);
+
+  const key   = env.TN360_SNAPSHOT_KEY;
+  const paths = {
+    channels: "/cameras/" + encodeURIComponent(imei) + "/channels",
+    status:   "/cameras/" + encodeURIComponent(deviceId) + "/status"
+  };
+  const out = {};
+  for (const name of Object.keys(paths)) {
+    for (const mode of ["query", "header"]) {
+      const url  = "https://api-au.telematics.com" + paths[name] + (mode === "query" ? "?key=" + encodeURIComponent(key) : "");
+      const hdrs = { "Content-Type": "application/json", "Origin": "https://tn360-au.telematics.com", "Referer": "https://tn360-au.telematics.com/" };
+      if (mode === "header") hdrs["Authorization"] = `Token token="${key}"`;
+      try {
+        const res  = await fetch(url, { method: "GET", headers: hdrs });
+        const text = await res.text();
+        out[name + "_" + mode] = { status: res.status, body: text.slice(0, 300) };
+      } catch (e) {
+        out[name + "_" + mode] = { error: e.message };
+      }
+    }
+  }
+  return jsonResponse(out);
+}
+
 // ── camchk: image size check (no key — hits presigned S3 directly) ───────────
 // Returns James's contract: { filename, bytes, tooSmall } at the 102,400-byte
 // (100 KiB) threshold. bytes = null when unreachable; unreachable ≠ tooSmall.
