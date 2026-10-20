@@ -1469,10 +1469,6 @@ setText('snap-align-status', '❌ ' + e.message);
     historyState.loading = false;
   }
 
-    if (prog) prog.style.display = 'none';
-    historyState.loading = false;
-  }
-
   function renderHistoryGroups(groups, activeSlots, slots) {
     var results = TGE.el('snap-hist-results');
     if (!results) return;
