@@ -82,7 +82,12 @@
     composerState.onSent      = opts.onSent || null;
     composerState.attachmentBuilder = typeof opts.attachmentBuilder === 'function' ? opts.attachmentBuilder : null;
     composerState.attachmentLabel   = opts.attachmentLabel || 'Attach PDF';
-    composerState.attachByDefault   = opts.attachByDefault === true;
+        composerState.attachByDefault   = opts.attachByDefault === true;
+    // Opt-in extras (Merge Mail only): a third "one email per group" mode,
+    // and a slot where the calling page draws its own attachment settings.
+    composerState.allowGrouping     = opts.allowGrouping === true;
+    composerState.groupField        = '';
+    composerState.renderExtra       = typeof opts.renderExtra === 'function' ? opts.renderExtra : null;
     composerState.mode        = 'individual';
     composerState.sending     = false;
 
