@@ -913,7 +913,8 @@ function ensureCameraCardVisible() {
     state.data.cameras = mediaFiles;
     var activeSlots = CAMERA_SLOTS.slice(0, slots);
     state.cameraSlots = activeSlots;
-    state.cameraCapturedAt = latest.timeAt;
+        state.cameraCapturedAt = latest.timeAt;
+    state.cameraDeviceId = latest.deviceId || null;
 
    var alignBtn = TGE.el('snap-align-btn');
     if (alignBtn) alignBtn.onclick = openAlignPanel;
