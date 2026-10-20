@@ -77,7 +77,7 @@ function headerText(cell) {
 function findHeader(rows) {
   for (let i = 0; i < Math.min(rows.length, 40); i++) {
     const row = rows[i] || [];
-    if (headerText(row[0]) !== HEADER_NAME) continue;
+        if (headerText(row[0]) !== HEADER_NAME && headerText(row[0]) !== "vehicle") continue;
     const texts = row.map(headerText);
     const colDate = texts.indexOf(HEADER_DATE);
     const colKm = texts.indexOf(HEADER_KM);
