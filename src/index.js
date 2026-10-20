@@ -2907,6 +2907,8 @@ if (method === "POST" && path.match(/^\/api\/vendors\/\d+\/hardware-types$/)) {
       if (method === "POST" && path === "/api/camchk/snapshots")  return handleCamchkSnapshots(request, env);
       if (method === "GET"  && path === "/api/camchk/image-size") return handleCamchkImageSize(request, env);
       if (method === "GET"  && path === "/api/camfootage/check")  return handleCamFootageCheck(request, env);
+      if (method === "GET"  && path === "/api/camfootage/lookup") return handleCamFootageLookup(request, env);
+      if (method === "POST" && path === "/api/camfootage/request") return handleCamFootageRequest(request, env);
 
       // Camera history — admin
       if (method === "GET"    && path === "/api/admin/camera-history/status")   return handleCameraHistoryStatus(request, env);
