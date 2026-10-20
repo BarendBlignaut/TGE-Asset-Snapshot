@@ -146,7 +146,9 @@
           '<span style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;">Send as:</span>',
           '<button class="ec-mode-btn' + (composerState.mode==='individual'?' active':'') + '" id="ec-mode-individual" type="button" style="height:30px;padding:0 12px;border-radius:7px;border:1px solid var(--line);background:' + (composerState.mode==='individual'?'var(--green-100)':'transparent') + ';border-color:' + (composerState.mode==='individual'?'var(--green-600)':'var(--line)') + ';font-size:12px;cursor:pointer;">One email per item</button>',
           '<button class="ec-mode-btn' + (composerState.mode==='combined'?' active':'') + '" id="ec-mode-combined" type="button" style="height:30px;padding:0 12px;border-radius:7px;border:1px solid var(--line);background:' + (composerState.mode==='combined'?'var(--green-100)':'transparent') + ';border-color:' + (composerState.mode==='combined'?'var(--green-600)':'var(--line)') + ';font-size:12px;cursor:pointer;">One combined email</button>',
+                  (composerState.allowGrouping ? groupModeButtonHtml() : ''),
         '</div>',
+        (composerState.allowGrouping && composerState.mode === 'grouped' ? groupPickerHtml() : ''),
 
         // To / CC / BCC
         '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">',
