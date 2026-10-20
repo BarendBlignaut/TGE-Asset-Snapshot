@@ -313,6 +313,118 @@ function openComposer() {
     });
   }
 
+    // ── Attachment settings (drawn inside the composer) ──────────────────────────
+  var SHEET = '__sheet__';
+
+  function defaultAttachmentSettings() {
+    var title = '', subtitle = '';
+    state.columns.forEach(function(c) {
+      var cl = c.toLowerCase();
+      if (/fleet|name/.test(cl) && !title)            title = c;
+      if (/imei|serial|device/.test(cl) && !subtitle) subtitle = c;
+    });
+    var cols = {};
+    state.columns.forEach(function(c) { cols[c] = true; });
+    return {
+      individual:  { title: title || SHEET, subtitle: subtitle },
+      combined:    { title: SHEET, subtitle: '' },
+      groupHeader: 'both',
+      includeDate: true,
+      cols: cols,
+    };
+  }
+
+  // Inputs are built with createElement so they keep their values when the
+  // composer redraws this section (it does so on mode and group changes).
+  function renderAttachmentSettings(el, ctx) {
+    var att = state.att;
+    if (!att) return;
+    el.innerHTML = '';
+    el.style.cssText = 'background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:10px;';
+
+    var labelCss = 'font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;';
+    var selectCss = 'height:30px;border:1px solid var(--line);border-radius:6px;font-size:12px;padding:0 6px;background:var(--surface);color:var(--ink);';
+
+    function add(parent, tag, css, text) {
+      var n = document.createElement(tag);
+      if (css) n.style.cssText = css;
+      if (text != null) n.textContent = text;
+      parent.appendChild(n);
+      return n;
+    }
+    function select(parent, options, value, onChange) {
+      var sel = add(parent, 'select', selectCss);
+      options.forEach(function(o) {
+        var opt = add(sel, 'option', '', o[1]);
+        opt.value = o[0];
+      });
+      sel.value = value;
+      sel.onchange = function() { onChange(sel.value); };
+      return sel;
+    }
+    function checkbox(parent, text, checked, onChange) {
+      var lab = add(parent, 'label', 'display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;');
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = checked;
+      cb.onchange = function() { onChange(cb.checked); };
+      lab.appendChild(cb);
+      add(lab, 'span', '', text);
+      return cb;
+    }
+
+    // Header row: what the PDF title (and file name) is built from
+    var head = add(el, 'div', 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;');
+    add(head, 'span', labelCss, 'PDF header:');
+    var colOptions = state.columns.map(function(c) { return [c, c]; });
+    if (ctx.mode === 'grouped') {
+      select(head, [['sheet', 'Sheet name'], ['group', 'Group value'], ['both', 'Sheet name + group value']],
+        att.groupHeader, function(v) { att.groupHeader = v; });
+    } else {
+      var m = ctx.mode === 'combined' ? 'combined' : 'individual';
+      add(head, 'span', 'font-size:12px;color:var(--muted);', 'Title');
+      select(head, [[SHEET, 'Sheet name']].concat(colOptions), att[m].title, function(v) { att[m].title = v; });
+      add(head, 'span', 'font-size:12px;color:var(--muted);', 'Subtitle');
+      select(head, [['', '— None —']].concat(colOptions), att[m].subtitle, function(v) { att[m].subtitle = v; });
+    }
+    checkbox(head, "Today's date", att.includeDate, function(v) { att.includeDate = v; });
+
+    // Column ticks: only ticked columns go into the PDF
+    var colHead = add(el, 'div', 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;');
+    add(colHead, 'span', labelCss, 'Columns in PDF:');
+    var count = add(colHead, 'span', 'font-size:12px;color:var(--muted);');
+    var allBtn  = add(colHead, 'button', 'height:24px;font-size:11px;', 'All');
+    var noneBtn = add(colHead, 'button', 'height:24px;font-size:11px;', 'None');
+    allBtn.type = noneBtn.type = 'button';
+    allBtn.className = noneBtn.className = 'btn';
+
+    var list = add(el, 'div', 'display:flex;flex-wrap:wrap;gap:4px 14px;max-height:110px;overflow-y:auto;');
+    var boxes = [];
+    function updateCount() {
+      var n = state.columns.filter(function(c) { return att.cols[c] !== false; }).length;
+      count.textContent = n + ' of ' + state.columns.length + ' ticked';
+    }
+    state.columns.forEach(function(c) {
+      boxes.push(checkbox(list, c, att.cols[c] !== false, function(v) { att.cols[c] = v; updateCount(); }));
+    });
+    function setAll(v) {
+      state.columns.forEach(function(c, i) { att.cols[c] = v; boxes[i].checked = v; });
+      updateCount();
+    }
+    allBtn.onclick  = function() { setAll(true); };
+    noneBtn.onclick = function() { setAll(false); };
+    updateCount();
+  }
+
+  function formatDate(d) {
+    // Round to the minute; dates read from Excel can be a few seconds off
+    var t = new Date(Math.round(d.getTime() / 60000) * 60000);
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    var text = p(t.getDate()) + '/' + p(t.getMonth() + 1) + '/' + t.getFullYear();
+    if (t.getHours() || t.getMinutes()) text += ' ' + p(t.getHours()) + ':' + p(t.getMinutes());
+    return text;
+  }
+
   function sanitizeKey(s) {
     return String(s).replace(/[^a-zA-Z0-9_]/g, '_');
   }
