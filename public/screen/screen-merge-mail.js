@@ -281,10 +281,8 @@ function openComposer() {
     var checked = Array.prototype.slice.call(document.querySelectorAll('.mm-row-check:checked'));
     if (!checked.length) { alert('Select at least one row first.'); return; }
 
-    var titleField    = (TGE.el('mm-pdf-title')    || {}).value || '';
-    var subtitleField = (TGE.el('mm-pdf-subtitle') || {}).value || '';
-    var includeDate   = TGE.el('mm-pdf-date') ? TGE.el('mm-pdf-date').checked : true;
     var fileName      = state.fileName.replace(/\.[^.]+$/, '') || 'Merge Mail';
+    if (!state.att) state.att = defaultAttachmentSettings();
 
     var rows = checked.map(function(cb) { return state.rows[parseInt(cb.dataset.row, 10)]; });
     var fields = state.columns.map(function(c) { return { key: sanitizeKey(c), label: c }; });
@@ -298,29 +296,49 @@ function openComposer() {
       rows: mergeRows,
       fields: fields,
       imagesField: null,
-      attachmentBuilder: function(selectedRows) {
-        // Build PDF for the first row of this send batch
-        var sourceRow = selectedRows && selectedRows[0];
-        if (!sourceRow) return Promise.resolve(null);
-        // Map sanitized keys back to original column values
-        var rawRow = {};
-        state.columns.forEach(function(c) { rawRow[c] = sourceRow[sanitizeKey(c)]; });
-        return TGE.PDF.attachment({
-          route:   '/api/merge-mail-pdf',
-          module:  'MergeMail',
-          type:    'Report',
-          payload: {
-            row:          rawRow,
-            columns:      state.columns,
-            titleField:   titleField,
-            subtitleField: subtitleField,
-            includeDate:  includeDate,
-            fileName:     fileName,
-          }
+      // One PDF table holding the rows of this email (one row, a group, or
+      // all of them), with only the ticked columns. Its header also names the file.
+      attachmentBuilder: async function(selectedRows, ctx) {
+        if (!selectedRows || !selectedRows.length) return null;
+        var att = state.att;
+        var columns = state.columns.filter(function(c) { return att.cols[c] !== false; });
+        if (!columns.length) throw new Error('Tick at least one column to include in the PDF.');
+        // Map sanitized keys back to original column names
+        var rawRows = selectedRows.map(function(r) {
+          var raw = {};
+          columns.forEach(function(c) { raw[c] = r[sanitizeKey(c)]; });
+          return raw;
         });
+        var first = selectedRows[0];
+        function colValue(c) { var v = first[sanitizeKey(c)]; return v == null ? '' : String(v).trim(); }
+        var title, subtitle = '';
+        if (ctx && ctx.mode === 'grouped') {
+          var groupValue = ctx.groupValue || '(blank)';
+          title = att.groupHeader === 'sheet' ? state.sheetName
+                : att.groupHeader === 'group' ? groupValue
+                : state.sheetName + ' - ' + groupValue;
+        } else {
+          var m = ctx && ctx.mode === 'combined' ? 'combined' : 'individual';
+          title = att[m].title === SHEET ? state.sheetName : (colValue(att[m].title) || state.sheetName);
+          subtitle = att[m].subtitle ? colValue(att[m].subtitle) : '';
+        }
+        var resp = await TGE.api('POST', '/api/merge-mail-pdf', {
+          rows: rawRows,
+          columns: columns,
+          title: title || fileName,
+          subtitle: subtitle,
+          includeDate: att.includeDate,
+          fileName: fileName,
+        });
+        if (!resp.ok || !resp.data || !resp.data.base64) {
+          throw new Error((resp.data && resp.data.error) || 'PDF generation failed.');
+        }
+        return { base64: resp.data.base64, name: resp.data.fileName };
       },
-      attachmentLabel:  'Attach Row PDF',
+      attachmentLabel:  'Attach PDF',
       attachByDefault:  true,
+      allowGrouping:    true,
+      renderExtra:      renderAttachmentSettings,
       onSent: function() {}
     });
   }
