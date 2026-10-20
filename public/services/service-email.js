@@ -193,6 +193,8 @@
             '</label>'
           : ''),
 
+                (composerState.renderExtra ? '<div id="ec-extra"></div>' : ''),
+
         '<div id="ec-status" style="font-size:12px;color:var(--muted);"></div>',
 
       '</div>',
