@@ -1420,7 +1420,143 @@ async function handleSnapshotPdf(request, env) {
     return jsonResponse({ error: "Snapshot PDF generation failed: " + e.message }, 500);
   }
 }
+// ── Merge Mail PDF: landscape table of the rows being sent ────────────────────
+// One row per asset, only the columns the user ticked, header row repeated on
+// every page. Accepts { rows, columns, title, subtitle, includeDate, fileName }.
+// Still accepts the older single-row body { row, titleField, subtitleField }
+// so the page keeps working while the screen is being updated.
 async function handleMergeMailPdf(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "merge-mail", "export-email-pdf");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+  const body     = await safeJson(request);
+  const rows     = Array.isArray(body.rows) ? body.rows : (body.row ? [body.row] : []);
+  const columns  = Array.isArray(body.columns) && body.columns.length ? body.columns : Object.keys(rows[0] || {});
+  const fileName = String(body.fileName || 'Merge Mail').trim();
+  const includeDate = body.includeDate !== false;
+  if (!rows.length || !columns.length) return jsonResponse({ error: "rows and columns are required." }, 400);
+
+  const first = rows[0];
+  const titleField    = String(body.titleField    || '').trim();
+  const subtitleField = String(body.subtitleField || '').trim();
+  const titleVal = String(body.title || '').trim()
+    || (titleField && first[titleField] != null && String(first[titleField]).trim() !== '' ? String(first[titleField]) : fileName);
+  const subtitleVal = String(body.subtitle || '').trim()
+    || (subtitleField && first[subtitleField] != null ? String(first[subtitleField]) : '');
+
+  try {
+    const pdfDoc = await PDFDocument.create();
+    const font     = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const pageW = 841.89, pageH = 595.28, margin = 28;
+    const brand = PDF_BRAND_GREEN;
+    const ink   = rgb(0.07,0.09,0.08);
+    const muted = rgb(0.42,0.45,0.50);
+    const line  = rgb(0.82,0.84,0.86);
+    const headerFill = rgb(0.94,0.97,0.95);
+    const zebraFill  = rgb(0.985,0.988,0.990);
+
+    const generatedAt = new Date().toLocaleString("en-AU", {
+      timeZone: "Australia/Sydney", day: "2-digit", month: "2-digit",
+      year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true
+    });
+    const todayDate = new Date().toLocaleDateString("en-AU", {
+      timeZone: "Australia/Sydney", day: "2-digit", month: "2-digit", year: "numeric"
+    });
+
+    // Standard PDF fonts only cover Western characters; anything else would
+    // stop the whole PDF, so it is swapped for "?".
+    function safe(v) {
+      return String(v == null ? "" : v).replace(/[\r\n\t]+/g, " ")
+        .replace(/[^\x20-\x7E\xA0-\xFF–—‘’“”…€]/g, "?");
+    }
+    function tw(text, size, fnt) { return fnt.widthOfTextAtSize(text, size); }
+    function fit(text, maxW, size, fnt) {
+      let s = safe(text);
+      if (tw(s, size, fnt) <= maxW) return s;
+      while (s.length && tw(s + "…", size, fnt) > maxW) s = s.slice(0, -1);
+      return s + "…";
+    }
+
+    const docTitle = safe(titleVal + (subtitleVal ? ' — ' + subtitleVal : ''));
+    const docSub   = (includeDate ? todayDate + '   |   ' : '') + rows.length + ' row' + (rows.length !== 1 ? 's' : '') + '   |   Generated ' + generatedAt;
+
+    // Column widths follow the longest text in each column (capped), then
+    // scale to the page width. More columns means a smaller font.
+    const tableX = margin, tableW = pageW - margin * 2;
+    const size  = columns.length > 14 ? 6 : (columns.length > 9 ? 6.8 : 7.5);
+    const hSize = size;
+    const pad = 3;
+    const natural = columns.map(function(c) {
+      let w = tw(safe(c), hSize, fontBold);
+      rows.forEach(function(r) { w = Math.max(w, tw(safe(r[c]), size, font)); });
+      return Math.min(Math.max(w + pad * 2, 28), 170);
+    });
+    const total = natural.reduce(function(a, b) { return a + b; }, 0);
+    const widths = natural.map(function(w) { return w * tableW / total; });
+
+    const rowH = 15, headerH = 18;
+    const tableTopFirst = pageH - 78, tableTopNext = pageH - 60, tableBottom = 40;
+    const pages = [];
+    let page = null, y = 0;
+
+    function drawHeaderBlock(pg, isFirst) {
+      pg.drawRectangle({ x: 0, y: pageH - (isFirst ? 56 : 42), width: pageW, height: isFirst ? 56 : 42, color: brand });
+      pg.drawText(fit(docTitle, pageW - margin * 2, isFirst ? 15 : 12, fontBold), { x: margin, y: pageH - (isFirst ? 28 : 24), size: isFirst ? 15 : 12, font: fontBold, color: rgb(1, 1, 1) });
+      pg.drawText(safe(isFirst ? docSub : 'Continued'), { x: margin, y: pageH - (isFirst ? 45 : 36), size: 8, font, color: rgb(0.83, 0.94, 0.15) });
+    }
+
+    function drawTableHeader(pg, yy) {
+      pg.drawRectangle({ x: tableX, y: yy - headerH, width: tableW, height: headerH, color: headerFill, borderColor: line, borderWidth: 0.7 });
+      let x = tableX;
+      columns.forEach(function(c, i) {
+        pg.drawText(fit(c, widths[i] - pad * 2, hSize, fontBold), { x: x + pad, y: yy - 12, size: hSize, font: fontBold, color: rgb(0.19, 0.31, 0.23) });
+        x += widths[i];
+      });
+      pg.drawLine({ start: { x: tableX, y: yy - headerH }, end: { x: tableX + tableW, y: yy - headerH }, thickness: 1, color: brand });
+    }
+
+    function newPage(isFirst) {
+      page = pdfDoc.addPage([pageW, pageH]);
+      pages.push(page);
+      drawHeaderBlock(page, isFirst);
+      y = isFirst ? tableTopFirst : tableTopNext;
+      drawTableHeader(page, y);
+      y -= headerH;
+    }
+
+    newPage(true);
+    rows.forEach(function(row, idx) {
+      if (y - rowH < tableBottom) newPage(false);
+      page.drawRectangle({ x: tableX, y: y - rowH, width: tableW, height: rowH, color: idx % 2 === 1 ? zebraFill : rgb(1, 1, 1), borderColor: rgb(0.90, 0.91, 0.92), borderWidth: 0.35 });
+      let x = tableX;
+      columns.forEach(function(c, i) {
+        const v = row[c] == null || String(row[c]).trim() === '' ? '—' : row[c];
+        page.drawText(fit(v, widths[i] - pad * 2, size, font), { x: x + pad, y: y - 10.5, size, font, color: v === '—' ? muted : ink });
+        x += widths[i];
+      });
+      y -= rowH;
+    });
+
+    pages.forEach(function(pg, i) {
+      const foot = safe(`Page ${i + 1} of ${pages.length}   —   ${fileName}   —   Generated ${generatedAt}`);
+      pg.drawText(fit(foot, tableW, 7, font), { x: margin, y: 18, size: 7, font, color: muted });
+    });
+
+    const pdfBytes = await pdfDoc.save();
+    let binary = '';
+    const bytes = new Uint8Array(pdfBytes);
+    for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+    const base64   = btoa(binary);
+    const safeName = String(body.title || titleVal).replace(/[\\/:*?"<>|]+/g, '-').trim() || 'merge-mail';
+    return jsonResponse({ ok: true, base64, fileName: safeName + '.pdf', sizeBytes: pdfBytes.length, pages: pages.length });
+  } catch(e) {
+    return jsonResponse({ error: 'Merge Mail PDF generation failed: ' + e.message }, 500);
+  }
+}
+
+async function handleMergeMailPdfOld(request, env) {
   const auth = await requireSession(request, env);
   if (!auth.ok) return auth.response;
   const perm = await hasPermission(env, auth.session.role_id, "merge-mail", "export-email-pdf");
