@@ -1347,7 +1347,129 @@ setText('snap-align-status', '❌ ' + e.message);
     if (panel) panel.style.display = 'none';
   }
 
+  // Camera history: every snapshot from the last 14 days, newest day first,
+  // straight from TN360 (same live route as the Camera History screen, without
+  // its missing-camera search). One request per day so each day shows as it loads.
   async function loadHistory(vehicle, cam) {
+    if (historyState.loading) return;
+    historyState.loading = true;
+
+    var body = TGE.el('snap-hist-body');
+    if (!body) { historyState.loading = false; return; }
+
+    var model       = cam && cam.model && cam.model.name;
+    var slots       = model === 'MultiIQ' ? 5 : 2;
+    var activeSlots = CAMERA_SLOTS.slice(0, slots);
+    var deviceId    = state.cameraDeviceId || cam.id;
+    var DAYS        = 14;
+
+    body.innerHTML = [
+      '<div class="snap-hist-progress" id="snap-hist-prog">',
+        '<div style="font-size:12px;font-weight:600;color:var(--ink);" id="snap-hist-prog-text">Loading snapshot history...</div>',
+        '<div class="snap-hist-progress-bar"><div class="snap-hist-progress-fill" id="snap-hist-prog-fill" style="width:5%"></div></div>',
+      '</div>',
+      '<div id="snap-hist-results"></div>',
+    ].join('');
+
+    var prog     = TGE.el('snap-hist-prog');
+    var progText = TGE.el('snap-hist-prog-text');
+    var progFill = TGE.el('snap-hist-prog-fill');
+    var resEl    = TGE.el('snap-hist-results');
+
+    if (!deviceId) {
+      if (prog) prog.style.display = 'none';
+      if (resEl) resEl.innerHTML = '<div style="text-align:center;color:var(--danger);padding:40px;font-size:13px;">No camera device ID found for this vehicle.</div>';
+      historyState.loading = false;
+      return;
+    }
+
+    var histGallery = [];
+    TGE._lbGallery = histGallery;
+    TGE._lbOpen    = function(idx) { openLightbox(TGE._lbGallery, idx); };
+
+    var total = 0, failedDays = 0;
+    var dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+
+    for (var d = 0; d < DAYS; d++) {
+      if (!historyState.loading) break;   // panel closed
+
+      var from = new Date(dayStart.getTime() - d * 86400000);
+      var to   = d === 0 ? new Date() : new Date(from.getTime() + 86400000 - 1000);
+      if (progText) progText.textContent = 'Loading ' + from.toLocaleDateString('en-AU') + ' (day ' + (d + 1) + ' of ' + DAYS + ')...';
+
+      var events = [];
+      try {
+        var res = await TGE.api('POST', '/api/camchk/snapshots', {
+          vehicleId: String(vehicle.id),
+          deviceId:  String(deviceId),
+          from:      from.toISOString(),
+          to:        to.toISOString(),
+        });
+        if (res.ok && res.data && Array.isArray(res.data.events)) events = res.data.events;
+        else failedDays++;
+      } catch(e) {
+        failedDays++;
+        TGE.diagnostics.log({ category:'History', level:'Warn', module:'snapshot', action:'loadHistory', message: e.message });
+      }
+
+      events = events.filter(function(ev) {
+        return (ev.attachments || []).some(function(a) { return a.url; });
+      });
+      events.sort(function(a, b) { return new Date(b.timeAt) - new Date(a.timeAt); });
+
+      if (events.length && resEl) {
+        total += events.length;
+        var dayLabel = from.toLocaleDateString('en-AU', { weekday:'short', day:'2-digit', month:'2-digit', year:'numeric' });
+        var html = '<div style="font-size:13px;font-weight:800;color:var(--green-700, var(--ink));margin:14px 0 8px;">' +
+          dayLabel + ' — ' + events.length + ' snapshot' + (events.length !== 1 ? 's' : '') + '</div>';
+
+        html += events.map(function(ev) {
+          var attachments = ev.attachments || [];
+          var eventGalleryStart = histGallery.length;
+          // One gallery entry per grid slot (same slot mapping as the grid),
+          // so clicking a picture opens that picture in the lightbox
+          var bySlot = {}, unmapped = [];
+          attachments.forEach(function(att) {
+            var slotId = POSITION_MAP[String(att.position || '').toUpperCase()];
+            if (slotId) bySlot[slotId] = att.url;
+            else if (att.url) unmapped.push(att.url);
+          });
+          ['unsure1', 'unsure2', 'unsure3'].forEach(function(id, i) { if (unmapped[i]) bySlot[id] = unmapped[i]; });
+          activeSlots.forEach(function(slot) {
+            var url = bySlot[slot.id];
+            histGallery.push({
+              url:   url ? '/api/image-proxy?url=' + encodeURIComponent(url) : '',
+              label: slot.label + ' · ' + formatTs(ev.timeAt) + (url ? '' : ' · No image'),
+            });
+          });
+          return '<div class="snap-hist-group">' +
+            '<div class="snap-hist-time" style="color:var(--ink);font-size:12px;font-weight:700;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--line);">' +
+              formatTs(ev.timeAt) +
+            '</div>' +
+            '<div class="snap-hist-grid" style="grid-template-columns:repeat(' + slots + ',minmax(0,1fr));gap:8px;">' +
+              buildCameraGridFromAttachments(attachments, activeSlots, histGallery, eventGalleryStart) +
+            '</div>' +
+          '</div>';
+        }).join('');
+
+        resEl.insertAdjacentHTML('beforeend', html);
+      }
+
+      if (progFill) progFill.style.width = Math.round(((d + 1) / DAYS) * 100) + '%';
+    }
+
+    if (prog) prog.style.display = 'none';
+    if (!total && resEl) {
+      resEl.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px;">' +
+        (failedDays === DAYS ? 'Could not load camera history from TN360.' : 'No camera snapshots found for the last 14 days.') + '</div>';
+    } else if (failedDays && resEl) {
+      resEl.insertAdjacentHTML('beforeend', '<div style="text-align:center;color:var(--muted);padding:12px;font-size:12px;">' + failedDays + ' day' + (failedDays !== 1 ? 's' : '') + ' could not be loaded.</div>');
+    }
+    historyState.loading = false;
+  }
+
+  async function loadHistoryOld(vehicle, cam) {
     if (historyState.loading) return;
     historyState.loading = true;
 
