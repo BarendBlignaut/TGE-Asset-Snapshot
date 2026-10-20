@@ -10,7 +10,10 @@
   var state = {
     columns: [],
     rows:    [],
-    fileName: '',
+        fileName: '',
+    sheetName: '',
+    // Attachment settings chosen in the composer. Cleared on each new file.
+    att: null,
   };
 
   function render() {
