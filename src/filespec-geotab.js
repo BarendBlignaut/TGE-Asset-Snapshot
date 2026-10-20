@@ -217,8 +217,7 @@ export async function runGeoTabKmPipeline(env, importId) {
                value = excluded.value,
                vendor_id = excluded.vendor_id,
                import_id = excluded.import_id,
-               updated_at = excluded.updated_at
-             WHERE vendor_id = excluded.vendor_id`
+               updated_at = excluded.updated_at`
           ).bind(fleetNumber, reading.date, reading.km, VENDOR_ID, importId, now, now)
         );
       }
