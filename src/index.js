@@ -2589,6 +2589,112 @@ async function handleCamFootageCheck(request, env) {
   return jsonResponse(out);
 }
 
+// ── camfootage: Camera Footage page (snapshot key) ───────────────────────────
+// Reproduces TN360's "Request video footage" flow (channels → status → POST
+// videos). The requester is fixed to Barend's TN360 user id (his call, 2026-10-20).
+const CAMFOOTAGE_REQUESTOR_ID = 796391;
+const CAMFOOTAGE_MAX_SECONDS  = 900;   // whole clip, up to 15 min
+const CAMFOOTAGE_PART_SECONDS = 120;   // TN360 limit per request (2 min)
+
+async function camFootageDevice(env, imei) {
+  const keys = [env.TN360_SNAPSHOT_KEY, env.TN360_API_KEY].filter(Boolean);
+  for (const key of keys) {
+    const res = await fetch(`https://api-au.telematics.com/v1/devices/${encodeURIComponent(imei)}?pruning=B2B&key=${encodeURIComponent(key)}`, { headers: { "Content-Type": "application/json" } });
+    if (res.ok) return await res.json();
+  }
+  return null;
+}
+
+// GET /api/camfootage/lookup?imei= → device id, vehicle id, channels and status.
+async function handleCamFootageLookup(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "camera-footage", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+  if (!env.TN360_SNAPSHOT_KEY) return jsonResponse({ error: "TN360_SNAPSHOT_KEY not configured." }, 503);
+
+  const imei = String(new URL(request.url).searchParams.get("imei") || "").trim();
+  if (!/^\d{10,20}$/.test(imei)) return jsonResponse({ error: "Enter a valid camera IMEI." }, 400);
+
+  try {
+    const device = await camFootageDevice(env, imei);
+    if (!device || !device.id) return jsonResponse({ error: "No TN360 device found for IMEI " + imei + "." }, 404);
+    const key  = encodeURIComponent(env.TN360_SNAPSHOT_KEY);
+    const hdrs = { "Content-Type": "application/json" };
+    const [chRes, stRes] = await Promise.all([
+      fetch(`https://api-au.telematics.com/cameras/${encodeURIComponent(imei)}/channels?key=${key}`, { headers: hdrs }),
+      fetch(`https://api-au.telematics.com/cameras/${encodeURIComponent(device.id)}/status?key=${key}`, { headers: hdrs })
+    ]);
+    if (!chRes.ok) return jsonResponse({ error: "TN360 channels lookup failed.", status: chRes.status }, 502);
+    const channels = await chRes.json();
+    const status   = stRes.ok ? await stRes.json() : null;
+    return jsonResponse({
+      imei: imei,
+      deviceId: device.id,
+      vehicleId: device.vehicleId || null,
+      channels: Array.isArray(channels) ? channels : [],
+      status: status ? { state: status.state, ignitionStatus: status.ignitionStatus, lastUpdated: status.lastUpdated, dataPlan: status.dataPlan || null } : null
+    });
+  } catch (e) {
+    return jsonResponse({ error: "Network error during lookup: " + e.message }, 502);
+  }
+}
+
+// POST /api/camfootage/request { imei, start, end } → TN360 video request.
+// start/end are ISO UTC strings; Length is sent in whole seconds. Every channel
+// the camera reports is requested automatically. Clips longer than 2 minutes are
+// sent as back-to-back requests of up to 2 minutes each.
+async function handleCamFootageRequest(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "camera-footage", "run");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+  if (!env.TN360_SNAPSHOT_KEY) return jsonResponse({ error: "TN360_SNAPSHOT_KEY not configured." }, 503);
+
+  const body    = await safeJson(request);
+  const imei    = String(body.imei || "").trim();
+  const startMs = new Date(body.start).getTime();
+  const endMs   = new Date(body.end).getTime();
+  if (!/^\d{10,20}$/.test(imei)) return jsonResponse({ error: "Enter a valid camera IMEI." }, 400);
+  if (isNaN(startMs) || isNaN(endMs)) return jsonResponse({ error: "Start and end date/time are required." }, 400);
+  const length = Math.round((endMs - startMs) / 1000);
+  if (length < 1) return jsonResponse({ error: "End must be after start." }, 400);
+  if (length > CAMFOOTAGE_MAX_SECONDS) return jsonResponse({ error: "Maximum length is " + CAMFOOTAGE_MAX_SECONDS + " seconds." }, 400);
+
+  try {
+    const device = await camFootageDevice(env, imei);
+    if (!device || !device.id) return jsonResponse({ error: "No TN360 device found for IMEI " + imei + "." }, 404);
+    const chRes = await fetch(`https://api-au.telematics.com/cameras/${encodeURIComponent(imei)}/channels?key=${encodeURIComponent(env.TN360_SNAPSHOT_KEY)}`, { headers: { "Content-Type": "application/json" } });
+    if (!chRes.ok) return jsonResponse({ error: "TN360 channels lookup failed.", status: chRes.status }, 502);
+    const chList  = await chRes.json();
+    const cameras = (Array.isArray(chList) ? chList : []).map(function (c) { return c && c.channel; }).filter(Boolean);
+    if (!cameras.length) return jsonResponse({ error: "TN360 reports no cameras for IMEI " + imei + "." }, 404);
+    const parts = [];
+    for (let offset = 0; offset < length; offset += CAMFOOTAGE_PART_SECONDS) {
+      const payload = {
+        Start: new Date(startMs + offset * 1000).toISOString(),
+        Length: Math.min(CAMFOOTAGE_PART_SECONDS, length - offset),
+        Provider: "IQCamera",
+        RequestorId: CAMFOOTAGE_REQUESTOR_ID,
+        CheckDuplicate: true,
+        Camera: cameras
+      };
+      const res  = await fetch(`https://api-au.telematics.com/cameras/${encodeURIComponent(device.id)}/videos?key=${encodeURIComponent(env.TN360_SNAPSHOT_KEY)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Origin": "https://tn360-au.telematics.com", "Referer": "https://tn360-au.telematics.com/" },
+        body: JSON.stringify(payload)
+      });
+      const text = await res.text();
+      parts.push({ ok: res.ok, tn360Status: res.status, tn360Body: text.slice(0, 300), sent: payload });
+      if (!res.ok) break;   // stop on the first refusal so we don't burn allowance
+    }
+    const allOk = parts.length > 0 && parts.every(function (p) { return p.ok; });
+    return jsonResponse({ ok: allOk, deviceId: device.id, cameras: cameras, totalSeconds: length, parts: parts }, allOk ? 200 : 502);
+  } catch (e) {
+    return jsonResponse({ error: "Network error sending request: " + e.message }, 502);
+  }
+}
+
 // ── camchk: image size check (no key — hits presigned S3 directly) ───────────
 // Returns James's contract: { filename, bytes, tooSmall } at the 102,400-byte
 // (100 KiB) threshold. bytes = null when unreachable; unreachable ≠ tooSmall.
