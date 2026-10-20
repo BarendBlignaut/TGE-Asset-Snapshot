@@ -128,7 +128,7 @@
     var fieldOptions = composerState.fields.map(function(f) {
       return '<option value="' + f.key + '">' + f.label + '</option>';
     }).join('');
-    var canUseMergeFields = composerState.mode === 'individual' || composerState.rows.length === 1;
+        var canUseMergeFields = composerState.mode === 'individual' || composerState.mode === 'grouped' || composerState.rows.length === 1;
 
     panel.innerHTML = [
       '<div style="padding:14px 20px;background:var(--green-900);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">',
