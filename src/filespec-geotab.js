@@ -91,6 +91,7 @@ function findHeader(rows) {
 function formatDateCell(cell) {
   if (cell instanceof Date) {
     const y = cell.getFullYear();
+    if (y < 2026) return null; // blank dates (1899) and old reports are never loaded
     const m = String(cell.getMonth() + 1).padStart(2, "0");
     const d = String(cell.getDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
