@@ -61,7 +61,7 @@
           '<div style="overflow-x:auto;max-height:280px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;">',
             '<table id="mm-select-table" style="width:100%;border-collapse:collapse;font-size:12px;"></table>',
           '</div>',
-         '<div class="card" style="margin-top:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:16px;">',
+                 '<div class="card" style="display:none;margin-top:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:16px;">',
           '<div class="card-kicker">PDF Header</div>',
           '<div class="card-title" style="margin-bottom:12px;">Configure PDF Attachment Header</div>',
           '<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;">',
