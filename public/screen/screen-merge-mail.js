@@ -170,10 +170,17 @@
 
   function parseXlsx(arrayBuffer) {
     if (typeof XLSX === 'undefined') throw new Error('XLSX library not loaded. Add SheetJS to your HTML.');
-    var wb = XLSX.read(arrayBuffer, { type: 'array' });
+    var wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
     var sheet = wb.Sheets[wb.SheetNames[0]];
     var json  = XLSX.utils.sheet_to_json(sheet, { defval: '' });
     if (!json.length) throw new Error('No data found in sheet');
+    state.sheetName = wb.SheetNames[0] || state.sheetName;
+    // Excel dates arrive as dates; show them as dd/mm/yyyy (plus time if any)
+    json.forEach(function (row) {
+      Object.keys(row).forEach(function (k) {
+        if (row[k] instanceof Date) row[k] = formatDate(row[k]);
+      });
+    });
     state.columns = Object.keys(json[0]);
     state.rows    = json;
   }
