@@ -2792,6 +2792,23 @@ if (
         );
       }
 
+           if (
+        ingestResult.source === "GeoTab" &&
+        Number.isInteger(Number(ingestResult.importId))
+      ) {
+        ctx.waitUntil(
+          runGeoTabKmPipeline(
+            env,
+            Number(ingestResult.importId)
+          ).catch((error) => {
+            console.error(
+              "GeoTab auto-pipeline failed (import record already updated):",
+              error instanceof Error ? error.message : String(error)
+            );
+          })
+        );
+      }
+
       if (
         ingestResult.source === "Workshop" &&
         Number.isInteger(Number(ingestResult.importId))
