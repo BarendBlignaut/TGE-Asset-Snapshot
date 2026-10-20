@@ -558,7 +558,10 @@ var subjectInput = document.getElementById('ec-subject');
       //    loop below, so each recipient's email only contains THEIR asset's
       //    photos — never built once up-front and reused across all sends.
 
-      if (composerState.mode === 'combined') {
+            if (composerState.mode === 'grouped') {
+        await sendGrouped(to, cc, bcc, subject, body, attachPdf);
+
+      } else if (composerState.mode === 'combined') {
         setStatus('Sending combined email...', false);
 
         var pdfAttachmentCombined = null;
