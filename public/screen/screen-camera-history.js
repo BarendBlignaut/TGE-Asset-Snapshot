@@ -114,7 +114,52 @@
       '.cam-hist-fs .fs-nav-next { right:0.75rem; }',
       '.cam-hist-fs .fs-close { position:fixed; top:1rem; right:1rem; z-index:10001; background:#fff; color:#111; border:none; width:2.5rem; height:2.5rem; border-radius:9999px; font-size:1.5rem; line-height:1; cursor:pointer; font-weight:700; box-shadow:0 2px 12px rgba(0,0,0,0.3); padding:0; }',
       '.cam-hist-fs .fs-close:hover { background:#f3f4f6; }',
-      '.cam-hist-fs .fs-caption { position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); color:#e5e7eb; font-size:0.875rem; text-align:center; max-width:90vw; pointer-events:none; }'
+            '.cam-hist-fs .fs-caption { position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); color:#e5e7eb; font-size:0.875rem; text-align:center; max-width:90vw; pointer-events:none; }',
+
+      // ── App theme ── restyles the page above to match the rest of the app
+      // (colours, header, cards, buttons, table). Same selectors, so these win.
+      // The amber "historical" highlights are kept: they mean something.
+      '.cam-hist { font-family:inherit; color:var(--ink); }',
+      '.cam-hist .ch-head { background:linear-gradient(135deg, var(--green-900) 0%, var(--green-800) 100%); border-radius:var(--radius-lg); padding:20px 24px; margin-bottom:16px; }',
+      '.cam-hist .ch-title { font-size:18px; font-weight:700; color:#fff; }',
+      '.cam-hist .ch-sub { font-size:12px; color:rgba(255,255,255,0.55); margin-top:2px; }',
+      '.cam-hist .ch-card { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-lg); box-shadow:none; padding:20px; }',
+      '.cam-hist .ch-btn { height:38px; padding:0 16px; border-radius:8px; font-size:13px; font-weight:600; }',
+      '.cam-hist .ch-btn-primary { background:var(--green-700); color:var(--yellow); border:1px solid var(--green-700); }',
+      '.cam-hist .ch-btn-primary:hover { background:var(--green-800); }',
+      '.cam-hist .ch-btn-outline { background:var(--surface); border:1px solid var(--line); color:var(--ink-2); font-weight:600; }',
+      '.cam-hist .ch-btn-outline:hover:not(:disabled) { background:var(--surface-3); }',
+      '.cam-hist .ch-label, .cam-hist .ch-field-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--muted); }',
+      '.cam-hist .ch-field-label { margin-bottom:6px; }',
+      '.cam-hist .ch-field-hint { color:var(--muted-2); text-transform:none; letter-spacing:0; font-weight:400; }',
+      '.cam-hist .ch-select { height:38px; border:1px solid var(--line); border-radius:8px; font-size:13px; color:var(--ink); background:var(--surface); }',
+      '.cam-hist textarea.ch-input { border:1px solid var(--line); border-radius:8px; font-size:13px; color:var(--ink); background:var(--surface); }',
+      '.cam-hist .ch-select:focus, .cam-hist textarea.ch-input:focus { border-color:var(--green-600); }',
+      '.cam-hist .ch-tip { color:var(--muted-2); }',
+      '.cam-hist .ch-status { background:var(--green-50); border:1px solid var(--line); border-radius:8px; color:var(--green-700); font-size:13px; }',
+      '.cam-hist .ch-status .bulk-ico--spin { border-color:rgba(0,122,59,0.25) !important; border-top-color:var(--green-700) !important; }',
+      '.cam-hist .ch-error { background:var(--danger-bg); border:1px solid rgba(192,57,43,0.3); border-radius:8px; color:var(--danger); font-size:13px; }',
+      '.cam-hist-overlay { background:rgba(240,244,241,0.75); }',
+      '.cam-hist-overlay .pc-panel { border:1px solid var(--line); border-radius:var(--radius-lg); }',
+      '.cam-hist-overlay .pc-ring-bg { stroke:var(--line-2); }',
+      '.cam-hist-overlay .pc-ring-fg { stroke:var(--green-600); }',
+      '.cam-hist-overlay .pc-pct, .cam-hist-overlay .pc-text { color:var(--ink); }',
+      '.cam-hist-overlay .pc-sub { color:var(--muted); }',
+      '.cam-hist-overlay .pc-track { background:var(--line-2); }',
+      '.cam-hist-overlay .pc-fill { background:linear-gradient(to right, var(--green-700), var(--green-600)); }',
+      '.cam-hist .snap-table { border:1px solid var(--line); border-radius:var(--radius); box-shadow:none; background:var(--surface); }',
+      '.cam-hist .snap-table thead { background:var(--surface-2); color:var(--muted); }',
+      '.cam-hist .snap-table th { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; padding:9px 6px; border-bottom:1px solid var(--line); }',
+      '.cam-hist .snap-th-sub { text-transform:none; letter-spacing:0; color:var(--muted-2); }',
+      '.cam-hist .snap-table td { border-bottom:1px solid var(--line-2); }',
+      '.cam-hist .snap-table td:first-child { color:var(--ink); }',
+      '.cam-hist .snap-table tbody tr:hover { background:var(--surface-2); }',
+      '.cam-hist .thumb-wrap img { border:1px solid var(--line); background:var(--surface-3); }',
+      '.cam-hist .thumb-wrap img:hover { border-color:var(--green-600); box-shadow:0 2px 8px rgba(0,166,81,0.25); }',
+      '.cam-hist .snap-time, .cam-hist .unsure-hint { color:var(--muted); }',
+      '.cam-hist .thumb-missing { color:var(--muted-2); }',
+      '.cam-hist .snap-failed, .cam-hist .snap-not-found { color:var(--danger); }',
+      '.cam-hist .snap-not-found-detail { color:var(--danger); }'
     ].join('\n');
     var style = document.createElement('style');
     style.id = STYLE_ID;
