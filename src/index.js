@@ -34,7 +34,14 @@ import {
   handleWalkPowerFleet,
   handleProcessPowerFleet,
   runPowerFleetKmPipeline,
+  runPowerFleetKmPipeline,
 } from "./filespec-powerfleet.js";
+
+import {
+  handleWalkGeoTab,
+  handleProcessGeoTab,
+  runGeoTabKmPipeline,
+} from "./filespec-geotab.js";
 
 import {
   handleWalkWorkshop,
