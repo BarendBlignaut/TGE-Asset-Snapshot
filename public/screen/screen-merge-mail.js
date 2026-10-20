@@ -125,6 +125,8 @@
 
   function handleFile(file) {
     state.fileName = file.name;
+    state.sheetName = file.name.replace(/\.[^.]+$/, '');
+    state.att = null;
     var ext = file.name.split('.').pop().toLowerCase();
     var reader = new FileReader();
     reader.onload = function (e) {
