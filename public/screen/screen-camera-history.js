@@ -175,7 +175,8 @@
 
     view.innerHTML = [
       '<div class="cam-hist">',
-        '<div class="ch-head">',
+          '<div class="ch-head">',
+          '<div class="hero-kicker">Camera</div>',
           '<div class="ch-title">Camera Snapshot &amp; History Checker</div>',
           '<div class="ch-sub">Verify camera snapshots are valid and automatically search history to find when a camera last worked.</div>',
         '</div>',
