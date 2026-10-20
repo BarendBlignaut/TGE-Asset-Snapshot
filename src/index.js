@@ -2644,7 +2644,6 @@ async function handleCamchkImageSize(request, env) {
  *     if (method === "GET"  && path === "/api/camchk/events")     return handleCamchkEvents(request, env);
  *     if (method === "POST" && path === "/api/camchk/snapshots")  return handleCamchkSnapshots(request, env);
  *     if (method === "GET"  && path === "/api/camchk/image-size") return handleCamchkImageSize(request, env);
-      if (method === "GET"  && path === "/api/camfootage/check")  return handleCamFootageCheck(request, env);
  * ========================================================================== */
 
 // ── Utilisation static fleet ──────────────────────────────────────────────────
