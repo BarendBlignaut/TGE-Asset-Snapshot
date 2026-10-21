@@ -309,7 +309,7 @@
     if (len < 0) return { error: 'End can\'t be before start.' };
     if (len > MAX_SECONDS) return { error: 'Maximum is 15 minutes (this window is ' + fmtLength(len) + ').' };
     var size = split === 0 ? len : split;
-    var parts = [];
+    var parts = len === 0 ? [{ start: s, end: s }] : [];   // 0 s = snapshot test
     for (var off = 0; off < len; off += size) {
       parts.push({ start: s + off * 1000, end: s + Math.min(off + size, len) * 1000 });
     }
