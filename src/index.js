@@ -2669,11 +2669,14 @@ async function handleCamFootageRequest(request, env) {
     const chList  = await chRes.json();
     const cameras = (Array.isArray(chList) ? chList : []).map(function (c) { return c && c.channel; }).filter(Boolean);
     if (!cameras.length) return jsonResponse({ error: "TN360 reports no cameras for IMEI " + imei + "." }, 404);
+    // partSeconds: 10/30/60/120 splits the clip; 0 sends it as one request.
+    const partReq     = Number(body.partSeconds);
+    const partSeconds = partReq === 0 ? length : ([10, 30, 60, 120].indexOf(partReq) >= 0 ? partReq : CAMFOOTAGE_PART_SECONDS);
     const parts = [];
-    for (let offset = 0; offset < length; offset += CAMFOOTAGE_PART_SECONDS) {
+    for (let offset = 0; offset < length; offset += partSeconds) {
       const payload = {
         Start: new Date(startMs + offset * 1000).toISOString(),
-        Length: Math.min(CAMFOOTAGE_PART_SECONDS, length - offset),
+        Length: Math.min(partSeconds, length - offset),
         Provider: "IQCamera",
         RequestorId: CAMFOOTAGE_REQUESTOR_ID,
         CheckDuplicate: true,
