@@ -2658,7 +2658,7 @@ async function handleCamFootageRequest(request, env) {
   if (!/^\d{10,20}$/.test(imei)) return jsonResponse({ error: "Enter a valid camera IMEI." }, 400);
   if (isNaN(startMs) || isNaN(endMs)) return jsonResponse({ error: "Start and end date/time are required." }, 400);
   const length = Math.round((endMs - startMs) / 1000);
-  if (length < 1) return jsonResponse({ error: "End must be after start." }, 400);
+   if (length < 0) return jsonResponse({ error: "End can't be before start." }, 400);   // 0 s allowed (snapshot test)
   if (length > CAMFOOTAGE_MAX_SECONDS) return jsonResponse({ error: "Maximum length is " + CAMFOOTAGE_MAX_SECONDS + " seconds." }, 400);
 
   try {
