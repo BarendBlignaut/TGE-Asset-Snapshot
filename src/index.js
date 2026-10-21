@@ -2673,7 +2673,7 @@ async function handleCamFootageRequest(request, env) {
     const partReq     = Number(body.partSeconds);
     const partSeconds = partReq === 0 ? length : ([10, 30, 60, 120].indexOf(partReq) >= 0 ? partReq : CAMFOOTAGE_PART_SECONDS);
     const parts = [];
-    for (let offset = 0; offset < length; offset += partSeconds) {
+    for (let offset = 0; offset < Math.max(length, 1); offset += Math.max(partSeconds, 1)) {
       const payload = {
         Start: new Date(startMs + offset * 1000).toISOString(),
         Length: Math.min(partSeconds, length - offset),
