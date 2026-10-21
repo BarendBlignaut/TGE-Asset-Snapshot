@@ -306,7 +306,7 @@
     var s = wallToUtc(sv, tzIn), e = wallToUtc(ev, tzIn);
     if (isNaN(s) || isNaN(e)) return { error: 'Start or end is not a valid date/time.' };
     var len = Math.round((e - s) / 1000);
-    if (len < 1) return { error: 'End must be after start.' };
+    if (len < 0) return { error: 'End can\'t be before start.' };
     if (len > MAX_SECONDS) return { error: 'Maximum is 15 minutes (this window is ' + fmtLength(len) + ').' };
     var size = split === 0 ? len : split;
     var parts = [];
