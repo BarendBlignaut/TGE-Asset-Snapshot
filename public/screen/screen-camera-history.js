@@ -1533,7 +1533,7 @@
     if (!allRows.length) { alert('Check snapshots first, then export.'); return; }
     var header = ['Vehicle name', 'Registration', 'System down'];
     SOURCES.forEach(function(src) { header.push(src, src + ' marked'); });
-    header.push('Unsure');
+    header.push('Unsure', 'Camera model', 'IMEI', 'SD 1', 'SD 1 size', 'SD 1 marked', 'SD 2', 'SD 2 size', 'SD 2 marked', 'Last connected');
     var rows = allRows.map(function(row) {
       var out = [row.vehicleName || '', row.registration || '', row.systemDown ? 'Yes' : ''];
       SOURCES.forEach(function(src) {
