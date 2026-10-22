@@ -271,9 +271,13 @@
 
       // Historical search bar
       '<div id="ch-histSearchBar" class="cam-hist-search-bar" aria-live="polite" role="status">',
-        '<span style="display:inline-block;width:0.85em;height:0.85em;border:2px solid rgba(180,83,9,0.25);border-top-color:#92400e;border-radius:50%;animation:ch-spin 0.7s linear infinite;vertical-align:-0.1em;flex-shrink:0;" aria-hidden="true"></span>',
-        '<span id="ch-histSearchText" style="flex:1;">Searching history for unknown cameras…</span>',
-        '<button type="button" id="ch-btnStopHist" style="flex-shrink:0;padding:0.25rem 0.85rem;background:#92400e;color:#fff;font-size:0.75rem;font-weight:700;border:none;border-radius:9999px;cursor:pointer;">Stop</button>',
+        '<div class="hs-top">',
+          '<div><div class="hs-kicker">Searching history</div><div id="ch-histSearchText" class="hs-title">Searching history for unknown cameras…</div></div>',
+          '<div class="hs-track"><div id="ch-histSearchFill" class="hs-fill"></div></div>',
+          '<span id="ch-histSearchPct" class="hs-pct">0%</span>',
+          '<button type="button" id="ch-btnStopHist" class="hs-stop">Stop</button>',
+        '</div>',
+        '<div id="ch-histSearchChips" class="hs-chips"></div>',
       '</div>',
 
       // Fullscreen viewer
