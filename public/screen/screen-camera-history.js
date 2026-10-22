@@ -522,6 +522,8 @@
                   if (!sizeRes.tooSmall) {
                     row2.histCells[src] = { url: candUrl, timeAt: weekFreshEvs[ei].timeAt };
                     delete row2.histSearching[src];
+                    foundCount++;
+                    weekByVehicle[vid].found = true;
                     foundAny = true;
                     accepted = true;
                     break;
