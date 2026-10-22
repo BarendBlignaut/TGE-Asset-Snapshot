@@ -1327,7 +1327,8 @@
     return '<td>' + renderColCell(row.cols[src], row, src, sourceCaptionTitle(src)) + markButtonsHtml(row, src) + '</td>';
       }).join('');
       var unsureCell = '<td>' + renderUnsureStack(row.unsure, row) + '</td>';
-      var sub = row.registration ? '<br><span style="font-weight:500;font-size:0.7rem;color:#6b7280;">' + esc(row.registration) + '</span>' : '';
+            var sub = row.registration ? '<br><span style="font-weight:500;font-size:0.7rem;color:#6b7280;">' + esc(row.registration) + '</span>' : '';
+      if (row.listNo) sub += '<br><span class="ch-list-tag">List ' + row.listNo + '</span>';
       if (row.notFound) {
         sub += '<br><span class="snap-not-found-detail">Not found in fleet for this company.</span>';
         if (row.notFoundDetail) sub += '<br><span class="snap-not-found-detail">' + esc(row.notFoundDetail) + '</span>';
