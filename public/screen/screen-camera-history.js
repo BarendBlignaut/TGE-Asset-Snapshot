@@ -182,7 +182,19 @@
       '.cam-hist-search-bar .hs-chip { font-size:11px; font-weight:600; padding:3px 9px; border-radius:999px; background:var(--surface-2); border:1px solid var(--line); color:var(--ink-2); white-space:nowrap; }',
       '.cam-hist-search-bar .hs-chip b { font-weight:600; color:var(--muted); }',
       '.cam-hist-search-bar .hs-chip.is-done { background:var(--green-50); border-color:#bfe3cd; color:var(--green-700); }',
-      '.cam-hist-search-bar .hs-chip.is-found { background:var(--green-700); border-color:var(--green-700); color:var(--yellow); }'
+      '.cam-hist-search-bar .hs-chip.is-found { background:var(--green-700); border-color:var(--green-700); color:var(--yellow); }',
+      // Selection, marking and email (same idea as Camera Count)
+      '.cam-hist .ch-veh { display:flex; align-items:flex-start; gap:8px; }',
+      '.cam-hist .ch-veh .ch-sel { width:16px; height:16px; margin-top:1px; cursor:pointer; accent-color:var(--green-700); flex-shrink:0; }',
+      '.cam-hist .ch-sysdown { display:block; margin-top:8px; height:26px; padding:0 10px; border-radius:6px; border:1px solid var(--line); background:var(--surface); color:var(--ink-2); font-size:11px; font-weight:600; cursor:pointer; white-space:nowrap; }',
+      '.cam-hist .ch-sysdown.on { background:var(--danger); border-color:var(--danger); color:#fff; }',
+      '.cam-hist .snap-table tbody tr.is-down { background:var(--danger-bg); }',
+      '.cam-hist .snap-table tbody tr.is-down:hover { background:var(--danger-bg); }',
+      '.cam-hist .ch-mark { display:flex; gap:4px; justify-content:center; margin-top:6px; }',
+      '.cam-hist .ch-mark-btn { flex:1; max-width:72px; height:24px; padding:0 6px; border-radius:6px; border:1px solid var(--line); background:var(--surface); color:var(--muted); font-size:10.5px; font-weight:700; cursor:pointer; }',
+      '.cam-hist .ch-mark-btn.is-good.on { background:var(--green-100); border-color:var(--green-600); color:var(--green-700); }',
+      '.cam-hist .ch-mark-btn.is-bad.on { background:var(--danger-bg); border-color:var(--danger); color:var(--danger); }',
+      '.cam-hist .ch-sel-count { font-size:12px; font-weight:600; color:var(--muted); }'
     ].join('\n');
     var style = document.createElement('style');
     style.id = STYLE_ID;
