@@ -1637,7 +1637,11 @@
     TGE.on('ch-btnLoad', 'click', checkSnapshots);
     TGE.on('ch-btnExportCsv', 'click', exportSnapshotsToCsv);
     TGE.on('ch-fleetFilter', 'keydown', function(e) { if (e.ctrlKey && e.key === 'Enter') checkSnapshots(); });
-    TGE.on('ch-btnStopHist', 'click', function() { histStopRequested = true; showHistSearchBar(false); });
+       TGE.on('ch-btnStopHist', 'click', function() { histStopRequested = true; showHistSearchBar(false); });
+    TGE.on('ch-btnSelAll', 'click', function() { setAllSelected(true); });
+    TGE.on('ch-btnSelNone', 'click', function() { setAllSelected(false); });
+    TGE.on('ch-btnEmailSel', 'click', openEmailForSelected);
+    TGE.on('ch-snapTableBody', 'click', onTableClick);
 
     TGE.on('ch-fsClose', 'click', closeFs);
     TGE.on('ch-fsPrev', 'click', function(e) { e.stopPropagation(); if (fsGallery.length > 1) showFsAt(fsIndex - 1); });
