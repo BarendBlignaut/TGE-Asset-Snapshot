@@ -1493,8 +1493,10 @@
     return {
       legacyNo:     row.vehicleName || '—',
       registration: row.registration || '—',
-      imei:         '—',
-      cameraModel:  '—',
+      imei:         (row.sd && row.sd.imei) || '—',
+      cameraModel:  (row.sd && row.sd.model) || '—',
+      sd1:          sdSummary(row, '1'),
+      sd2:          sdSummary(row, '2'),
       lastComms:    latest ? formatSnapTime(latest) : 'Unknown',
       systemDown:   !!row.systemDown,
       working:      working,
