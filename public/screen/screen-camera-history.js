@@ -1292,9 +1292,13 @@
         sub += '<br><span class="snap-not-found-detail">Not found in fleet for this company.</span>';
         if (row.notFoundDetail) sub += '<br><span class="snap-not-found-detail">' + esc(row.notFoundDetail) + '</span>';
       }
-      return '<tr><td>' + esc(row.vehicleName) + sub + '</td>' + cells + unsureCell + '</tr>';
+           if (!row.notFound) {
+        sub += '<br><button type="button" class="ch-sysdown' + (row.systemDown ? ' on' : '') + '" data-vid="' + esc(String(row.vehicleId)) + '">' + (row.systemDown ? '⚠ System Down' : 'Mark System Down') + '</button>';
+      }
+      return '<tr' + (row.systemDown ? ' class="is-down"' : '') + '><td><div class="ch-veh"><span class="ch-sel-slot" data-vid="' + esc(String(row.vehicleId)) + '"></span><div>' + esc(row.vehicleName) + sub + '</div></div></td>' + cells + unsureCell + '</tr>';
     }).join('');
     wireTableImages();
+    addSelectBoxes();
   }
 
   // ── Selection, Good/Failed marking and Email Selected (as in Camera Count) ──
