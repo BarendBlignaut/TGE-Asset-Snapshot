@@ -1955,14 +1955,18 @@
 
       Auth.apiCall('log_activity', { type: 'snapshot_check', page: '/camera-history/', details: 'Camera history check — ' + fleetLines.length + ' vehicle(s)' }).catch(function(){});
 
-      if (rawEvents.length === 0 && fleetCameraEventsRaw > 0) {
-        alert('The API returned ' + fleetCameraEventsRaw + ' camera event(s), but none matched the selected vehicles. Nothing to show.');
-      }
-      if (ambiguousAlerts.length) {
-        alert('Some lines matched multiple vehicles — fix these, then reload:\n\n' + ambiguousAlerts.join('\n'));
-      }
-      if (built.stats.snapshotEventsWithMedia === 0 && built.stats.eventsWithContext > 0) {
-        alert('No snapshot images were found in SNAPSHOT context for these vehicles.\n\nCamera events: ' + lastLoadStats.totalEvents + '\nSNAPSHOT with parseable context: ' + built.stats.eventsWithContext);
+            // A multi run carries on unattended, so these pop-ups are skipped there
+      // (not-found and multiple-match lines still show in the table).
+      if (!batch) {
+        if (rawEvents.length === 0 && fleetCameraEventsRaw > 0) {
+          alert('The API returned ' + fleetCameraEventsRaw + ' camera event(s), but none matched the selected vehicles. Nothing to show.');
+        }
+        if (ambiguousAlerts.length) {
+          alert('Some lines matched multiple vehicles — fix these, then reload:\n\n' + ambiguousAlerts.join('\n'));
+        }
+        if (built.stats.snapshotEventsWithMedia === 0 && built.stats.eventsWithContext > 0) {
+          alert('No snapshot images were found in SNAPSHOT context for these vehicles.\n\nCamera events: ' + lastLoadStats.totalEvents + '\nSNAPSHOT with parseable context: ' + built.stats.eventsWithContext);
+        }
       }
 
             if (allRows.length > 0) {
