@@ -1726,6 +1726,140 @@
     updateMultiLine();
   }
 
+  // ── Multi run: several lists, run one after another into the one table ────
+  // Each list goes through the normal check (same calls, same speed). Rows from
+  // earlier lists stay in the table; image checks and the history search only
+  // run for the list being run (batchRows).
+  var multiOn = false, multiLists = [''], multiActive = 0;
+  var multiStopRequested = false, multiState = null, batchRows = null;
+
+  function linesOf(text) {
+    return String(text || '').split(/\r?\n/).map(function(s) { return s.trim(); }).filter(Boolean);
+  }
+
+  function saveActiveList() {
+    var ta = document.getElementById('ch-fleetFilter');
+    if (ta && multiOn) multiLists[multiActive] = ta.value;
+  }
+
+  function renderListTabs() {
+    var btn = document.getElementById('ch-btnMulti');
+    if (btn) btn.classList.toggle('on', multiOn);
+    var box = document.getElementById('ch-listTabs');
+    if (!box) return;
+    box.classList.toggle('ch-hidden', !multiOn);
+    if (!multiOn) { box.innerHTML = ''; return; }
+    box.innerHTML = multiLists.map(function(txt, i) {
+      return '<button type="button" class="ch-list-tab' + (i === multiActive ? ' on' : '') + '" data-list="' + i + '">List ' + (i + 1) +
+        ' <small>' + linesOf(txt).length + '</small>' +
+        (i > 0 ? '<span class="ch-list-x" data-del="' + i + '" title="Remove this list">×</span>' : '') + '</button>';
+    }).join('') + '<button type="button" class="ch-list-add" id="ch-listAdd">+ Add list</button>';
+  }
+
+  function showList(i) {
+    multiActive = i;
+    document.getElementById('ch-fleetFilter').value = multiLists[i] || '';
+    renderListTabs();
+  }
+
+  // Turning Multi run off puts every list back into the one box, so nothing is lost.
+  function toggleMulti() {
+    var ta = document.getElementById('ch-fleetFilter');
+    if (!multiOn) {
+      multiOn = true;
+      multiLists = [ta.value];
+      showList(0);
+    } else {
+      saveActiveList();
+      multiOn = false;
+      ta.value = multiLists.map(function(t) { return linesOf(t).join('\n'); }).filter(Boolean).join('\n');
+      multiLists = [''];
+      multiActive = 0;
+      renderListTabs();
+    }
+  }
+
+  function onListTabsClick(e) {
+    var t = e.target;
+    if (t.id === 'ch-listAdd') {
+      saveActiveList();
+      multiLists.push('');
+      showList(multiLists.length - 1);
+      document.getElementById('ch-fleetFilter').focus();
+      return;
+    }
+    var del = t.getAttribute('data-del');
+    if (del != null) {
+      var d = parseInt(del, 10);
+      saveActiveList();
+      if (linesOf(multiLists[d]).length && !confirm('Remove List ' + (d + 1) + '?')) return;
+      multiLists.splice(d, 1);
+      showList(Math.min(multiActive > d ? multiActive - 1 : multiActive, multiLists.length - 1));
+      return;
+    }
+    var tab = t.closest ? t.closest('.ch-list-tab') : null;
+    if (tab) { saveActiveList(); showList(parseInt(tab.getAttribute('data-list'), 10)); }
+  }
+
+  function onRunClick() {
+    if (multiOn) runMultiLists(); else checkSnapshots();
+  }
+
+  async function runMultiLists() {
+    if (multiState && multiState.running) return;
+    saveActiveList();
+    var lists = [];
+    multiLists.forEach(function(txt, i) {
+      var lines = linesOf(txt);
+      if (lines.length) lists.push({ listNo: i + 1, text: lines.join('\n'), count: lines.length });
+    });
+    if (!lists.length) { showError('Add fleet numbers to at least one list.'); return; }
+    multiStopRequested = false;
+    multiState = { running: true, lists: lists, current: 0, totalLists: lists[lists.length - 1].listNo };
+    for (var i = 0; i < lists.length; i++) {
+      if (multiStopRequested) break;
+      multiState.current = i;
+      updateMultiLine();
+      await checkSnapshots({ isBatch: true, first: i === 0, text: lists[i].text, listNo: lists[i].listNo });
+      lists[i].finished = true;
+      lists[i].failed = !allRows.some(function(r) { return r.listNo === lists[i].listNo; });
+    }
+    multiState.running = false;
+    multiState.stopped = multiStopRequested;
+    batchRows = null;
+    updateMultiLine();
+  }
+
+  // The line above the table: "List 2 of 4 · 37 of 200 completed", plus a chip per list.
+  function updateMultiLine() {
+    var el = document.getElementById('ch-multiLine');
+    if (!el) return;
+    if (!multiState) { el.classList.add('ch-hidden'); el.innerHTML = ''; return; }
+    var s = multiState, title;
+    var chips = s.lists.map(function(l, i) {
+      var rows = allRows.filter(function(r) { return r.listNo === l.listNo; });
+      var total = rows.length || l.count;
+      var done = rows.filter(function(r) { return r.chDone; }).length;
+      l.done = done; l.total = total;
+      if (l.failed) return '<span class="ml-chip">List ' + l.listNo + ' · not loaded</span>';
+      if (l.finished) return done >= total
+        ? '<span class="ml-chip is-done">List ' + l.listNo + ' ✓ ' + done + ' of ' + total + '</span>'
+        : '<span class="ml-chip">List ' + l.listNo + ' · stopped at ' + done + ' of ' + total + '</span>';
+      if (s.running && i === s.current) return '<span class="ml-chip is-run">List ' + l.listNo + ' · ' + done + ' of ' + total + '</span>';
+      return '<span class="ml-chip">List ' + l.listNo + (i > s.current || s.running ? ' · waiting' : ' · not run') + '</span>';
+    });
+    var cur = s.lists[s.current];
+    if (s.running && sdProgress) title = 'List ' + cur.listNo + ' of ' + s.totalLists + ' · SD cards ' + sdProgress.done + ' of ' + sdProgress.total;
+    else if (s.running) title = 'List ' + cur.listNo + ' of ' + s.totalLists + ' · ' + cur.done + ' of ' + cur.total + ' completed';
+    else if (s.stopped) title = 'Stopped after List ' + cur.listNo;
+    else {
+      var failedN = s.lists.filter(function(l) { return l.failed; }).length;
+      title = failedN ? 'Finished · ' + failedN + ' list' + (failedN === 1 ? '' : 's') + ' not loaded' : 'All lists completed';
+    }
+    el.innerHTML = '<span class="ml-title">' + esc(title) + '</span>' + chips.join('');
+    el.classList.remove('ch-hidden');
+  }
+
   async function checkSnapshots() {
     var input = document.getElementById('ch-fleetFilter').value.trim();
     if (!input) { showError('Enter at least one fleet number, vehicle name, registration, or vehicle ID.'); return; }
