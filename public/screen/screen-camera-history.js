@@ -276,7 +276,8 @@
           '</div>',
 
           '<div style="margin-bottom:1.25rem;">',
-            '<label class="ch-field-label">Vehicles to check <span class="ch-field-hint">(one per line)</span></label>',
+          '<label class="ch-field-label">Vehicles to check <span class="ch-field-hint">(one per line)</span></label>',
+            '<div id="ch-listTabs" class="ch-list-tabs ch-hidden"></div>',
             '<textarea id="ch-fleetFilter" rows="5" class="ch-input" placeholder="Fleet number, vehicle name, registration, or numeric vehicle ID — one per line" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>',
             '<p class="ch-tip">Tip: Ctrl+Enter to start the check</p>',
           '</div>',
