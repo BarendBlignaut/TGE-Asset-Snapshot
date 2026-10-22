@@ -1907,6 +1907,8 @@
         var line = fleetLines[i];
         var resolved = resolveLineToVehicle(line, vehicles);
         if (resolved.id) {
+                  if (resolved.id && keptIds[String(resolved.id).trim()]) continue;   // already in the table from an earlier list
+        if (resolved.id) {
           if (ids.indexOf(resolved.id) === -1) ids.push(resolved.id);
           rowEntries.push({ kind: 'matched', id: String(resolved.id).trim() });
         } else if (resolved.ambiguousLabels && resolved.ambiguousLabels.length) {
