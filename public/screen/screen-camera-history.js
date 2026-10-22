@@ -1338,8 +1338,9 @@
       }
       return '<tr' + (row.systemDown ? ' class="is-down"' : '') + '><td><div class="ch-veh"><span class="ch-sel-slot" data-vid="' + esc(String(row.vehicleId)) + '"></span><div>' + esc(row.vehicleName) + sub + '</div></div></td>' + cells + unsureCell + '</tr>';
     }).join('');
-    wireTableImages();
+       wireTableImages();
     addSelectBoxes();
+    updateMultiLine();
   }
 
   // ── Selection, Good/Failed marking and Email Selected (as in Camera Count) ──
