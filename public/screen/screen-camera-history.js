@@ -1936,7 +1936,13 @@
       }
 
       var built = buildAllSnapshotRows(vehicles, rawEvents, ids);
-      allRows = mergeSnapshotRowsWithNotFound(built.rows, rowEntries);
+            var newRows = mergeSnapshotRowsWithNotFound(built.rows, rowEntries);
+      if (batch) newRows.forEach(function(r) {
+        r.listNo = batch.listNo;
+        if (r.notFound) r.vehicleId = 'L' + batch.listNo + r.vehicleId;   // keep not-found ids unique across lists
+      });
+      batchRows = keptRows.length ? newRows : null;
+      allRows = keptRows.concat(newRows);
       lastLoadStats = {
         totalEvents:             rawEvents.length,
         fleetCameraEventsRaw:    fleetCameraEventsRaw,
