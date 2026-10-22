@@ -1540,7 +1540,9 @@
         out.push(colSnapshotStatusLabel(row.vehicleId, src, row.cols[src], row));
         out.push(row.notFound ? '' : markLabel(getMark(row, src)));
       });
-      out.push(unsureColumnStatusForCsv(row));
+            out.push(unsureColumnStatusForCsv(row));
+      out.push.apply(out, sdExportCells(row));
+      return out;
       return out;
     });
     TGE.exportTable({ header: header, rows: rows, sheetName: 'Camera History' }, format, { module: 'CameraHistory', type: 'Snapshots' });
