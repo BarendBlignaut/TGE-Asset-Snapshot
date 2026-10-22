@@ -2011,7 +2011,10 @@
     }
 
     if (allRows.length > 0) {
+         if (allRows.length > 0) {
       try { await historicalFallback(deviceIdByVehicleId); } catch(e) { showHistSearchBar(false); }
+      // SD cards are filled in after the history search, for the vehicles just checked.
+      if (!multiStopRequested) await loadSdDetails(batchRows || allRows);
     }
   }
 
