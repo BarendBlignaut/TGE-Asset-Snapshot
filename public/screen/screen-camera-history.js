@@ -475,7 +475,8 @@
         toSearch.push({ row: row, srcs: unknownSrcs });
       }
     }
-    if (!toSearch.length) return;
+    scopeRows.forEach(function(r) { if (!r.histSearching) r.chDone = true; });   // nothing to search = finished
+    if (!toSearch.length) { renderTable(); return; }
 
     var weekMs   = 7 * 24 * 60 * 60 * 1000;
     var maxWeeks = parseInt(document.getElementById('ch-histWeeksSel').value, 10) || 52;
