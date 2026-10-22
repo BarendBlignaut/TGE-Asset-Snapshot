@@ -1339,7 +1339,9 @@
            if (!row.notFound) {
         sub += '<br><button type="button" class="ch-sysdown' + (row.systemDown ? ' on' : '') + '" data-vid="' + esc(String(row.vehicleId)) + '">' + (row.systemDown ? '⚠ System Down' : 'Mark System Down') + '</button>';
       }
-      return '<tr' + (row.systemDown ? ' class="is-down"' : '') + '><td><div class="ch-veh"><span class="ch-sel-slot" data-vid="' + esc(String(row.vehicleId)) + '"></span><div>' + esc(row.vehicleName) + sub + '</div></div></td>' + cells + unsureCell + '</tr>';
+            var trCls = [row.systemDown ? 'is-down' : '', row.notFound ? '' : 'ch-has-sd'].join(' ').trim();
+      return '<tr' + (trCls ? ' class="' + trCls + '"' : '') + '><td><div class="ch-veh"><span class="ch-sel-slot" data-vid="' + esc(String(row.vehicleId)) + '"></span><div>' + esc(row.vehicleName) + sub + '</div></div></td>' + cells + unsureCell + '</tr>' +
+        (row.notFound ? '' : sdStripHtml(row));
     }).join('');
        wireTableImages();
     addSelectBoxes();
