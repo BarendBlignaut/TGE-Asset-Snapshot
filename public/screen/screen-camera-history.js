@@ -1406,31 +1406,7 @@
     if (!selected.length) { showError('Tick at least one vehicle first.'); return; }
     clearError();
 
-    var emailRows = selected.map(function(row) {
-      var latest = '';
-      var slots = EMAIL_SLOTS.map(function(s) {
-        var cell = row.cols[s.src], hist = row.histCells && row.histCells[s.src];
-        var failed = cell && cell.url && colSnapshotFileTooSmall(row.vehicleId, s.src, cell.timeAt);
-        if (cell && cell.timeAt && !failed && cell.timeAt > latest) latest = cell.timeAt;
-        var url = (cell && cell.url && !failed) ? cell.url : (hist ? hist.url : (cell && cell.url) || null);
-        var status = getMark(row, s.src);
-        if (!url && !status) return null;   // this camera isn't fitted / never seen
-        return { label: s.label, url: url, status: status };
-      });
-      var working = slots.filter(function(s) { return s && s.status === 'working'; }).length;
-      var notWorking = slots.filter(function(s) { return s && s.status === 'not_working'; }).length;
-      return {
-        legacyNo:     row.vehicleName || '—',
-        registration: row.registration || '—',
-        imei:         '—',
-        cameraModel:  '—',
-        lastComms:    latest ? formatSnapTime(latest) : 'Unknown',
-        systemDown:   !!row.systemDown,
-        working:      working,
-        notWorking:   notWorking,
-        slots:        slots
-      };
-    });
+    var emailRows = selected.map(emailRowFor);
 
     TGE.openEmailComposer({
       rows: emailRows,
