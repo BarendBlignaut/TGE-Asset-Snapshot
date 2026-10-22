@@ -538,7 +538,12 @@
       }
 
       row2.histSearching = {};
+      if (!histStopRequested && stillUnknown.length) {
+        row2.histNone = {};
+        stillUnknown.forEach(function(src) { row2.histNone[src] = maxWeeks; });
+      }
       weekByVehicle[vid].done = true;
+      renderTable();
       doneCount++;
       if (!histStopRequested) updateHistBar();
     }
