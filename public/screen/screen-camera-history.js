@@ -430,15 +430,29 @@
     var doneCount = 0;
     var weekByVehicle = {};
 
+        var foundCount = 0;
+
     function updateHistBar() {
-      var parts = [];
+      var chips = [], doneN = 0, weeksDone = 0;
       for (var vid in weekByVehicle) {
         if (!Object.prototype.hasOwnProperty.call(weekByVehicle, vid)) continue;
         var s = weekByVehicle[vid];
-        var label = s.name + ': ' + (s.done ? 'done' : 'wk ' + s.week + '/' + maxWeeks);
-        parts.push(label);
+        if (s.done) doneN++;
+        weeksDone += s.done ? maxWeeks : Math.max(s.week - 1, 0);
+        var cls = s.found ? ' is-found' : (s.done ? ' is-done' : '');
+        var txt = s.done ? (s.found ? ' ✓ found' : ' ✓ done') : ' <b>wk ' + s.week + '/' + maxWeeks + '</b>';
+        chips.push('<span class="hs-chip' + cls + '">' + esc(s.name) + txt + '</span>');
       }
-      showHistSearchBar(true, 'Searching history… ' + parts.join(' · '));
+      var pct = total ? Math.round(weeksDone / (total * maxWeeks) * 100) : 0;
+      showHistSearchBar(true, doneN + ' of ' + total + ' vehicle' + (total === 1 ? '' : 's') + ' done · ' + foundCount + ' camera' + (foundCount === 1 ? '' : 's') + ' found');
+      document.getElementById('ch-histSearchFill').style.width = pct + '%';
+      document.getElementById('ch-histSearchPct').textContent = pct + '%';
+      document.getElementById('ch-histSearchChips').innerHTML = chips.join('');
+      var wkEls = document.querySelectorAll('.cam-hist .ch-hist-wk');
+      for (var wi = 0; wi < wkEls.length; wi++) {
+        var ws = weekByVehicle[wkEls[wi].getAttribute('data-vid')];
+        if (ws && !ws.done) wkEls[wi].textContent = 'Searching wk ' + ws.week + ' of ' + maxWeeks;
+      }
     }
 
     histStopRequested = false;
