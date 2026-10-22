@@ -1605,9 +1605,7 @@
         alert('No snapshot images were found in SNAPSHOT context for these vehicles.\n\nCamera events: ' + lastLoadStats.totalEvents + '\nSNAPSHOT with parseable context: ' + built.stats.eventsWithContext);
       }
 
-      if (allRows.length > 0) {
-        btn.disabled = true;
-              if (allRows.length > 0) {
+            if (allRows.length > 0) {
         btn.disabled = true;
         setPersistCheckBusy(true);
         try {
