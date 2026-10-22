@@ -260,6 +260,7 @@
             '<button type="button" id="ch-btnLoad" class="ch-btn ch-btn-primary">Check snapshots</button>',
             '<button type="button" id="ch-btnSelAll" class="ch-btn ch-btn-outline" style="display:none;">Select all</button>',
             '<button type="button" id="ch-btnSelNone" class="ch-btn ch-btn-outline" style="display:none;">Clear</button>',
+            '<button type="button" id="ch-btnMulti" class="ch-btn ch-btn-outline" title="Queue several lists and run them one after another">Multi run</button>',
             '<span id="ch-selCount" class="ch-sel-count"></span>',
             '<div class="ch-right">',
               '<label for="ch-histWeeksSel" class="ch-label">History search period</label>',
