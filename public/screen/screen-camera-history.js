@@ -1705,7 +1705,6 @@
        TGE.on('ch-btnStopHist', 'click', function() { histStopRequested = true; showHistSearchBar(false); });
     TGE.on('ch-btnSelAll', 'click', function() { setAllSelected(true); });
     TGE.on('ch-btnSelNone', 'click', function() { setAllSelected(false); });
-    TGE.on('ch-btnEmailSel', 'click', openEmailForSelected);
     TGE.on('ch-snapTableBody', 'click', onTableClick);
 
     TGE.on('ch-fsClose', 'click', closeFs);
