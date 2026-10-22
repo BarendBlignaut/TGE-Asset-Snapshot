@@ -1865,8 +1865,10 @@
     el.classList.remove('ch-hidden');
   }
 
-  async function checkSnapshots() {
-    var input = document.getElementById('ch-fleetFilter').value.trim();
+   // batch (multi run only): { isBatch, first, text, listNo }. A normal run passes nothing.
+  async function checkSnapshots(batch) {
+    batch = (batch && batch.isBatch) ? batch : null;
+    var input = batch ? batch.text : document.getElementById('ch-fleetFilter').value.trim();
     if (!input) { showError('Enter at least one fleet number, vehicle name, registration, or vehicle ID.'); return; }
 
     var _company = Auth.getSelectedCompany();
@@ -1876,9 +1878,14 @@
     histStopRequested = true;
     showHistSearchBar(false);
     clearError();
-    allRows = [];
+    if (!batch) { multiState = null; multiStopRequested = false; }
+    var keptRows = (batch && !batch.first) ? allRows : [];
+    var keptIds = {};
+    keptRows.forEach(function(r) { if (!r.notFound) keptIds[String(r.vehicleId).trim()] = true; });
+    batchRows = null;
+    allRows = keptRows;
     lastSnapshotSaveMessage   = '';
-    lastSnapshotSmallFileByKey = {};
+    if (!keptRows.length) lastSnapshotSmallFileByKey = {};
     renderTable();
 
     var fleetLines = input.split(/\r?\n/).map(function(s){ return s.trim(); }).filter(Boolean);
