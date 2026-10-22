@@ -598,6 +598,7 @@
         stillUnknown.forEach(function(src) { row2.histNone[src] = maxWeeks; });
       }
       weekByVehicle[vid].done = true;
+      row2.chDone = true;
       renderTable();
       doneCount++;
       if (!histStopRequested) updateHistBar();
