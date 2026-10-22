@@ -1553,6 +1553,179 @@
     });
   }
 
+  // ── SD card strip (same TN360 data as the SD Health page) ───────────────────
+  // Uses the /api/tn360 proxy, like SD Health: one call for the camera device
+  // list, then one devicestats call per camera, 5 at a time. It runs after the
+  // history search has finished, as its own step.
+  var sdLoadGen = 0, sdRun = null, sdProgress = null;
+
+  function sdLabel(val) {
+    if (val === 'sdCardPresent') return 'Present';
+    if (val === 'sdCardAbsent')  return 'Not Present';
+    if (val === 'sdCardFailed')  return 'Failed';
+    return val || '—';
+  }
+
+  function sdBytes(b) {
+    var n = parseFloat(b);
+    if (!b || isNaN(n)) return '';
+    if (n >= 1e12) return (n / 1e12).toFixed(1) + ' TB';
+    if (n >= 1e9)  return (n / 1e9).toFixed(1) + ' GB';
+    if (n >= 1e6)  return (n / 1e6).toFixed(1) + ' MB';
+    return n + ' B';
+  }
+
+  function sdTime(ts) {
+    if (!ts) return '—';
+    try {
+      return new Date(ts).toLocaleString('en-AU', { timeZone: 'Australia/Sydney', day: '2-digit', month: '2-digit',
+        year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
+    } catch (e) { return String(ts); }
+  }
+
+  // Present = Good; Not Present or Failed = Failed, until someone marks it.
+  function getSdMark(row, n) {
+    if (row.sdMarks && Object.prototype.hasOwnProperty.call(row.sdMarks, n)) return row.sdMarks[n];
+    var v = row.sd && row.sd['sd' + n];
+    if (v === 'sdCardPresent') return 'working';
+    if (v === 'sdCardAbsent' || v === 'sdCardFailed') return 'not_working';
+    return null;
+  }
+
+  function sdChipHtml(row, n) {
+    var v = row.sd['sd' + n], size = sdBytes(row.sd['sd' + n + 'Bytes']);
+    var m = getSdMark(row, n), vid = esc(String(row.vehicleId));
+    var bad = v === 'sdCardAbsent' || v === 'sdCardFailed';
+    return '<span class="ch-sd-chip' + (bad ? ' bad' : '') + '">SD ' + n + ' · ' + esc(sdLabel(v)) + (size ? ' <small>' + esc(size) + '</small>' : '') +
+      '<span class="ch-sd-tg">' +
+      '<button type="button" class="ch-sd-btn' + (m === 'working' ? ' on-g' : '') + '" data-vid="' + vid + '" data-sd="' + n + '" data-val="working" title="Mark SD ' + n + ' Good">✓</button>' +
+      '<button type="button" class="ch-sd-btn' + (m === 'not_working' ? ' on-b' : '') + '" data-vid="' + vid + '" data-sd="' + n + '" data-val="not_working" title="Mark SD ' + n + ' Failed">✗</button>' +
+      '</span></span>';
+  }
+
+  function sdStripHtml(row) {
+    var sd = row.sd, body;
+    if (!sd) body = '<span class="ch-sd-note">SD card details load after the history search</span>';
+    else if (sd.state === 'loading') body = '<span class="ch-sd-note">Loading camera details…</span>';
+    else if (sd.state === 'none') body = '<span class="ch-sd-note">No camera device found in TN360</span>';
+    else if (sd.state === 'error') body = '<span class="ch-sd-note">Camera details unavailable</span>';
+    else body = '<span class="ch-sd-k">Camera</span><span class="ch-sd-v">' + esc(sd.model || '—') + '</span>' +
+      '<span class="ch-sd-mono">' + esc(sd.imei || '—') + '</span><span class="ch-sd-sep"></span>' +
+      sdChipHtml(row, 1) + sdChipHtml(row, 2) +
+      '<span class="ch-sd-last">Last connected <b>' + esc(sdTime(sd.lastEventAt)) + '</b></span>';
+    return '<tr class="ch-sd-row" data-vid="' + esc(String(row.vehicleId)) + '"><td></td><td colspan="6"><div class="ch-sd-strip">' + body + '</div></td></tr>';
+  }
+
+  // Redraws one vehicle's strip in place, so the snapshot images aren't reloaded.
+  function refreshSdStrip(row) {
+    var trs = document.querySelectorAll('#ch-snapTableBody tr.ch-sd-row');
+    for (var i = 0; i < trs.length; i++) {
+      if (trs[i].getAttribute('data-vid') === String(row.vehicleId)) { trs[i].outerHTML = sdStripHtml(row); return; }
+    }
+  }
+
+  // For email merge fields, e.g. "Present 495.1 GB (Good)".
+  function sdSummary(row, n) {
+    if (!row.sd || row.sd.state !== 'ok') return '—';
+    var size = sdBytes(row.sd['sd' + n + 'Bytes']), mark = markLabel(getSdMark(row, n));
+    return sdLabel(row.sd['sd' + n]) + (size ? ' ' + size : '') + (mark ? ' (' + mark + ')' : '');
+  }
+
+  // Model, IMEI, SD 1, SD 1 size, SD 1 marked, SD 2, SD 2 size, SD 2 marked, Last connected.
+  function sdExportCells(row) {
+    var sd = row.sd;
+    if (row.notFound || !sd || sd.state !== 'ok') return ['', '', '', '', '', '', '', '', ''];
+    return [sd.model || '', sd.imei || '',
+      sdLabel(sd.sd1), sdBytes(sd.sd1Bytes), markLabel(getSdMark(row, '1')),
+      sdLabel(sd.sd2), sdBytes(sd.sd2Bytes), markLabel(getSdMark(row, '2')),
+      sd.lastEventAt ? sdTime(sd.lastEventAt) : ''];
+  }
+
+  // rows = the vehicles just checked (one list in a multi run). Waits until
+  // every camera is done, so a multi run only moves on once SD is filled in.
+  async function loadSdDetails(rows) {
+    var gen = ++sdLoadGen;
+    if (sdRun) { sdRun.cancel(); sdRun = null; }
+    rows = (rows || []).filter(function(r) { return !r.notFound; });
+    if (!rows.length) return;
+    rows.forEach(function(r) { r.sd = { state: 'loading' }; refreshSdStrip(r); });
+    setStatus('Loading SD card details…');
+
+    var res = null;
+    try { res = await TGE.api('GET', '/api/tn360/v1/devices?pruning=B2B'); } catch (e) { res = null; }
+    if (gen !== sdLoadGen) return;
+    if (!res || !res.ok || !Array.isArray(res.data)) {
+      rows.forEach(function(r) { r.sd = { state: 'error' }; refreshSdStrip(r); });
+      clearStatus();
+      return;
+    }
+
+    var camByVid = {};
+    res.data.forEach(function(d) {
+      if (!d || !d.type || d.type.code !== 'CAMERA' || d.outServiceAt || !d.vehicleId) return;
+      camByVid[String(d.vehicleId)] = d;
+    });
+    var todo = [];
+    rows.forEach(function(r) {
+      var d = camByVid[String(r.vehicleId)];
+      if (d) { todo.push({ row: r, device: d }); return; }
+      r.sd = { state: 'none' };
+      refreshSdStrip(r);
+    });
+
+    sdProgress = { done: 0, total: todo.length };
+    updateMultiLine();
+    sdRun = TGE.Progress.run({
+      items: todo,
+      concurrency: 5,
+      delay: 300,
+      worker: async function(it) {
+        var imei = it.device.imei || it.device.serialNumber;
+        var url = '/api/tn360/v1/devices/' + encodeURIComponent(imei) + '?pruning=B2B&embed=devicestats';
+        var r = await TGE.api('GET', url);
+        if (!r.ok) {   // one retry after a short pause before giving up
+          await new Promise(function(ok) { setTimeout(ok, 1500); });
+          r = await TGE.api('GET', url);
+        }
+        if (!r.ok) throw new Error('Device stats failed for ' + imei);
+        return r.data;
+      },
+      onItem: function(data, it) {
+        if (gen !== sdLoadGen) return;
+        var stats = (data && data.deviceStats) || {}, attrs = stats.attrs || {};
+        it.row.sd = {
+          state:       'ok',
+          imei:        it.device.imei || '',
+          model:       (it.device.model && it.device.model.name) || '',
+          sd1:         attrs['lm.sd_card.1'] || '',
+          sd1Bytes:    attrs['lm.sd_card.1_total_size_bytes'] || '',
+          sd2:         attrs['lm.sd_card.2'] || '',
+          sd2Bytes:    attrs['lm.sd_card.2_total_size_bytes'] || '',
+          overall:     attrs['lm.sd_card.overall_status'] || '',
+          lastEventAt: stats.lastEventAt || null
+        };
+        refreshSdStrip(it.row);
+      },
+      onError: function(err, it) {
+        if (gen !== sdLoadGen) return;
+        it.row.sd = { state: 'error' };
+        refreshSdStrip(it.row);
+      },
+      onProgress: function(done, total) {
+        if (gen !== sdLoadGen) return;
+        sdProgress = { done: done, total: total };
+        setStatus('Loading SD card details — ' + done + ' of ' + total + '…');
+        updateMultiLine();
+      }
+    });
+    await sdRun.promise;
+    if (gen !== sdLoadGen) return;
+    sdRun = null;
+    sdProgress = null;
+    clearStatus();
+    updateMultiLine();
+  }
+
   async function checkSnapshots() {
     var input = document.getElementById('ch-fleetFilter').value.trim();
     if (!input) { showError('Enter at least one fleet number, vehicle name, registration, or vehicle ID.'); return; }
