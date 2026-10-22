@@ -1284,7 +1284,7 @@
     }
     tbody.innerHTML = allRows.map(function(row) {
       var cells = SOURCES.map(function(src) {
-        return '<td>' + renderColCell(row.cols[src], row, src, sourceCaptionTitle(src)) + '</td>';
+    return '<td>' + renderColCell(row.cols[src], row, src, sourceCaptionTitle(src)) + markButtonsHtml(row, src) + '</td>';
       }).join('');
       var unsureCell = '<td>' + renderUnsureStack(row.unsure, row) + '</td>';
       var sub = row.registration ? '<br><span style="font-weight:500;font-size:0.7rem;color:#6b7280;">' + esc(row.registration) + '</span>' : '';
