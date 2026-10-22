@@ -1297,6 +1297,148 @@
     wireTableImages();
   }
 
+  // ── Selection, Good/Failed marking and Email Selected (as in Camera Count) ──
+  // Ticks and marks live on each row in allRows, so the table can redraw
+  // during the history search without losing them.
+  function findRow(vid) {
+    for (var i = 0; i < allRows.length; i++) { if (String(allRows[i].vehicleId) === String(vid)) return allRows[i]; }
+    return null;
+  }
+
+  // What the camera is showing right now, before anyone marks it:
+  // a good current image = Good; a failed image or a historical one = Failed;
+  // nothing at all (or still searching) = not reviewed.
+  function defaultMark(row, src) {
+    var cell = row.cols[src];
+    var failed = cell && cell.url && colSnapshotFileTooSmall(row.vehicleId, src, cell.timeAt);
+    if (cell && cell.url && !failed) return 'working';
+    if (row.histSearching && row.histSearching[src]) return null;
+    if (failed || (row.histCells && row.histCells[src])) return 'not_working';
+    return null;
+  }
+
+  function getMark(row, src) {
+    if (row.marks && Object.prototype.hasOwnProperty.call(row.marks, src)) return row.marks[src];
+    return defaultMark(row, src);
+  }
+
+  function markButtonsHtml(row, src) {
+    if (row.notFound || row.systemDown) return '';
+    var m = getMark(row, src), vid = esc(String(row.vehicleId));
+    return '<div class="ch-mark">' +
+      '<button type="button" class="ch-mark-btn is-good' + (m === 'working' ? ' on' : '') + '" data-vid="' + vid + '" data-src="' + src + '" data-val="working">✓ Good</button>' +
+      '<button type="button" class="ch-mark-btn is-bad' + (m === 'not_working' ? ' on' : '') + '" data-vid="' + vid + '" data-src="' + src + '" data-val="not_working">✗ Failed</button>' +
+      '</div>';
+  }
+
+  function addSelectBoxes() {
+    document.querySelectorAll('#ch-snapTableBody .ch-sel-slot').forEach(function(slot) {
+      var row = findRow(slot.getAttribute('data-vid'));
+      if (!row || row.notFound) return;
+      var box = document.createElement('input');
+      box.type = 'checkbox';
+      box.className = 'ch-sel';
+      box.title = 'Select for email';
+      box.checked = !!row.selected;
+      box.setAttribute('data-vid', String(row.vehicleId));
+      slot.appendChild(box);
+    });
+    updateSelectionControls();
+  }
+
+  function updateSelectionControls() {
+    var show = allRows.some(function(r) { return !r.notFound; });
+    ['ch-btnSelAll', 'ch-btnSelNone', 'ch-btnEmailSel'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.style.display = show ? '' : 'none';
+    });
+    var n = allRows.filter(function(r) { return r.selected; }).length;
+    var cnt = document.getElementById('ch-selCount');
+    if (cnt) cnt.textContent = show && n ? n + ' selected' : '';
+  }
+
+  function setAllSelected(on) {
+    allRows.forEach(function(r) { if (!r.notFound) r.selected = on; });
+    renderTable();
+  }
+
+  function onTableClick(e) {
+    var t = e.target;
+    if (t.classList.contains('ch-sel')) {
+      var r0 = findRow(t.getAttribute('data-vid'));
+      if (r0) r0.selected = t.checked;
+      updateSelectionControls();
+      return;
+    }
+    if (t.classList.contains('ch-sysdown')) {
+      var r1 = findRow(t.getAttribute('data-vid'));
+      if (r1) { r1.systemDown = !r1.systemDown; renderTable(); }
+      return;
+    }
+    if (t.classList.contains('ch-mark-btn')) {
+      var r2 = findRow(t.getAttribute('data-vid'));
+      if (!r2) return;
+      var src = t.getAttribute('data-src'), val = t.getAttribute('data-val');
+      r2.marks = r2.marks || {};
+      r2.marks[src] = getMark(r2, src) === val ? null : val;   // click the active one again to clear it
+      renderTable();
+    }
+  }
+
+  // Same row shape as Camera Count, so the composer's status table and the
+  // camera PDF attachment work unchanged. Slot order matches Camera Count.
+  var EMAIL_SLOTS = [
+    { src: 'ROAD',   label: 'Road' },
+    { src: 'DRIVER', label: 'Driver' },
+    { src: 'UVC',    label: 'In-Cab' },
+    { src: 'TVI2',   label: 'R.Ext' },
+    { src: 'TVI1',   label: 'L.Ext' }
+  ];
+
+  function openEmailForSelected() {
+    var selected = allRows.filter(function(r) { return r.selected && !r.notFound; });
+    if (!selected.length) { showError('Tick at least one vehicle first.'); return; }
+    clearError();
+
+    var emailRows = selected.map(function(row) {
+      var latest = '';
+      var slots = EMAIL_SLOTS.map(function(s) {
+        var cell = row.cols[s.src], hist = row.histCells && row.histCells[s.src];
+        var failed = cell && cell.url && colSnapshotFileTooSmall(row.vehicleId, s.src, cell.timeAt);
+        if (cell && cell.timeAt && !failed && cell.timeAt > latest) latest = cell.timeAt;
+        var url = (cell && cell.url && !failed) ? cell.url : (hist ? hist.url : (cell && cell.url) || null);
+        var status = getMark(row, s.src);
+        if (!url && !status) return null;   // this camera isn't fitted / never seen
+        return { label: s.label, url: url, status: status };
+      });
+      var working = slots.filter(function(s) { return s && s.status === 'working'; }).length;
+      var notWorking = slots.filter(function(s) { return s && s.status === 'not_working'; }).length;
+      return {
+        legacyNo:     row.vehicleName || '—',
+        registration: row.registration || '—',
+        imei:         '—',
+        cameraModel:  '—',
+        lastComms:    latest ? formatSnapTime(latest) : 'Unknown',
+        systemDown:   !!row.systemDown,
+        working:      working,
+        notWorking:   notWorking,
+        slots:        slots
+      };
+    });
+
+    TGE.openEmailComposer({
+      rows: emailRows,
+      fields: [
+        { key: 'legacyNo',     label: 'Legacy No' },
+        { key: 'registration', label: 'Registration' },
+        { key: 'lastComms',    label: 'Last Snapshot' },
+        { key: 'working',      label: 'Cameras Working' },
+        { key: 'notWorking',   label: 'Cameras Not Working' }
+      ],
+      imagesField: null
+    });
+  }
+
   function wireTableImages() {
     document.querySelectorAll('#ch-snapTableBody img[data-full]').forEach(function(img) {
       img.addEventListener('click', function(e) { e.stopPropagation(); openFsFromImg(img); });
