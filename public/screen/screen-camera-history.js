@@ -194,7 +194,9 @@
       '.cam-hist .ch-mark-btn { flex:1; max-width:72px; height:24px; padding:0 6px; border-radius:6px; border:1px solid var(--line); background:var(--surface); color:var(--muted); font-size:10.5px; font-weight:700; cursor:pointer; }',
       '.cam-hist .ch-mark-btn.is-good.on { background:var(--green-100); border-color:var(--green-600); color:var(--green-700); }',
       '.cam-hist .ch-mark-btn.is-bad.on { background:var(--danger-bg); border-color:var(--danger); color:var(--danger); }',
-      '.cam-hist .ch-sel-count { font-size:12px; font-weight:600; color:var(--muted); }'
+      '.cam-hist .ch-sel-count { font-size:12px; font-weight:600; color:var(--muted); }',
+      '.cam-hist .ch-head { position:relative; }',
+      '.cam-hist .ch-head-pill { position:absolute; top:20px; right:24px; }'
     ].join('\n');
     var style = document.createElement('style');
     style.id = STYLE_ID;
