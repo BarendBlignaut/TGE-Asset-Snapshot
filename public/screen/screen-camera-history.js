@@ -1215,11 +1215,12 @@
       if (hist) return renderHistCell(hist, row, columnLabel);
       if (row.histSearching && row.histSearching[src]) {
         return '<div class="snap-col-stack"><div class="snap-thumb-block">' +
-          '<div class="thumb-wrap snap-hist-searching" style="width:100%;min-height:60px;display:flex;align-items:center;justify-content:center;background:#fefce8;">' +
-          '<span style="font-size:0.65rem;font-weight:700;color:#92400e;">SEARCHING…</span></div>' +
-          '<span class="snap-searching-badge">SEARCHING HISTORY…</span>' +
+          '<div class="thumb-wrap snap-hist-searching" style="width:100%;min-height:88px;display:flex;align-items:center;justify-content:center;">' +
+          '<span class="ch-hist-spin" aria-hidden="true"></span>' +
+          '<span class="ch-hist-wk" data-vid="' + esc(String(row.vehicleId)) + '">' + esc(row.histWkLabel || 'Searching history') + '</span></div>' +
           '</div></div>';
       }
+      if (row.histNone && row.histNone[src]) return '<span class="snap-hist-none">Not found in ' + row.histNone[src] + ' wks</span>';
       return '<span class="thumb-missing">UNKNOWN</span>';
     }
     var vehicleName = row.vehicleName, vehicleId = row.vehicleId;
