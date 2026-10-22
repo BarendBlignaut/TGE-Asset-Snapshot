@@ -2066,10 +2066,13 @@
   // ── 5) Event wiring + onShow registration ────────────────────────────────────
 
   function wireEvents() {
-    TGE.on('ch-btnLoad', 'click', checkSnapshots);
+    TGE.on('ch-btnLoad', 'click', onRunClick);
     if (TGE.wireOutputPill) TGE.wireOutputPill('ch', chExportItems());
-    TGE.on('ch-fleetFilter', 'keydown', function(e) { if (e.ctrlKey && e.key === 'Enter') checkSnapshots(); });
-       TGE.on('ch-btnStopHist', 'click', function() { histStopRequested = true; showHistSearchBar(false); });
+    TGE.on('ch-fleetFilter', 'keydown', function(e) { if (e.ctrlKey && e.key === 'Enter') onRunClick(); });
+    TGE.on('ch-fleetFilter', 'input', function() { if (multiOn) { saveActiveList(); renderListTabs(); } });
+    TGE.on('ch-btnMulti', 'click', toggleMulti);
+    TGE.on('ch-listTabs', 'click', onListTabsClick);
+    TGE.on('ch-btnStopHist', 'click', function() { histStopRequested = true; multiStopRequested = true; showHistSearchBar(false); });
     TGE.on('ch-btnSelAll', 'click', function() { setAllSelected(true); });
     TGE.on('ch-btnSelNone', 'click', function() { setAllSelected(false); });
     TGE.on('ch-snapTableBody', 'click', onTableClick);
