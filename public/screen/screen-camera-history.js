@@ -215,7 +215,8 @@
           '<div class="ch-head">',
           '<div class="hero-kicker">Camera</div>',
           '<div class="ch-title">Camera Snapshot &amp; History Checker</div>',
-          '<div class="ch-sub">Verify camera snapshots are valid and automatically search history to find when a camera last worked.</div>',
+                   '<div class="ch-sub">Verify camera snapshots are valid and automatically search history to find when a camera last worked.</div>',
+          '<div class="ch-head-pill">' + (TGE.buildOutputPill ? TGE.buildOutputPill('ch', chExportItems(), { theme: 'dark' }) : '') + '</div>',
         '</div>',
 
         '<div class="ch-card">',
