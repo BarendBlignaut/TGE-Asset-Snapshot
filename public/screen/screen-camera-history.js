@@ -288,6 +288,7 @@
           '</div>',
 
           '<div id="ch-errorMsg" class="ch-error ch-hidden"></div>',
+          '<div id="ch-multiLine" class="ch-multi-line ch-hidden"></div>',
 
           '<div style="overflow-x:auto;">',
             '<table class="snap-table" id="ch-snapTable" aria-label="Camera snapshots by vehicle">',
