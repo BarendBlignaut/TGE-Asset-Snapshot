@@ -459,8 +459,9 @@
   async function historicalFallback(deviceIdByVehicleId) {
     deviceIdByVehicleId = deviceIdByVehicleId || {};
     var toSearch = [];
-    for (var ri = 0; ri < allRows.length; ri++) {
-      var row = allRows[ri];
+        var scopeRows = batchRows || allRows;
+    for (var ri = 0; ri < scopeRows.length; ri++) {
+      var row = scopeRows[ri];
       if (row.notFound) continue;
       var unknownSrcs = SOURCES.filter(function(src) {
         var cell = row.cols[src];
