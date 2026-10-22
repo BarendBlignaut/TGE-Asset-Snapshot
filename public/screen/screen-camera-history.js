@@ -1705,7 +1705,7 @@
 
   function wireEvents() {
     TGE.on('ch-btnLoad', 'click', checkSnapshots);
-    TGE.on('ch-btnExportCsv', 'click', exportSnapshotsToCsv);
+    if (TGE.wireOutputPill) TGE.wireOutputPill('ch', chExportItems());
     TGE.on('ch-fleetFilter', 'keydown', function(e) { if (e.ctrlKey && e.key === 'Enter') checkSnapshots(); });
        TGE.on('ch-btnStopHist', 'click', function() { histStopRequested = true; showHistSearchBar(false); });
     TGE.on('ch-btnSelAll', 'click', function() { setAllSelected(true); });
