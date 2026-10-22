@@ -1607,16 +1607,14 @@
 
       if (allRows.length > 0) {
         btn.disabled = true;
-        document.getElementById('ch-btnExportCsv').disabled = true;
+              if (allRows.length > 0) {
+        btn.disabled = true;
         setPersistCheckBusy(true);
         try {
           await persistSnapshotsAfterLoad();
         } finally {
           setPersistCheckBusy(false);
-          document.getElementById('ch-btnExportCsv').disabled = false;
         }
-      } else {
-        document.getElementById('ch-btnExportCsv').disabled = false;
       }
 
     } catch(e) {
