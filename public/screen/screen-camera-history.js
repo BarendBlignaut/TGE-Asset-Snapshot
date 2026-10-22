@@ -1478,6 +1478,15 @@
       refreshSdStrip(r3);
       return;
     }
+    if (t.classList.contains('ch-sd-btn')) {
+      var r3 = findRow(t.getAttribute('data-vid'));
+      if (!r3) return;
+      var n = t.getAttribute('data-sd'), v = t.getAttribute('data-val');
+      r3.sdMarks = r3.sdMarks || {};
+      r3.sdMarks[n] = getSdMark(r3, n) === v ? null : v;   // click the active one again to clear it
+      refreshSdStrip(r3);
+      return;
+    }
     if (t.classList.contains('ch-mark-btn')) {
       var r2 = findRow(t.getAttribute('data-vid'));
       if (!r2) return;
