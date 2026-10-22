@@ -1533,7 +1533,6 @@
     allRows = [];
     lastSnapshotSaveMessage   = '';
     lastSnapshotSmallFileByKey = {};
-    document.getElementById('ch-btnExportCsv').disabled = true;
     renderTable();
 
     var fleetLines = input.split(/\r?\n/).map(function(s){ return s.trim(); }).filter(Boolean);
