@@ -1067,7 +1067,7 @@
   }
 
   function applySnapshotFileSizeResults(descriptors, results) {
-    lastSnapshotSmallFileByKey = {};
+    if (!batchRows) lastSnapshotSmallFileByKey = {};   // keep earlier lists' results in a multi run
     if (!descriptors || !descriptors.length) return;
     var byFile = {};
     for (var i = 0; i < results.length; i++) {
