@@ -26,7 +26,7 @@
       items: [
 { key: 'camera-snapshots',  label: 'Camera Snapshots',  actions: ['view','user-mode','fleet-mode','run','cancel','refresh'].concat(EXPORT_ACTIONS), hasLimit: true },
        { key: 'sd-health',         label: 'SD Card Health',    actions: ['view','user-mode','fleet-mode','run','cancel','refresh'].concat(EXPORT_ACTIONS), hasLimit: true },
-        { key: 'camera-history',    label: 'Camera History',    actions: ['view'] },
+       { key: 'camera-history',    label: 'Camera History',    actions: ['view'].concat(EXPORT_ACTIONS) },
         { key: 'camera-footage',    label: 'Camera Footage',    actions: ['view','run'] },
       ]
     },
