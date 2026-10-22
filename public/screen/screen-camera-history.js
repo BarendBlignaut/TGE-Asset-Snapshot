@@ -1216,11 +1216,11 @@
   }
 
   async function persistSnapshotsAfterLoad() {
-    var descriptors = enumerateSnapshotDownloadDescriptors(allRows);
+       var descriptors = enumerateSnapshotDownloadDescriptors(batchRows || allRows);
     var total = descriptors.length;
 
     if (total === 0) {
-      lastSnapshotSmallFileByKey = {};
+      if (!batchRows) lastSnapshotSmallFileByKey = {};
       lastSnapshotSaveMessage = 'No images to check.';
       renderTable();
       return;
