@@ -1234,7 +1234,7 @@
       '<div class="thumb-wrap ' + (searching ? 'snap-hist-searching' : '') + '"><img src="' + esc(cell.url) + '" alt="" data-full="' + esc(cell.url) + '" data-caption="' + cap + '" data-vehicle-id="' + esc(String(vehicleId)) + '" data-vehicle-name="' + esc(vehicleName) + '"></div>' +
       '<span class="snap-time">' + esc(formatSnapTime(cell.timeAt)) + '</span>' +
       (fail ? '<span class="snap-failed">FAILED</span>' : '') +
-      (searching ? '<span class="snap-searching-badge">SEARCHING HISTORY…</span>' : '') +
+            (searching ? '<span class="snap-searching-badge ch-hist-wk" data-vid="' + esc(String(vehicleId)) + '">' + esc(row.histWkLabel || 'Searching history') + '</span>' : '') +
       '</div></div>';
   }
 
