@@ -1470,7 +1470,11 @@
         { key: 'registration', label: 'Registration' },
         { key: 'lastComms',    label: 'Last Snapshot' },
         { key: 'working',      label: 'Cameras Working' },
-        { key: 'notWorking',   label: 'Cameras Not Working' }
+        { key: 'notWorking',   label: 'Cameras Not Working' },
+        { key: 'cameraModel',  label: 'Camera Model' },
+        { key: 'imei',         label: 'IMEI' },
+        { key: 'sd1',          label: 'SD Card 1' },
+        { key: 'sd2',          label: 'SD Card 2' }
       ],
       imagesField: null
     });
