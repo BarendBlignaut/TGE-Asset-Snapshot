@@ -1445,6 +1445,97 @@
     });
   }
 
+  // Builds one composer/PDF row (Camera Count shape) for a vehicle.
+  function emailRowFor(row) {
+    var latest = '';
+    var slots = EMAIL_SLOTS.map(function(s) {
+      var cell = row.cols[s.src], hist = row.histCells && row.histCells[s.src];
+      var failed = cell && cell.url && colSnapshotFileTooSmall(row.vehicleId, s.src, cell.timeAt);
+      if (cell && cell.timeAt && !failed && cell.timeAt > latest) latest = cell.timeAt;
+      var url = (cell && cell.url && !failed) ? cell.url : (hist ? hist.url : (cell && cell.url) || null);
+      var status = getMark(row, s.src);
+      if (!url && !status) return null;   // this camera isn't fitted / never seen
+      return { label: s.label, url: url, status: status };
+    });
+    var working = slots.filter(function(s) { return s && s.status === 'working'; }).length;
+    var notWorking = slots.filter(function(s) { return s && s.status === 'not_working'; }).length;
+    return {
+      legacyNo:     row.vehicleName || '—',
+      registration: row.registration || '—',
+      imei:         '—',
+      cameraModel:  '—',
+      lastComms:    latest ? formatSnapTime(latest) : 'Unknown',
+      systemDown:   !!row.systemDown,
+      working:      working,
+      notWorking:   notWorking,
+      slots:        slots
+    };
+  }
+
+  // ── Export pill (shared TGE.buildOutputPill, same as the other screens) ─────
+  function chExportItems() {
+    return [
+      { id:'ch-pdf-btn',   label:'Camera PDF', suffix:'PDF',  icon:'📄', permission:['camera-history','export-pdf'],       action: exportCameraPdf },
+      { id:'ch-email-btn', label:'Email PDF',  suffix:'Send', icon:'✉️', permission:['camera-history','export-email-pdf'], action: openEmailForSelected },
+      { id:'ch-csv-btn',   label:'CSV',        suffix:'.csv', icon:'📑', permission:['camera-history','export-csv'],       action: function() { exportHistoryTable('csv'); } },
+      { id:'ch-xlsx-btn',  label:'Excel',      suffix:'.xlsx',icon:'📊', permission:['camera-history','export-xlsx'],      action: function() { exportHistoryTable('xlsx'); } },
+      { id:'ch-json-btn',  label:'JSON',       suffix:'.json',icon:'{}', permission:['camera-history','export-json'],      action: function() { exportHistoryTable('json'); } }
+    ];
+  }
+
+  // Ticked vehicles, or every vehicle found when none are ticked.
+  function rowsForOutput() {
+    var found = allRows.filter(function(r) { return !r.notFound; });
+    var ticked = found.filter(function(r) { return r.selected; });
+    return ticked.length ? ticked : found;
+  }
+
+  function markLabel(m) { return m === 'working' ? 'Good' : m === 'not_working' ? 'Failed' : ''; }
+
+  function exportHistoryTable(format) {
+    if (!allRows.length) { alert('Check snapshots first, then export.'); return; }
+    var header = ['Vehicle name', 'Registration', 'System down'];
+    SOURCES.forEach(function(src) { header.push(src, src + ' marked'); });
+    header.push('Unsure');
+    var rows = allRows.map(function(row) {
+      var out = [row.vehicleName || '', row.registration || '', row.systemDown ? 'Yes' : ''];
+      SOURCES.forEach(function(src) {
+        out.push(colSnapshotStatusLabel(row.vehicleId, src, row.cols[src], row));
+        out.push(row.notFound ? '' : markLabel(getMark(row, src)));
+      });
+      out.push(unsureColumnStatusForCsv(row));
+      return out;
+    });
+    TGE.exportTable({ header: header, rows: rows, sheetName: 'Camera History' }, format, { module: 'CameraHistory', type: 'Snapshots' });
+  }
+
+  async function exportCameraPdf() {
+    var rows = rowsForOutput();
+    if (!rows.length) { alert('Check snapshots first, then export.'); return; }
+    if (rows.length > 200) { alert('The PDF takes up to 200 vehicles. Tick the ones you need.'); return; }
+    setStatus('Building camera PDF…');
+    try {
+      var assets = rows.map(emailRowFor).map(function(r) {
+        return { legacyNo: r.legacyNo, imei: r.imei, model: r.cameraModel, lastComms: r.lastComms, systemDown: r.systemDown,
+                 slots: r.slots.filter(function(s) { return s != null; }) };
+      });
+      var res = await TGE.api('POST', '/api/camera-fault-pdf', { assets: assets });
+      if (!res.ok || !res.data || !res.data.base64) throw new Error((res.data && res.data.error) || 'PDF could not be built.');
+      var bin = atob(res.data.base64), bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      var url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = TGE.outputFileName({ module: 'CameraHistory', type: 'CameraReport', extension: 'pdf' });
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+    } catch (e) {
+      showError('Camera PDF: ' + e.message);
+    } finally {
+      clearStatus();
+    }
+  }
+
   function wireTableImages() {
     document.querySelectorAll('#ch-snapTableBody img[data-full]').forEach(function(img) {
       img.addEventListener('click', function(e) { e.stopPropagation(); openFsFromImg(img); });
