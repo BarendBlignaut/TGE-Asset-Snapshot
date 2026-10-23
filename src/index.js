@@ -2626,12 +2626,21 @@ async function handleCamFootageLookup(request, env) {
   if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
   if (!env.TN360_SNAPSHOT_KEY) return jsonResponse({ error: "TN360_SNAPSHOT_KEY not configured." }, 503);
 
-  const imei = String(new URL(request.url).searchParams.get("imei") || "").trim();
-  if (!/^\d{10,20}$/.test(imei)) return jsonResponse({ error: "Enter a valid camera IMEI." }, 400);
+  // Takes a camera IMEI, or a fleet number / registration that is turned into its camera's IMEI.
+  const query = String(new URL(request.url).searchParams.get("imei") || "").trim();
+  if (!query) return jsonResponse({ error: "Enter a fleet number or camera IMEI." }, 400);
 
   try {
+    let imei = query, vehicle = null;
+    if (!/^\d{10,20}$/.test(query)) {
+      const found = await camFootageFindByFleet(env, query);
+      if (found.error) return jsonResponse({ error: found.error }, 404);
+      imei = found.imei;
+      vehicle = found.vehicle;
+    }
     const device = await camFootageDevice(env, imei);
     if (!device || !device.id) return jsonResponse({ error: "No TN360 device found for IMEI " + imei + "." }, 404);
+    if (!vehicle) vehicle = await camFootageVehicle(env, device.vehicleId);
     const key  = encodeURIComponent(env.TN360_SNAPSHOT_KEY);
     const hdrs = { "Content-Type": "application/json" };
     const [chRes, stRes] = await Promise.all([
@@ -2648,6 +2657,8 @@ async function handleCamFootageLookup(request, env) {
       imei: imei,
       deviceId: device.id,
       vehicleId: device.vehicleId || null,
+      vehicleName: vehicle ? vehicle.name : "",
+      registration: vehicle ? vehicle.registration : "",
       channels: Array.isArray(channels) ? channels : [],
       status: status ? { state: status.state, ignitionStatus: status.ignitionStatus, lastUpdated: status.lastUpdated, dataPlan: status.dataPlan || null } : null
     });
@@ -2684,7 +2695,7 @@ async function handleCamFootageRequest(request, env) {
     if (!chRes.ok) return jsonResponse({ error: "TN360 channels lookup failed.", status: chRes.status }, 502);
     const chList  = await chRes.json();
     const cameras = (Array.isArray(chList) ? chList : []).map(function (c) { return c && c.channel; }).filter(Boolean);
-    if (!cameras.length) return jsonResponse({ error: "TN360 reports no cameras for IMEI " + imei + "." }, 404);
+    // An IQ camera (built-in Road and Driver only) lists no channels; TN360 then sends no Camera field.
     // partSeconds: 10/30/60/120 splits the clip; 0 sends it as one request.
     const partReq     = Number(body.partSeconds);
     const partSeconds = partReq === 0 ? length : ([10, 30, 60, 120].indexOf(partReq) >= 0 ? partReq : CAMFOOTAGE_PART_SECONDS);
@@ -2695,9 +2706,9 @@ async function handleCamFootageRequest(request, env) {
         Length: Math.min(partSeconds, length - offset),
         Provider: "IQCamera",
         RequestorId: CAMFOOTAGE_REQUESTOR_ID,
-        CheckDuplicate: true,
-        Camera: cameras
+        CheckDuplicate: true
       };
+      if (cameras.length) payload.Camera = cameras;
       const res  = await fetch(`https://api-au.telematics.com/cameras/${encodeURIComponent(device.id)}/videos?key=${encodeURIComponent(env.TN360_SNAPSHOT_KEY)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Origin": "https://tn360-au.telematics.com", "Referer": "https://tn360-au.telematics.com/" },
@@ -2712,6 +2723,177 @@ async function handleCamFootageRequest(request, env) {
   } catch (e) {
     return jsonResponse({ error: "Network error sending request: " + e.message }, 502);
   }
+}
+
+// ── camfootage: finished footage (TN360 Video Requests list) ─────────────────
+// POST /api/camfootage/videos { imei, days } → this camera's video requests,
+// newest first, each with a ready .mp4 + thumbnail per camera once TN360 has
+// made them (links last 7 days). Same call TN360's Video Requests page makes.
+const CAMFOOTAGE_CLIP_LABELS = { ROAD: "Road", DRIVER: "Driver", UVC: "In-Cab", TVI1: "Left External", TVI2: "Right External" };
+const CAMFOOTAGE_CLIP_ORDER  = ["ROAD", "DRIVER", "UVC", "TVI1", "TVI2"];
+
+function camFootageParse(text) {
+  if (text && typeof text === "object") return text;
+  try { return text ? JSON.parse(text) : {}; } catch (e) { return {}; }
+}
+
+async function camFootageVehicles(env) {
+  try {
+    const companyId = env.TN360_COMPANY_ID || "432639";
+    const res = await fetch(`https://api-au.telematics.com/v1/vehicles?key=${encodeURIComponent(env.TN360_SNAPSHOT_KEY)}&pruning=B2B&company_id=${companyId}`, { headers: { "Content-Type": "application/json" } });
+    if (!res.ok) return null;
+    const list = camFootageParse(await res.text());
+    return Array.isArray(list) ? list : null;
+  } catch (e) { return null; }
+}
+
+async function camFootageVehicle(env, vehicleId) {
+  if (!vehicleId) return null;
+  const arr = await camFootageVehicles(env) || [];
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i] && String(arr[i].id) === String(vehicleId)) return { name: arr[i].name || "", registration: arr[i].registration || "" };
+  }
+  return null;
+}
+
+// Fleet number (or registration) → that vehicle's in-service camera IMEI.
+async function camFootageFindByFleet(env, text) {
+  const norm = function (v) { return String(v || "").toUpperCase().replace(/\s+/g, ""); };
+  const want = norm(text);
+  const vehicles = await camFootageVehicles(env);
+  if (!vehicles) return { error: "TN360 vehicle list could not be read." };
+  const v = vehicles.find(function (x) { return x && norm(x.name) === want; }) || vehicles.find(function (x) { return x && norm(x.registration) === want; });
+  if (!v) return { error: "No vehicle called " + text + " in TN360." };
+  let devices = null;
+  for (const key of [env.TN360_SNAPSHOT_KEY, env.TN360_API_KEY].filter(Boolean)) {
+    const res = await fetch(`https://api-au.telematics.com/v1/devices?pruning=B2B&key=${encodeURIComponent(key)}`, { headers: { "Content-Type": "application/json" } });
+    if (res.ok) { const d = camFootageParse(await res.text()); if (Array.isArray(d)) { devices = d; break; } }
+  }
+  if (!devices) return { error: "TN360 device list could not be read." };
+  const cam = devices.find(function (d) { return d && d.type && d.type.code === "CAMERA" && !d.outServiceAt && String(d.vehicleId) === String(v.id); });
+  if (!cam || !cam.imei) return { error: (v.name || text) + " has no camera in TN360." };
+  return { imei: String(cam.imei), vehicle: { name: v.name || "", registration: v.registration || "" } };
+}
+
+async function handleCamFootageVideos(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "camera-footage", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+  if (!env.TN360_SNAPSHOT_KEY) return jsonResponse({ error: "TN360_SNAPSHOT_KEY not configured." }, 503);
+
+  const body = await safeJson(request);
+  const imei = String(body.imei || "").trim();
+  if (!/^\d{10,20}$/.test(imei)) return jsonResponse({ error: "Enter a valid camera IMEI." }, 400);
+  const days = Math.min(31, Math.max(1, Math.round(Number(body.days) || 7)));
+  // A chosen period (from/to) wins over "last N days"; capped at 31 days.
+  let toMs = new Date(body.to).getTime(), fromMs = new Date(body.from).getTime();
+  if (isNaN(toMs) || isNaN(fromMs) || fromMs >= toMs) { toMs = Date.now(); fromMs = toMs - days * 86400000; }
+  if (toMs - fromMs > 31 * 86400000) return jsonResponse({ error: "Choose a period of 31 days or less." }, 400);
+
+  try {
+    const device = await camFootageDevice(env, imei);
+    if (!device || !device.id) return jsonResponse({ error: "No TN360 device found for IMEI " + imei + "." }, 404);
+    const toIso   = new Date(toMs).toISOString();
+    const fromIso = new Date(fromMs).toISOString();
+    const [res, vehicle] = await Promise.all([
+      fetch(`https://api-au.telematics.com/v1/devices/events/camera/video_requests?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`, {
+        method: "POST",
+        headers: { "Authorization": `Token token="${env.TN360_SNAPSHOT_KEY}"`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vehicles: device.vehicleId ? [String(device.vehicleId)] : [],
+          devices: [String(device.id)],
+          eventTypes: ["VIDEO_REQUEST"],
+          orderField: "EventTime", orderDirection: "desc", rowOffset: 0, search: "",
+          issueStatuses: ["New", "Watched", "To Be Reviewed", "Reviewed"]
+        })
+      }),
+      camFootageVehicle(env, device.vehicleId)
+    ]);
+    const text = await res.text();
+    if (!res.ok) return jsonResponse({ error: "TN360 video requests lookup failed.", status: res.status, detail: text.slice(0, 200) }, 502);
+    const data   = camFootageParse(text);
+    const events = Array.isArray(data.events) ? data.events : [];
+
+    const requests = events
+      .filter(function (ev) { return ev && String(ev.deviceId) === String(device.id); })
+      .map(function (ev) {
+        const ex = camFootageParse(ev.extras);
+        const clips = (Array.isArray(ev.attachments) ? ev.attachments : []).map(function (att) {
+          const c = camFootageParse(att && att.context);
+          if (!c.mediaFile) return null;
+          const vd  = c.videoDetails || {};
+          const cam = c.source === "ROAD_FACING" ? "ROAD" : c.source === "DRIVER_FACING" ? "DRIVER"
+                    : String((Array.isArray(vd.sources) && vd.sources[0]) || "").toUpperCase();
+          return { camera: cam, label: CAMFOOTAGE_CLIP_LABELS[cam] || cam || "Camera", url: c.mediaFile, thumb: c.thumbnailFile || null, seconds: vd.videoDuration || null };
+        }).filter(Boolean).sort(function (a, b) {
+          const ia = CAMFOOTAGE_CLIP_ORDER.indexOf(a.camera), ib = CAMFOOTAGE_CLIP_ORDER.indexOf(b.camera);
+          return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+        });
+        // Cameras asked for: TN360's own channel list for the request (road/driver + extras).
+        const asked = (Array.isArray(ex.tn360_channels) ? ex.tn360_channels : []).map(function (c) {
+          const k = String(c || "").toUpperCase();
+          return CAMFOOTAGE_CLIP_LABELS[k] || k;
+        }).filter(function (v, i, arr) { return v && arr.indexOf(v) === i; });
+        return {
+          id: ev.id,
+          status: String(ev.videoRequestStatus || ev.status || "").toUpperCase(),
+          start: ex.Start || ev.timeAt || null,
+          length: ex.Length != null ? ex.Length : null,
+          requestedAt: ev.videoRequestTime || null,
+          requestedBy: ev.requestorName || (ev.requestor && ev.requestor.name) || "",
+          mine: ex.RequestorId === CAMFOOTAGE_REQUESTOR_ID,
+          cameras: clips.length ? clips.map(function (c) { return c.label; }) : asked,
+          clips: clips
+        };
+      });
+
+    return jsonResponse({
+      deviceId: device.id,
+      vehicleId: device.vehicleId || null,
+      vehicleName: vehicle ? vehicle.name : "",
+      registration: vehicle ? vehicle.registration : "",
+      from: fromIso,
+      to: toIso,
+      requests: requests
+    });
+  } catch (e) {
+    return jsonResponse({ error: "Network error checking footage: " + e.message }, 502);
+  }
+}
+
+// GET /api/camfootage/clip?url=&name= → streams one TN360 clip through the Worker
+// so it saves under our own file name (and so a later combined export can read it).
+// Only TN360's footage bucket is allowed.
+async function handleCamFootageClip(request, env) {
+  const auth = await requireSession(request, env);
+  if (!auth.ok) return auth.response;
+  const perm = await hasPermission(env, auth.session.role_id, "camera-footage", "view");
+  if (!perm.allowed) return jsonResponse({ error: "Access denied" }, 403);
+
+  const q = new URL(request.url).searchParams;
+  let target;
+  try { target = new URL(q.get("url") || ""); } catch (e) { return jsonResponse({ error: "Missing footage link." }, 400); }
+  if (target.protocol !== "https:" || !/^teletracnavmanaus[a-z0-9-]*\.s3\.ap-southeast-2\.amazonaws\.com$/.test(target.hostname)) {
+    return jsonResponse({ error: "Not a TN360 footage link." }, 400);
+  }
+  const name = String(q.get("name") || "footage.mp4").replace(/[^\w .()-]/g, "_").slice(0, 120) || "footage.mp4";
+
+  const hdrs  = {};
+  const range = request.headers.get("Range");
+  if (range) hdrs["Range"] = range;
+  const res = await fetch(target.toString(), { headers: hdrs });
+  if (!res.ok) return jsonResponse({ error: "TN360 footage link failed. It may have expired; check for footage again.", status: res.status }, 502);
+
+  const out = new Headers();
+  ["Content-Length", "Content-Range", "Accept-Ranges", "Last-Modified", "ETag"].forEach(function (h) {
+    const v = res.headers.get(h);
+    if (v) out.set(h, v);
+  });
+  out.set("Content-Type", /^video\//.test(res.headers.get("Content-Type") || "") ? res.headers.get("Content-Type") : "video/mp4");
+  out.set("Content-Disposition", (q.get("inline") === "1" ? "inline" : "attachment") + '; filename="' + name + '"');
+  out.set("Cache-Control", "private, max-age=3600");
+  return new Response(res.body, { status: res.status, headers: out });
 }
 
 // ── camchk: image size check (no key — hits presigned S3 directly) ───────────
@@ -2928,6 +3110,8 @@ if (method === "POST" && path.match(/^\/api\/vendors\/\d+\/hardware-types$/)) {
       if (method === "GET"  && path === "/api/camfootage/check")  return handleCamFootageCheck(request, env);
       if (method === "GET"  && path === "/api/camfootage/lookup") return handleCamFootageLookup(request, env);
       if (method === "POST" && path === "/api/camfootage/request") return handleCamFootageRequest(request, env);
+      if (method === "POST" && path === "/api/camfootage/videos")  return handleCamFootageVideos(request, env);
+      if (method === "GET"  && path === "/api/camfootage/clip")    return handleCamFootageClip(request, env);
 
       // Camera history — admin
       if (method === "GET"    && path === "/api/admin/camera-history/status")   return handleCameraHistoryStatus(request, env);
