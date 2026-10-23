@@ -522,6 +522,8 @@
     }
 
     histStopRequested = false;
+    var myRun = runId;
+    function stopped() { return histStopRequested || myRun !== runId; }
     showHistSearchBar(true, 'Searching history for ' + total + ' vehicle' + (total === 1 ? '' : 's') + ' with unknown cameras…');
 
     async function searchVehicle(item) {
