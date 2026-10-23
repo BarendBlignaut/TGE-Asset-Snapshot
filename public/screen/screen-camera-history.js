@@ -537,10 +537,10 @@
       renderTable();
 
       for (var week = 0; week < maxWeeks && stillUnknown.length > 0; week++) {
-        if (histStopRequested) break;
+        if (stopped()) break;
         weekByVehicle[vid].week = week + 1;
         row2.histWkLabel = 'Searching wk ' + (week + 1) + ' of ' + maxWeeks;
-        if (!histStopRequested) updateHistBar();
+        updateHistBar();
 
         var weekEndMs   = now - (week * weekMs);
         var weekStartMs = weekEndMs - weekMs;
