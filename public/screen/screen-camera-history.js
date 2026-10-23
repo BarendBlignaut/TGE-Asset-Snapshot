@@ -232,7 +232,12 @@
       '.cam-hist .ch-sd-btn.on-b { background:var(--danger-bg); color:var(--danger); }',
       '.cam-hist .ch-sd-note { color:var(--muted); font-style:italic; }',
       '.cam-hist .ch-sd-last { margin-left:auto; color:var(--muted); }',
-      '.cam-hist .ch-sd-last b { font-weight:600; color:var(--ink-2); }'
+      '.cam-hist .ch-sd-last b { font-weight:600; color:var(--ink-2); }',
+      // Stop (whole run)
+      '.cam-hist .ch-btn-stop { border-color:var(--danger); color:var(--danger); }',
+      '.cam-hist .ch-btn-stop:hover { background:var(--danger-bg); }',
+      '.cam-hist .ch-stopped-tag { display:inline-block; margin-top:3px; font-size:10px; font-weight:700; color:var(--warning); background:#fdf3e7; border:1px solid #f1d3ae; border-radius:999px; padding:0 7px; }',
+      '.cam-hist-overlay .ch-stop-img { margin-top:12px; height:32px; padding:0 16px; border-radius:8px; border:1px solid #c0392b; background:#fff; color:#c0392b; font-size:12px; font-weight:700; cursor:pointer; }'
     ].join('\n');
     var style = document.createElement('style');
     style.id = STYLE_ID;
