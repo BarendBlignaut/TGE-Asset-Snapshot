@@ -328,6 +328,7 @@
           '<div class="pc-track"><div id="ch-persistProgressBarFill" class="pc-fill"></div></div>',
           '<p class="pc-text">Checking image sizes</p>',
           '<p id="ch-persistProgressCount" class="pc-sub">Preparing…</p>',
+          '<button type="button" id="ch-btnStopImg" class="ch-stop-img">Stop</button>',
         '</div>',
       '</div>',
 
