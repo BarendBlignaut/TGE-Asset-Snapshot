@@ -447,6 +447,7 @@ var subjectInput = document.getElementById('ec-subject');
 
     var headerCells = '<th style="text-align:left;padding:6px 8px;border-bottom:2px solid #e5e7eb;font-size:11px;color:#6b7280;text-transform:uppercase;">Asset ID</th>' +
       '<th style="text-align:left;padding:6px 8px;border-bottom:2px solid #e5e7eb;font-size:11px;color:#6b7280;text-transform:uppercase;">IMEI</th>' +
+      (hasSd ? sdTh('Model') + sdTh('SD 1') + sdTh('SD 2') : '') +
       CAM_SLOT_LABELS.map(function(label) {
         return '<th style="text-align:center;padding:6px 8px;border-bottom:2px solid #e5e7eb;font-size:11px;color:#6b7280;text-transform:uppercase;">' + label + '</th>';
       }).join('') +
