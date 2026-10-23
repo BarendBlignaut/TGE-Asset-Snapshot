@@ -433,9 +433,17 @@ var subjectInput = document.getElementById('ec-subject');
     return '—';
   }
 
-  function buildCameraStatusTable(rows) {
+   function buildCameraStatusTable(rows) {
     var camRows = rows.filter(rowHasCameraSlots);
     if (!camRows.length) return '';
+    // Camera History rows carry SD card details (sd1/sd2); other pages don't, so their table is unchanged.
+    var hasSd = camRows.some(function(r) { return r.sd1 != null || r.sd2 != null; });
+    var sdTh = function(label) { return '<th style="text-align:left;padding:6px 8px;border-bottom:2px solid #e5e7eb;font-size:11px;color:#6b7280;text-transform:uppercase;">' + label + '</th>'; };
+    var sdTd = function(val) {
+      var v = val != null && val !== '' ? String(val) : '—';
+      var bad = /Not Present|Failed/.test(v);
+      return '<td style="padding:6px 8px;border-bottom:1px solid #f3f4f6;font-size:12px;' + (bad ? 'color:#dc2626;font-weight:700;' : '') + '">' + escapeHtml(v) + '</td>';
+    };
 
     var headerCells = '<th style="text-align:left;padding:6px 8px;border-bottom:2px solid #e5e7eb;font-size:11px;color:#6b7280;text-transform:uppercase;">Asset ID</th>' +
       '<th style="text-align:left;padding:6px 8px;border-bottom:2px solid #e5e7eb;font-size:11px;color:#6b7280;text-transform:uppercase;">IMEI</th>' +
