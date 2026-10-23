@@ -575,12 +575,14 @@
                 : [];
             } catch(e) { weekFreshEvs = []; }
 
+            if (stopped()) break;   // ignore what came back after Stop
             weekFreshEvs.sort(function(a, b) { return new Date(b.timeAt) - new Date(a.timeAt); });
 
             var remaining = [], foundAny = false;
             for (var si2 = 0; si2 < stillUnknown.length; si2++) {
               var src = stillUnknown[si2], accepted = false;
               for (var ei = 0; ei < weekFreshEvs.length; ei++) {
+                if (stopped()) break;
                 var candUrl = weekFreshEvs[ei].urls[src];
                 if (!candUrl) continue;
                 try {
@@ -605,16 +607,17 @@
           }
       }
 
+      if (myRun !== runId) return;   // Stop already tidied this row
       row2.histSearching = {};
-      if (!histStopRequested && stillUnknown.length) {
+      if (!stopped() && stillUnknown.length) {
         row2.histNone = {};
         stillUnknown.forEach(function(src) { row2.histNone[src] = maxWeeks; });
       }
       weekByVehicle[vid].done = true;
-      row2.chDone = true;
+      if (stopped()) row2.chStopped = true; else row2.chDone = true;
       renderTable();
       doneCount++;
-      if (!histStopRequested) updateHistBar();
+      if (!stopped()) updateHistBar();
     }
 
     await Promise.all(toSearch.map(function(item) { return searchVehicle(item); }));
@@ -1345,6 +1348,7 @@
       var unsureCell = '<td>' + renderUnsureStack(row.unsure, row) + '</td>';
             var sub = row.registration ? '<br><span style="font-weight:500;font-size:0.7rem;color:#6b7280;">' + esc(row.registration) + '</span>' : '';
       if (row.listNo) sub += '<br><span class="ch-list-tag">List ' + row.listNo + '</span>';
+      if (row.chStopped) sub += '<br><span class="ch-stopped-tag">Stopped</span>';
       if (row.notFound) {
         sub += '<br><span class="snap-not-found-detail">Not found in fleet for this company.</span>';
         if (row.notFoundDetail) sub += '<br><span class="snap-not-found-detail">' + esc(row.notFoundDetail) + '</span>';
@@ -1649,6 +1653,7 @@
     else if (sd.state === 'loading') body = '<span class="ch-sd-note">Loading camera details…</span>';
     else if (sd.state === 'none') body = '<span class="ch-sd-note">No camera device found in TN360</span>';
     else if (sd.state === 'error') body = '<span class="ch-sd-note">Camera details unavailable</span>';
+    else if (sd.state === 'stopped') body = '<span class="ch-sd-note">SD card check stopped</span>';
     else body = '<span class="ch-sd-k">Camera</span><span class="ch-sd-v">' + esc(sd.model || '—') + '</span>' +
       '<span class="ch-sd-mono">' + esc(sd.imei || '—') + '</span><span class="ch-sd-sep"></span>' +
       sdChipHtml(row, 1) + sdChipHtml(row, 2) +
@@ -1923,7 +1928,7 @@
         ? '<span class="ml-chip is-done">List ' + l.listNo + ' ✓ ' + done + ' of ' + total + '</span>'
         : '<span class="ml-chip">List ' + l.listNo + ' · stopped at ' + done + ' of ' + total + '</span>';
       if (s.running && i === s.current) return '<span class="ml-chip is-run">List ' + l.listNo + ' · ' + done + ' of ' + total + '</span>';
-      return '<span class="ml-chip">List ' + l.listNo + (i > s.current || s.running ? ' · waiting' : ' · not run') + '</span>';
+      return '<span class="ml-chip">List ' + l.listNo + (s.running ? ' · waiting' : ' · not run') + '</span>';
     });
     var cur = s.lists[s.current];
     if (s.running && sdProgress) title = 'List ' + cur.listNo + ' of ' + s.totalLists + ' · SD cards ' + sdProgress.done + ' of ' + sdProgress.total;
@@ -1951,6 +1956,7 @@
     showHistSearchBar(false);
     clearError();
     if (!batch) { multiState = null; multiStopRequested = false; }
+    var myRun = batch ? runId : ++runId;   // a new run makes any older one quit
     var keptRows = (batch && !batch.first) ? allRows : [];
     var keptIds = {};
     keptRows.forEach(function(r) { if (!r.notFound) keptIds[String(r.vehicleId).trim()] = true; });
@@ -1966,6 +1972,7 @@
     var origBtnHTML = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<span class="bulk-ico--spin" style="margin-right:0.375rem;" aria-hidden="true"></span>Checking…';
+    setRunUi(true);
 
     var deviceIdByVehicleId = {};
 
@@ -1973,6 +1980,7 @@
       setStatus('Loading vehicle list…');
       var vehData  = await telematicsApiGet('/vehicles');
       var vehicles = normalizeVehiclesResponse(vehData);
+      if (myRun !== runId) return;
 
       var ids = [], rowEntries = [], ambiguousAlerts = [];
       for (var i = 0; i < fleetLines.length; i++) {
@@ -1995,6 +2003,7 @@
         setStatus('Loading fleet camera events…');
         var evData = await telematicsApiGet('/events', { types: 'camera' });
         var fleetEvents = normalizeEventsResponse(evData);
+        if (myRun !== runId) return;
         fleetCameraEventsRaw = fleetEvents.length;
         rawEvents = filterCameraEventsToScopedVehicles(fleetEvents, ids);
       }
@@ -2056,15 +2065,17 @@
       showError('Error: ' + e.message);
     } finally {
       clearStatus();
-      btn.disabled = false;
-      btn.innerHTML = origBtnHTML;
     }
 
+    if (myRun !== runId) return;   // stopped, or a newer run took over
     if (allRows.length > 0) {
       try { await historicalFallback(deviceIdByVehicleId); } catch(e) { showHistSearchBar(false); }
+      if (myRun !== runId) return;
       // SD cards are filled in after the history search, for the vehicles just checked.
       if (!multiStopRequested) await loadSdDetails(batchRows || allRows);
+      if (myRun !== runId) return;
     }
+    if (!batch) setRunUi(false);
   }
 
   // ── Fullscreen viewer ─────────────────────────────────────────────────────────
@@ -2143,7 +2154,9 @@
     TGE.on('ch-fleetFilter', 'input', function() { if (multiOn) { saveActiveList(); renderListTabs(); } });
     TGE.on('ch-btnMulti', 'click', toggleMulti);
     TGE.on('ch-listTabs', 'click', onListTabsClick);
-    TGE.on('ch-btnStopHist', 'click', function() { histStopRequested = true; multiStopRequested = true; showHistSearchBar(false); });
+    TGE.on('ch-btnStopHist', 'click', stopRun);
+    TGE.on('ch-btnStopRun', 'click', stopRun);
+    TGE.on('ch-btnStopImg', 'click', stopRun);
     TGE.on('ch-btnSelAll', 'click', function() { setAllSelected(true); });
     TGE.on('ch-btnSelNone', 'click', function() { setAllSelected(false); });
     TGE.on('ch-snapTableBody', 'click', onTableClick);
