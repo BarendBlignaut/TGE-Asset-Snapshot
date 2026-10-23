@@ -1256,6 +1256,7 @@
       }
     }
 
+    if (myRun !== runId) return;   // stopped part-way: keep the earlier results as they were
     updatePersistDownloadProgress(total, total, null);
     applySnapshotFileSizeResults(descriptors, results);
 
