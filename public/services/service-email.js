@@ -502,6 +502,8 @@ var subjectInput = document.getElementById('ec-subject');
         lastComms:  row.lastComms,
         systemDown: !!row.systemDown,
         slots:      realSlots,
+        sd1:        row.sd1,
+        sd2:        row.sd2,
       };
     });
 
