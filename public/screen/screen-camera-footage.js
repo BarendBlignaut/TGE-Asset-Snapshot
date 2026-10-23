@@ -229,7 +229,7 @@
       '<div class="card">',
         '<div class="card-kicker">Search</div>',
         '<div class="card-title">Find footage</div>',
-        '<p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Any asset\'s video requests in TN360 for a period (up to 31 days). Click an Available row to play, save and combine its clips.</p>',
+        '<p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Any asset\'s video requests in TN360 whose footage was recorded in the period (up to 31 days), not when it was requested. Click an Available row to play, save and combine its clips.</p>',
         '<div id="cf-find-slot" class="data-grid data-grid-4"></div>',
         '<button type="button" class="btn btn-primary" id="cf-find-btn">Search</button>',
         '<div id="cf-find-results" data-pane="find" style="margin-top:12px;"></div>',
@@ -268,11 +268,11 @@
     var findSlot = TGE.el('cf-find-slot');
     findSlot.appendChild(makeField('Fleet number or camera IMEI', 'cf-find-asset', 'text', { placeholder: 'e.g. 81110', autocomplete: 'off' }));
     findSlot.appendChild(makeSelect('Times in', 'cf-find-tz', zoneOpts, prefs.entered || 'Australia/Brisbane'));
-    findSlot.appendChild(makeField('From', 'cf-find-from', 'datetime-local', { step: '1' }));
-    findSlot.appendChild(makeField('To', 'cf-find-to', 'datetime-local', { step: '1' }));
+    findSlot.appendChild(makeField('Footage from', 'cf-find-from', 'datetime-local', { step: '1' }));
+    findSlot.appendChild(makeField('Footage to', 'cf-find-to', 'datetime-local', { step: '1' }));
     var ftz = TGE.el('cf-find-tz').value;
     TGE.el('cf-find-to').value   = utcToWall(Math.floor(Date.now() / 1000) * 1000, ftz);
-    TGE.el('cf-find-from').value = utcToWall(Math.floor(Date.now() / 1000) * 1000 - 86400000, ftz);
+    TGE.el('cf-find-from').value = utcToWall(Math.floor(Date.now() / 1000) * 1000 - 7 * 86400000, ftz);
 
     TGE.on('cf-lookup-btn', 'click', doLookup);
     TGE.on('cf-imei', 'keydown', function (e) { if (e.key === 'Enter') doLookup(); });
@@ -581,6 +581,7 @@
       '</div>' +
       '<div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">' +
         '<button type="button" class="btn btn-primary cf-save-sel" data-id="' + esc(q.id) + '"' + (n ? '' : ' disabled') + '>Download selected (' + n + ')</button>' +
+        '<button type="button" class="btn cf-combine" data-id="' + esc(q.id) + '"' + (n > 1 ? '' : ' disabled') + '>Combined view (' + n + ')</button>' +
         '<span style="font-size:11px;color:var(--muted);">TN360 links last 7 days; search again to refresh them.</span>' +
       '</div>' +
     '</div>';
@@ -669,6 +670,8 @@
       var n = q.clips.filter(function (c, i) { return isTicked(q, i); }).length;
       btn.textContent = 'Download selected (' + n + ')';
       btn.disabled = !n;
+      var cb = t.closest('[data-pane]').querySelector('.cf-combine[data-id="' + id + '"]');
+      if (cb) { cb.textContent = 'Combined view (' + n + ')'; cb.disabled = n < 2; }
     }
   }
 
@@ -691,6 +694,11 @@
       renderRows('find');
       var det = TGE.el('cf-find-detail');
       if (det && det.scrollIntoView) det.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    if (t.classList.contains('cf-combine')) {
+      var qc = findRow(pane, t.getAttribute('data-id'));
+      if (qc) openCombined(pane, qc);
       return;
     }
     if (!t.classList.contains('cf-save-sel')) return;
@@ -786,6 +794,124 @@
     }
   }
 
+
+  // ── Stage 2: combined view ───────────────────────────────────────────────────
+  // The ticked cameras play side by side, driven by one play / pause / scrub bar
+  // so they start and end together. 2 side by side, 3–4 as 2 x 2, 5 as 3 + 2.
+  var combo = null;   // { videos, timer, overlay }
+
+  function fmtClock(sec) {
+    sec = Math.max(0, Math.floor(sec || 0));
+    return Math.floor(sec / 60) + ':' + pad(sec % 60);
+  }
+
+  function closeCombined() {
+    if (!combo) return;
+    clearInterval(combo.timer);
+    combo.videos.forEach(function (v) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {} });
+    if (combo.overlay && combo.overlay.parentNode) combo.overlay.parentNode.removeChild(combo.overlay);
+    document.removeEventListener('keydown', combo.onKey);
+    combo = null;
+  }
+
+  function openCombined(pane, q) {
+    closeCombined();
+    var clips = q.clips.filter(function (c, i) { return isTicked(q, i); });
+    if (clips.length < 2) return;
+    var tz = paneTz(pane), n = clips.length;
+    var cols = n <= 4 ? 2 : 6;
+
+    var overlay = document.createElement('div');
+    overlay.className = 'cf-combo';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(6,14,9,0.94);display:flex;flex-direction:column;padding:16px;gap:12px;';
+    overlay.innerHTML =
+      '<div style="display:flex;align-items:center;gap:12px;color:#fff;flex-wrap:wrap;">' +
+        '<strong style="font-size:15px;">' + esc(paneAsset(pane)) + ' · Combined</strong>' +
+        '<span style="font-size:13px;color:#cfe3d6;">' + esc(fmtTime(q.start, tz)) + ' · ' + esc(q.length != null ? fmtLength(q.length) : '') + ' · ' + n + ' cameras</span>' +
+        '<button type="button" class="btn cf-combo-close" style="margin-left:auto;height:30px;padding:0 14px;">Close</button>' +
+      '</div>' +
+      '<div class="cf-combo-grid" style="flex:1;min-height:0;display:grid;gap:8px;grid-template-columns:repeat(' + cols + ',1fr);align-content:center;"></div>' +
+      '<div style="display:flex;align-items:center;gap:12px;color:#fff;">' +
+        '<button type="button" class="btn btn-primary cf-combo-play" style="min-width:90px;">Play</button>' +
+        '<span class="cf-combo-slot" style="flex:1;display:flex;"></span>' +
+        '<span class="cf-combo-time" style="font-size:13px;font-variant-numeric:tabular-nums;min-width:90px;text-align:right;">0:00 / 0:00</span>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    var grid = overlay.querySelector('.cf-combo-grid');
+    var videos = clips.map(function (c, i) {
+      var tile = document.createElement('div');
+      tile.style.cssText = 'position:relative;background:#000;border-radius:8px;overflow:hidden;min-height:0;';
+      if (n === 5) tile.style.gridColumn = i < 3 ? 'span 2' : (i === 3 ? '2 / span 2' : '4 / span 2');
+      var v = document.createElement('video');
+      v.src = c.url;
+      v.preload = 'auto';
+      v.muted = true;
+      v.playsInline = true;
+      v.style.cssText = 'display:block;width:100%;height:100%;object-fit:contain;aspect-ratio:16/9;max-height:' + (n <= 2 ? '70vh' : '38vh') + ';';
+      if (c.thumb) v.poster = c.thumb;
+      var tag = document.createElement('span');
+      tag.textContent = c.label.toUpperCase();
+      tag.style.cssText = 'position:absolute;top:8px;right:8px;background:rgba(15,26,19,0.8);color:#fff;font-size:11px;font-weight:700;letter-spacing:.04em;padding:3px 8px;border-radius:6px;';
+      tile.appendChild(v);
+      tile.appendChild(tag);
+      grid.appendChild(tile);
+      return v;
+    });
+
+    // Scrub bar (built with createElement)
+    var bar = document.createElement('input');
+    bar.type = 'range';
+    bar.min = '0';
+    bar.max = '1000';
+    bar.value = '0';
+    bar.style.cssText = 'width:100%;accent-color:#00a651;';
+    overlay.querySelector('.cf-combo-slot').appendChild(bar);
+
+    var playBtn = overlay.querySelector('.cf-combo-play');
+    var timeEl  = overlay.querySelector('.cf-combo-time');
+    function duration() {
+      var d = 0;
+      videos.forEach(function (v) { if (isFinite(v.duration) && v.duration > d) d = v.duration; });
+      return d || Number(q.length) || 0;
+    }
+    function now() { return videos[0].currentTime || 0; }
+    function show() {
+      var d = duration();
+      if (!combo || !combo.dragging) bar.value = d ? String(Math.round(now() / d * 1000)) : '0';
+      timeEl.textContent = fmtClock(now()) + ' / ' + fmtClock(d);
+    }
+    function seek(t) { videos.forEach(function (v) { try { v.currentTime = Math.min(t, isFinite(v.duration) ? v.duration : t); } catch (e) {} }); show(); }
+    function playing() { return !videos[0].paused && !videos[0].ended; }
+    function play() {
+      if (now() >= duration() - 0.05) seek(0);
+      videos.forEach(function (v) { var p = v.play(); if (p && p.catch) p.catch(function () {}); });
+      playBtn.textContent = 'Pause';
+    }
+    function pause() { videos.forEach(function (v) { v.pause(); }); playBtn.textContent = 'Play'; show(); }
+
+    playBtn.addEventListener('click', function () { if (playing()) pause(); else play(); });
+    bar.addEventListener('input', function () { combo.dragging = true; seek(Number(bar.value) / 1000 * duration()); });
+    bar.addEventListener('change', function () { combo.dragging = false; });
+    videos[0].addEventListener('ended', pause);
+    overlay.querySelector('.cf-combo-close').addEventListener('click', closeCombined);
+
+    combo = {
+      videos: videos, overlay: overlay, dragging: false,
+      onKey: function (e) {
+        if (e.key === 'Escape') closeCombined();
+        else if (e.key === ' ' && e.target === document.body) { e.preventDefault(); if (playing()) pause(); else play(); }
+      },
+      // Keeps every camera on the first camera's clock (they drift apart a little while playing).
+      timer: setInterval(function () {
+        var t = now();
+        if (playing()) videos.forEach(function (v, i) { if (i && !v.ended && Math.abs(v.currentTime - t) > 0.25) { try { v.currentTime = t; } catch (e) {} } });
+        show();
+      }, 400)
+    };
+    document.addEventListener('keydown', combo.onKey);
+    videos.forEach(function (v) { v.addEventListener('loadedmetadata', show); });
+  }
 
   // ── Register ─────────────────────────────────────────────────────────────────
   TGE.onShow['camera-footage'] = function () {
