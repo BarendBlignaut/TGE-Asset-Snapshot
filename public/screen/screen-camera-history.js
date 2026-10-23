@@ -263,6 +263,7 @@
         '<div class="ch-card">',
           '<div class="ch-toolbar">',
             '<button type="button" id="ch-btnLoad" class="ch-btn ch-btn-primary">Check snapshots</button>',
+            '<button type="button" id="ch-btnStopRun" class="ch-btn ch-btn-outline ch-btn-stop" style="display:none;">Stop</button>',
             '<button type="button" id="ch-btnSelAll" class="ch-btn ch-btn-outline" style="display:none;">Select all</button>',
             '<button type="button" id="ch-btnSelNone" class="ch-btn ch-btn-outline" style="display:none;">Clear</button>',
             '<button type="button" id="ch-btnMulti" class="ch-btn ch-btn-outline" title="Queue several lists and run them one after another">Multi run</button>',
