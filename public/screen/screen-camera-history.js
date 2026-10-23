@@ -1896,9 +1896,10 @@
       lists[i].failed = !allRows.some(function(r) { return r.listNo === lists[i].listNo; });
     }
     multiState.running = false;
-    multiState.stopped = multiStopRequested;
+      multiState.stopped = multiStopRequested;
     batchRows = null;
     updateMultiLine();
+    if (myRun === runId) setRunUi(false);
   }
 
   // The line above the table: "List 2 of 4 · 37 of 200 completed", plus a chip per list.
