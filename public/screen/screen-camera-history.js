@@ -1555,7 +1555,7 @@
     try {
       var assets = rows.map(emailRowFor).map(function(r) {
         return { legacyNo: r.legacyNo, imei: r.imei, model: r.cameraModel, lastComms: r.lastComms, systemDown: r.systemDown,
-                 slots: r.slots.filter(function(s) { return s != null; }) };
+                 slots: r.slots.filter(function(s) { return s != null; }), sd1: r.sd1, sd2: r.sd2 };
       });
       var res = await TGE.api('POST', '/api/camera-fault-pdf', { assets: assets });
       if (!res.ok || !res.data || !res.data.base64) throw new Error((res.data && res.data.error) || 'PDF could not be built.');
