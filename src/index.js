@@ -1156,6 +1156,18 @@ async function buildCameraFaultPdf(assets) {
     page.drawText(headerLabel, { x: PDF_MARGIN_LEFT + 6, y: cursorY - 9, size: 10.5, font: fontBold, color: rgb(0.07, 0.07, 0.07) });
     const headerLabelW = fontBold.widthOfTextAtSize(headerLabel, 10.5);
     page.drawText(asset.imei || "—", { x: PDF_MARGIN_LEFT + 6 + headerLabelW + 10, y: cursorY - 9, size: 8, font: fontRegular, color: rgb(0.42, 0.45, 0.50) });
+    // SD cards (Camera History only; other pages don't send sd1/sd2). Red when not present, failed or marked Failed.
+    const sdParts = [["SD 1", asset.sd1], ["SD 2", asset.sd2]]
+      .filter((p) => p[1] && p[1] !== "—")
+      .map((p) => p[0] + ": " + String(p[1]));
+    if (sdParts.length) {
+      let sdX = PDF_MARGIN_LEFT + 6 + headerLabelW + 10 + fontRegular.widthOfTextAtSize(asset.imei || "—", 8) + 16;
+      sdParts.forEach((txt) => {
+        const bad = /Not Present|Failed/.test(txt);
+        page.drawText(txt, { x: sdX, y: cursorY - 9, size: 8, font: fontBold, color: bad ? rgb(0.86, 0.15, 0.15) : rgb(0.09, 0.50, 0.25) });
+        sdX += fontBold.widthOfTextAtSize(txt, 8) + 14;
+      });
+    }
     const rightText  = isDown ? "⚠ NON-FUNCTIONAL" : `Last Comms: ${asset.lastComms || "Unknown"}`;
     const rightColor = isDown ? rgb(0.86, 0.15, 0.15) : rgb(0.22, 0.25, 0.32);
     const rightW     = fontBold.widthOfTextAtSize(rightText, 8);
