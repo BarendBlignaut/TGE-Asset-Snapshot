@@ -429,6 +429,7 @@
   var fsGallery = [], fsIndex = 0;
   var SOURCES = ['ROAD', 'DRIVER', 'TVI1', 'TVI2', 'UVC'];
   var histStopRequested = false;
+  var runId = 0;   // goes up on every new run and on Stop, so older loops know to quit
 
   var HIST_POSITION_MAP = {
     'FRONT':'ROAD', 'ROAD':'ROAD', 'ROAD_FACING':'ROAD',
