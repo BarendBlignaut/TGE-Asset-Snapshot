@@ -1884,10 +1884,11 @@
       if (lines.length) lists.push({ listNo: i + 1, text: lines.join('\n'), count: lines.length });
     });
     if (!lists.length) { showError('Add fleet numbers to at least one list.'); return; }
-    multiStopRequested = false;
+       multiStopRequested = false;
+    var myRun = ++runId;
     multiState = { running: true, lists: lists, current: 0, totalLists: lists[lists.length - 1].listNo };
     for (var i = 0; i < lists.length; i++) {
-      if (multiStopRequested) break;
+      if (multiStopRequested || myRun !== runId) break;
       multiState.current = i;
       updateMultiLine();
       await checkSnapshots({ isBatch: true, first: i === 0, text: lists[i].text, listNo: lists[i].listNo });
