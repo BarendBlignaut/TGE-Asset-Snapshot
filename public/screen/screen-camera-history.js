@@ -1836,6 +1836,41 @@
     if (tab) { saveActiveList(); showList(parseInt(tab.getAttribute('data-list'), 10)); }
   }
 
+  // Check snapshots is locked and Stop is shown for the whole run, SD step included.
+  function setRunUi(on) {
+    var b = document.getElementById('ch-btnLoad');
+    if (b) { b.disabled = on; if (!on) b.innerHTML = 'Check snapshots'; }
+    var s = document.getElementById('ch-btnStopRun');
+    if (s) s.style.display = on ? '' : 'none';
+  }
+
+  // Stop: halts whatever stage is running (image checks, history search, SD cards)
+  // and any lists still waiting. Calls already sent finish, but their results are ignored.
+  function stopRun() {
+    runId++;
+    histStopRequested = true;
+    multiStopRequested = true;
+    sdLoadGen++;
+    if (sdRun) { sdRun.cancel(); sdRun = null; }
+    sdProgress = null;
+    (batchRows || allRows).forEach(function(r) {
+      if (r.notFound) return;
+      if (!r.chDone) { r.chStopped = true; r.histSearching = {}; }
+      if (!r.sd || r.sd.state === 'loading') r.sd = { state: 'stopped' };
+    });
+    if (multiState && multiState.running) {
+      multiState.running = false;
+      multiState.stopped = true;
+      if (multiState.lists[multiState.current]) multiState.lists[multiState.current].finished = true;
+    }
+    batchRows = null;
+    showHistSearchBar(false);
+    setPersistCheckBusy(false);
+    clearStatus();
+    setRunUi(false);
+    renderTable();
+  }
+
   function onRunClick() {
     if (multiOn) runMultiLists(); else checkSnapshots();
   }
