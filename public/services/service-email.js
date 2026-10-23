@@ -438,6 +438,12 @@ var subjectInput = document.getElementById('ec-subject');
     if (!camRows.length) return '';
     // Camera History rows carry SD card details (sd1/sd2); other pages don't, so their table is unchanged.
     var hasSd = camRows.some(function(r) { return r.sd1 != null || r.sd2 != null; });
+    // Camera History can add extra cameras (TVI3, TVI4 …) after the first five; they share one "Other" column.
+    var hasExtra = camRows.some(function(r) { return r.slots.length > 5; });
+    var extraText = function(row) {
+      var parts = row.slots.slice(5).filter(function(s) { return s; }).map(function(s) { return escapeHtml(s.label || 'Extra') + ': ' + statusCellText(s); });
+      return parts.length ? parts.join('<br>') : '—';
+    };
     var sdTh = function(label) { return '<th style="text-align:left;padding:6px 8px;border-bottom:2px solid #e5e7eb;font-size:11px;color:#6b7280;text-transform:uppercase;">' + label + '</th>'; };
     var sdTd = function(val) {
       var v = val != null && val !== '' ? String(val) : '—';
@@ -451,6 +457,7 @@ var subjectInput = document.getElementById('ec-subject');
       CAM_SLOT_LABELS.map(function(label) {
         return '<th style="text-align:center;padding:6px 8px;border-bottom:2px solid #e5e7eb;font-size:11px;color:#6b7280;text-transform:uppercase;">' + label + '</th>';
       }).join('') +
+      (hasExtra ? '<th style="text-align:left;padding:6px 8px;border-bottom:2px solid #e5e7eb;font-size:11px;color:#6b7280;text-transform:uppercase;">Other</th>' : '') +
       '<th style="text-align:right;padding:6px 8px;border-bottom:2px solid #e5e7eb;font-size:11px;color:#6b7280;text-transform:uppercase;">Last Comms</th>';
 
     var bodyRows = camRows.map(function(row) {
@@ -468,6 +475,7 @@ var subjectInput = document.getElementById('ec-subject');
         '<td style="padding:6px 8px;border-bottom:1px solid #f3f4f6;font-size:11px;font-family:monospace;color:#6b7280;">' + (row.imei != null ? row.imei : '—') + '</td>' +
         (hasSd ? sdTd(row.cameraModel) + sdTd(row.sd1) + sdTd(row.sd2) : '') +
         slotCells +
+        (hasExtra ? '<td style="padding:6px 8px;border-bottom:1px solid #f3f4f6;font-size:12px;">' + extraText(row) + '</td>' : '') +
         lastCommsCell +
       '</tr>';
     }).join('');
@@ -490,8 +498,7 @@ var subjectInput = document.getElementById('ec-subject');
       // Only include slots that actually exist for this asset (e.g. 2 for
       // IQCamera, 5 for MultiIQ) — never padded with nulls. The PDF draws
       // exactly this many fixed-size boxes, centered as a group.
-      var realSlots = [0,1,2,3,4]
-        .map(function(i) { return row.slots[i]; })
+      var realSlots = row.slots
         .filter(function(slot) { return slot != null; })
         .map(function(slot) { return { label: slot.label, url: slot.url || null, status: slot.status || null }; });
 
