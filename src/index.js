@@ -2639,8 +2639,11 @@ async function handleCamFootageLookup(request, env) {
       fetch(`https://api-au.telematics.com/cameras/${encodeURIComponent(device.id)}/status?key=${key}`, { headers: hdrs })
     ]);
     if (!chRes.ok) return jsonResponse({ error: "TN360 channels lookup failed.", status: chRes.status }, 502);
-    const channels = await chRes.json();
-    const status   = stRes.ok ? await stRes.json() : null;
+    // An IQ camera (built-in Road and Driver only) can answer with an empty body, so read text first.
+    const chText   = await chRes.text();
+    const channels = chText.trim() ? JSON.parse(chText) : [];
+    const stText   = stRes.ok ? await stRes.text() : "";
+    const status   = stText.trim() ? JSON.parse(stText) : null;
     return jsonResponse({
       imei: imei,
       deviceId: device.id,
