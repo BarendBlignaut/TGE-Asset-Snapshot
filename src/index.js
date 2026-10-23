@@ -1106,7 +1106,8 @@ async function buildCameraFaultPdf(assets) {
   const usableW     = PDF_PAGE_W - PDF_MARGIN_LEFT - PDF_MARGIN_RIGHT;
   const usableH     = PDF_PAGE_H - PDF_MARGIN_TOP - PDF_MARGIN_BOTTOM;
   const availInnerW = usableW - 12;
-  const fixedPhotoBoxW = (availInnerW - (PDF_NUM_SLOTS - 1) * PDF_PHOTO_GAP_X) / PDF_NUM_SLOTS;
+    const numBoxes = Math.max(PDF_NUM_SLOTS, ...assets.map((a) => a.slots.length));   // extra cameras (TVI3, TVI4 …) make the boxes narrower
+  const fixedPhotoBoxW = (availInnerW - (numBoxes - 1) * PDF_PHOTO_GAP_X) / numBoxes;
   const urlToImage = {};
   const fetchJobs  = [];
   assets.forEach((asset) => {
