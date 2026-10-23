@@ -466,6 +466,7 @@ var subjectInput = document.getElementById('ec-subject');
       return '<tr>' +
         '<td style="padding:6px 8px;border-bottom:1px solid #f3f4f6;font-size:12px;font-weight:700;">' + (row.legacyNo != null ? row.legacyNo : '—') + '</td>' +
         '<td style="padding:6px 8px;border-bottom:1px solid #f3f4f6;font-size:11px;font-family:monospace;color:#6b7280;">' + (row.imei != null ? row.imei : '—') + '</td>' +
+        (hasSd ? sdTd(row.cameraModel) + sdTd(row.sd1) + sdTd(row.sd2) : '') +
         slotCells +
         lastCommsCell +
       '</tr>';
