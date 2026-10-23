@@ -1243,7 +1243,9 @@
     updatePersistDownloadProgress(0, total, null);
     var results = [];
 
+       var myRun = runId;
     for (var idx = 0; idx < total; idx++) {
+      if (myRun !== runId) break;   // stopped, or a newer run took over
       updatePersistDownloadProgress(idx, total, null);
       var d = descriptors[idx];
       try {
