@@ -1328,6 +1328,7 @@
         '<span class="snap-time">' + esc(formatSnapTime(item.timeAt)) + '</span>' +
         (fail ? '<span class="snap-failed">FAILED</span>' : '') +
         '<span class="unsure-hint">' + esc(item.hint || '') + '</span>' +
+        markButtonsHtml(row, 'X:' + (item.hint || '')) +
         '</div>'
       );
     }
@@ -1376,7 +1377,19 @@
   // What the camera is showing right now, before anyone marks it:
   // a good current image = Good; a failed image or a historical one = Failed;
   // nothing at all (or still searching) = not reviewed.
+  // Extra cameras (TVI3, TVI4 …) stay in the Unsure column; their marks use the key 'X:' + label.
+  function extraItem(row, hint) {
+    var arr = row.unsure || [];
+    for (var i = 0; i < arr.length; i++) { if (String(arr[i].hint || '') === hint) return arr[i]; }
+    return null;
+  }
+
   function defaultMark(row, src) {
+    if (src.indexOf('X:') === 0) {
+      var ex = extraItem(row, src.slice(2));
+      if (!ex || !ex.url) return null;
+      return unsureSnapshotFileTooSmall(row.vehicleId, String(ex.hint || ''), ex.timeAt) ? 'not_working' : 'working';
+    }
     var cell = row.cols[src];
     var failed = cell && cell.url && colSnapshotFileTooSmall(row.vehicleId, src, cell.timeAt);
     if (cell && cell.url && !failed) return 'working';
@@ -1394,8 +1407,8 @@
     if (row.notFound || row.systemDown) return '';
     var m = getMark(row, src), vid = esc(String(row.vehicleId));
     return '<div class="ch-mark">' +
-      '<button type="button" class="ch-mark-btn is-good' + (m === 'working' ? ' on' : '') + '" data-vid="' + vid + '" data-src="' + src + '" data-val="working">✓ Good</button>' +
-      '<button type="button" class="ch-mark-btn is-bad' + (m === 'not_working' ? ' on' : '') + '" data-vid="' + vid + '" data-src="' + src + '" data-val="not_working">✗ Failed</button>' +
+      '<button type="button" class="ch-mark-btn is-good' + (m === 'working' ? ' on' : '') + '" data-vid="' + vid + '" data-src="' + esc(src) + '" data-val="working">✓ Good</button>' +
+      '<button type="button" class="ch-mark-btn is-bad' + (m === 'not_working' ? ' on' : '') + '" data-vid="' + vid + '" data-src="' + esc(src) + '" data-val="not_working">✗ Failed</button>' +
       '</div>';
   }
 
@@ -1509,6 +1522,11 @@
       if (!url && !status) return null;   // this camera isn't fitted / never seen
       return { label: s.label, url: url, status: status };
     });
+    // Extra cameras from the Unsure column go after the five, under their own label (TVI3, TVI4 …).
+    (row.unsure || []).forEach(function(item) {
+      if (!item || !item.url) return;
+      slots.push({ label: item.hint || 'Extra', url: item.url, status: getMark(row, 'X:' + (item.hint || '')) });
+    });
     var working = slots.filter(function(s) { return s && s.status === 'working'; }).length;
     var notWorking = slots.filter(function(s) { return s && s.status === 'not_working'; }).length;
     return {
@@ -1550,7 +1568,7 @@
     if (!allRows.length) { alert('Check snapshots first, then export.'); return; }
     var header = ['Vehicle name', 'Registration', 'System down'];
     SOURCES.forEach(function(src) { header.push(src, src + ' marked'); });
-    header.push('Unsure', 'Camera model', 'IMEI', 'SD 1', 'SD 1 size', 'SD 1 marked', 'SD 2', 'SD 2 size', 'SD 2 marked', 'Last connected');
+    header.push('Unsure', 'Unsure marked', 'Camera model', 'IMEI', 'SD 1', 'SD 1 size', 'SD 1 marked', 'SD 2', 'SD 2 size', 'SD 2 marked', 'Last connected');
     var rows = allRows.map(function(row) {
       var out = [row.vehicleName || '', row.registration || '', row.systemDown ? 'Yes' : ''];
       SOURCES.forEach(function(src) {
@@ -1558,6 +1576,9 @@
         out.push(row.notFound ? '' : markLabel(getMark(row, src)));
       });
             out.push(unsureColumnStatusForCsv(row));
+      out.push(row.notFound ? '' : (row.unsure || []).map(function(it) {
+        return (it.hint || 'Extra') + ': ' + (markLabel(getMark(row, 'X:' + (it.hint || ''))) || '—');
+      }).join('; '));
       out.push.apply(out, sdExportCells(row));
       return out;
          });
