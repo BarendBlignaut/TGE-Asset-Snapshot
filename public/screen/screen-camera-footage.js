@@ -582,6 +582,7 @@
       '<div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">' +
         '<button type="button" class="btn btn-primary cf-save-sel" data-id="' + esc(q.id) + '"' + (n ? '' : ' disabled') + '>Download selected (' + n + ')</button>' +
         '<button type="button" class="btn cf-combine" data-id="' + esc(q.id) + '"' + (n > 1 ? '' : ' disabled') + '>Combined view (' + n + ')</button>' +
+        '<button type="button" class="btn cf-combine-dl" data-id="' + esc(q.id) + '"' + (n > 1 ? '' : ' disabled') + '>Download combined (' + n + ')</button>' +
         '<span style="font-size:11px;color:var(--muted);">TN360 links last 7 days; search again to refresh them.</span>' +
       '</div>' +
     '</div>';
@@ -672,6 +673,8 @@
       btn.disabled = !n;
       var cb = t.closest('[data-pane]').querySelector('.cf-combine[data-id="' + id + '"]');
       if (cb) { cb.textContent = 'Combined view (' + n + ')'; cb.disabled = n < 2; }
+      var cd = t.closest('[data-pane]').querySelector('.cf-combine-dl[data-id="' + id + '"]');
+      if (cd) { cd.textContent = 'Download combined (' + n + ')'; cd.disabled = n < 2; }
     }
   }
 
@@ -701,22 +704,33 @@
       if (qc) openCombined(pane, qc);
       return;
     }
+    if (t.classList.contains('cf-combine-dl')) {
+      var qd = findRow(pane, t.getAttribute('data-id'));
+      if (qd) { openCombined(pane, qd); exportCombined(); }
+      return;
+    }
     if (!t.classList.contains('cf-save-sel')) return;
-    // Saves each ticked clip, one after another (browsers allow a few downloads in a row).
     var q = findRow(pane, t.getAttribute('data-id'));
-    if (!q) return;
+    if (q) saveClips(pane, q);
+  }
+
+  // Saves each ticked clip, one after another (browsers allow a few downloads in a row).
+  function saveClips(pane, q) {
     var links = q.clips.filter(function (c, i) { return isTicked(q, i); }).map(function (c) { return clipLink(pane, q, c); });
     links.forEach(function (href, i) {
-      setTimeout(function () {
-        var a = document.createElement('a');
-        a.href = href;
-        a.setAttribute('download', '');
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }, i * 800);
+      setTimeout(function () { saveHref(href, ''); }, i * 800);
     });
     setMessage('Saving ' + links.length + ' clip' + (links.length !== 1 ? 's' : '') + '...', false);
+    return links.length;
+  }
+
+  function saveHref(href, name) {
+    var a = document.createElement('a');
+    a.href = href;
+    a.setAttribute('download', name || '');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   function setBtn(id, busy, idle, busyText) {
@@ -808,6 +822,11 @@
   function closeCombined() {
     if (!combo) return;
     clearInterval(combo.timer);
+    if (combo.rec) {
+      combo.cancelled = true;
+      clearInterval(combo.drawTimer);
+      try { if (combo.rec.state !== 'inactive') combo.rec.stop(); } catch (e) {}
+    }
     combo.videos.forEach(function (v) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {} });
     if (combo.overlay && combo.overlay.parentNode) combo.overlay.parentNode.removeChild(combo.overlay);
     document.removeEventListener('keydown', combo.onKey);
@@ -828,7 +847,9 @@
       '<div style="display:flex;align-items:center;gap:12px;color:#fff;flex-wrap:wrap;">' +
         '<strong style="font-size:15px;">' + esc(paneAsset(pane)) + ' · Combined</strong>' +
         '<span style="font-size:13px;color:#cfe3d6;">' + esc(fmtTime(q.start, tz)) + ' · ' + esc(q.length != null ? fmtLength(q.length) : '') + ' · ' + n + ' cameras</span>' +
-        '<button type="button" class="btn cf-combo-close" style="margin-left:auto;height:30px;padding:0 14px;">Close</button>' +
+        '<span class="cf-combo-status" style="margin-left:auto;font-size:13px;color:#cfe3d6;"></span>' +
+        '<button type="button" class="btn btn-primary cf-combo-dl" style="height:30px;padding:0 14px;">Download combined</button>' +
+        '<button type="button" class="btn cf-combo-close" style="height:30px;padding:0 14px;">Close</button>' +
       '</div>' +
       '<div class="cf-combo-grid" style="flex:1;min-height:0;display:grid;gap:8px;grid-template-columns:repeat(' + cols + ',1fr);align-content:center;"></div>' +
       '<div style="display:flex;align-items:center;gap:12px;color:#fff;">' +
@@ -890,17 +911,26 @@
     }
     function pause() { videos.forEach(function (v) { v.pause(); }); playBtn.textContent = 'Play'; show(); }
 
-    playBtn.addEventListener('click', function () { if (playing()) pause(); else play(); });
+    playBtn.addEventListener('click', function () { if (combo && combo.rec) return; if (playing()) pause(); else play(); });
     bar.addEventListener('input', function () { combo.dragging = true; seek(Number(bar.value) / 1000 * duration()); });
     bar.addEventListener('change', function () { combo.dragging = false; });
     videos[0].addEventListener('ended', pause);
     overlay.querySelector('.cf-combo-close').addEventListener('click', closeCombined);
+    overlay.querySelector('.cf-combo-dl').addEventListener('click', exportCombined);
 
     combo = {
       videos: videos, overlay: overlay, dragging: false,
+      pane: pane, q: q, clips: clips, tz: tz,
+      play: play, pause: pause, seek: seek, now: now, duration: duration,
+      busy: function (on, text) {
+        playBtn.disabled = on;
+        bar.disabled = on;
+        overlay.querySelector('.cf-combo-dl').disabled = on;
+        overlay.querySelector('.cf-combo-status').textContent = text || '';
+      },
       onKey: function (e) {
         if (e.key === 'Escape') closeCombined();
-        else if (e.key === ' ' && e.target === document.body) { e.preventDefault(); if (playing()) pause(); else play(); }
+        else if (e.key === ' ' && e.target === document.body) { e.preventDefault(); if (combo && combo.rec) return; if (playing()) pause(); else play(); }
       },
       // Keeps every camera on the first camera's clock (they drift apart a little while playing).
       timer: setInterval(function () {
@@ -911,6 +941,163 @@
     };
     document.addEventListener('keydown', combo.onKey);
     videos.forEach(function (v) { v.addEventListener('loadedmetadata', show); });
+  }
+
+  // ── Combined export ──────────────────────────────────────────────────────────
+  // Saves each ticked clip, then records the grid in real time (like Clipchamp)
+  // into "<asset> Combined DD-MM-YYYY HH-MM-SS.mp4". MP4 in Chrome / Edge; .webm only
+  // where the browser can't record MP4.
+  var TILE_W = 640, TILE_H = 360;
+
+  function pickRecordType() {
+    if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return null;
+    var types = ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4',
+                 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+    for (var i = 0; i < types.length; i++) if (MediaRecorder.isTypeSupported(types[i])) return types[i];
+    return null;
+  }
+
+  // Tile positions: 2 side by side, 3–4 as 2 x 2, 5 as 3 + 2 (centred), more as rows of 3.
+  function comboLayout(n) {
+    var rects = [], i, cols = n <= 2 ? n : (n <= 4 ? 2 : 3), rows = Math.ceil(n / cols);
+    for (i = 0; i < n; i++) {
+      var row = Math.floor(i / cols), inRow = Math.min(cols, n - row * cols);
+      var left = (cols - inRow) * TILE_W / 2;
+      rects.push({ x: left + (i % cols) * TILE_W, y: row * TILE_H });
+    }
+    return { w: cols * TILE_W, h: rows * TILE_H, rects: rects };
+  }
+
+  function drawTag(ctx, text, x, y, alignRight) {
+    ctx.font = 'bold 15px Arial, sans-serif';
+    var w = ctx.measureText(text).width + 14;
+    var left = alignRight ? x - w : x;
+    ctx.fillStyle = 'rgba(15,26,19,0.8)';
+    ctx.fillRect(left, y, w, 24);
+    ctx.fillStyle = '#fff';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, left + 7, y + 12);
+  }
+
+  // Points a player at our own server's copy of the clip (the browser won't record
+  // footage straight from TN360's storage), then waits until it can play from the start.
+  function loadSource(v, src) {
+    return new Promise(function (resolve, reject) {
+      var done = false;
+      function finish(ok) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        v.removeEventListener('loadeddata', onOk);
+        v.removeEventListener('error', onErr);
+        if (ok) resolve(); else reject(new Error('load'));
+      }
+      function onOk() { finish(true); }
+      function onErr() { finish(false); }
+      var timer = setTimeout(onErr, 60000);
+      v.addEventListener('loadeddata', onOk);
+      v.addEventListener('error', onErr);
+      v.src = src;
+      v.load();
+    });
+  }
+
+  function seekAll(videos, t) {
+    return Promise.all(videos.map(function (v) {
+      return new Promise(function (resolve) {
+        if (Math.abs(v.currentTime - t) < 0.01) return resolve();
+        var timer = setTimeout(resolve, 5000);
+        v.addEventListener('seeked', function () { clearTimeout(timer); resolve(); }, { once: true });
+        v.currentTime = t;
+      });
+    }));
+  }
+
+  async function exportCombined() {
+    var c = combo;
+    if (!c || c.rec) return;
+    var type = pickRecordType();
+    if (!type) { alert('This browser cannot record video. Please use Chrome or Edge.'); return; }
+    var isMp4 = type.indexOf('video/mp4') === 0;
+    if (!isMp4 && !confirm("This browser can't record MP4, so the combined video will be saved as .webm (the single camera clips are still .mp4). Continue?")) return;
+
+    var videos = c.videos, startMs = new Date(c.q.start).getTime();
+    c.pause();
+    c.busy(true, 'Saving single clips...');
+    saveClips(c.pane, c.q);
+
+    c.busy(true, 'Preparing combined video...');
+    try {
+      await Promise.all(videos.map(function (v, i) { return loadSource(v, clipLink(c.pane, c.q, c.clips[i]) + '&inline=1'); }));
+      await seekAll(videos, 0);
+    } catch (e) {
+      if (combo === c) c.busy(false, 'Could not load the footage for the combined video. Check for footage again and retry.');
+      return;
+    }
+    if (combo !== c) return;
+
+    var lay = comboLayout(videos.length);
+    var canvas = document.createElement('canvas');
+    canvas.width = lay.w;
+    canvas.height = lay.h;
+    var ctx = canvas.getContext('2d');
+    function draw() {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, lay.w, lay.h);
+      var stamp = paneAsset(c.pane) + '  ' + fmtZone(startMs + c.now() * 1000, c.tz);
+      videos.forEach(function (v, i) {
+        var r = lay.rects[i];
+        if (v.videoWidth && v.videoHeight) {
+          var s = Math.min(TILE_W / v.videoWidth, TILE_H / v.videoHeight), w = v.videoWidth * s, h = v.videoHeight * s;
+          try { ctx.drawImage(v, r.x + (TILE_W - w) / 2, r.y + (TILE_H - h) / 2, w, h); } catch (e) {}
+        }
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(r.x, r.y, TILE_W, TILE_H);
+        drawTag(ctx, c.clips[i].label.toUpperCase(), r.x + TILE_W - 8, r.y + 8, true);
+        drawTag(ctx, stamp, r.x + 8, r.y + 8, false);
+      });
+    }
+
+    var chunks = [];
+    var rec;
+    try {
+      rec = new MediaRecorder(canvas.captureStream(30), { mimeType: type, videoBitsPerSecond: 6000000 });
+    } catch (e) {
+      c.busy(false, 'This browser could not start recording.');
+      return;
+    }
+    rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+    var stopped = new Promise(function (resolve) { rec.onstop = resolve; });
+    c.rec = rec;
+    draw();
+    c.drawTimer = setInterval(draw, 1000 / 30);
+    rec.start(1000);
+    c.play();
+
+    await new Promise(function (resolve) {
+      var poll = setInterval(function () {
+        var d = c.duration();
+        if (c.cancelled || videos[0].ended || (d && c.now() >= d - 0.05)) { clearInterval(poll); resolve(); return; }
+        c.busy(true, 'Recording ' + fmtClock(c.now()) + ' / ' + fmtClock(d) + ' · keep this tab open');
+      }, 250);
+    });
+
+    clearInterval(c.drawTimer);
+    draw();
+    try { if (rec.state !== 'inactive') rec.stop(); } catch (e) {}
+    await stopped;
+    if (c.cancelled) { setMessage('Combined video cancelled.', false); return; }
+    c.pause();
+    c.rec = null;
+
+    var blob = new Blob(chunks, { type: type.split(';')[0] });
+    var name = clipFileName(c.pane, c.q, { label: 'Combined' }).replace(/\.mp4$/, isMp4 ? '.mp4' : '.webm');
+    var url = URL.createObjectURL(blob);
+    saveHref(url, name);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+    if (combo === c) c.busy(false, 'Saved ' + name);
+    setMessage('Saved ' + name, false);
   }
 
   // ── Register ─────────────────────────────────────────────────────────────────
