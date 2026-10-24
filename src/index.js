@@ -2693,7 +2693,7 @@ async function handleCamFootageRequest(request, env) {
     if (!device || !device.id) return jsonResponse({ error: "No TN360 device found for IMEI " + imei + "." }, 404);
     const chRes = await fetch(`https://api-au.telematics.com/cameras/${encodeURIComponent(imei)}/channels?key=${encodeURIComponent(env.TN360_SNAPSHOT_KEY)}`, { headers: { "Content-Type": "application/json" } });
     if (!chRes.ok) return jsonResponse({ error: "TN360 channels lookup failed.", status: chRes.status }, 502);
-    const chList  = await chRes.json();
+    const chList  = camFootageParse(await chRes.text());
     const cameras = (Array.isArray(chList) ? chList : []).map(function (c) { return c && c.channel; }).filter(Boolean);
     // An IQ camera (built-in Road and Driver only) lists no channels; TN360 then sends no Camera field.
     // partSeconds: 10/30/60/120 splits the clip; 0 sends it as one request.
