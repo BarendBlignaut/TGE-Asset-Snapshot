@@ -1728,7 +1728,7 @@
 
     var camByVid = {};
     res.data.forEach(function(d) {
-      if (!d || !d.type || d.type.code !== 'CAMERA' || d.outServiceAt || !d.vehicleId) return;
+      if (!d || !d.type || d.type.code !== 'CAMERA' || !d.vehicleId) return;
       camByVid[String(d.vehicleId)] = d;
     });
     var todo = [];
