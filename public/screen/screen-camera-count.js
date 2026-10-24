@@ -160,7 +160,7 @@
               if (checked % 10 === 0) setMessage('Checking devices... ' + checked + '/' + vehicles.length, false);
               if (!r.ok) return null;
               var devices = Array.isArray(r.data) ? r.data : [];
-              var camDev = devices.find(function(d) { return d.type && d.type.code === 'CAMERA' && !d.outServiceAt && d.vehicleId; });
+              var camDev = devices.find(function(d) { return d.type && d.type.code === 'CAMERA' && d.vehicleId; });
               if (!camDev) return null;
               return { vehicle: v, camera: camDev };
             }).catch(function() { return null; });
