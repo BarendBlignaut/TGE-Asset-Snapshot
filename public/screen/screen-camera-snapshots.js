@@ -232,7 +232,6 @@
               if (!r.ok) return null;
               var d = r.data;
               if (!d.vehicleId) return null; // no vehicle assigned
-              if (d.outServiceAt) return null; // out of service
               if (!d.type || d.type.code !== 'CAMERA') return null; // not a camera
               // Build a minimal vehicle object from device data
               var vehicle = { id: d.vehicleId, name: '—', type: { name: '—' }, status: 'ENABLED' };
