@@ -173,7 +173,7 @@
             .then(function(r) {
               if (!r.ok) return null;
               var d = r.data;
-              if (!d.vehicleId || d.outServiceAt || !d.type || d.type.code !== 'CAMERA') return null;
+              if (!d.vehicleId || !d.type || d.type.code !== 'CAMERA') return null;
               return { vehicle: { id: d.vehicleId, name: '—', type: { name: '—' } }, camera: d, needsVehicle: true };
             }).catch(function() { return null; });
         }));
