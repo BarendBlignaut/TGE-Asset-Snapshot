@@ -660,7 +660,7 @@ if (TGE.wireOutputPill) {
       // Step 2 — Get devices
       var dRes = await TGE.api('GET', '/api/tn360/v1/vehicles/' + vehicle.id + '/devices?pruning=B2B');
       if (!dRes.ok) throw new Error('Device lookup failed — ' + (dRes.data && dRes.data.error ? dRes.data.error : 'HTTP ' + dRes.status));
-      var devices = (Array.isArray(dRes.data) ? dRes.data : []).filter(function(d) { return !d.outServiceAt; });
+      var devices = Array.isArray(dRes.data) ? dRes.data : [];
 
       devices.forEach(function(d) {
         var code = (d.type && d.type.code) || '';
