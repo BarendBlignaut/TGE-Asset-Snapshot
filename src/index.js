@@ -2770,7 +2770,7 @@ async function camFootageFindByFleet(env, text) {
     if (res.ok) { const d = camFootageParse(await res.text()); if (Array.isArray(d)) { devices = d; break; } }
   }
   if (!devices) return { error: "TN360 device list could not be read." };
-  const cam = devices.find(function (d) { return d && d.type && d.type.code === "CAMERA" && !d.outServiceAt && String(d.vehicleId) === String(v.id); });
+    const cam = devices.find(function (d) { return d && d.type && d.type.code === "CAMERA" && String(d.vehicleId) === String(v.id); });
   if (!cam || !cam.imei) return { error: (v.name || text) + " has no camera in TN360." };
   return { imei: String(cam.imei), vehicle: { name: v.name || "", registration: v.registration || "" } };
 }
