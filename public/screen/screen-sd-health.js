@@ -313,7 +313,6 @@ function setMode(mode) {
       var cameraDevices = allDevices.filter(function(d) {
         var code = d.type && d.type.code;
         if (code !== 'CAMERA') return false;
-        if (d.outServiceAt) return false;
         var vid = String(d.vehicleId || '');
         if (!vid || !vehicleMap[vid]) return false;
         if (allowedVehicleIds && !allowedVehicleIds[vid]) return false;
