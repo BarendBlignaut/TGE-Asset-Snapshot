@@ -215,7 +215,7 @@
               if (!r.ok) return null;
               var devices = Array.isArray(r.data) ? r.data : [];
               var camDev  = devices.find(function(d) {
-                return d.type && d.type.code === 'CAMERA' && !d.outServiceAt && d.vehicleId;
+                return d.type && d.type.code === 'CAMERA' && d.vehicleId;
               });
               if (!camDev) return null;
               return { vehicle: v, camera: camDev };
